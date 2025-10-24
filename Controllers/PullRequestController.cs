@@ -12,7 +12,7 @@ namespace solvace.prform.Controllers;
 public class PullRequestController : ControllerBase
 {
     private readonly DefaultContext _context;
-
+     
     public PullRequestController(DefaultContext context)
     {
         _context = context;
@@ -55,7 +55,7 @@ public class PullRequestController : ControllerBase
     public async Task<ActionResult<PullRequestRegisterResponse>> GetByEnvironmentNameAndCardNumber(string environmentName, string cardNumber, int userId, CancellationToken cancellationToken)
     {
         var response = await _context.PullRequests
-            .Where(x => x.Form!.EnvironmentName.ToLower() == environmentName.ToLower() && x.CardNumber == cardNumber && x.UserId == userId)
+            .Where(x => x.CardNumber == cardNumber && x.UserId == userId)
             .Include(x => x.Form)
             .Include(x => x.User)
             .FirstOrDefaultAsync(cancellationToken);
