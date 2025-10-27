@@ -18,7 +18,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<DefaultContext>(x => x.UseSqlite(
+builder.Services.AddDbContext<DefaultContext>(x => x.UseSqlServer(
     builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
@@ -31,6 +31,20 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<DefaultContext>();
+    try
+    {
+        context.Database.Migrate();
+        Console.WriteLine("Migrations executadas com sucesso.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Erro ao executar migrations: {ex.Message}");
+    }
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();

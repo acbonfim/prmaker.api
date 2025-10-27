@@ -21,11 +21,25 @@ public class UserController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<UserResponse>> CreateUser(UserRequest request, CancellationToken cancellationToken)
     {
-        var user = request.CreateUser(request.Name);
+        try
+        {
+            var user = request.CreateUser(request.Name);
         
-        var userCreated = await _context.Users.AddAsync(user, cancellationToken);
-        if(await _context.SaveChangesAsync(cancellationToken) > 0)
-            return Ok(userCreated.Entity.ToResponse());
+            var userCreated = await _context.Users.AddAsync(user, cancellationToken);
+            if(await _context.SaveChangesAsync(cancellationToken) > 0)
+                return Ok(userCreated.Entity.ToResponse());
+        }
+        catch (Exception e)
+        {
+            var error = new
+            {
+                e.Message,
+                e.StackTrace,
+                InnerException = e.InnerException!.Message
+            };
+            return BadRequest(error);
+        }
+        
 
         return UnprocessableEntity();
     }
