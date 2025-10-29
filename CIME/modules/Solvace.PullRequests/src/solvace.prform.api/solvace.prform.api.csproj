@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -30,8 +30,9 @@
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalModels\Cime.BuildingBlocks.GlobalModels.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.ExceptionHandlerMiddleware\Cime.BuildingBlocks.ExceptionHandlerMiddleware.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
         <ProjectReference Include="..\solvace.prform.application\solvace.prform.application.csproj"/>
         <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
-    </ItemGroup>
+	</ItemGroup>
 
 </Project>

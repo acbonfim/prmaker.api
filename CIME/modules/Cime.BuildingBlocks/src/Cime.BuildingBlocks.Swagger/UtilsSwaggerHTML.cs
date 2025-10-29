@@ -81,8 +81,8 @@ namespace Cime.BuildingBlocks.Swagger
 
             t.Append($"{Div(@"x-api-key: your-api-key")}");
 
-            t.Append($"{Div(@"Para ter acesso a chave, você precisa ter um usuário e senha que é fornecido pela CLIQX.
-            Essa chave é gerada dentro do Cliqx One, na sessão de Integrações/Api Key")}");
+            t.Append($"{Div(@"Para ter acesso a chave, você precisa ter um usuário e senha que é fornecido pela SOLVACE.
+            Essa chave é gerada dentro do SOLVACE, na sessão de Integrações/Api Key")}");
 
             t.Append($"{Div(@"Entre em contato com o administrador para obter o seu acesso.")}");
 

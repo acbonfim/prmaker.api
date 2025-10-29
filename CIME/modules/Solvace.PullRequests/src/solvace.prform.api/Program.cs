@@ -22,15 +22,16 @@ builder.Services
 
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<DefaultContext>(x => x.UseSqlServer(connString,
-    sqlServerOptionsAction: sqlOptions =>
-    {
-        sqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-        sqlOptions.CommandTimeout(60);
-    })
+builder.Services.AddDbContext<DefaultContext>(x => x.UseMySql(connString, ServerVersion.AutoDetect(connString))
+
+    //sqlServerOptionsAction: sqlOptions =>
+    //{
+    //    sqlOptions.EnableRetryOnFailure(
+    //        maxRetryCount: 5,
+    //        maxRetryDelay: TimeSpan.FromSeconds(30),
+    //        errorNumbersToAdd: null);
+    //    sqlOptions.CommandTimeout(60);
+    //}
 );
 
 

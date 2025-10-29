@@ -4,7 +4,7 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <RootNamespace>Cliqx.BuildingBlocks.Swagger</RootNamespace>
+        <RootNamespace>Cime.BuildingBlocks.Swagger</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>

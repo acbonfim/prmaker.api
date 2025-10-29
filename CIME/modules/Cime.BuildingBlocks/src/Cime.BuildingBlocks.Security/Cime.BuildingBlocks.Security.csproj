@@ -4,7 +4,7 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <RootNamespace>Cliqx.BuildingBlocks.Security</RootNamespace>
+        <RootNamespace>Cime.BuildingBlocks.Security</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
