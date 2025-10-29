@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="904fb27a-56ad-4325-a8f6-495600ee452d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/Controllers/FormController.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Controllers/PullRequestController.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Controllers/UserController.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Contexts/DefaultContext.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Database/database.db" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IAuditableEntity.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IDescribable.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IEntity.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IEntityBase.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/ISoftDeletable.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/Form.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/PullRequestRegister.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Entities/User.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Migrations/20251025003951_initialSqlServer.Designer.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Migrations/20251025003951_initialSqlServer.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Migrations/DefaultContextModelSnapshot.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Requests/FormRequest.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Requests/PullRequestRegisterRequest.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Requests/UserRequest.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Responses/FormResponse.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Responses/PullRequestRegisterResponse.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Data/Responses/UserResponse.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Program.cs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Properties/launchSettings.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/appsettings.Development.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/appsettings.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/identifier.sqlite" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/solvace.prform.csproj" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/solvace.prform.http" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/solvace.prform.sln" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "acbonfim"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/acbonfim/prmaker.api.git",
+    "accountId": "60826ab7-e8b8-46ea-9a43-81de1475b187"
+  }
+}]]></component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 6
+}]]></component>
+  <component name="ProjectId" id="34kCPOAnaJKIlpXrkglzF8q3Sqt" />
+  <component name="ProjectViewState">
+    <option name="autoscrollFromSource" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master",
+    "junie.onboarding.icon.badge.shown": "true",
+    "nodejs_package_manager_path": "npm",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="904fb27a-56ad-4325-a8f6-495600ee452d" name="Changes" comment="" />
+      <created>1761748157646</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1761748157646</updated>
+      <workItem from="1761748158894" duration="48000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="VcsManagerConfiguration">
+    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.OperationCanceledException" breakIfHandledByOtherCode="false" displayValue="System.OperationCanceledException" />
+          <option name="timeStamp" value="1" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.Tasks.TaskCanceledException" breakIfHandledByOtherCode="false" displayValue="System.Threading.Tasks.TaskCanceledException" />
+          <option name="timeStamp" value="2" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.ThreadAbortException" breakIfHandledByOtherCode="false" displayValue="System.Threading.ThreadAbortException" />
+          <option name="timeStamp" value="3" />
+        </breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>
