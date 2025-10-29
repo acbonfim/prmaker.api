@@ -4,8 +4,8 @@ namespace solvace.prform.Data.Requests;
 
 public class FormRequest
 {
-    public string Description { get; set; }
-    public string EnvironmentName { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
 
     public Form CreateForm(FormRequest request)
     {

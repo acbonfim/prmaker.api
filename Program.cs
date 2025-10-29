@@ -19,7 +19,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<DefaultContext>(x => x.UseSqlServer(
-    builder.Configuration.GetConnectionString("DefaultConnection"))
+    builder.Configuration.GetConnectionString("DefaultConnection"),
+    options => options.EnableRetryOnFailure(
+        maxRetryCount: 3,
+        maxRetryDelay: TimeSpan.FromSeconds(30),
+        errorNumbersToAdd: null))
 );
 
 builder.Services.AddCors(options =>
@@ -29,6 +33,9 @@ builder.Services.AddCors(options =>
         .AllowAnyMethod()
         .AllowAnyHeader());
 });
+
+// Configurar HttpClient para Azure DevOps
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
