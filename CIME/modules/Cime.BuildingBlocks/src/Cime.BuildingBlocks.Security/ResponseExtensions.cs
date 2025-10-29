@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace Cliqx.BuildingBlocks.Security
+namespace Cime.BuildingBlocks.Security
 {
     public static class ResponseExtensions
     {

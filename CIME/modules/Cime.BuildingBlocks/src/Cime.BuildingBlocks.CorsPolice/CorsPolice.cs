@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cliqx.BuildingBlocks.CorsPolice
+namespace Cime.BuildingBlocks.CorsPolice
 {
     public static class CorsPolice
     {

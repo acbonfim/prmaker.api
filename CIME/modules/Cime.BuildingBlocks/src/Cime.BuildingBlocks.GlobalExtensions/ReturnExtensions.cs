@@ -1,7 +1,7 @@
-using Cliqx.BuildingBlocks.GlobalModels;
+using Cime.BuildingBlocks.GlobalModels;
 using Microsoft.AspNetCore.Http;
 
-namespace Cliqx.BuildingBlocks.GlobalExtensions
+namespace Cime.BuildingBlocks.GlobalExtensions
 {
     public static class ReturnExtensions
     {

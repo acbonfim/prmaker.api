@@ -8,30 +8,30 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.21" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.21"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.21">
-          <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.21" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.21" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.21"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.21"/>
         <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Data\" />
-      <Folder Include="solvace.prform.api\" />
+        <Folder Include="Data\"/>
+        <Folder Include="solvace.prform.api\"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Swagger\Cime.BuildingBlocks.Swagger.csproj" />
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Security\Cime.BuildingBlocks.Security.csproj" />
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalExtensions\Cime.BuildingBlocks.GlobalExtensions.csproj" />
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalModels\Cime.BuildingBlocks.GlobalModels.csproj" />
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.ExceptionHandlerMiddleware\Cime.BuildingBlocks.ExceptionHandlerMiddleware.csproj" />
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj" />
-        <ProjectReference Include="..\solvace.prform.application\solvace.prform.application.csproj" />
-        <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj" />
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Swagger\Cime.BuildingBlocks.Swagger.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Security\Cime.BuildingBlocks.Security.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalExtensions\Cime.BuildingBlocks.GlobalExtensions.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalModels\Cime.BuildingBlocks.GlobalModels.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.ExceptionHandlerMiddleware\Cime.BuildingBlocks.ExceptionHandlerMiddleware.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
+        <ProjectReference Include="..\solvace.prform.application\solvace.prform.application.csproj"/>
+        <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
     </ItemGroup>
 
 </Project>

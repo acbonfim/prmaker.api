@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cliqx.BuildingBlocks.GlobalExtensions
+namespace Cime.BuildingBlocks.GlobalExtensions
 {
     public static class ServicesExtensions
     {

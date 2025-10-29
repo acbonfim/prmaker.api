@@ -2,9 +2,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text;
-using Cliqx.BuildingBlocks.GlobalModels;
+using Cime.BuildingBlocks.GlobalModels;
 
-namespace Cliqx.BuildingBlocks.Swagger
+namespace Cime.BuildingBlocks.Swagger
 {
     public class UtilsSwaggerHTML
     {

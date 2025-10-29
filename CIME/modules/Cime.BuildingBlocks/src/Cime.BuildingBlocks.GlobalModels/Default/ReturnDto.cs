@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 
 
-namespace Cliqx.BuildingBlocks.GlobalModels
+namespace Cime.BuildingBlocks.GlobalModels
 {
 
     public class Error

@@ -1,9 +1,9 @@
 using System.Reflection;
-using Cliqx.BuildingBlocks.CorsPolice;
-using Cliqx.BuildingBlocks.ExceptionHandlerMiddleware;
-using Cliqx.BuildingBlocks.GlobalExtensions;
-using Cliqx.BuildingBlocks.Security;
-using Cliqx.BuildingBlocks.Swagger;
+using Cime.BuildingBlocks.CorsPolice;
+using Cime.BuildingBlocks.ExceptionHandlerMiddleware;
+using Cime.BuildingBlocks.Security;
+using Cime.BuildingBlocks.Swagger;
+using Cime.BuildingBlocks.GlobalExtensions;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.Infra.Contexts;
 

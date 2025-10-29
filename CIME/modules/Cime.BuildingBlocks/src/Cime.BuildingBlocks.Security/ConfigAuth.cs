@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cliqx.BuildingBlocks.Security
+namespace Cime.BuildingBlocks.Security
 {
     public static class ConfigAuth
     {

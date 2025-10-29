@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Cliqx.BuildingBlocks.GlobalModels
+namespace Cime.BuildingBlocks.GlobalModels
 {
     public enum ErrorCodeEnum
     {

@@ -1,7 +1,7 @@
 using System.Text;
 using Newtonsoft.Json;
 
-namespace Cliqx.BuildingBlocks.GlobalExtensions
+namespace Cime.BuildingBlocks.GlobalExtensions
 {
     public static class ByteArrayExtensions
     {

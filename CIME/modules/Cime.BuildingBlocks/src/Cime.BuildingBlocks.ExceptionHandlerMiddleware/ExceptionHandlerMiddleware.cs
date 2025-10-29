@@ -1,10 +1,10 @@
-using Cliqx.BuildingBlocks.GlobalModels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using System.Security.Authentication;
+using Cime.BuildingBlocks.GlobalModels;
 
-namespace Cliqx.BuildingBlocks.ExceptionHandlerMiddleware;
+namespace Cime.BuildingBlocks.ExceptionHandlerMiddleware;
 public class ExceptionHandlerMiddleware
 {
     private readonly RequestDelegate _next;

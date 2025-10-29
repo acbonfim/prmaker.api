@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
-namespace Cliqx.BuildingBlocks.Swagger;
+namespace Cime.BuildingBlocks.Swagger;
 public static class ConfigSwagger
 {
     public static IServiceCollection AddSwaggerConfig(

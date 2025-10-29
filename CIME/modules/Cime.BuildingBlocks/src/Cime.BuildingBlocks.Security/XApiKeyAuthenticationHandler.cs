@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 
-namespace Cliqx.BuildingBlocks.Security
+namespace Cime.BuildingBlocks.Security
 {
     public class XApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
     {

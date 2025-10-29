@@ -1,6 +1,6 @@
 
 
-namespace Cliqx.BuildingBlocks.GlobalModels
+namespace Cime.BuildingBlocks.GlobalModels
 {
     public class PluginNotFoundException : Exception
     {

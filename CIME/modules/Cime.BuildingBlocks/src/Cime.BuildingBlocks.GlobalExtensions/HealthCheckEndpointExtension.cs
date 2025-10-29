@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace Cliqx.BuildingBlocks.GlobalExtensions
+namespace Cime.BuildingBlocks.GlobalExtensions
 {
     public static class HealthCheckEndpointExtension
     {
