@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.Data.Contexts;
+using solvace.prform.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,11 @@ builder.Services.AddControllers()
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.Configure<GeminiSettings>(
+builder.Configuration.GetSection("GeminiSettings"));
+
+builder.Services.AddHttpClient<IGeminiService, GeminiService>();
+
 
 builder.Services.AddDbContext<DefaultContext>(x => x.UseSqlServer(
     builder.Configuration.GetConnectionString("DefaultConnection"))
