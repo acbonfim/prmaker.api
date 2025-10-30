@@ -18,9 +18,8 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
         get => _description;
         set => SetDescription(value);
     }
-
-    public User? User { get; private set; }
-    public int UserId { get; private set; }
+    
+    public Guid UserId { get; private set; }
 
     public Form? Form { get; private set; }
     public int FormId { get; private set; }
@@ -66,9 +65,8 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void SetUser(int userId)
+    public void SetUser(Guid userId)
     {
-        User = null;
         UserId = userId;
         UpdatedAt = DateTime.UtcNow;
     }

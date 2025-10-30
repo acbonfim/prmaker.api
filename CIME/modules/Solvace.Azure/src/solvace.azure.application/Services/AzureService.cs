@@ -6,6 +6,7 @@ using solvace.azure.domain.ValueObjects;
 using solvace.azure.application.Contract;
 using Microsoft.Extensions.Http;
 using System.Net.Http;
+using solvace.azure.domain.Models;
 
 namespace solvace.azure.application.Services;
 
@@ -20,7 +21,7 @@ public class AzureService : IAzureService
         _configuration = configuration;
     }
 
-    public async Task<HttpJsonResponse> GetCardAsync(string id, CancellationToken cancellationToken = default)
+    public async Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default)
     {
         var baseUrl = GetAzureBaseUrl();
         var apiVersion = "7.0";
@@ -30,8 +31,12 @@ public class AzureService : IAzureService
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         AddAzureAuthHeader(request);
         var response = await client.SendAsync(request, cancellationToken);
+    
+        if (!response.IsSuccessStatusCode)
+            return null;
+        
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return HttpJsonResponse.From((int)response.StatusCode, content);
+        return JsonSerializer.Deserialize<AzureWorkItem>(content);
     }
 
     public async Task<HttpJsonResponse> UpdateRootCauseAsync(string id, string bodyRaw, CancellationToken cancellationToken = default)

@@ -59,7 +59,6 @@ public class PullRequestApplication : IPullRequestApplication
         var response = await _prRepository
             .Where(x => x.CardNumber == cardNumber)
             .Include(x => x.Form)
-            .Include(x => x.User)
             .FirstOrDefaultAsync(cancellationToken);
         
         if(response == null)

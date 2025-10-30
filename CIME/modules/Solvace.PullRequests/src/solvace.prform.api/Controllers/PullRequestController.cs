@@ -36,7 +36,7 @@ public class PullRequestController : ControllerBase
     }
     
     [HttpGet("GetByCardNumber")]
-    public async Task<ActionResult<PullRequestRegisterResponse>> GetByCardNumber(string environmentName, string cardNumber, int userId, CancellationToken cancellationToken)
+    public async Task<ActionResult<PullRequestRegisterResponse>> GetByCardNumber(string cardNumber, CancellationToken cancellationToken)
     {
         var response = await _application.GetByCardNumber(cardNumber, cancellationToken);
         
