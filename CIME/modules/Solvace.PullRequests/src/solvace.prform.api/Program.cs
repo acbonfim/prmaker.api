@@ -6,6 +6,8 @@ using Cime.BuildingBlocks.Swagger;
 using Cime.BuildingBlocks.GlobalExtensions;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.Infra.Contexts;
+using solvace.github.application.Extensions;
+using solvace.azure.application.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,20 +20,22 @@ builder.Services
     .AddSecurityAuth()
     .AddGlobalServices()
     .AddSwaggerConfig(projectName!)
-    .AddCorsPolice();
+    .AddCorsPolice()
+    .AddGitHubModule()
+    .AddAzureModule();
 
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddDbContext<DefaultContext>(x => x.UseMySql(connString, ServerVersion.AutoDetect(connString))
 
-    //sqlServerOptionsAction: sqlOptions =>
-    //{
-    //    sqlOptions.EnableRetryOnFailure(
-    //        maxRetryCount: 5,
-    //        maxRetryDelay: TimeSpan.FromSeconds(30),
-    //        errorNumbersToAdd: null);
-    //    sqlOptions.CommandTimeout(60);
-    //}
+//sqlServerOptionsAction: sqlOptions =>
+//{
+//    sqlOptions.EnableRetryOnFailure(
+//        maxRetryCount: 5,
+//        maxRetryDelay: TimeSpan.FromSeconds(30),
+//        errorNumbersToAdd: null);
+//    sqlOptions.CommandTimeout(60);
+//}
 );
 
 

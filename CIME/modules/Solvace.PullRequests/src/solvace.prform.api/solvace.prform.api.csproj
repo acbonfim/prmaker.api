@@ -33,6 +33,8 @@
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
         <ProjectReference Include="..\solvace.prform.application\solvace.prform.application.csproj"/>
         <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
+        <ProjectReference Include="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj"/>
+        <ProjectReference Include="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj"/>
 	</ItemGroup>
 
 </Project>
