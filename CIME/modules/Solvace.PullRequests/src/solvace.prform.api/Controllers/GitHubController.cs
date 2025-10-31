@@ -41,4 +41,18 @@ public class GitHubController : ControllerBase
         var result = await _githubService.GetCardReferencesAsync(cardNumber, maxPerType, cancellationToken);
         return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
     }
+
+    [HttpGet("commit/{sha}/diff")]
+    public async Task<IActionResult> GetCommitDiff(string sha, CancellationToken cancellationToken)
+    {
+        var result = await _githubService.GetCommitDiffAsync(sha, cancellationToken);
+        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+    }
+
+    [HttpGet("compare")]
+    public async Task<IActionResult> CompareRefs(string @base, string head, CancellationToken cancellationToken)
+    {
+        var result = await _githubService.CompareRefsDiffAsync(@base, head, cancellationToken);
+        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+    }
 }

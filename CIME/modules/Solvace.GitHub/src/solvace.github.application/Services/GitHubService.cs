@@ -5,6 +5,8 @@ using solvace.github.domain.ValueObjects;
 using Microsoft.Extensions.Configuration;
 using solvace.github.application.Contract;
 using Microsoft.Extensions.Http;
+using System.Net.Http;
+using solvace.github.domain.Responses;
 
 namespace solvace.github.application.Services;
 
@@ -258,6 +260,126 @@ public class GitHubService : IGitHubService
         catch (Exception ex)
         {
             return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = "Erro ao buscar template do GitHub", details = ex.Message }));
+        }
+    }
+
+    public async Task<HttpJsonResponse> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default)
+    {
+        var owner = _configuration["GITHUB_OWNER"];
+        var repo = _configuration["GITHUB_REPO"];
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
+            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+        if (string.IsNullOrWhiteSpace(sha))
+            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetro 'sha' é obrigatório" }));
+
+        try
+        {
+            var commit = await _gitHubClient.Repository.Commit.Get(owner, repo, sha);
+            return new CommitDiffResponse
+            {
+                Sha = commit.Sha,
+                Parents = commit.Parents?.Select(p => p.Sha).ToArray() ?? Array.Empty<string>(),
+                Additions = commit.Stats?.Additions ?? 0,
+                Deletions = commit.Stats?.Deletions ?? 0,
+                Total = commit.Stats?.Total ?? 0,
+                Files = commit.Files?.Select(f => new CommitFileDiffResponse
+                {
+                    Filename = f.Filename,
+                    Status = f.Status,
+                    Additions = f.Additions,
+                    Deletions = f.Deletions,
+                    Changes = f.Changes,
+                    Patch = f.Patch,
+                    BlobUrl = f.BlobUrl,
+                    RawUrl = f.RawUrl,
+                    ContentsUrl = f.ContentsUrl
+                }).ToArray() ?? Array.Empty<CommitFileDiffResponse>()
+            };
+            // var files = commit.Files?.Select(f => new
+            // {
+            //     filename = f.Filename,
+            //     status = f.Status,
+            //     additions = f.Additions,
+            //     deletions = f.Deletions,
+            //     changes = f.Changes,
+            //     patch = f.Patch,              // unified diff
+            //     blobUrl = f.BlobUrl,
+            //     rawUrl = f.RawUrl,
+            //     contentsUrl = f.ContentsUrl
+            // }).ToArray() ?? Array.Empty<object>();
+
+            // var payload = new
+            // {
+            //     sha = commit.Sha,
+            //     parents = commit.Parents?.Select(p => p.Sha).ToArray() ?? Array.Empty<string>(),
+            //     stats = new { additions = commit.Stats?.Additions ?? 0, deletions = commit.Stats?.Deletions ?? 0, total = commit.Stats?.Total ?? 0 },
+            //     files
+            // };
+            // return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
+        }
+        catch (NotFoundException ex)
+        {
+            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Commit não encontrado", details = ex.Message }));
+        }
+        catch (ApiException ex)
+        {
+            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro na API do GitHub", details = ex.Message }));
+        }
+        catch (Exception ex)
+        {
+            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = ex.Message }));
+        }
+    }
+
+    public async Task<HttpJsonResponse> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
+    {
+        var owner = _configuration["GITHUB_OWNER"];
+        var repo = _configuration["GITHUB_REPO"];
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
+            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+        if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
+            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetros 'base' e 'head' são obrigatórios" }));
+
+        try
+        {
+            var compare = await _gitHubClient.Repository.Commit.Compare(owner, repo, @base, head);
+            var files = compare.Files?.Select(f => new
+            {
+                filename = f.Filename,
+                status = f.Status,
+                additions = f.Additions,
+                deletions = f.Deletions,
+                changes = f.Changes,
+                patch = f.Patch,
+                blobUrl = f.BlobUrl,
+                rawUrl = f.RawUrl,
+                contentsUrl = f.ContentsUrl
+            }).ToArray() ?? Array.Empty<object>();
+
+            var payload = new
+            {
+                url = compare.Url,
+                htmlUrl = compare.HtmlUrl,
+                permalinkUrl = compare.PermalinkUrl,
+                totalCommits = compare.TotalCommits,
+                aheadBy = compare.AheadBy,
+                behindBy = compare.BehindBy,
+                status = compare.Status,
+                files
+            };
+            return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
+        }
+        catch (NotFoundException ex)
+        {
+            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Refs não encontradas ou inválidas", details = ex.Message }));
+        }
+        catch (ApiException ex)
+        {
+            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro na API do GitHub", details = ex.Message }));
+        }
+        catch (Exception ex)
+        {
+            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = ex.Message }));
         }
     }
 }

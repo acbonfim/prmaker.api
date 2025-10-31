@@ -37,4 +37,12 @@
         <ProjectReference Include="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj"/>
 	</ItemGroup>
 
+    <Target Name="BuildDependencies" BeforeTargets="Build">
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.domain\solvace.azure.domain.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.infra\solvace.azure.infra.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.domain\solvace.github.domain.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.infra\solvace.github.infra.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj" />
+    </Target>
 </Project>
