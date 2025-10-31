@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using solvace.prform.Infra.Contexts;
 using solvace.github.application.Extensions;
 using solvace.azure.application.Extensions;
+using solvace.prform.application;
+using solvace.prform.application.Contracts;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +25,9 @@ builder.Services
     .AddCorsPolice()
     .AddGitHubModule()
     .AddAzureModule();
+
+builder.Services.AddScoped<IFormApplication, FormApplication>();
+builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 

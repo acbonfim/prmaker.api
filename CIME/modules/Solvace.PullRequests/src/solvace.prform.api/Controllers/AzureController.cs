@@ -20,7 +20,7 @@ public class AzureController : ControllerBase
     public async Task<IActionResult> GetCard(string id, CancellationToken cancellationToken)
     {
         var result = await _azureService.GetCardAsync(id, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        return Ok(result);
     }
 
     [HttpPost("card/{id}/rootcause")]

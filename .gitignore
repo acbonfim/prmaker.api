@@ -4,6 +4,9 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 /.vs
+**/.idea/
+indexLayout.xml
+*indexLayout.xml
 CIME/modules/Cime.Auth/.vs/Cime.Auth/config/applicationhost.config
 CIME/modules/Cime.Auth/.vs/Cime.Auth/DesignTimeBuild/.dtbcache.v2
 CIME/modules/Cime.Auth/.vs/Cime.Auth/FileContentIndex/e405cdb3-15f3-42c6-ac29-fad9c4eb03f2.vsidx
