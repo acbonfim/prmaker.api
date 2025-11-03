@@ -27,10 +27,8 @@ public class AzureService : IAzureService
         var apiVersion = _options.ApiVersion;
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
-        var client = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        AddAzureAuthHeader(request);
-        var response = await client.SendAsync(request, cancellationToken);
+        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var response = await client.GetAsync(url, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
             return null;
@@ -69,10 +67,9 @@ public class AzureService : IAzureService
         var json = JsonSerializer.Serialize(patchData, jsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json-patch+json");
 
-        var client = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
-        AddAzureAuthHeader(request);
-        var response = await client.SendAsync(request, cancellationToken);
+        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var response = await client.PatchAsync(url, content, cancellationToken);
+        
         if (!response.IsSuccessStatusCode)
             return null;
 
