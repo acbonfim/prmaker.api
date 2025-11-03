@@ -21,6 +21,9 @@ public class AzureWorkItem
 
     [JsonPropertyName("url")]
     public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; } = string.Empty;
 }
 
 public class WorkItemFields

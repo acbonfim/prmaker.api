@@ -20,6 +20,8 @@ public class AzureController : ControllerBase
     public async Task<IActionResult> GetCard(string id, CancellationToken cancellationToken)
     {
         var result = await _azureService.GetCardAsync(id, cancellationToken);
+        if (result == null)
+            return BadRequest(new { error = "Erro ao buscar o card" });
         return Ok(result);
     }
 
@@ -30,6 +32,8 @@ public class AzureController : ControllerBase
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         var raw = await reader.ReadToEndAsync(cancellationToken);
         var result = await _azureService.UpdateRootCauseAsync(id, raw, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        if (result == null)
+            return BadRequest(new { error = "Erro ao atualizar a causa raiz" });
+        return Ok(result);
     }
 }

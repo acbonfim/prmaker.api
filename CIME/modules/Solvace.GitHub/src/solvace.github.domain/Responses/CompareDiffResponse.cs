@@ -9,5 +9,6 @@ public class CompareDiffResponse
     public int AheadBy { get; set; }
     public int BehindBy { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string Error { get; set; } = string.Empty;
     public CommitFileDiffResponse[] Files { get; set; } = Array.Empty<CommitFileDiffResponse>();
 }

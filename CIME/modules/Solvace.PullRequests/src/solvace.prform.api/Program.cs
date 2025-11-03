@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using solvace.prform.Infra.Contexts;
 using solvace.github.application.Extensions;
 using solvace.azure.application.Extensions;
+using solvace.ai.application.Extensions;
 using solvace.prform.application;
 using solvace.prform.application.Contracts;
 
@@ -23,8 +24,9 @@ builder.Services
     .AddGlobalServices()
     .AddSwaggerConfig(projectName!)
     .AddCorsPolice()
-    .AddGitHubModule()
-    .AddAzureModule();
+    .AddGitHubModule(builder.Configuration)
+    .AddAzureModule(builder.Configuration)
+    .AddAIModule(builder.Configuration);
 
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();

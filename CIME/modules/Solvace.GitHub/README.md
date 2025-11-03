@@ -38,11 +38,13 @@ Marque "Contents" como "Read"
 8. Atualize o appsettings.Development.json:
  
 `{
-  "GITHUB_TOKEN": "SEU_TOKEN_AQUI",
-  "GITHUB_OWNER": "electradv",
-  "GITHUB_REPO": "edv-solvace",
-  "GITHUB_BRANCH": "master"
-}`
+  "GitHub": {
+    "Token": "SEU_TOKEN_AQUI",
+    "Owner": "electradv",
+    "Repo": "edv-solvace",
+    "Branch": "master"
+  }
+  `
 
 
 ### Dicas de Segurança:

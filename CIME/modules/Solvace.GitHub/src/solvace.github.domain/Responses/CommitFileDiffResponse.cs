@@ -2,6 +2,8 @@ namespace solvace.github.domain.Responses;
 
 public class CommitFileDiffResponse
 {
+    public string Sha { get; set; } = string.Empty;
+    public string[] Parents { get; set; } = Array.Empty<string>();
     public string Filename { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public int Additions { get; set; }
@@ -11,4 +13,6 @@ public class CommitFileDiffResponse
     public string? BlobUrl { get; set; }
     public string? RawUrl { get; set; }
     public string? ContentsUrl { get; set; }
+    public string? Error { get; set; } = string.Empty;
+
 }

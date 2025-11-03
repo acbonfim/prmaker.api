@@ -12,7 +12,6 @@ namespace solvace.prform.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class GitHubController : ControllerBase
 {
-    private readonly IConfiguration _configuration;
     private readonly IGitHubService _githubService;
 
     public GitHubController(IGitHubService githubService)
@@ -32,27 +31,35 @@ public class GitHubController : ControllerBase
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         var body = await reader.ReadToEndAsync(cancellationToken);
         var result = await _githubService.CreatePullRequestAsync(sourceBranch, targetBranch, title, draft, body, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        if (result == null)
+            return BadRequest(new { error = "Erro ao criar o PR" });
+        return Ok(result);
     }
 
     [HttpGet("card-references/{cardNumber}")]
     public async Task<IActionResult> GetCardReferences(string cardNumber, int maxPerType, CancellationToken cancellationToken)
     {
         var result = await _githubService.GetCardReferencesAsync(cardNumber, maxPerType, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        if (result.Error != null)
+            return BadRequest(new { error = result.Error });
+        return Ok(result);
     }
 
     [HttpGet("commit/{sha}/diff")]
     public async Task<IActionResult> GetCommitDiff(string sha, CancellationToken cancellationToken)
     {
         var result = await _githubService.GetCommitDiffAsync(sha, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        if (result.Error != null)
+            return BadRequest(new { error = result.Error });
+        return Ok(result);
     }
 
     [HttpGet("compare")]
     public async Task<IActionResult> CompareRefs(string @base, string head, CancellationToken cancellationToken)
     {
         var result = await _githubService.CompareRefsDiffAsync(@base, head, cancellationToken);
-        return new ContentResult { StatusCode = result.StatusCode, Content = result.Content, ContentType = result.ContentType };
+        if (result.Error != null)
+            return BadRequest(new { error = result.Error });
+        return Ok(result);
     }
 }

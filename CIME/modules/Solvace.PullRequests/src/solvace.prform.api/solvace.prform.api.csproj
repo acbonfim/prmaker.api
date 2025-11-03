@@ -35,14 +35,31 @@
         <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
         <ProjectReference Include="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj"/>
         <ProjectReference Include="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj"/>
+        <ProjectReference Include="..\..\..\Solvace.AI\src\solvace.ai.domain\solvace.ai.domain.csproj"/>
+        <ProjectReference Include="..\..\..\Solvace.AI\src\solvace.ai.application\solvace.ai.application.csproj"/>
 	</ItemGroup>
 
-    <Target Name="BuildDependencies" BeforeTargets="Build">
+    <!-- Restore antes do Build para garantir que todas as dependências estejam atualizadas -->
+    <Target Name="RestoreDependencies" BeforeTargets="Build">
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.domain\solvace.azure.domain.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.infra\solvace.azure.infra.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.domain\solvace.github.domain.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.infra\solvace.github.infra.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.AI\src\solvace.ai.domain\solvace.ai.domain.csproj" Targets="Restore" />
+        <MSBuild Projects="..\..\..\Solvace.AI\src\solvace.ai.application\solvace.ai.application.csproj" Targets="Restore" />
+    </Target>
+
+    <!-- Build das dependências após o restore -->
+    <Target Name="BuildDependencies" BeforeTargets="Build" DependsOnTargets="RestoreDependencies">
         <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.domain\solvace.azure.domain.csproj" />
         <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.infra\solvace.azure.infra.csproj" />
         <MSBuild Projects="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj" />
         <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.domain\solvace.github.domain.csproj" />
         <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.infra\solvace.github.infra.csproj" />
         <MSBuild Projects="..\..\..\Solvace.GitHub\src\solvace.github.application\solvace.github.application.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.AI\src\solvace.ai.domain\solvace.ai.domain.csproj" />
+        <MSBuild Projects="..\..\..\Solvace.AI\src\solvace.ai.application\solvace.ai.application.csproj" />
     </Target>
 </Project>

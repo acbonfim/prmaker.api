@@ -1,62 +1,43 @@
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Http;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Octokit;
-using solvace.github.domain.ValueObjects;
-using Microsoft.Extensions.Configuration;
+using solvace.github.domain.Options;
 using solvace.github.application.Contract;
-using Microsoft.Extensions.Http;
-using System.Net.Http;
 using solvace.github.domain.Responses;
 
 namespace solvace.github.application.Services;
 
 public class GitHubService : IGitHubService
 {
-    private readonly IConfiguration _configuration;
+    private readonly GitHubOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly GitHubClient _gitHubClient;
 
-    public GitHubService(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory)
     {
-        _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _options = options.Value;
 
-        var token = _configuration["GITHUB_TOKEN"];
-        if (string.IsNullOrEmpty(token))
-            throw new InvalidOperationException("GITHUB_TOKEN não configurado");
+        if (string.IsNullOrEmpty(_options.Token))
+            throw new InvalidOperationException("Token GitHub não configurado");
 
         _gitHubClient = new GitHubClient(new ProductHeaderValue("SolvacePRForm"))
         {
-            Credentials = new Credentials(token)
+            Credentials = new Credentials(_options.Token)
         };
     }
 
-    public HttpJsonResponse TestConfiguration()
+    public async Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default)
     {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
-        var branch = _configuration["GITHUB_BRANCH"];
-        var token = _configuration["GITHUB_TOKEN"];
-        var payload = new
-        {
-            owner,
-            repo,
-            branch,
-            hasToken = !string.IsNullOrEmpty(token),
-            tokenLength = token?.Length ?? 0,
-            message = "Configuração do GitHub carregada com sucesso"
-        };
-        return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
-    }
-
-    public async Task<HttpJsonResponse> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default)
-    {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
+        var owner = _options.Owner;
+        var repo = _options.Repo;
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+            return new PullRequestResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sourceBranch) || string.IsNullOrWhiteSpace(targetBranch) || string.IsNullOrWhiteSpace(title))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetros obrigatórios: sourceBranch, targetBranch, title" }));
+            return new PullRequestResponse { Error = "Parâmetro 'sourceBranch', 'targetBranch' ou 'title' é obrigatório" };
 
         var description = string.IsNullOrWhiteSpace(descriptionRaw) ? null
             : descriptionRaw.Replace("\u0000", string.Empty).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
@@ -68,7 +49,7 @@ public class GitHubService : IGitHubService
         }
         catch
         {
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "\r\nSource/destination branch not found." }));
+            return new PullRequestResponse { Error = "Branch não encontrada" };
         }
 
         var head = sourceBranch.Replace("refs/heads/", string.Empty);
@@ -82,113 +63,109 @@ public class GitHubService : IGitHubService
         try
         {
             var pr = await _gitHubClient.PullRequest.Create(owner, repo, newPr);
-            var payload = new
+            return new PullRequestResponse
             {
-                number = pr.Number,
-                title = pr.Title,
-                state = pr.State.StringValue,
-                url = pr.HtmlUrl,
-                head = pr.Head.Label,
-                @base = pr.Base.Label,
-                isDraft = pr.Draft
+                Id = pr.Id,
+                Number = pr.Number.ToString(),
+                Title = pr.Title,
+                Body = pr.Body,
+                State = pr.State.StringValue,
+                CreatedAt = pr.CreatedAt.ToString(),
+                UpdatedAt = pr.UpdatedAt.ToString() ?? string.Empty,
+                ClosedAt = pr.ClosedAt?.ToString() ?? string.Empty,
+                MergedAt = pr.MergedAt?.ToString() ?? string.Empty,
+                Author = pr.User.Login,
+                AuthorAvatarUrl = pr.User.AvatarUrl,
+                AuthorUrl = pr.User.HtmlUrl,
+                Url = pr.HtmlUrl,
+                Head = pr.Head.Label,
+                Base = pr.Base.Label,
+                IsDraft = pr.Draft
             };
-            return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
         }
-        catch (NotFoundException ex)
+        catch (NotFoundException)
         {
-            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Repositório ou branches não encontrados", details = ex.Message }));
+            return new PullRequestResponse { Error = "Repositório ou branches não encontrados" };
         }
-        catch (ApiValidationException ex)
+        catch (ApiValidationException)
         {
-            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Validação da PR falhou na API", details = ex.ApiError?.Message, ex.ApiError?.Errors }));
+            return new PullRequestResponse { Error = "Validação da PR falhou na API" };
         }
-        catch (ApiException ex)
+        catch (ApiException)
         {
-            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro na API do GitHub", details = ex.Message }));
+            return new PullRequestResponse { Error = "Erro na API do GitHub" };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = ex.Message }));
+            return new PullRequestResponse { Error = "Erro ao criar PR" };
         }
     }
 
-    public async Task<HttpJsonResponse> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default)
+    public async Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default)
     {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
+        var owner = _options.Owner;
+        var repo = _options.Repo;
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+            return new CardReferencesResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(cardNumber))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetro 'cardNumber' é obrigatório" }));
+            return new CardReferencesResponse { Error = "Parâmetro 'cardNumber' é obrigatório" };
 
         var branchesTask = _gitHubClient.Repository.Branch.GetAll(owner, repo)
             .ContinueWith(t => t.Result
                 .Where(b => b.Name.Contains(cardNumber, StringComparison.OrdinalIgnoreCase))
                 .Take(maxPerType)
-                .Select(b => new
+                .Select(b => new BranchReferenceResponse
                 {
-                    name = b.Name,
-                    @protected = b.Protected,
-                    commitSha = b.Commit.Sha,
-                    url = $"https://github.com/{owner}/{repo}/tree/{b.Name}"
+                    Name = b.Name,
+                    Protected = b.Protected,
+                    CommitSha = b.Commit.Sha,
+                    Url = $"https://github.com/{owner}/{repo}/tree/{b.Name}"
                 })
-                .ToArray());
-
-        var prsTask = Task.Run(async () =>
-        {
-            using var http = _httpClientFactory.CreateClient();
-            http.BaseAddress = new Uri("https://api.github.com/");
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("SolvacePRForm");
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", _configuration["GITHUB_TOKEN"]);
-
-            var q = Uri.EscapeDataString($"repo:{owner}/{repo} is:pr {cardNumber} in:title,body");
-            var url = $"search/issues?q={q}&per_page={maxPerType}";
-            var resp = await http.GetAsync(url, cancellationToken);
-            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
-            if (!resp.IsSuccessStatusCode) return Array.Empty<object>();
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("items", out var items)) return Array.Empty<object>();
-            var results = new List<object>();
-            foreach (var item in items.EnumerateArray())
-            {
-                results.Add(new
-                {
-                    number = item.GetProperty("number").GetInt32(),
-                    title = item.GetProperty("title").GetString(),
-                    state = item.GetProperty("state").GetString(),
-                    createdAt = item.GetProperty("created_at").GetDateTime(),
-                    user = item.GetProperty("user").GetProperty("login").GetString(),
-                    url = item.GetProperty("html_url").GetString()
-                });
-            }
-            return results.ToArray();
-        }, cancellationToken);
+            .ToArray());
 
         var commitsTask = Task.Run(async () =>
         {
             using var http = _httpClientFactory.CreateClient();
             http.BaseAddress = new Uri("https://api.github.com/");
             http.DefaultRequestHeaders.UserAgent.ParseAdd("SolvacePRForm");
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", _configuration["GITHUB_TOKEN"]);
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", _options.Token);
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github.cloak-preview+json");
 
             var commitQuery = $"q={Uri.EscapeDataString($"repo:{owner}/{repo} {cardNumber}")}&per_page={maxPerType}";
             var url = $"search/commits?{commitQuery}";
             var resp = await http.GetAsync(url, cancellationToken);
             var json = await resp.Content.ReadAsStringAsync(cancellationToken);
-            if (!resp.IsSuccessStatusCode) return Array.Empty<object>();
+
+            if (!resp.IsSuccessStatusCode)
+                return Array.Empty<CommitReferenceResponse>();
+
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("items", out var items)) return Array.Empty<object>();
-            var results = new List<object>();
+            if (!doc.RootElement.TryGetProperty("items", out var items))
+                return Array.Empty<CommitReferenceResponse>();
+
+            var results = new List<CommitReferenceResponse>();
             foreach (var item in items.EnumerateArray())
             {
-                var sha = item.GetProperty("sha").GetString();
-                var htmlUrl = item.GetProperty("html_url").GetString();
+                var sha = item.GetProperty("sha").GetString() ?? string.Empty;
+                var htmlUrl = item.GetProperty("html_url").GetString() ?? string.Empty;
                 var commit = item.GetProperty("commit");
-                var message = commit.GetProperty("message").GetString();
-                var authorName = commit.TryGetProperty("author", out var author) && author.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
-                var authorDate = commit.TryGetProperty("author", out author) && author.TryGetProperty("date", out var dateEl) ? (DateTime?)dateEl.GetDateTime() : null;
-                results.Add(new { sha, message, author = authorName, date = authorDate, url = htmlUrl });
+                var message = commit.GetProperty("message").GetString() ?? string.Empty;
+                var authorName = commit.TryGetProperty("author", out var author) && author.TryGetProperty("name", out var nameEl)
+                    ? nameEl.GetString() ?? string.Empty
+                    : string.Empty;
+                var authorDate = commit.TryGetProperty("author", out author) && author.TryGetProperty("date", out var dateEl)
+                    ? dateEl.GetString() ?? string.Empty
+                    : string.Empty;
+
+                results.Add(new CommitReferenceResponse
+                {
+                    Sha = sha,
+                    Parents = Array.Empty<string>(),
+                    Message = message,
+                    Author = authorName,
+                    Date = authorDate,
+                    Url = htmlUrl
+                });
             }
             return results.ToArray();
         }, cancellationToken);
@@ -197,80 +174,30 @@ public class GitHubService : IGitHubService
         var codeTask = _gitHubClient.Search.SearchCode(new SearchCodeRequest(codeQuery))
             .ContinueWith(t => t.Result.Items
                 .Take(maxPerType)
-                .Select(code => new { path = code.Path, repository = code.Repository.FullName, url = code.HtmlUrl })
-                .ToArray(), cancellationToken);
+                .Select(code => new CodeHitReferenceResponse { Path = code.Path, Repository = code.Repository.FullName, Url = code.HtmlUrl })
+                .ToArray());
 
-        await Task.WhenAll(branchesTask, prsTask, commitsTask, codeTask);
-        var payloadOk = new
+        await Task.WhenAll(branchesTask, commitsTask, codeTask);
+
+        return new CardReferencesResponse
         {
-            cardNumber,
-            patterns = new[] { cardNumber, cardNumber },
-            branches = branchesTask.Result,
-            pullRequests = prsTask.Result,
-            commits = commitsTask.Result,
-            codeHits = codeTask.Result,
-            limits = new { maxPerType }
+            CardNumber = cardNumber,
+            Patterns = new[] { cardNumber, cardNumber },
+            Branches = branchesTask.Result,
+            Commits = commitsTask.Result,
+            CodeHits = codeTask.Result,
+            Limits = new LimitsResponse { MaxPerType = maxPerType }
         };
-        return HttpJsonResponse.Ok(JsonSerializer.Serialize(payloadOk));
     }
 
-    public async Task<HttpJsonResponse> GetTemplateAsync(string branch, CancellationToken cancellationToken = default)
+    public async Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default)
     {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
-        var defaultBranch = _configuration["GITHUB_BRANCH"];
-        var workflowPath = ".github/workflows/apply_pr_template.yml";
-
-        if (string.IsNullOrEmpty(owner) || string.IsNullOrEmpty(repo) || string.IsNullOrEmpty(defaultBranch))
-        {
-            var err = new { error = "Configurações do GitHub não encontradas", owner = owner ?? "não configurado", repo = repo ?? "não configurado", branch = defaultBranch ?? "não configurado" };
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(err));
-        }
-        if (string.IsNullOrEmpty(branch))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetro 'branch' é obrigatório" }));
-
-        try
-        {
-            var workflowContent = await _gitHubClient.Repository.Content.GetRawContentByRef(owner, repo, workflowPath, defaultBranch);
-            var yamlContent = Encoding.UTF8.GetString(workflowContent);
-
-            var regex = new System.Text.RegularExpressions.Regex($"\"{branch}\"\\)[\\s\\S]*?TEMPLATE=\"(.+?)\"", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var match = regex.Match(yamlContent);
-            if (!match.Success && branch.Contains("hotfix"))
-            {
-                var fallbackRegex = new System.Text.RegularExpressions.Regex("\"release-version\"\\)[\\s\\S]*?TEMPLATE=\"(.+?)\"", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                match = fallbackRegex.Match(yamlContent);
-            }
-            if (!match.Success)
-                return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = $"Template para a branch \"{branch}\" não encontrado." }));
-
-            var templatePath = match.Groups[1].Value;
-            var templateContent = await _gitHubClient.Repository.Content.GetRawContentByRef(owner, repo, templatePath, defaultBranch);
-            var templateText = Encoding.UTF8.GetString(templateContent);
-            return new HttpJsonResponse { StatusCode = 200, Content = templateText, ContentType = "text/plain" };
-        }
-        catch (NotFoundException ex)
-        {
-            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Arquivo ou template não encontrado no GitHub", details = ex.Message }));
-        }
-        catch (ApiException ex)
-        {
-            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro ao acessar GitHub API", details = ex.Message, statusCode = ex.StatusCode }));
-        }
-        catch (Exception ex)
-        {
-            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = "Erro ao buscar template do GitHub", details = ex.Message }));
-        }
-    }
-
-    public async Task<HttpJsonResponse> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default)
-    {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
+        var owner = _options.Owner;
+        var repo = _options.Repo;
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+            return new CommitDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sha))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetro 'sha' é obrigatório" }));
+            return new CommitDiffResponse { Error = "Parâmetro 'sha' é obrigatório" };
 
         try
         {
@@ -295,91 +222,67 @@ public class GitHubService : IGitHubService
                     ContentsUrl = f.ContentsUrl
                 }).ToArray() ?? Array.Empty<CommitFileDiffResponse>()
             };
-            // var files = commit.Files?.Select(f => new
-            // {
-            //     filename = f.Filename,
-            //     status = f.Status,
-            //     additions = f.Additions,
-            //     deletions = f.Deletions,
-            //     changes = f.Changes,
-            //     patch = f.Patch,              // unified diff
-            //     blobUrl = f.BlobUrl,
-            //     rawUrl = f.RawUrl,
-            //     contentsUrl = f.ContentsUrl
-            // }).ToArray() ?? Array.Empty<object>();
-
-            // var payload = new
-            // {
-            //     sha = commit.Sha,
-            //     parents = commit.Parents?.Select(p => p.Sha).ToArray() ?? Array.Empty<string>(),
-            //     stats = new { additions = commit.Stats?.Additions ?? 0, deletions = commit.Stats?.Deletions ?? 0, total = commit.Stats?.Total ?? 0 },
-            //     files
-            // };
-            // return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
         }
-        catch (NotFoundException ex)
+        catch (NotFoundException)
         {
-            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Commit não encontrado", details = ex.Message }));
+            return new CommitDiffResponse { Error = "Commit não encontrado" };
         }
-        catch (ApiException ex)
+        catch (ApiException)
         {
-            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro na API do GitHub", details = ex.Message }));
+            return new CommitDiffResponse { Error = "Erro ao acessar GitHub API" };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = ex.Message }));
+            return new CommitDiffResponse { Error = "Erro ao buscar commit diff" };
         }
     }
 
-    public async Task<HttpJsonResponse> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
+    public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
     {
-        var owner = _configuration["GITHUB_OWNER"];
-        var repo = _configuration["GITHUB_REPO"];
+        var owner = _options.Owner;
+        var repo = _options.Repo;
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Configurações do GitHub (owner/repo) não encontradas" }));
+            return new CompareDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
-            return HttpJsonResponse.From(400, JsonSerializer.Serialize(new { error = "Parâmetros 'base' e 'head' são obrigatórios" }));
+            return new CompareDiffResponse { Error = "Parâmetro '@base' ou 'head' é obrigatório" };
 
         try
         {
             var compare = await _gitHubClient.Repository.Commit.Compare(owner, repo, @base, head);
-            var files = compare.Files?.Select(f => new
+            return new CompareDiffResponse
             {
-                filename = f.Filename,
-                status = f.Status,
-                additions = f.Additions,
-                deletions = f.Deletions,
-                changes = f.Changes,
-                patch = f.Patch,
-                blobUrl = f.BlobUrl,
-                rawUrl = f.RawUrl,
-                contentsUrl = f.ContentsUrl
-            }).ToArray() ?? Array.Empty<object>();
-
-            var payload = new
-            {
-                url = compare.Url,
-                htmlUrl = compare.HtmlUrl,
-                permalinkUrl = compare.PermalinkUrl,
-                totalCommits = compare.TotalCommits,
-                aheadBy = compare.AheadBy,
-                behindBy = compare.BehindBy,
-                status = compare.Status,
-                files
+                Url = compare.Url,
+                HtmlUrl = compare.HtmlUrl,
+                PermalinkUrl = compare.PermalinkUrl,
+                TotalCommits = compare.TotalCommits,
+                AheadBy = compare.AheadBy,
+                BehindBy = compare.BehindBy,
+                Status = compare.Status,
+                Files = compare.Files?.Select(f => new CommitFileDiffResponse
+                {
+                    Filename = f.Filename,
+                    Status = f.Status,
+                    Additions = f.Additions,
+                    Deletions = f.Deletions,
+                    Changes = f.Changes,
+                    Patch = f.Patch,
+                    BlobUrl = f.BlobUrl,
+                    RawUrl = f.RawUrl,
+                    ContentsUrl = f.ContentsUrl
+                }).ToArray() ?? Array.Empty<CommitFileDiffResponse>()
             };
-            return HttpJsonResponse.Ok(JsonSerializer.Serialize(payload));
         }
-        catch (NotFoundException ex)
+        catch (NotFoundException)
         {
-            return HttpJsonResponse.From(404, JsonSerializer.Serialize(new { error = "Refs não encontradas ou inválidas", details = ex.Message }));
+            return new CompareDiffResponse { Error = "Commit não encontrado" };
         }
-        catch (ApiException ex)
+        catch (ApiException)
         {
-            return HttpJsonResponse.From((int)ex.StatusCode, JsonSerializer.Serialize(new { error = "Erro na API do GitHub", details = ex.Message }));
+            return new CompareDiffResponse { Error = "Erro ao acessar GitHub API" };
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return HttpJsonResponse.From(500, JsonSerializer.Serialize(new { error = ex.Message }));
+            return new CompareDiffResponse { Error = "Erro ao buscar commit diff" };
         }
     }
 }
