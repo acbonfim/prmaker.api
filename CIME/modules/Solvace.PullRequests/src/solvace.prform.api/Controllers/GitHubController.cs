@@ -49,7 +49,7 @@ public class GitHubController : ControllerBase
     public async Task<IActionResult> GetCommitDiff(string sha, CancellationToken cancellationToken)
     {
         var result = await _githubService.GetCommitDiffAsync(sha, cancellationToken);
-        if (result.Error != null)
+        if (result.Error != null && !string.IsNullOrEmpty(result.Error))
             return BadRequest(new { error = result.Error });
         return Ok(result);
     }

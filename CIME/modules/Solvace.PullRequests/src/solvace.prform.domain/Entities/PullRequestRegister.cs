@@ -87,6 +87,9 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
     public PullRequestRegisterResponse ToResponse() =>
         new()
         {
-            Id = Id
+            Id = Id,
+            CardNumber = CardNumber,
+            RootCause = RootCause,
+            Description = Description
         };
 }

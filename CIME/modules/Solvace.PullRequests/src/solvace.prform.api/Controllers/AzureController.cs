@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using solvace.azure.application.Contract;
+using solvace.azure.domain.Requests;
 
 namespace solvace.prform.Controllers;
 
@@ -27,11 +28,10 @@ public class AzureController : ControllerBase
 
     [HttpPost("card/{id}/rootcause")]
     [Consumes("application/json", "text/plain", "text/html", "text/markdown")]
-    public async Task<IActionResult> UpdateRootCause(string id, CancellationToken cancellationToken)
+    public async Task<IActionResult> UpdateRootCause([FromRoute] string id,[FromBody] UpdateRootCauseRequest body, CancellationToken cancellationToken)
     {
-        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-        var raw = await reader.ReadToEndAsync(cancellationToken);
-        var result = await _azureService.UpdateRootCauseAsync(id, raw, cancellationToken);
+
+        var result = await _azureService.UpdateRootCauseAsync(id, body, cancellationToken);
         if (result == null)
             return BadRequest(new { error = "Erro ao atualizar a causa raiz" });
         return Ok(result);

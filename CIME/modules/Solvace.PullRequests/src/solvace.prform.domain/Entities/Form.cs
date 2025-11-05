@@ -54,3 +54,8 @@ public class Form : IEntity<int>, IDescribable
             EnvironmentName = EnvironmentName,       
         };
 }
+
+public class DomainException : Exception
+{
+    public DomainException(string message) : base(message) { }
+}

@@ -37,9 +37,9 @@ public class AzureService : IAzureService
         return JsonSerializer.Deserialize<AzureWorkItem>(content);
     }
 
-    public async Task<AzureWorkItem?> UpdateRootCauseAsync(string id, string bodyRaw, CancellationToken cancellationToken = default)
+    public async Task<AzureWorkItem?> UpdateRootCauseAsync(string id, UpdateRootCauseRequest bodyRaw, CancellationToken cancellationToken = default)
     {
-        string rootCauseText = bodyRaw ?? string.Empty;
+        string rootCauseText = bodyRaw.RootCause ?? string.Empty;
         if (!string.IsNullOrEmpty(rootCauseText) && rootCauseText.TrimStart().StartsWith("{"))
         {
             try
@@ -49,7 +49,7 @@ public class AzureService : IAzureService
             }
             catch
             {
-                rootCauseText = bodyRaw ?? string.Empty;
+                rootCauseText = bodyRaw.RootCause ?? string.Empty;
             }
         }
 
