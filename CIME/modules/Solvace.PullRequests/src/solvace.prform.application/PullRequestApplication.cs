@@ -31,6 +31,8 @@ public class PullRequestApplication : IPullRequestApplication
         {
             requestExists.SetDescription(request.Description);
             requestExists.SetRootCause(request.RootCause);
+            requestExists.BranchName = request.BranchName;
+            requestExists.BranchPrefix = request.BranchPrefix;
             _prRepository.Update(requestExists);
             
             if(await CommitAsync(cancellationToken))

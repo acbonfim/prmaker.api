@@ -1,37 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
   <component name="ChangeListManager">
     <list default="true" id="904fb27a-56ad-4325-a8f6-495600ee452d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/Controllers/FormController.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Controllers/PullRequestController.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Controllers/UserController.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Contexts/DefaultContext.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Database/database.db" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IAuditableEntity.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IDescribable.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IEntity.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/IEntityBase.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Base/Interfaces/ISoftDeletable.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/Form.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/PullRequestRegister.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Entities/User.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Migrations/20251025003951_initialSqlServer.Designer.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Migrations/20251025003951_initialSqlServer.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Migrations/DefaultContextModelSnapshot.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Requests/FormRequest.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Requests/PullRequestRegisterRequest.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Requests/UserRequest.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Responses/FormResponse.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Responses/PullRequestRegisterResponse.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Data/Responses/UserResponse.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Program.cs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Properties/launchSettings.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/appsettings.Development.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/appsettings.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/identifier.sqlite" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/solvace.prform.csproj" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/solvace.prform.http" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/solvace.prform.sln" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,40 +15,62 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "acbonfim"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;acbonfim&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/acbonfim/prmaker.api.git",
-    "accountId": "60826ab7-e8b8-46ea-9a43-81de1475b187"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/acbonfim/prmaker.api.git&quot;,
+    &quot;accountId&quot;: &quot;60826ab7-e8b8-46ea-9a43-81de1475b187&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 6
-}]]></component>
+}</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Cime.BuildingBlocks/src/Cime.BuildingBlocks.GlobalExtensions/ByteArrayExtensions.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Cime.BuildingBlocks/src/Cime.BuildingBlocks.GlobalModels/Exceptions/AuthModelNotFoundException.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.Azure/src/solvace.azure.application/Contract/IAzureService.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.Azure/src/solvace.azure.application/Services/AzureService.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.Azure/src/solvace.azure.domain/Responses/AzureResponse.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Controllers/AIController.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Controllers/AzureController.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Controllers/PullRequestController.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Program.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.application/PullRequestApplication.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.domain/Entities/PullRequestRegister.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.domain/Requests/PullRequestRegisterRequest.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.infra/Migrations/20251030191113_initalCommit.Designer.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.infra/Migrations/20251030191113_initalCommit.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/CIME/modules/Solvace.PullRequests/src/solvace.prform.infra/Migrations/DefaultContextModelSnapshot.cs" root0="SKIP_HIGHLIGHTING" />
+  </component>
+  <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 6
+}</component>
   <component name="ProjectId" id="34kCPOAnaJKIlpXrkglzF8q3Sqt" />
   <component name="ProjectViewState">
     <option name="autoscrollFromSource" value="true" />
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master",
-    "junie.onboarding.icon.badge.shown": "true",
-    "nodejs_package_manager_path": "npm",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;new-architecture&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="904fb27a-56ad-4325-a8f6-495600ee452d" name="Changes" comment="" />
@@ -83,15 +79,41 @@
       <option name="presentableId" value="Default" />
       <updated>1761748157646</updated>
       <workItem from="1761748158894" duration="48000" />
+      <workItem from="1761864251825" duration="1420000" />
+      <workItem from="1762173165958" duration="94000" />
+      <workItem from="1762173972128" duration="240000" />
     </task>
+    <task id="LOCAL-00001" summary="ajustes">
+      <option name="closed" value="true" />
+      <created>1761864661894</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1761864661894</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
+  <component name="UnityCheckinConfiguration" checkUnsavedScenes="true" />
   <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
   <component name="VcsManagerConfiguration">
     <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+    <MESSAGE value="ajustes" />
+    <option name="LAST_COMMIT_MESSAGE" value="ajustes" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

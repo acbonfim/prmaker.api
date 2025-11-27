@@ -9,6 +9,8 @@ public class PullRequestRegisterRequest
     public string RootCause { get; set; } = string.Empty;
     public int FormId { get; set; }
     public Guid UserId { get; set; }
+    public string BranchPrefix { get; set; } = string.Empty;
+    public string BranchName { get; set; } = string.Empty;
 
     public PullRequestRegister Create(PullRequestRegisterRequest request)
     {
