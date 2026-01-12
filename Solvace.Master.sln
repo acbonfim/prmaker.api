@@ -63,6 +63,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.github.domain", "CI
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.github.infra", "CIME\modules\Solvace.GitHub\src\solvace.github.infra\solvace.github.infra.csproj", "{FA4E5767-074E-4F62-A29A-9808747FFC39}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cime.BuildingBlocks.Cache", "CIME\modules\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Cache\Cime.BuildingBlocks.Cache.csproj", "{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -144,6 +146,10 @@ Global
 		{FA4E5767-074E-4F62-A29A-9808747FFC39}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FA4E5767-074E-4F62-A29A-9808747FFC39}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FA4E5767-074E-4F62-A29A-9808747FFC39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4030C68B-5873-4429-B142-3E6CE5C152A4} = {A3D55361-3A4F-408C-827C-9C6A18ED7053}
@@ -175,5 +181,6 @@ Global
 		{024EBCBE-0D0B-4F83-880D-4D8EE53A4DC5} = {3B42C2BF-715D-42F8-A561-BDC51D590768}
 		{A920ED7A-4662-41A4-A4BE-98CDC04A82A7} = {3B42C2BF-715D-42F8-A561-BDC51D590768}
 		{FA4E5767-074E-4F62-A29A-9808747FFC39} = {3B42C2BF-715D-42F8-A561-BDC51D590768}
+		{A010E8FD-94C4-4BFA-A2C5-920D38BA3FB2} = {D5C5D7C4-D7C6-40E7-9367-8C7319667AE8}
 	EndGlobalSection
 EndGlobal

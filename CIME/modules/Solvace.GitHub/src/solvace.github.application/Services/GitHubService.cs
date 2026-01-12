@@ -7,33 +7,41 @@ using Octokit;
 using solvace.github.domain.Options;
 using solvace.github.application.Contract;
 using solvace.github.domain.Responses;
+using solvace.prform.application;
+using solvace.prform.domain.Entities;
+using solvace.prform.domain.Extensions;
 
 namespace solvace.github.application.Services;
 
 public class GitHubService : IGitHubService
 {
-    private readonly GitHubOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IPluginCacheManager _pluginCacheManager;
     private readonly GitHubClient _gitHubClient;
+    private Plugin _plugin;
 
-    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory)
+    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager)
     {
         _httpClientFactory = httpClientFactory;
-        _options = options.Value;
+        _pluginCacheManager = pluginCacheManager;
+        
+        _plugin = _pluginCacheManager.GetCachedPluginByName("Github Configurations");
+        
+        var token = _plugin.Configurations.GetConfigurationValue("Token");
 
-        if (string.IsNullOrEmpty(_options.Token))
+        if (string.IsNullOrEmpty(token))
             throw new InvalidOperationException("Token GitHub não configurado");
 
         _gitHubClient = new GitHubClient(new ProductHeaderValue("SolvacePRForm"))
         {
-            Credentials = new Credentials(_options.Token)
+            Credentials = new Credentials(token)
         };
     }
 
     public async Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default)
     {
-        var owner = _options.Owner;
-        var repo = _options.Repo;
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new PullRequestResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sourceBranch) || string.IsNullOrWhiteSpace(targetBranch) || string.IsNullOrWhiteSpace(title))
@@ -103,8 +111,9 @@ public class GitHubService : IGitHubService
 
     public async Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default)
     {
-        var owner = _options.Owner;
-        var repo = _options.Repo;
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
+        var token = _plugin.Configurations.GetConfigurationValue("Token");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CardReferencesResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(cardNumber))
@@ -128,7 +137,7 @@ public class GitHubService : IGitHubService
             using var http = _httpClientFactory.CreateClient();
             http.BaseAddress = new Uri("https://api.github.com/");
             http.DefaultRequestHeaders.UserAgent.ParseAdd("SolvacePRForm");
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", _options.Token);
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", token);
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github.cloak-preview+json");
 
             var commitQuery = $"q={Uri.EscapeDataString($"repo:{owner}/{repo} {cardNumber}")}&per_page={maxPerType}";
@@ -192,8 +201,8 @@ public class GitHubService : IGitHubService
 
     public async Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default)
     {
-        var owner = _options.Owner;
-        var repo = _options.Repo;
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CommitDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sha))
@@ -239,8 +248,8 @@ public class GitHubService : IGitHubService
 
     public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
     {
-        var owner = _options.Owner;
-        var repo = _options.Repo;
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CompareDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))

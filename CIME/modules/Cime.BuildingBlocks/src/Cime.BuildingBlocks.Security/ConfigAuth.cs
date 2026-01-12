@@ -15,10 +15,19 @@ namespace Cime.BuildingBlocks.Security
 
             services.AddAuthorization(auth =>
             {
+                auth.AddPolicy("admin", policy =>
+                    policy.Requirements.Add(new RoleRequirement("admin")));
+                
+                auth.AddPolicy("support", policy =>
+                    policy.Requirements.Add(new RoleRequirement("support")));
+                
                 auth.AddPolicy("XApiKey", new AuthorizationPolicyBuilder()
                     .AddAuthenticationSchemes("XApiKey")
                     .RequireAuthenticatedUser().Build());
             });
+            
+            services.AddSingleton<IAuthorizationHandler, RoleRequirementHandler>();
+
 
             services.AddMvc(options =>
             {

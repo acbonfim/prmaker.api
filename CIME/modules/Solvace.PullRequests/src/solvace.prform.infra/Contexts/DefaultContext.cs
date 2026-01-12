@@ -7,6 +7,8 @@ public class DefaultContext(DbContextOptions options) : DbContext(options)
 {
     public DbSet<Form> Forms { get; set; }
     public DbSet<PullRequestRegister> PullRequests { get; set; }
+    public DbSet<PluginConfiguration> PluginConfigurations { get; set; }
+    public DbSet<Plugin> Plugins { get; set; }
 }
 
 

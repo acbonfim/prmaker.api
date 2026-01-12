@@ -3,6 +3,9 @@ using Microsoft.Extensions.Configuration;
 using solvace.ai.domain.Options;
 using solvace.ai.application.Contract;
 using solvace.ai.application.Services;
+using solvace.prform.application;
+using solvace.prform.domain.Extensions;
+using solvace.prform.Infra.Contexts;
 
 namespace solvace.ai.application.Extensions;
 
@@ -18,7 +21,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAIService>(serviceProvider =>
         {
             var factory = serviceProvider.GetRequiredService<AIServiceFactory>();
-            return factory.CreateService();
+            var pluginCache = serviceProvider.GetRequiredService<IPluginCacheManager>();
+            var plugin = pluginCache.GetCachedPluginByName("AI Configurations");
+            var providerName = plugin.Configurations.GetConfigurationValue("Provider");
+            
+            var pluginProvider = pluginCache.GetCachedPluginByName(providerName + " Plugin");
+            
+            
+            return factory.CreateService(providerName, pluginProvider);
         });
 
         return services;

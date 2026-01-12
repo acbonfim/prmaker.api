@@ -1,4 +1,5 @@
 using System.Reflection;
+using Cime.BuildingBlocks.Cache;
 using Cime.BuildingBlocks.CorsPolice;
 using Cime.BuildingBlocks.ExceptionHandlerMiddleware;
 using Cime.BuildingBlocks.Security;
@@ -18,18 +19,26 @@ var builder = WebApplication.CreateBuilder(args);
 var assembly = Assembly.GetEntryAssembly();
 var projectName = assembly?.GetName().Name;
 
+builder.Services.AddScoped<IFormApplication, FormApplication>();
+builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
+builder.Services.AddScoped<IPluginApplication, PluginApplication>();
+
+builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
+builder.Services.AddHostedService<PluginCacheHostedService>();
+
 builder.Services
     .AddEndpointsApiExplorer()
     .AddSecurityAuth()
     .AddGlobalServices()
     .AddSwaggerConfig(projectName!)
     .AddCorsPolice()
+    .AddCacheService()
     .AddGitHubModule(builder.Configuration)
     .AddAzureModule(builder.Configuration)
     .AddAIModule(builder.Configuration);
 
-builder.Services.AddScoped<IFormApplication, FormApplication>();
-builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
+
+
 
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 

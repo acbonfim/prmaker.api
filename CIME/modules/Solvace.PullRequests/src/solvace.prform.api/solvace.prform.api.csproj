@@ -24,6 +24,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Cache\Cime.BuildingBlocks.Cache.csproj" />
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Swagger\Cime.BuildingBlocks.Swagger.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Security\Cime.BuildingBlocks.Security.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalExtensions\Cime.BuildingBlocks.GlobalExtensions.csproj"/>

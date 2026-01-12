@@ -7,24 +7,29 @@ using solvace.azure.application.Contract;
 using Microsoft.Extensions.Http;
 using System.Net.Http;
 using solvace.azure.domain.Models;
+using solvace.prform.application;
+using solvace.prform.domain.Entities;
+using solvace.prform.domain.Extensions;
 
 namespace solvace.azure.application.Services;
 
 public class AzureService : IAzureService
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly AzureDevOpsOptions _options;
+    private readonly IPluginCacheManager _pluginCacheManager;
+    private Plugin _plugin;
 
-    public AzureService(IHttpClientFactory httpClientFactory, IOptions<AzureDevOpsOptions> options)
+    public AzureService(IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager)
     {
         _httpClientFactory = httpClientFactory;
-        _options = options.Value;
+        _pluginCacheManager = pluginCacheManager;
+        _plugin = _pluginCacheManager.GetCachedPluginByName("AzureDevOps Configurations");
     }
 
     public async Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default)
     {
         var baseUrl = GetAzureBaseUrl();
-        var apiVersion = _options.ApiVersion;
+        var apiVersion =  _plugin.Configurations.GetConfigurationValue("ApiVersion");
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
         var client = _httpClientFactory.CreateClient("AzureDevOps");
@@ -54,7 +59,7 @@ public class AzureService : IAzureService
         }
 
         var baseUrl = GetAzureBaseUrl();
-        var apiVersion = _options.ApiVersion;
+        var apiVersion =  _plugin.Configurations.GetConfigurationValue("ApiVersion");
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
         var jsonOptions = new JsonSerializerOptions
@@ -62,8 +67,10 @@ public class AzureService : IAzureService
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             WriteIndented = false
         };
+        
+        var rootCauseFieldPath =  _plugin.Configurations.GetConfigurationValue("RootCauseFieldPath");
 
-        var patchData = new[] { new { op = "add", path = _options.RootCauseFieldPath, value = rootCauseText } };
+        var patchData = new[] { new { op = "add", path = rootCauseFieldPath, value = rootCauseText } };
         var json = JsonSerializer.Serialize(patchData, jsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json-patch+json");
 
@@ -79,21 +86,14 @@ public class AzureService : IAzureService
 
     private string GetAzureBaseUrl()
     {
-        if (string.IsNullOrEmpty(_options.Organization) || string.IsNullOrEmpty(_options.Project))
+        var organization =  _plugin.Configurations.GetConfigurationValue("Organization");
+        var project =  _plugin.Configurations.GetConfigurationValue("Project");
+        if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(project))
             throw new InvalidOperationException("Configurações do Azure DevOps não encontradas");
-        var encodedProject = Uri.EscapeDataString(_options.Project);
-        return $"https://dev.azure.com/{_options.Organization}/{encodedProject}/_apis";
+        var encodedProject = Uri.EscapeDataString(project);
+        return $"https://dev.azure.com/{organization}/{encodedProject}/_apis";
     }
-
-    private void AddAzureAuthHeader(HttpRequestMessage request)
-    {
-        if (string.IsNullOrEmpty(_options.PersonalAccessToken))
-            throw new InvalidOperationException("PersonalAccessToken Azure DevOps não configurado");
-        var authValue = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{_options.PersonalAccessToken}"));
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
-        request.Headers.Add("Accept", "application/json");
-        request.Headers.Add("User-Agent", "SolvacePRForm/1.0");
-    }
+    
 }
 
 

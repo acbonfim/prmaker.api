@@ -9,6 +9,7 @@
     <ItemGroup>
         <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
         <ProjectReference Include="..\solvace.prform.infra\solvace.prform.infra.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Cache\Cime.BuildingBlocks.Cache.csproj" />
     </ItemGroup>
 
 </Project>
