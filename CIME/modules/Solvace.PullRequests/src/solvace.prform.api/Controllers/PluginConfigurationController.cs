@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using solvace.prform.application;
 using solvace.prform.application.Contracts;
+using solvace.prform.domain.Enums;
 using solvace.prform.domain.Extensions;
 using solvace.prform.domain.Requests;
 using solvace.prform.domain.Responses;
@@ -14,7 +16,7 @@ namespace solvace.prform.Controllers;
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-[Authorize(Policy = "admin")]
+[Authorize(Roles = "admin, user, support")]
 public class PluginConfigurationController : ControllerBase
 {
     private readonly IPluginApplication _application;
@@ -26,6 +28,7 @@ public class PluginConfigurationController : ControllerBase
         _pluginCacheManager = pluginCacheManager;
     }
     
+    [Authorize(Roles = "admin")]
     [HttpPost]
     public async Task<ActionResult<PluginRespose>> Create(PluginRequest request, CancellationToken cancellationToken)
     {
@@ -34,6 +37,7 @@ public class PluginConfigurationController : ControllerBase
         return Ok(created);
     }
     
+    [Authorize(Roles = "admin")]
     [HttpDelete("delete/{pluginId:int}")]
     public async Task<ActionResult<PluginRespose>> Delete([FromRoute] int pluginId, CancellationToken cancellationToken)
     {
@@ -41,6 +45,7 @@ public class PluginConfigurationController : ControllerBase
         return Ok();
     }
     
+    [Authorize(Roles = "admin")]
     [HttpGet("get-all")]
     public async Task<ActionResult<PluginRespose>> Get(CancellationToken cancellationToken)
     {
@@ -68,8 +73,15 @@ public class PluginConfigurationController : ControllerBase
     }
     
     [HttpGet("get-all-by-id")]
+    [Authorize(Roles = "admin, support")]
     public async Task<ActionResult<PluginRespose>> GetPluginById([FromQuery]int id, CancellationToken cancellationToken)
     {
+        var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+        var pluginsFreeIds = new List<int> {EPlugin.AI,EPlugin.AZURE_DEVOPS, EPlugin.PULLREQUEST};
+        
+        if (!pluginsFreeIds.Any(x => x == id) && !roles.Contains("admin"))
+            return Forbid();
+        
         var plugin = _pluginCacheManager.GetCachedPluginById(id);
     
         if (plugin == null)
@@ -91,6 +103,7 @@ public class PluginConfigurationController : ControllerBase
         );
     }
     
+    [Authorize(Roles = "admin")]
     [HttpPut("update-configuration/{pluginId:int}")]
     public async Task<ActionResult<PluginRespose>> UpdateConfiguration([FromRoute] int pluginId,[FromBody] PluginRequest request, CancellationToken cancellationToken)
     {
@@ -98,4 +111,5 @@ public class PluginConfigurationController : ControllerBase
 
         return Ok(user);
     }
+    
 }
