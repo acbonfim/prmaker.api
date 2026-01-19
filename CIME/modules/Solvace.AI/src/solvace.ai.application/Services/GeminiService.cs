@@ -59,12 +59,7 @@ public class GeminiService : IAIService
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                return new AIGenerateResponse
-                {
-                    Error = $"Erro ao gerar conteúdo no Gemini: {response.StatusCode}",
-                    Provider = "Gemini",
-                    Model = _options.Model
-                };
+                throw new Exception($"Erro ao gerar conteúdo no Gemini: {errorContent}");
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);

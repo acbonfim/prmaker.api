@@ -30,6 +30,9 @@ public class WorkItemFields
 {
     [JsonPropertyName("System.AreaPath")]
     public string? AreaPath { get; set; }
+    
+    [JsonPropertyName("System.Description")]
+    public string? Description { get; set; }
 
     [JsonPropertyName("System.TeamProject")]
     public string? TeamProject { get; set; }

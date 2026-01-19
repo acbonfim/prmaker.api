@@ -240,9 +240,9 @@ public class GitHubService : IGitHubService
         {
             return new CommitDiffResponse { Error = "Erro ao acessar GitHub API" };
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            return new CommitDiffResponse { Error = "Erro ao buscar commit diff" };
+            throw new Exception($"Erro ao buscar commit diff: {e.Message}");
         }
     }
 

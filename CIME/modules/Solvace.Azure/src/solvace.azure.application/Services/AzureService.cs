@@ -32,12 +32,20 @@ public class AzureService : IAzureService
         var apiVersion =  _plugin.Configurations.GetConfigurationValue("ApiVersion");
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
+        var query = $"";
+        var fields = $"";
+        
+        url += query + fields;
+
         var client = _httpClientFactory.CreateClient("AzureDevOps");
         var response = await client.GetAsync(url, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
-            return null;
-
+        {
+            var contentError = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new Exception(contentError);
+        }
+        
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
         return JsonSerializer.Deserialize<AzureWorkItem>(content);
     }
