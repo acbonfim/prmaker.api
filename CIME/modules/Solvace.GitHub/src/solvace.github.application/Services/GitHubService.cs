@@ -236,7 +236,7 @@ public class GitHubService : IGitHubService
         {
             return new CommitDiffResponse { Error = "Commit não encontrado" };
         }
-        catch (ApiException)
+        catch (ApiException e)
         {
             return new CommitDiffResponse { Error = "Erro ao acessar GitHub API" };
         }
