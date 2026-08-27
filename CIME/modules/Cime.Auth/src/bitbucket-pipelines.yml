@@ -1,0 +1,56 @@
+image: google/cloud-sdk:latest
+
+pipelines:
+  options:
+    docker: true
+  definitions:
+    services:
+      docker:
+        memory: 3072
+  branches:
+    QA:
+      - step:
+          name: Build and push Docker image
+          services:
+            - docker
+          script:
+            - export DOCKER_BUILDKIT=0
+            # Carregar credenciais do ambiente (substituir pelo nome da variável)
+            - echo $GOOGLE_APPLICATION_CREDENTIALS > /tmp/$BITBUCKET_REPO_SLUG.json
+            - gcloud auth activate-service-account --key-file=/tmp/$BITBUCKET_REPO_SLUG.json
+            # Configurar autenticaçãoo Docker
+            - gcloud auth configure-docker us-central1-docker.pkg.dev
+            # Build e push da imagem
+            - docker build -f cliqx.auth.api/Dockerfile -t us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth/cliqxauthapi:qa .
+            - docker push us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth/cliqxauthapi:qa
+      - step:
+          name: Deploy to Cloud Run
+          script:
+            # Carregar credenciais do ambiente (substituir pelo nome da variável)
+            - echo $GOOGLE_APPLICATION_CREDENTIALS > /tmp/$BITBUCKET_REPO_SLUG.json
+            - gcloud auth activate-service-account --key-file=/tmp/$BITBUCKET_REPO_SLUG.json
+            # Deploy para Cloud Run
+            - gcloud run deploy cliqxauthapi-qa --image=us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth/cliqxauthapi:qa --region=us-central1 --project=prj-prod-asmaras --set-env-vars ASPNETCORE_ENVIRONMENT=QA && gcloud run services update-traffic cliqxauthapi-qa --to-latest --region=us-central1 --project=prj-prod-asmaras
+    master:
+      - step:
+          name: Build and push Docker image
+          services:
+            - docker
+          script:
+            - export DOCKER_BUILDKIT=0
+            # Carregar credenciais do ambiente (substituir pelo nome da variável)
+            - echo $GOOGLE_APPLICATION_CREDENTIALS > /tmp/$BITBUCKET_REPO_SLUG.json
+            - gcloud auth activate-service-account --key-file=/tmp/$BITBUCKET_REPO_SLUG.json
+            # Configurar autenticaçãoo Docker
+            - gcloud auth configure-docker us-central1-docker.pkg.dev
+            # Build e push da imagem
+            - docker build -f cliqx.auth.api/Dockerfile -t us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth-prd/cliqxauthapi:prd .
+            - docker push us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth-prd/cliqxauthapi:prd
+      - step:
+          name: Deploy to Cloud Run
+          script:
+            # Carregar credenciais do ambiente (substituir pelo nome da variável)
+            - echo $GOOGLE_APPLICATION_CREDENTIALS > /tmp/$BITBUCKET_REPO_SLUG.json
+            - gcloud auth activate-service-account --key-file=/tmp/$BITBUCKET_REPO_SLUG.json
+            # Deploy para Cloud Run
+            - gcloud run deploy cliqxauthapi-prd --image=us-central1-docker.pkg.dev/prj-prod-asmaras/cliqx-auth-prd/cliqxauthapi:prd --region=us-central1 --project=prj-prod-asmaras --set-env-vars ASPNETCORE_ENVIRONMENT=Production && gcloud run services update-traffic cliqxauthapi-prd --to-latest --region=us-central1 --project=prj-prod-asmaras

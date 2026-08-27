@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="2127781e-009f-46f4-81be-183639d74e29" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/../Cime.Auth/Cime.Auth.sln" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CorsPolice/Cime.BuildingBlocks.CorsPolice.csproj" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/Cime.BuildingBlocks.GlobalExtensions.csproj" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.MySqlCustomVariables/Cime.BuildingBlocks.MySqlCustomVariables.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cliqx.BuildingBlocks.sln" beforeDir="false" afterPath="$PROJECT_DIR$/Cime.BuildingBlocks.sln" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CorsPolice/Cliqx.BuildingBlocks.CorsPolice.csproj" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CorsPolice/CorsPolice.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CorsPolice/CorsPolice.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CustomVariables/Cliqx.BuildingBlocks.CustomVariables.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CustomVariables/Cime.BuildingBlocks.CustomVariables.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CustomVariables/Contracts/ICustomVariables.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CustomVariables/Contracts/ICustomVariables.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CustomVariables/CustomKeyExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CustomVariables/CustomKeyExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CustomVariables/IntegrationData.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CustomVariables/IntegrationData.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.CustomVariables/IntegrationExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.CustomVariables/IntegrationExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.DynamoDbCustomVariables/Cliqx.BuildingBlocks.DynamoDbCustomVariables.csproj" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.DynamoDbCustomVariables/DynamoDbService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.DynamoDbCustomVariables/DynamoDbService.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.ExceptionHandlerMiddleware/Cliqx.BuildingBlocks.ExceptionHandlerMiddleware.csproj" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.ExceptionHandlerMiddleware/ExceptionHandlerMiddleware.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.ExceptionHandlerMiddleware/ExceptionHandlerMiddleware.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/ByteArrayExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/ByteArrayExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/Cliqx.BuildingBlocks.GlobalExtensions.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.ExceptionHandlerMiddleware/Cime.BuildingBlocks.ExceptionHandlerMiddleware.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/HealthCheckEndpointExtension.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/HealthCheckEndpointExtension.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/InvokeExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/InvokeExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/ReturnExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/ReturnExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalExtensions/ServicesExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalExtensions/ServicesExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Cliqx.BuildingBlocks.GlobalModels.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Cime.BuildingBlocks.GlobalModels.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Default/ErrorCodeEnum.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Default/ErrorCodeEnum.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Default/ReturnDto.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Default/ReturnDto.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Default/VersionBase.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Default/VersionBase.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/AuthModelNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/AuthModelNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/DataBaseException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/DataBaseException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/EntityNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/EntityNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/IncompatibleException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/IncompatibleException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/InvalidPropertyException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/InvalidPropertyException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/ItemExpiredException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/ItemExpiredException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/ItemNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/ItemNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/NoPluginConfiguredException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/NoPluginConfiguredException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/PDFConfirmationException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/PDFConfirmationException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/PaymentStrategyNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/PaymentStrategyNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/PluginNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/PluginNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/ResponsePluginException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/ResponsePluginException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/SendEmailException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/SendEmailException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Exceptions/UrlModelNotFoundException.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Exceptions/UrlModelNotFoundException.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Interage/MensagemInterativa.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Interage/MensagemInterativa.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Interage/Retorno.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Interage/Retorno.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.GlobalModels/Interage/StatusRetornoEnum.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.GlobalModels/Interage/StatusRetornoEnum.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.MySqlCustomVariables/Cliqx.BuildingBlocks.MySqlCustomVariables.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.DynamoDbCustomVariables/Cime.BuildingBlocks.DynamoDbCustomVariables.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.MySqlCustomVariables/MySqlCustomVariablesService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.MySqlCustomVariables/MySqlCustomVariablesService.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.RedisCustomVariables/Cliqx.BuildingBlocks.RedisCustomVariables.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.RedisCustomVariables/Cime.BuildingBlocks.RedisCustomVariables.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.RedisCustomVariables/RedisCustomVariablesService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.RedisCustomVariables/RedisCustomVariablesService.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Security/Cliqx.BuildingBlocks.Security.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Security/Cime.BuildingBlocks.Security.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Security/ConfigAuth.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Security/ConfigAuth.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Security/ResponseExtensions.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Security/ResponseExtensions.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Security/XApiKeyAuthenticationHandler.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Security/XApiKeyAuthenticationHandler.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Cliqx.BuildingBlocks.SqlServerCustomVariables.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Cime.BuildingBlocks.SqlServerCustomVariables.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Contexts/DefaultContext.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Contexts/DefaultContext.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Migrations/20241029151340_init.Designer.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Migrations/20241029151340_init.Designer.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Migrations/20241029151340_init.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Migrations/20241029151340_init.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Migrations/DefaultContextModelSnapshot.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Migrations/DefaultContextModelSnapshot.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/Models/ItemEntity.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/Models/ItemEntity.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.SqlServerCustomVariables/SqlServerCustomVariablesService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.SqlServerCustomVariables/SqlServerCustomVariablesService.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Swagger/Cliqx.BuildingBlocks.Swagger.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Swagger/Cime.BuildingBlocks.Swagger.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Swagger/ConfigSwagger.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Swagger/ConfigSwagger.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Cliqx.BuildingBlocks.Swagger/UtilsSwaggerHTML.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Cime.BuildingBlocks.Swagger/UtilsSwaggerHTML.cs" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/../.." />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/src/Cime.BuildingBlocks.ExceptionHandlerMiddleware/ExceptionHandlerMiddleware.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/src/Cime.BuildingBlocks.Security/XApiKeyAuthenticationHandler.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../Cliqx.Caixa/src/cliqx.caixa.api/Extensions/ConfigContexts.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../Cliqx.Caixa/src/cliqx.caixa.api/Extensions/InvokeExtensions.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../Cliqx.Caixa/src/cliqx.caixa.data/Contexts/DefaultContext.cs" root0="SKIP_HIGHLIGHTING" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="Toolset" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7
+}</component>
+  <component name="ProjectId" id="2rOSymy01shZrgQkIYc0QMPB9uy" />
+  <component name="ProjectViewState">
+    <option name="autoscrollFromSource" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "/Users/alexcarlos/repos/cliqx/CIME/modules/Cliqx.BuildingBlocks/Cliqx.BuildingBlocks.sln",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="2127781e-009f-46f4-81be-183639d74e29" name="Changes" comment="" />
+      <created>1736428884352</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1736428884352</updated>
+      <workItem from="1736428885681" duration="160000" />
+      <workItem from="1751660595798" duration="2973000" />
+      <workItem from="1753644149244" duration="3159000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="VcsManagerConfiguration">
+    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.OperationCanceledException" breakIfHandledByOtherCode="false" displayValue="System.OperationCanceledException" />
+          <option name="timeStamp" value="1" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.Tasks.TaskCanceledException" breakIfHandledByOtherCode="false" displayValue="System.Threading.Tasks.TaskCanceledException" />
+          <option name="timeStamp" value="2" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.ThreadAbortException" breakIfHandledByOtherCode="false" displayValue="System.Threading.ThreadAbortException" />
+          <option name="timeStamp" value="3" />
+        </breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>
