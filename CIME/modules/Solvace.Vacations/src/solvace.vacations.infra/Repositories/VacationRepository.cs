@@ -35,18 +35,33 @@ public class VacationRepository : IVacationRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<List<VacationRequest>> GetAllAsync(CancellationToken cancellationToken)
+    public async Task<List<VacationRequest>> GetAllAsync(CancellationToken cancellationToken, IEnumerable<Guid>? userIds = null)
     {
-        return await _context.VacationRequests
+        var query = _context.VacationRequests.AsQueryable();
+
+        if (userIds != null)
+        {
+            var ids = userIds.ToList();
+            query = query.Where(v => ids.Contains(v.UserId));
+        }
+
+        return await query
             .OrderByDescending(v => v.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<List<VacationRequest>> GetByDateRangeAsync(DateTime startDate, DateTime endDate, CancellationToken cancellationToken)
+    public async Task<List<VacationRequest>> GetByDateRangeAsync(DateTime startDate, DateTime endDate, CancellationToken cancellationToken, IEnumerable<Guid>? userIds = null)
     {
-        return await _context.VacationRequests
-            .Where(v => (v.StartDate <= endDate && v.EndDate >= startDate))
-            .ToListAsync(cancellationToken);
+        var query = _context.VacationRequests
+            .Where(v => v.StartDate <= endDate && v.EndDate >= startDate);
+
+        if (userIds != null)
+        {
+            var ids = userIds.ToList();
+            query = query.Where(v => ids.Contains(v.UserId));
+        }
+
+        return await query.ToListAsync(cancellationToken);
     }
 
     public async Task<VacationRequest> UpdateAsync(VacationRequest request, CancellationToken cancellationToken)

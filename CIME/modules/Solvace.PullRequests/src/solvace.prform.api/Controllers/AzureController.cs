@@ -26,6 +26,15 @@ public class AzureController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("card/{id}/full")]
+    public async Task<IActionResult> GetCardFull(string id, CancellationToken cancellationToken)
+    {
+        var result = await _azureService.GetCardFullAsync(id, cancellationToken);
+        if (result == null)
+            return BadRequest(new { error = "Erro ao buscar as informações do card" });
+        return Ok(result);
+    }
+
     [HttpPost("card/{id}/rootcause")]
     [Consumes("application/json", "text/plain", "text/html", "text/markdown")]
     public async Task<IActionResult> UpdateRootCause([FromRoute] string id,[FromBody] UpdateRootCauseRequest body, CancellationToken cancellationToken)

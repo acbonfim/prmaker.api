@@ -118,9 +118,10 @@ public class VacationApplication : IVacationApplication
         return vacations.Select(v => MapToResponse(v, fullName)).ToList();
     }
 
-    public async Task<List<VacationRequestResponse>> GetAllVacationRequestsAsync(CancellationToken cancellationToken)
+    public async Task<List<VacationRequestResponse>> GetAllVacationRequestsAsync(CancellationToken cancellationToken, string? department = null)
     {
-        var vacations = await _vacationRepository.GetAllAsync(cancellationToken);
+        var filterIds = await ResolveUserIdsByDepartmentAsync(department, cancellationToken);
+        var vacations = await _vacationRepository.GetAllAsync(cancellationToken, filterIds);
         var userIds = vacations.Select(v => v.UserId).Distinct();
         var names = await _userRepository.GetFullNamesAsync(userIds, cancellationToken);
         return vacations.Select(v => MapToResponse(v, names.TryGetValue(v.UserId, out var n) ? n : null)).ToList();
@@ -212,12 +213,14 @@ public class VacationApplication : IVacationApplication
     public async Task<List<CalendarDayResponse>> GetCalendarAsync(
         int month,
         int year,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? department = null)
     {
         var startDate = new DateTime(year, month, 1);
         var endDate = startDate.AddMonths(1).AddDays(-1);
 
-        var vacations = await _vacationRepository.GetByDateRangeAsync(startDate, endDate, cancellationToken);
+        var filterIds = await ResolveUserIdsByDepartmentAsync(department, cancellationToken);
+        var vacations = await _vacationRepository.GetByDateRangeAsync(startDate, endDate, cancellationToken, filterIds);
 
         var calendar = new Dictionary<DateTime, CalendarDayResponse>();
 
@@ -231,14 +234,14 @@ public class VacationApplication : IVacationApplication
             };
         }
 
-        var approvedVacations = vacations
-            .Where(v => v.Status == VacationStatus.AuthorizedByHR || v.Status == VacationStatus.Completed)
+        var activeVacations = vacations
+            .Where(v => v.Status != VacationStatus.Cancelled)
             .ToList();
 
-        var userIds = approvedVacations.Select(v => v.UserId).Distinct();
+        var userIds = activeVacations.Select(v => v.UserId).Distinct();
         var names = await _userRepository.GetFullNamesAsync(userIds, cancellationToken);
 
-        foreach (var vacation in approvedVacations)
+        foreach (var vacation in activeVacations)
         {
             for (var date = vacation.StartDate; date <= vacation.EndDate; date = date.AddDays(1))
             {
@@ -249,7 +252,14 @@ public class VacationApplication : IVacationApplication
                     {
                         UserId = vacation.UserId,
                         UserName = names.TryGetValue(vacation.UserId, out var n) ? n : vacation.UserId.ToString(),
-                        VacationRequestId = vacation.Id
+                        VacationRequestId = vacation.Id,
+                        StatusId = (int)vacation.Status,
+                        StatusName = vacation.Status.ToString(),
+                        CreatedAt = vacation.CreatedAt,
+                        ApprovedByManagerId = vacation.ApprovedByManagerId,
+                        ApprovedByManagerAt = vacation.ApprovedByManagerAt,
+                        AuthorizedByHRId = vacation.AuthorizedByHRId,
+                        AuthorizedByHRAt = vacation.AuthorizedByHRAt
                     });
                 }
             }
@@ -332,6 +342,34 @@ public class VacationApplication : IVacationApplication
             vacation.MarkAsCompleted();
             await _vacationRepository.UpdateAsync(vacation, cancellationToken);
         }
+    }
+
+    public async Task<List<string>> GetDepartmentsAsync(CancellationToken cancellationToken)
+    {
+        return await _userRepository.GetDepartmentsAsync(cancellationToken);
+    }
+
+    public async Task<List<UserVacationBalanceResponse>> GetAllUserVacationBalancesAsync(
+        CancellationToken cancellationToken,
+        string? department = null)
+    {
+        var filterIds = await ResolveUserIdsByDepartmentAsync(department, cancellationToken);
+        var balances = await _balanceRepository.GetAllAsync(cancellationToken, filterIds);
+
+        var userIds = balances.Select(b => b.UserId).Distinct();
+        var names = await _userRepository.GetFullNamesAsync(userIds, cancellationToken);
+
+        return balances
+            .Select(b => MapToBalanceResponse(b, names.TryGetValue(b.UserId, out var n) ? n : null))
+            .ToList();
+    }
+
+    private async Task<List<Guid>?> ResolveUserIdsByDepartmentAsync(string? department, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(department))
+            return null;
+
+        return await _userRepository.GetUserIdsByDepartmentAsync(department, cancellationToken);
     }
 
     private VacationRequestResponse MapToResponse(VacationRequest vacation, string? fullName = null)

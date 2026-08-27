@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using solvace.github.application.Contract;
+using solvace.github.domain.Responses;
 
 namespace solvace.prform.Controllers;
 
@@ -46,9 +47,9 @@ public class GitHubController : ControllerBase
     }
 
     [HttpGet("commit/{sha}/diff")]
-    public async Task<IActionResult> GetCommitDiff(string sha, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetCommitDiff(string sha, CancellationToken cancellationToken, [FromQuery] string? repository = null)
     {
-        var result = await _githubService.GetCommitDiffAsync(sha, cancellationToken);
+        var result = await _githubService.GetCommitDiffAsync(sha, cancellationToken, repository);
         if (result.Error != null && !string.IsNullOrEmpty(result.Error))
             return BadRequest(new { error = result.Error });
         return Ok(result);
@@ -60,6 +61,22 @@ public class GitHubController : ControllerBase
         var result = await _githubService.CompareRefsDiffAsync(@base, head, cancellationToken);
         if (result.Error != null)
             return BadRequest(new { error = result.Error });
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lista os 20 últimos commits de uma branch em um repositório
+    /// </summary>
+    [HttpGet("commits")]
+    public async Task<ActionResult<List<BranchCommitResponse>>> GetBranchCommits(
+        [FromQuery] string repository,
+        [FromQuery] string branch,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(branch))
+            return BadRequest(new { error = "Parâmetro 'branch' é obrigatório" });
+
+        var result = await _githubService.GetBranchCommitsAsync(repository, branch, cancellationToken);
         return Ok(result);
     }
 }

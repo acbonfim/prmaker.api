@@ -15,6 +15,7 @@ using solvace.prform.application;
 using solvace.prform.application.Contracts;
 using solvace.vacations.application.Contracts;
 using solvace.vacations.infra.Extensions;
+using solvace.timeline.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,8 +24,10 @@ var assembly = Assembly.GetEntryAssembly();
 var projectName = assembly?.GetName().Name;
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<solvace.timeline.application.Contracts.IUserRepository, TimelineUserRepository>();
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
+builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
 builder.Services.AddScoped<IPluginApplication, PluginApplication>();
 
 builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
@@ -40,7 +43,8 @@ builder.Services
     .AddGitHubModule(builder.Configuration)
     .AddAzureModule(builder.Configuration)
     .AddAIModule(builder.Configuration)
-    .AddVacationModule(builder.Configuration);
+    .AddVacationModule(builder.Configuration)
+    .AddTimelineModule(builder.Configuration);
 
 
 
@@ -78,6 +82,17 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         Console.WriteLine($"Erro ao executar migrations do VacationContext: {ex.Message}");
+    }
+
+    var timelineContext = scope.ServiceProvider.GetRequiredService<solvace.timeline.infra.Contexts.TimelineContext>();
+    try
+    {
+        timelineContext.Database.Migrate();
+        Console.WriteLine("Migrations do TimelineContext executadas com sucesso.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Erro ao executar migrations do TimelineContext: {ex.Message}");
     }
 }
 

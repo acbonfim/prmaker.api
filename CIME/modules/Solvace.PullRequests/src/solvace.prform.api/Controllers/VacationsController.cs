@@ -82,13 +82,14 @@ public class VacationsController : ControllerBase
     }
 
     /// <summary>
-    /// Obtém todas as solicitações de férias de todos os usuários
+    /// Obtém todas as solicitações de férias de todos os usuários, com filtro opcional por departamento
     /// </summary>
     [HttpGet("all-requests")]
     public async Task<ActionResult<List<VacationRequestResponse>>> GetAllVacationRequests(
+        [FromQuery] string? department,
         CancellationToken cancellationToken)
     {
-        var result = await _vacationApplication.GetAllVacationRequestsAsync(cancellationToken);
+        var result = await _vacationApplication.GetAllVacationRequestsAsync(cancellationToken, department);
         return Ok(result);
     }
 
@@ -152,13 +153,14 @@ public class VacationsController : ControllerBase
     }
 
     /// <summary>
-    /// Obtém o calendário de férias para um mês/ano específico
+    /// Obtém o calendário de férias para um mês/ano específico, com filtro opcional por departamento
     /// Mostra as datas ocupadas e por quem
     /// </summary>
     [HttpGet("calendar")]
     public async Task<ActionResult<List<CalendarDayResponse>>> GetCalendar(
         [FromQuery] int month,
         [FromQuery] int year,
+        [FromQuery] string? department,
         CancellationToken cancellationToken)
     {
         if (month < 1 || month > 12)
@@ -167,7 +169,30 @@ public class VacationsController : ControllerBase
         if (year < 2000 || year > 2100)
             return BadRequest("Invalid year");
 
-        var result = await _vacationApplication.GetCalendarAsync(month, year, cancellationToken);
+        var result = await _vacationApplication.GetCalendarAsync(month, year, cancellationToken, department);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Obtém a lista de departamentos distintos cadastrados nos usuários
+    /// </summary>
+    [HttpGet("departments")]
+    public async Task<ActionResult<List<string>>> GetDepartments(CancellationToken cancellationToken)
+    {
+        var result = await _vacationApplication.GetDepartmentsAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Obtém todos os saldos de férias de todos os usuários, com filtro opcional por departamento (apenas gestores e admin)
+    /// </summary>
+    [HttpGet("all-balances")]
+    [Authorize(Roles = "gestor, admin")]
+    public async Task<ActionResult<List<UserVacationBalanceResponse>>> GetAllUserVacationBalances(
+        [FromQuery] string? department,
+        CancellationToken cancellationToken)
+    {
+        var result = await _vacationApplication.GetAllUserVacationBalancesAsync(cancellationToken, department);
         return Ok(result);
     }
 

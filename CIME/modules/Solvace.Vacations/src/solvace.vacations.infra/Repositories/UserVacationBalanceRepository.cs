@@ -76,4 +76,19 @@ public class UserVacationBalanceRepository : IUserVacationBalanceRepository
             .OrderByDescending(b => b.AcquisitionPeriodStart)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<List<UserVacationBalance>> GetAllAsync(CancellationToken cancellationToken, IEnumerable<Guid>? userIds = null)
+    {
+        var query = _context.UserVacationBalances.AsQueryable();
+
+        if (userIds != null)
+        {
+            var ids = userIds.ToList();
+            query = query.Where(b => ids.Contains(b.UserId));
+        }
+
+        return await query
+            .OrderByDescending(b => b.AcquisitionPeriodStart)
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -8,3 +8,8 @@
 
 * E também possue seu readme.md interno, que explica minimamente a reponsabilidade e uso de cada uma.
 
+dotnet ef database update --context VacationContext --startup-project ../../../Solvace.PullRequests/src/solvace.prform.api
+
+aws codeartifact login --tool dotnet --repository revamp --domain solvace --domain-owner 367983645102 --region us-east-1
+
+

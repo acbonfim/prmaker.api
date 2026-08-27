@@ -8,5 +8,6 @@ public class PullRequestRegisterResponse
     public string Description { get; set; }
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
+    public string? RepositoryId { get; set; }
 
 }

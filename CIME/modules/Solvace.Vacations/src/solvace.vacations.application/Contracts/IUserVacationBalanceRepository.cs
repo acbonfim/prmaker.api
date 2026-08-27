@@ -11,4 +11,5 @@ public interface IUserVacationBalanceRepository
     Task<List<UserVacationBalance>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken);
     Task<UserVacationBalance?> GetByUserIdAndAcquisitionPeriodAsync(Guid userId, DateTime periodStart, DateTime periodEnd, CancellationToken cancellationToken);
     Task<UserVacationBalance?> GetActiveBalanceForDateAsync(Guid userId, DateTime date, CancellationToken cancellationToken);
+    Task<List<UserVacationBalance>> GetAllAsync(CancellationToken cancellationToken, IEnumerable<Guid>? userIds = null);
 }

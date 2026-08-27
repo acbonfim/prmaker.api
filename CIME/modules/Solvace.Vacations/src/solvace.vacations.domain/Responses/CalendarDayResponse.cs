@@ -12,4 +12,11 @@ public class VacationOccupancy
     public Guid UserId { get; set; }
     public string UserName { get; set; } = string.Empty;
     public int VacationRequestId { get; set; }
+    public int StatusId { get; set; }
+    public string StatusName { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public Guid? ApprovedByManagerId { get; set; }
+    public DateTime? ApprovedByManagerAt { get; set; }
+    public Guid? AuthorizedByHRId { get; set; }
+    public DateTime? AuthorizedByHRAt { get; set; }
 }

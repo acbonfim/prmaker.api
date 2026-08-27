@@ -43,6 +43,42 @@ namespace solvace.prform.infra.Migrations
                     b.ToTable("Forms");
                 });
 
+            modelBuilder.Entity("solvace.prform.domain.Entities.HandoverRegister", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("RepositoryId")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Handovers");
+                });
+
             modelBuilder.Entity("solvace.prform.domain.Entities.Plugin", b =>
                 {
                     b.Property<int>("Id")
@@ -136,6 +172,9 @@ namespace solvace.prform.infra.Migrations
 
                     b.Property<int>("FormId")
                         .HasColumnType("int");
+
+                    b.Property<string>("RepositoryId")
+                        .HasColumnType("longtext");
 
                     b.Property<string>("RootCause")
                         .IsRequired()

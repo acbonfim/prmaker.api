@@ -11,6 +11,7 @@ public class PullRequestRegisterRequest
     public Guid UserId { get; set; }
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
+    public required string RepositoryId { get; set; }
 
     public PullRequestRegister Create(PullRequestRegisterRequest request)
     {

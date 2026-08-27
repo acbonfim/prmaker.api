@@ -9,4 +9,7 @@ public class User
     public Guid Id { get; set; }
     
     public string FullName { get; set; }
+    
+    [Column("Departamento")]
+    public string? Department { get; set; }
 }

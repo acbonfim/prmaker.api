@@ -28,17 +28,17 @@ public class PullRequestController : ControllerBase
     }
     
     [HttpGet]
-    public async Task<ActionResult<PullRequestRegisterResponse>> Get(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<PullRequestRegisterResponse>> Get(int id, CancellationToken cancellationToken, string? repositoryId = null)
     {
-        var user = await _application.Get(id, cancellationToken);
+        var user = await _application.Get(id, repositoryId, cancellationToken);
 
         return Ok(user);
     }
-    
+
     [HttpGet("GetByCardNumber")]
-    public async Task<ActionResult<PullRequestRegisterResponse>> GetByCardNumber(string cardNumber, CancellationToken cancellationToken)
+    public async Task<ActionResult<PullRequestRegisterResponse>> GetByCardNumber(string cardNumber, CancellationToken cancellationToken, string? repositoryId = null)
     {
-        var response = await _application.GetByCardNumber(cardNumber, cancellationToken);
+        var response = await _application.GetByCardNumber(cardNumber, repositoryId, cancellationToken);
         
         return Ok(response);
     }

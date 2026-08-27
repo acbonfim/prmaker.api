@@ -39,6 +39,7 @@
         <ProjectReference Include="..\..\..\Solvace.AI\src\solvace.ai.domain\solvace.ai.domain.csproj"/>
         <ProjectReference Include="..\..\..\Solvace.AI\src\solvace.ai.application\solvace.ai.application.csproj"/>
         <ProjectReference Include="..\..\..\Solvace.Vacations\src\solvace.vacations.infra\solvace.vacations.infra.csproj"/>
+        <ProjectReference Include="..\..\..\Solvace.Timeline\src\solvace.timeline.infra\solvace.timeline.infra.csproj"/>
 	</ItemGroup>
 
     <!-- Restore antes do Build para garantir que todas as dependências estejam atualizadas -->

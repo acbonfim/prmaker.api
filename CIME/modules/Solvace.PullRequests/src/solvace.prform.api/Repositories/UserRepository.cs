@@ -26,4 +26,22 @@ public class UserRepository(AuthenticationContext context) : IUserRepository
 
         return users.ToDictionary(u => u.Id, u => u.FullName);
     }
+
+    public async Task<List<string>> GetDepartmentsAsync(CancellationToken cancellationToken)
+    {
+        return await context.Users
+            .Where(u => u.Department != null && u.Department != string.Empty)
+            .Select(u => u.Department!)
+            .Distinct()
+            .OrderBy(d => d)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Guid>> GetUserIdsByDepartmentAsync(string department, CancellationToken cancellationToken)
+    {
+        return await context.Users
+            .Where(u => u.Department == department)
+            .Select(u => u.Id)
+            .ToListAsync(cancellationToken);
+    }
 }

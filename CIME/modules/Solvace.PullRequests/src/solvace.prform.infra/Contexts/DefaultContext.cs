@@ -9,6 +9,7 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     public DbSet<PullRequestRegister> PullRequests { get; set; }
     public DbSet<PluginConfiguration> PluginConfigurations { get; set; }
     public DbSet<Plugin> Plugins { get; set; }
+    public DbSet<HandoverRegister> Handovers { get; set; }
 }
 
 

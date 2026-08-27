@@ -25,7 +25,7 @@ public class PullRequestApplication : IPullRequestApplication
     public async Task<PullRequestRegisterResponse> Create(PullRequestRegisterRequest request, CancellationToken cancellationToken)
     {
         var requestExists = await _prRepository
-            .FirstOrDefaultAsync(x => x.CardNumber == request.CardNumber, cancellationToken);
+            .FirstOrDefaultAsync(x => x.CardNumber == request.CardNumber && x.RepositoryId == request.RepositoryId, cancellationToken);
 
         if (requestExists is not null)
         {
@@ -33,6 +33,7 @@ public class PullRequestApplication : IPullRequestApplication
             requestExists.SetRootCause(request.RootCause);
             requestExists.BranchName = request.BranchName;
             requestExists.BranchPrefix = request.BranchPrefix;
+            requestExists.SetRepositoryId(request.RepositoryId);
             _prRepository.Update(requestExists);
             
             if(await CommitAsync(cancellationToken))
@@ -48,18 +49,26 @@ public class PullRequestApplication : IPullRequestApplication
         throw new Exception("Error on save");
     }
 
-    public async Task<PullRequestRegisterResponse> Get(int id, CancellationToken cancellationToken)
+    public async Task<PullRequestRegisterResponse> Get(int id, string? repositoryId, CancellationToken cancellationToken)
     {
-        var user = await _prRepository.Where(x => x.Id == id).FirstAsync(cancellationToken);
+        var query = _prRepository.Where(x => x.Id == id);
+        if (repositoryId != null)
+            query = query.Where(x => x.RepositoryId == repositoryId);
+
+        var user = await query.FirstAsync(cancellationToken);
         if (user == null) throw new ArgumentNullException(nameof(user));
 
         return user.ToResponse();
     }
 
-    public async Task<PullRequestRegisterResponse> GetByCardNumber(string cardNumber, CancellationToken cancellationToken)
+    public async Task<PullRequestRegisterResponse> GetByCardNumber(string cardNumber, string? repositoryId, CancellationToken cancellationToken)
     {
-        var response = await _prRepository
-            .Where(x => x.CardNumber == cardNumber)
+        var query = _prRepository
+            .Where(x => x.CardNumber == cardNumber);
+        if (repositoryId != null)
+            query = query.Where(x => x.RepositoryId == repositoryId);
+
+        var response = await query
             .Include(x => x.Form)
             .FirstOrDefaultAsync(cancellationToken);
         

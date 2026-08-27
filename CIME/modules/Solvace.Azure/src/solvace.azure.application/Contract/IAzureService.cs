@@ -8,5 +8,6 @@ namespace solvace.azure.application.Contract;
 public interface IAzureService
 {
     Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default);
+    Task<AzureCardFullResponse?> GetCardFullAsync(string id, CancellationToken cancellationToken = default);
     Task<AzureWorkItem?> UpdateRootCauseAsync(string id, UpdateRootCauseRequest bodyRaw, CancellationToken cancellationToken = default);
 }

@@ -199,10 +199,10 @@ public class GitHubService : IGitHubService
         };
     }
 
-    public async Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default)
+    public async Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null)
     {
         var owner = _plugin.Configurations.GetConfigurationValue("Owner");
-        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
+        var repo = repository ?? _plugin.Configurations.GetConfigurationValue("Repo");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CommitDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sha))
@@ -244,6 +244,39 @@ public class GitHubService : IGitHubService
         {
             throw new Exception($"Erro ao buscar commit diff: {e.Message}");
         }
+    }
+
+    public async Task<List<BranchCommitResponse>> GetBranchCommitsAsync(string repository, string branch, CancellationToken cancellationToken = default)
+    {
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var repo = string.IsNullOrWhiteSpace(repository)
+            ? _plugin.Configurations.GetConfigurationValue("Repo")
+            : repository;
+
+        var request = new CommitRequest { Sha = branch };
+        var options = new ApiOptions { PageSize = 20, PageCount = 1 };
+
+        var commits = await _gitHubClient.Repository.Commit.GetAll(owner, repo, request, options);
+
+        return commits.Select(c =>
+        {
+            var message = c.Commit.Message ?? string.Empty;
+            var lines = message.Split('\n', 2, StringSplitOptions.None);
+            var title = lines[0].Trim();
+            var description = lines.Length > 1 ? lines[1].Trim() : null;
+            if (string.IsNullOrWhiteSpace(description))
+                description = null;
+
+            return new BranchCommitResponse
+            {
+                Sha = c.Sha,
+                Title = title,
+                Description = description,
+                Author = c.Commit.Author?.Name ?? c.Author?.Login ?? string.Empty,
+                Date = c.Commit.Author?.Date.ToString("o") ?? string.Empty,
+                Url = c.HtmlUrl
+            };
+        }).ToList();
     }
 
     public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)

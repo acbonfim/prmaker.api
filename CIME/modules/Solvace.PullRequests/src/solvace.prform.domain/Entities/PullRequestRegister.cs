@@ -13,6 +13,7 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
     public string RootCause { get; set; } = string.Empty;
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
+    public string? RepositoryId { get; private set; }
     
     private string _description = string.Empty;
     public string Description 
@@ -44,6 +45,13 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
 
         BranchPrefix = request.BranchPrefix;
         BranchName = request.BranchName;
+        RepositoryId = request.RepositoryId;
+    }
+
+    public void SetRepositoryId(string repositoryId)
+    {
+        RepositoryId = repositoryId;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetDescription(string description)
@@ -97,6 +105,7 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             RootCause = RootCause,
             Description = Description,
             BranchName = string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName,
-            BranchPrefix = string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix
+            BranchPrefix = string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix,
+            RepositoryId = RepositoryId
         };
 }
