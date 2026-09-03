@@ -45,6 +45,30 @@ public class TimelineApplication : ITimelineApplication
         return created.ToResponse();
     }
 
+    public async Task<bool> ImportExternalIfNotExistsAsync(
+        string cardNumber,
+        string description,
+        string userName,
+        string sourceMessageId,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sourceMessageId))
+            throw new DomainException("O id da mensagem de origem é obrigatório.");
+
+        if (await _timelineRepository.ExistsBySourceMessageIdAsync(sourceMessageId, cancellationToken))
+            return false;
+
+        // Respeita o limite da coluna Description (2000).
+        var trimmed = (description ?? string.Empty).Trim();
+        if (trimmed.Length > 2000)
+            trimmed = trimmed[..2000];
+
+        var entry = new TimelineEntry(cardNumber, trimmed, userName, sourceMessageId, occurredAt);
+        await _timelineRepository.CreateAsync(entry, cancellationToken);
+        return true;
+    }
+
     public async Task<TimelineEntryResponse?> GetByIdAsync(int id, CancellationToken cancellationToken)
     {
         var entry = await _timelineRepository.GetByIdAsync(id, cancellationToken);

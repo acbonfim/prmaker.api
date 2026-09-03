@@ -6,6 +6,7 @@ public class HandoverResponse
     public string CardNumber { get; set; } = string.Empty;
     public string? RepositoryId { get; set; }
     public string Content { get; set; } = string.Empty;
+    public bool IsPublic { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

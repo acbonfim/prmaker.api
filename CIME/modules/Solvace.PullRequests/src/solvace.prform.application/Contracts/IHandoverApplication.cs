@@ -7,4 +7,5 @@ public interface IHandoverApplication : ICommitable
 {
     Task<HandoverResponse?> GetByCardNumber(string cardNumber, CancellationToken cancellationToken);
     Task<HandoverResponse> Save(HandoverRequest request, CancellationToken cancellationToken);
+    Task<HandoverResponse?> SetVisibility(string cardNumber, bool isPublic, CancellationToken cancellationToken);
 }

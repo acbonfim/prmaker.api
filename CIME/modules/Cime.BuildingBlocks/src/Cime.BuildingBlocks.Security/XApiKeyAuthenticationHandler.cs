@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -60,6 +61,12 @@ namespace Cime.BuildingBlocks.Security
                 return AuthenticateResult.NoResult();
 
             if(Request.Method == "OPTIONS")
+                return AuthenticateResult.NoResult();
+
+            // Respeita [AllowAnonymous]: endpoints marcados como públicos não exigem x-api-key.
+            // Sem isto, este handler grava 401 direto na Response e o [AllowAnonymous] do
+            // controller não tem efeito (ex.: link público do handover).
+            if (Context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() != null)
                 return AuthenticateResult.NoResult();
 
             if (!Request.Headers.TryGetValue("x-api-key", out var apiKey))

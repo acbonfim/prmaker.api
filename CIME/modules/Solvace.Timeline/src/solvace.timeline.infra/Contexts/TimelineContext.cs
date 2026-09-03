@@ -22,9 +22,14 @@ public class TimelineContext : DbContext
             entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.UserName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UserId);
+            entity.Property(e => e.SourceMessageId).HasMaxLength(200);
             entity.Property(e => e.CreatedAt).IsRequired();
 
             entity.HasIndex(e => e.CardNumber);
+
+            // Dedup de importações: no MySQL múltiplos NULL são permitidos, então registros
+            // internos (sem origem) não conflitam; mensagens importadas não duplicam.
+            entity.HasIndex(e => e.SourceMessageId).IsUnique();
         });
     }
 }

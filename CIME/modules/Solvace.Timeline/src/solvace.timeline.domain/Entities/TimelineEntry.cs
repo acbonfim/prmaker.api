@@ -30,6 +30,13 @@ public class TimelineEntry : IEntity<int>, IDescribable, IAuditableEntity
     /// <summary>Nome de quem realizou o registro. Sempre preenchido.</summary>
     public string UserName { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Id da mensagem de origem quando o registro foi importado de uma fonte externa
+    /// (ex.: mensagem de um grupo do Teams). Nulo para registros criados diretamente.
+    /// Usado para impedir importação duplicada.
+    /// </summary>
+    public string? SourceMessageId { get; private set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -44,6 +51,20 @@ public class TimelineEntry : IEntity<int>, IDescribable, IAuditableEntity
         SetDescription(description);
         CreatedAt = DateTimeOffset.UtcNow;
         CreatedBy = userId?.ToString() ?? userName;
+    }
+
+    /// <summary>
+    /// Cria um registro importado de uma fonte externa (ex.: Teams), preservando o
+    /// id da mensagem de origem (para dedup) e a data/hora original da ocorrência.
+    /// </summary>
+    public TimelineEntry(string cardNumber, string description, string userName, string sourceMessageId, DateTimeOffset occurredAt)
+        : this(cardNumber, description, null, userName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceMessageId))
+            throw new DomainException("O id da mensagem de origem é obrigatório para registros importados.");
+
+        SourceMessageId = sourceMessageId;
+        CreatedAt = occurredAt;
     }
 
     private void SetCardNumber(string cardNumber)
@@ -96,6 +117,7 @@ public class TimelineEntry : IEntity<int>, IDescribable, IAuditableEntity
         Description = Description,
         UserId = UserId,
         UserName = UserName,
+        SourceMessageId = SourceMessageId,
         CreatedAt = CreatedAt,
         UpdatedAt = UpdatedAt
     };

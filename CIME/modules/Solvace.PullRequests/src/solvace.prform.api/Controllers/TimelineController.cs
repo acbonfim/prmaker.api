@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using solvace.prform.Teams;
 using solvace.timeline.application.Contracts;
 using solvace.timeline.domain.Requests;
 using solvace.timeline.domain.Responses;
@@ -38,6 +39,32 @@ public class TimelineController : ControllerBase
 
         var result = await _timelineApplication.CreateAsync(request, userId, cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Ingestão de uma mensagem do Teams enviada pelo frontend (após login MSAL do usuário e
+    /// escolha do grupo), sem exigir acesso ao Microsoft Graph pelo backend.
+    /// Não duplica (dedup pelo id da mensagem).
+    /// </summary>
+    [HttpPost("ingest-teams")]
+    public async Task<ActionResult> IngestTeamsMessage(
+        [FromBody] IngestTeamsMessageRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.CardNumber)
+            || string.IsNullOrWhiteSpace(request.MessageId)
+            || string.IsNullOrWhiteSpace(request.UserName))
+            return BadRequest("Os campos 'cardNumber', 'messageId' e 'userName' são obrigatórios.");
+
+        var text = (request.Text ?? string.Empty).Trim();
+        if (text.Length < 3)
+            return Ok(new { imported = false, reason = "empty" });
+
+        var created = await _timelineApplication.ImportExternalIfNotExistsAsync(
+            request.CardNumber, text, request.UserName, request.MessageId,
+            request.OccurredAt ?? DateTimeOffset.UtcNow, cancellationToken);
+
+        return Ok(new { imported = created });
     }
 
     /// <summary>

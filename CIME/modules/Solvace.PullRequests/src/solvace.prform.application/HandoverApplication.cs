@@ -42,15 +42,30 @@ public class HandoverApplication : IHandoverApplication
 
         if (existing is not null)
         {
+            // Regeneração preserva a visibilidade atual; o flag só muda pelo endpoint dedicado.
             existing.UpdateContent(request.Content, request.RepositoryId);
             _repository.Update(existing);
             await CommitAsync(cancellationToken);
             return existing.ToResponse();
         }
 
-        var handover = new HandoverRegister(request.CardNumber, request.Content, request.RepositoryId);
+        var handover = new HandoverRegister(request.CardNumber, request.Content, request.RepositoryId, request.IsPublic);
         var created = await _repository.AddAsync(handover, cancellationToken);
         await CommitAsync(cancellationToken);
         return created.Entity.ToResponse();
+    }
+
+    public async Task<HandoverResponse?> SetVisibility(string cardNumber, bool isPublic, CancellationToken cancellationToken)
+    {
+        var existing = await _repository
+            .FirstOrDefaultAsync(x => x.CardNumber == cardNumber, cancellationToken);
+
+        if (existing is null)
+            return null;
+
+        existing.SetVisibility(isPublic);
+        _repository.Update(existing);
+        await CommitAsync(cancellationToken);
+        return existing.ToResponse();
     }
 }

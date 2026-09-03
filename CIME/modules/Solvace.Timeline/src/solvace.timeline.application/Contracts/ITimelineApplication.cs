@@ -11,6 +11,13 @@ public interface ITimelineApplication
     /// </summary>
     Task<TimelineEntryResponse> CreateAsync(CreateTimelineEntryRequest request, Guid? userId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Cria um registro externo importado (ex.: mensagem do Teams), a menos que já exista
+    /// um registro com o mesmo <paramref name="sourceMessageId"/>. Retorna true se criou,
+    /// false se já existia (importação duplicada ignorada).
+    /// </summary>
+    Task<bool> ImportExternalIfNotExistsAsync(string cardNumber, string description, string userName, string sourceMessageId, DateTimeOffset occurredAt, CancellationToken cancellationToken);
+
     Task<TimelineEntryResponse?> GetByIdAsync(int id, CancellationToken cancellationToken);
 
     Task<List<TimelineEntryResponse>> GetByCardNumberAsync(string cardNumber, CancellationToken cancellationToken);
