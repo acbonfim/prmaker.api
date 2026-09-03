@@ -1,6 +1,7 @@
 using System.Reflection;
 using Cime.BuildingBlocks.Cache;
 using Cime.BuildingBlocks.CorsPolice;
+using Cime.BuildingBlocks.RealTime;
 using Cime.BuildingBlocks.ExceptionHandlerMiddleware;
 using Cime.BuildingBlocks.Security;
 using Cime.BuildingBlocks.Swagger;
@@ -33,12 +34,17 @@ builder.Services.AddScoped<IPluginApplication, PluginApplication>();
 builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
 builder.Services.AddHostedService<PluginCacheHostedService>();
 
+// Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o
+// ambiente. Registrado antes de AddRealTimeService (que usa TryAdd) para prevalecer sobre o default.
+builder.Services.AddSingleton<IRealTimeOptionsProvider, PluginRealTimeOptionsProvider>();
+
 builder.Services
     .AddEndpointsApiExplorer()
     .AddSecurityAuth()
     .AddGlobalServices()
     .AddSwaggerConfig(projectName!)
     .AddCorsPolice()
+    .AddRealTimeService(builder.Configuration)
     .AddCacheService()
     .AddGitHubModule(builder.Configuration)
     .AddAzureModule(builder.Configuration)
@@ -100,6 +106,10 @@ app.UseHttpsRedirection()
     .UseSwaggerConfig(projectName!)
     .UseCors("CorsPolicy")
     .UseMiddleware<ExceptionHandlerMiddleware>();
+
+// Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware
+// rode cedo no pipeline (antes da execução dos endpoints).
+app.UseRealTimeService();
 
 app.MapControllers();
 app.AddHealthCheckEndpoint(projectName!);

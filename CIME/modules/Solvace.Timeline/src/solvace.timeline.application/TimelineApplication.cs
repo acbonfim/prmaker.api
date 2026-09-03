@@ -1,6 +1,8 @@
+using Cime.BuildingBlocks.RealTime;
 using solvace.timeline.application.Contracts;
 using solvace.timeline.domain.Entities;
 using solvace.timeline.domain.Entities.Base;
+using solvace.timeline.domain.RealTime;
 using solvace.timeline.domain.Requests;
 using solvace.timeline.domain.Responses;
 
@@ -10,11 +12,16 @@ public class TimelineApplication : ITimelineApplication
 {
     private readonly ITimelineRepository _timelineRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IRealTimeNotifier _realTimeNotifier;
 
-    public TimelineApplication(ITimelineRepository timelineRepository, IUserRepository userRepository)
+    public TimelineApplication(
+        ITimelineRepository timelineRepository,
+        IUserRepository userRepository,
+        IRealTimeNotifier realTimeNotifier)
     {
         _timelineRepository = timelineRepository;
         _userRepository = userRepository;
+        _realTimeNotifier = realTimeNotifier;
     }
 
     public async Task<TimelineEntryResponse> CreateAsync(
@@ -42,6 +49,8 @@ public class TimelineApplication : ITimelineApplication
         var entry = new TimelineEntry(request.CardNumber, request.Description, userId, userName);
         var created = await _timelineRepository.CreateAsync(entry, cancellationToken);
 
+        await NotifyTimelineUpdatedAsync(created.CardNumber, TimelineRealTimeEvents.Actions.Create, created.Id, cancellationToken);
+
         return created.ToResponse();
     }
 
@@ -65,7 +74,10 @@ public class TimelineApplication : ITimelineApplication
             trimmed = trimmed[..2000];
 
         var entry = new TimelineEntry(cardNumber, trimmed, userName, sourceMessageId, occurredAt);
-        await _timelineRepository.CreateAsync(entry, cancellationToken);
+        var created = await _timelineRepository.CreateAsync(entry, cancellationToken);
+
+        await NotifyTimelineUpdatedAsync(cardNumber, TimelineRealTimeEvents.Actions.Create, created.Id, cancellationToken);
+
         return true;
     }
 
@@ -93,6 +105,8 @@ public class TimelineApplication : ITimelineApplication
         entry.UpdateDescription(request.Description, updatedBy);
         var updated = await _timelineRepository.UpdateAsync(entry, cancellationToken);
 
+        await NotifyTimelineUpdatedAsync(updated.CardNumber, TimelineRealTimeEvents.Actions.Update, updated.Id, cancellationToken);
+
         return updated.ToResponse();
     }
 
@@ -102,5 +116,32 @@ public class TimelineApplication : ITimelineApplication
                     ?? throw new DomainException("Registro da linha do tempo não encontrado.");
 
         await _timelineRepository.DeleteAsync(entry, cancellationToken);
+
+        await NotifyTimelineUpdatedAsync(entry.CardNumber, TimelineRealTimeEvents.Actions.Delete, entry.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Avisa (fire-and-forget seguro) quem está no card que a timeline mudou. O frontend
+    /// refaz o GET autenticado — nenhum conteúdo trafega pelo WS. O <paramref name="action"/> e o
+    /// <paramref name="entryId"/> permitem ao cliente mostrar o skeleton no lugar certo
+    /// (comentário novo no fim vs. o comentário específico editado/excluído). Nunca quebra a operação.
+    /// </summary>
+    private async Task NotifyTimelineUpdatedAsync(string cardNumber, string action, int entryId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(cardNumber))
+            return;
+
+        try
+        {
+            await _realTimeNotifier.NotifyGroupAsync(
+                TimelineRealTimeEvents.Group(cardNumber),
+                TimelineRealTimeEvents.EventTimelineUpdated,
+                new { cardNumber, action, entryId },
+                cancellationToken);
+        }
+        catch
+        {
+            // Notificação em tempo real é best-effort; falha aqui não deve afetar a operação principal.
+        }
     }
 }

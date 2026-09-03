@@ -31,7 +31,7 @@
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalModels\Cime.BuildingBlocks.GlobalModels.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.ExceptionHandlerMiddleware\Cime.BuildingBlocks.ExceptionHandlerMiddleware.csproj"/>
         <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
-        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.CorsPolice\Cime.BuildingBlocks.CorsPolice.csproj"/>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.RealTime\Cime.BuildingBlocks.RealTime.csproj"/>
         <ProjectReference Include="..\solvace.prform.application\solvace.prform.application.csproj"/>
         <ProjectReference Include="..\solvace.prform.domain\solvace.prform.domain.csproj"/>
         <ProjectReference Include="..\..\..\Solvace.Azure\src\solvace.azure.application\solvace.azure.application.csproj"/>

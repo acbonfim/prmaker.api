@@ -19,6 +19,7 @@ namespace Cime.BuildingBlocks.Security
         private readonly string _urlAuth;
         private readonly string[] _servicesAllowed;
         private readonly bool _verifyOnlineUserServices;
+        private readonly string _realTimeHubPath;
 
         [Obsolete]
         public XApiKeyAuthenticationHandler(
@@ -36,6 +37,11 @@ namespace Cime.BuildingBlocks.Security
             _servicesAllowed = servicesAllowed ?? Array.Empty<string>();
 
             _verifyOnlineUserServices = Convert.ToBoolean(authSection["VerifyOnlineUserServices"]!);
+
+            // Caminho do hub de tempo real: o SignalR autentica o esquema padrão no negotiate,
+            // então este handler precisa ignorar o hub (a autorização do WS é feita pelo
+            // RealTimeApiKeyMiddleware). Mantém consistência com o RealTime:HubPath do appsettings.
+            _realTimeHubPath = configuration.GetSection("RealTime")["HubPath"] ?? "/ws";
         }
 
         protected override async Task<Task> HandleChallengeAsync(AuthenticationProperties properties)
@@ -58,6 +64,10 @@ namespace Cime.BuildingBlocks.Security
                 return AuthenticateResult.NoResult();
 
             if (Request.Path.ToString().StartsWith("/swagger"))
+                return AuthenticateResult.NoResult();
+
+            // Hub de tempo real (SignalR): autorização feita pelo RealTimeApiKeyMiddleware.
+            if (Request.Path.StartsWithSegments(_realTimeHubPath))
                 return AuthenticateResult.NoResult();
 
             if(Request.Method == "OPTIONS")

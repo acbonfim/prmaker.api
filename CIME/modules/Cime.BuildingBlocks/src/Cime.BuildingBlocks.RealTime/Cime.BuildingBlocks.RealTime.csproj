@@ -4,11 +4,11 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <RootNamespace>Cime.BuildingBlocks.RealTime</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\solvace.timeline.domain\solvace.timeline.domain.csproj" />
-      <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.RealTime\Cime.BuildingBlocks.RealTime.csproj" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
 </Project>
