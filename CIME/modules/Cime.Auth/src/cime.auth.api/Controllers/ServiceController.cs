@@ -1,3 +1,4 @@
+using cliqx.auth.api.Dtos;
 using cliqx.auth.api.Models;
 using cliqx.auth.api.Services.Application;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,7 @@ namespace cliqx.auth.api.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult> Create(MyService service)
+        public async Task<ActionResult> Create(ServiceDto service)
         {
             var ret = await _service.Create(service);
 
@@ -25,6 +26,28 @@ namespace cliqx.auth.api.Controllers
                 return StatusCode(StatusCodes.Status201Created,ret);
 
             return BadRequest();
+        }
+
+        [HttpPut]
+        public async Task<ActionResult> Update(ServiceDto service)
+        {
+            var ret = await _service.Update(service);
+
+            if(ret.Success)
+                return StatusCode(StatusCodes.Status200OK,ret);
+
+            return StatusCode(StatusCodes.Status400BadRequest,ret);
+        }
+
+        [HttpDelete]
+        public async Task<ActionResult> Delete([FromQuery] string id)
+        {
+            var ret = await _service.Delete(id);
+
+            if(ret.Success)
+                return StatusCode(StatusCodes.Status200OK,ret);
+
+            return StatusCode(StatusCodes.Status400BadRequest,ret);
         }
 
         [HttpGet]
@@ -77,6 +100,17 @@ namespace cliqx.auth.api.Controllers
         public async Task<ActionResult> AddUserToService([FromQuery]int userId, [FromQuery] string serviceId)
         {
             var ret = await _service.AddUserToService(userId, serviceId);
+
+            if(ret.Success)
+                return StatusCode(StatusCodes.Status200OK,ret);
+
+            return StatusCode(StatusCodes.Status400BadRequest,ret);
+        }
+
+        [HttpDelete]
+        public async Task<ActionResult> RemoveUserFromService([FromQuery]int userId, [FromQuery] string serviceId)
+        {
+            var ret = await _service.RemoveUserFromService(userId, serviceId);
 
             if(ret.Success)
                 return StatusCode(StatusCodes.Status200OK,ret);

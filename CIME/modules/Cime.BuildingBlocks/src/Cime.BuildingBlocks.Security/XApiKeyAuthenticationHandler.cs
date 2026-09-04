@@ -1,4 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -187,68 +189,97 @@ namespace Cime.BuildingBlocks.Security
             return false;
         }
 
+        // HttpClient único e reutilizável (evita exaustão de sockets / tempestade de
+        // handshakes TLS que causava "Connection reset by peer" sob carga — ex.: tráfego
+        // do WebSocket). NUNCA usar 'new HttpClient()' por requisição.
+        private static readonly HttpClient _http = CreateHttpClient();
+
+        private static HttpClient CreateHttpClient()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                MaxConnectionsPerServer = 20,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                // Força HTTP/1.1 para evitar negociações ALPN/h2 que alguns hosts
+                // compartilhados resetam durante o handshake.
+                EnableMultipleHttp2Connections = false
+            };
+
+            var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(15),
+                DefaultRequestVersion = HttpVersion.Version11,
+                DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+            };
+
+            return client;
+        }
+
+        // Retenta falhas transitórias (reset de conexão/timeout) com backoff curto.
+        private static async Task<HttpResponseMessage> SendWithRetryAsync(Func<Task<HttpResponseMessage>> send, int maxAttempts = 3)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await send().ConfigureAwait(false);
+                }
+                catch (Exception) when (attempt < maxAttempts)
+                {
+                    await Task.Delay(150 * attempt).ConfigureAwait(false);
+                }
+            }
+        }
+
         private async Task<bool> HasAccessToServices(int userId)
         {
             try
             {
-                using (var client = new HttpClient())
+                var urlBase = $"{_urlAuth}/Service/HasAccessToServices?userId={userId}";
+                var payload = JsonConvert.SerializeObject(_servicesAllowed);
+
+                using var response = await SendWithRetryAsync(() =>
                 {
-                    var urlBase = $"{_urlAuth}/Service/HasAccessToServices?userId={userId}";
-                    HttpContent content = new StringContent(JsonConvert.SerializeObject(_servicesAllowed), Encoding.UTF8, "application/json");
+                    var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                    return _http.PostAsync(urlBase, content);
+                }).ConfigureAwait(false);
 
-                    HttpResponseMessage response = await client.PostAsync(urlBase, content).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = response.Content.ReadAsStringAsync().Result.AsTypedReturn<RetornoDto<object>>();
+                var responseContent = (await response.Content.ReadAsStringAsync().ConfigureAwait(false))
+                    .AsTypedReturn<RetornoDto<object>>();
 
-                        return (bool)responseContent.Object;
-                    }
-                    else
-                    {
-                        throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
-                    }
-
-                }
+                return (bool)responseContent.Object;
             }
             catch (System.Exception e)
             {
                 throw new Exception("Erro ao processar a requisição.", e);
             }
-
         }
-
-
 
         private async Task<bool> IsUserActive(string username)
         {
             try
             {
-                using (var client = new HttpClient())
-                {
-                    var urlBase = $"{_urlAuth}/user/is-user-active?username={username}";
-                    HttpContent content = new StringContent("", Encoding.UTF8, "application/json");
+                var urlBase = $"{_urlAuth}/user/is-user-active?username={Uri.EscapeDataString(username)}";
 
-                    HttpResponseMessage response = await client.GetAsync(urlBase).ConfigureAwait(false);
+                using var response = await SendWithRetryAsync(() => _http.GetAsync(urlBase)).ConfigureAwait(false);
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = response.Content.ReadAsStringAsync().Result.AsTypedReturn<RetornoDto<object>>();
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
 
-                        return (bool)responseContent.Object;
-                    }
-                    else
-                    {
-                        throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
-                    }
+                var responseContent = (await response.Content.ReadAsStringAsync().ConfigureAwait(false))
+                    .AsTypedReturn<RetornoDto<object>>();
 
-                }
+                return (bool)responseContent.Object;
             }
             catch (System.Exception e)
             {
                 throw new Exception("Erro ao processar a requisição.", e);
             }
-
         }
     }
 

@@ -19,8 +19,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 var connetionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<DefaultContext>(x => 
-    x.UseMySql(connetionString, ServerVersion.AutoDetect(connetionString))
+builder.Services.AddDbContext<DefaultContext>(x =>
+    x.UseSqlServer(connetionString)
     .LogTo(Console.WriteLine, LogLevel.Information)
     .EnableSensitiveDataLogging()
     .EnableDetailedErrors()

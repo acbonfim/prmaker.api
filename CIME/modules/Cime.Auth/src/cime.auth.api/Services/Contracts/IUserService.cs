@@ -14,6 +14,9 @@ public interface IUserService
     Task<RetornoDto> IsUserActive(string username);
     Task<RetornoDto> RefreshToken(TokenDto tokenDto);
     Task<RetornoDto> ConfirmEmail(string userName, string code);
-    Task<RetornoDto> GetAllUsers(int page, int itemsPerPage);
-    
+    Task<RetornoDto> GetAllUsers(int page, int itemsPerPage, string? search = null);
+    Task<RetornoDto> ActiveToggle(int userId, bool isActive);
+    Task<RetornoDto> UpdateUser(UpdateUserDto userDto);
+    Task<RetornoDto> UpdateUserRoles(int userId, List<string> roles);
+
 }

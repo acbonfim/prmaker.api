@@ -118,10 +118,52 @@ public class UserController : ControllerBase
 
     [Authorize("Bearer", Roles = "admin,support")]
     [HttpPost("GetAll")]
-    public async Task<IActionResult> GetAll([FromQuery] int page,[FromQuery] [Range(1,100)] int itemsPerPage)
+    public async Task<IActionResult> GetAll([FromQuery] int page,[FromQuery] [Range(1,100)] int itemsPerPage, [FromQuery] string? search = null)
     {
-        var retorno = await this._userService.GetAllUsers(page,itemsPerPage);
-        
+        var retorno = await this._userService.GetAllUsers(page,itemsPerPage, search);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [Authorize("Bearer", Roles = "admin,support")]
+    [HttpPatch("ActiveToggle")]
+    public async Task<IActionResult> ActiveToggle([FromQuery] int userId, [FromQuery] bool isActive)
+    {
+        var retorno = await this._userService.ActiveToggle(userId, isActive);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [Authorize("Bearer", Roles = "admin,support")]
+    [HttpPut("Update")]
+    public async Task<IActionResult> Update(UpdateUserDto user)
+    {
+        var retorno = await this._userService.UpdateUser(user);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [Authorize("Bearer", Roles = "admin,support")]
+    [HttpPut("UpdateRoles")]
+    public async Task<IActionResult> UpdateRoles(UpdateUserRolesDto dto)
+    {
+        var retorno = await this._userService.UpdateUserRoles(dto.UserId, dto.Roles);
+
         if(retorno.Success){
             return Ok(retorno);
         }else

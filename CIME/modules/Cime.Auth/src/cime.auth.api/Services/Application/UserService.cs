@@ -419,19 +419,234 @@ IPasswordService passService)
         }
     }
 
-    public async Task<RetornoDto> GetAllUsers(int page, int itemsPerPage)
+    public async Task<RetornoDto> GetAllUsers(int page, int itemsPerPage, string? search = null)
     {
         var retorno = new RetornoDto();
         try
         {
-            var query = _userManager.Users;
+            var query = _userManager.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .AsQueryable();
 
-            var count = query.Count();
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+                query = query.Where(u =>
+                    (u.FullName != null && u.FullName.ToLower().Contains(term))
+                    || (u.UserName != null && u.UserName.ToLower().Contains(term))
+                    || (u.Email != null && u.Email.ToLower().Contains(term)));
+            }
+
+            var count = await query.CountAsync();
             var totalPages = (int)Math.Ceiling((double)count / itemsPerPage);
-            var ret = query.Skip(page * itemsPerPage).Take(itemsPerPage);
 
-            retorno.Object = _mapper.Map<List<UserDto>>(ret);
+            var users = await query
+                .OrderBy(u => u.FullName)
+                .Skip(page * itemsPerPage)
+                .Take(itemsPerPage)
+                .ToListAsync();
+
+            var elements = users.Select(u => new UserListItemDto
+            {
+                Id = u.Id,
+                UserName = u.UserName,
+                Email = u.Email,
+                FullName = u.FullName,
+                Departamento = u.Departamento,
+                Active = u.Active,
+                ExternalId = u.ExternalId,
+                CompanyId = u.CompanyId,
+                ChannelOrigin = u.ChannelOrigin,
+                UserRoles = (u.UserRoles ?? new List<UserRole>())
+                    .Where(ur => ur.Role != null)
+                    .Select(ur => new UserRoleItemDto
+                    {
+                        Role = new RoleItemDto { Id = ur.Role.Id, Name = ur.Role.Name }
+                    }).ToList()
+            }).ToList();
+
+            retorno.Object = new PagedResultDto<UserListItemDto>
+            {
+                Elements = elements,
+                Page = page,
+                ItemsPerPage = itemsPerPage,
+                Total = count,
+                TotalPages = totalPages,
+                StillFetchable = (page + 1) * itemsPerPage < count
+            };
+            retorno.StatusCode = StatusCodes.Status200OK;
             retorno.Success = true;
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    public async Task<RetornoDto> ActiveToggle(int userId, bool isActive)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (userFound is null)
+            {
+                retorno.Message = "Usuario não encontrado";
+                retorno.StatusCode = StatusCodes.Status404NotFound;
+                return retorno;
+            }
+
+            userFound.Active = isActive;
+
+            var result = await _userManager.UpdateAsync(userFound);
+
+            if (!result.Succeeded)
+            {
+                retorno.Message = "Erro ao atualizar status do usuário";
+                retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                retorno.Object = result.Errors;
+                return retorno;
+            }
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Message = isActive ? "Usuário ativado" : "Usuário desativado";
+            retorno.Object = new { id = userFound.Id, active = userFound.Active };
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    public async Task<RetornoDto> UpdateUser(UpdateUserDto userDto)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userDto.Id);
+
+            if (userFound is null)
+            {
+                retorno.Message = "Usuario não encontrado";
+                retorno.StatusCode = StatusCodes.Status404NotFound;
+                return retorno;
+            }
+
+            if (!string.IsNullOrWhiteSpace(userDto.FullName))
+                userFound.FullName = userDto.FullName.Trim();
+
+            if (!string.IsNullOrWhiteSpace(userDto.Departamento))
+                userFound.Departamento = userDto.Departamento.Trim();
+
+            if (!string.IsNullOrWhiteSpace(userDto.Email))
+            {
+                userFound.Email = userDto.Email.Trim();
+                userFound.NormalizedEmail = userDto.Email.Trim().ToUpper();
+            }
+
+            var result = await _userManager.UpdateAsync(userFound);
+
+            if (!result.Succeeded)
+            {
+                retorno.Message = "Erro ao atualizar usuário";
+                retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                retorno.Object = result.Errors;
+                return retorno;
+            }
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Message = "Usuário atualizado com sucesso";
+            retorno.Object = _mapper.Map<UserDto>(userFound);
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    public async Task<RetornoDto> UpdateUserRoles(int userId, List<string> roles)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (userFound is null)
+            {
+                retorno.Message = "Usuario não encontrado";
+                retorno.StatusCode = StatusCodes.Status404NotFound;
+                return retorno;
+            }
+
+            var desired = (roles ?? new List<string>())
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .Select(r => r.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Garante que todos os cargos solicitados existem antes de alterar nada.
+            foreach (var role in desired)
+            {
+                if (!await _roleInManager.RoleExistsAsync(role))
+                {
+                    retorno.Message = $"Cargo '{role}' não encontrado";
+                    retorno.StatusCode = StatusCodes.Status404NotFound;
+                    return retorno;
+                }
+            }
+
+            var currentRoles = await _userManager.GetRolesAsync(userFound);
+
+            var toAdd = desired
+                .Where(r => !currentRoles.Contains(r, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            var toRemove = currentRoles
+                .Where(r => !desired.Contains(r, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            if (toRemove.Any())
+            {
+                var removeResult = await _userManager.RemoveFromRolesAsync(userFound, toRemove);
+                if (!removeResult.Succeeded)
+                {
+                    retorno.Message = "Erro ao remover cargos";
+                    retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                    retorno.Object = removeResult.Errors;
+                    return retorno;
+                }
+            }
+
+            if (toAdd.Any())
+            {
+                var addResult = await _userManager.AddToRolesAsync(userFound, toAdd);
+                if (!addResult.Succeeded)
+                {
+                    retorno.Message = "Erro ao adicionar cargos";
+                    retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                    retorno.Object = addResult.Errors;
+                    return retorno;
+                }
+            }
+
+            var updatedRoles = await _userManager.GetRolesAsync(userFound);
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Message = "Cargos atualizados com sucesso";
+            retorno.Object = updatedRoles;
             return retorno;
         }
         catch (System.Exception e)
