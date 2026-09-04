@@ -458,6 +458,7 @@ IPasswordService passService)
                 ExternalId = u.ExternalId,
                 CompanyId = u.CompanyId,
                 ChannelOrigin = u.ChannelOrigin,
+                ImagemUrlUser = u.ImagemUrlUser,
                 UserRoles = (u.UserRoles ?? new List<UserRole>())
                     .Where(ur => ur.Role != null)
                     .Select(ur => new UserRoleItemDto
@@ -647,6 +648,128 @@ IPasswordService passService)
             retorno.StatusCode = StatusCodes.Status200OK;
             retorno.Message = "Cargos atualizados com sucesso";
             retorno.Object = updatedRoles;
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    public async Task<RetornoDto> ChangePassword(string username, string currentPassword, string newPassword)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var userFound = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpper());
+
+            if (userFound is null)
+            {
+                retorno.Message = "Usuario não encontrado";
+                retorno.StatusCode = StatusCodes.Status404NotFound;
+                return retorno;
+            }
+
+            if (string.IsNullOrWhiteSpace(newPassword))
+            {
+                retorno.Message = "Nova senha não preenchida";
+                retorno.StatusCode = StatusCodes.Status400BadRequest;
+                return retorno;
+            }
+
+            var result = await _userManager.ChangePasswordAsync(userFound, currentPassword, newPassword);
+
+            if (!result.Succeeded)
+            {
+                retorno.Message = result.Errors.FirstOrDefault()?.Description ?? "Não foi possível alterar a senha";
+                retorno.StatusCode = StatusCodes.Status400BadRequest;
+                retorno.Object = result.Errors;
+                return retorno;
+            }
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Message = "Senha alterada com sucesso";
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    public async Task<RetornoDto> UpdatePhoto(string username, string imageUrl)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var userFound = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpper());
+
+            if (userFound is null)
+            {
+                retorno.Message = "Usuario não encontrado";
+                retorno.StatusCode = StatusCodes.Status404NotFound;
+                return retorno;
+            }
+
+            userFound.ImagemUrlUser = imageUrl;
+
+            var result = await _userManager.UpdateAsync(userFound);
+
+            if (!result.Succeeded)
+            {
+                retorno.Message = "Erro ao atualizar a foto";
+                retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                retorno.Object = result.Errors;
+                return retorno;
+            }
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Message = "Foto atualizada com sucesso";
+            retorno.Object = new { imageUrl = userFound.ImagemUrlUser };
+            return retorno;
+        }
+        catch (System.Exception e)
+        {
+            retorno.Message = e.Message;
+            retorno.StatusCode = StatusCodes.Status500InternalServerError;
+            return retorno;
+        }
+    }
+
+    [AllowAnonymous]
+    public async Task<RetornoDto> GetPhotosByExternalIds(List<string> externalIds)
+    {
+        var retorno = new RetornoDto();
+        try
+        {
+            var guids = (externalIds ?? new List<string>())
+                .Select(x => Guid.TryParse(x, out var g) ? (Guid?)g : null)
+                .Where(g => g.HasValue)
+                .Select(g => g.Value)
+                .Distinct()
+                .ToList();
+
+            var users = await _userManager.Users
+                .Where(u => guids.Contains(u.ExternalId))
+                .Select(u => new
+                {
+                    externalId = u.ExternalId,
+                    fullName = u.FullName,
+                    imageUrl = u.ImagemUrlUser
+                })
+                .ToListAsync();
+
+            retorno.Success = true;
+            retorno.StatusCode = StatusCodes.Status200OK;
+            retorno.Object = users;
             return retorno;
         }
         catch (System.Exception e)

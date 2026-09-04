@@ -59,8 +59,9 @@ public class PluginApplication : IPluginApplication
     public async Task<PluginRespose> UpdateConfiguration(int id, PluginRequest request, CancellationToken cancellationToken)
     {
         var plugin = await GetPluginById(id, cancellationToken);
-        
+
         plugin.SetConfigurations(request.Configurations);
+        plugin.SetAdminOnly(request.AdminOnly);
 
         if (await CommitAsync(cancellationToken))
         {

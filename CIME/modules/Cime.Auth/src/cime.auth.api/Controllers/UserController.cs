@@ -29,7 +29,7 @@ public class UserController : ControllerBase
         _accessor = accessor;
     }
 
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     [HttpPost("Register")]
     public async Task<IActionResult> Register(UserDto user)
     {
@@ -88,6 +88,20 @@ public class UserController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpPost("PhotosByExternalIds")]
+    public async Task<IActionResult> PhotosByExternalIds([FromBody] string[] externalIds)
+    {
+        var retorno = await this._userService.GetPhotosByExternalIds(externalIds?.ToList() ?? new List<string>());
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [AllowAnonymous]
     [HttpGet("is-user-active")]
     public async Task<IActionResult> IsUserActive([FromQuery] string username)
     {
@@ -116,7 +130,7 @@ public class UserController : ControllerBase
         }
     }
 
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     [HttpPost("GetAll")]
     public async Task<IActionResult> GetAll([FromQuery] int page,[FromQuery] [Range(1,100)] int itemsPerPage, [FromQuery] string? search = null)
     {
@@ -130,7 +144,7 @@ public class UserController : ControllerBase
         }
     }
 
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     [HttpPatch("ActiveToggle")]
     public async Task<IActionResult> ActiveToggle([FromQuery] int userId, [FromQuery] bool isActive)
     {
@@ -144,7 +158,7 @@ public class UserController : ControllerBase
         }
     }
 
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     [HttpPut("Update")]
     public async Task<IActionResult> Update(UpdateUserDto user)
     {
@@ -158,11 +172,41 @@ public class UserController : ControllerBase
         }
     }
 
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     [HttpPut("UpdateRoles")]
     public async Task<IActionResult> UpdateRoles(UpdateUserRolesDto dto)
     {
         var retorno = await this._userService.UpdateUserRoles(dto.UserId, dto.Roles);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [Authorize("Bearer")]
+    [HttpPost("ChangePassword")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
+    {
+        var username = _accessor.HttpContext.User.Claims.First(x => x.Type == ClaimTypes.Name).Value;
+        var retorno = await this._userService.ChangePassword(username, dto.CurrentPassword, dto.NewPassword);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    [Authorize("Bearer")]
+    [HttpPost("UpdatePhoto")]
+    public async Task<IActionResult> UpdatePhoto(UpdatePhotoDto dto)
+    {
+        var username = _accessor.HttpContext.User.Claims.First(x => x.Type == ClaimTypes.Name).Value;
+        var retorno = await this._userService.UpdatePhoto(username, dto.ImageUrl);
 
         if(retorno.Success){
             return Ok(retorno);

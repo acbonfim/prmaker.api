@@ -8,7 +8,7 @@ namespace cliqx.auth.api.Controllers
 {
     [ApiController]
     [Route("api/[controller]/[action]")]
-    [Authorize("Bearer", Roles = "admin,support")]
+    [Authorize("Bearer", Roles = "admin")]
     public class ServiceController : ControllerBase
     {
         public MyServicesService _service { get; }

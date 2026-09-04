@@ -35,6 +35,40 @@ public class PasswordController : ControllerBase
     }
 
     /// <summary>
+    /// Valida se o código de acesso (primeiro acesso/redefinição) existe e não expirou.
+    /// </summary>
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> ValidateCode([FromQuery] string userName, [FromQuery] string code)
+    {
+        var retorno = await _passwordService.ValidateForgetCodeForUsername(userName, code);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    /// <summary>
+    /// Reenvia o e-mail de boas-vindas/primeiro acesso (gestão de usuários). Gera um novo código.
+    /// </summary>
+    [Authorize("Bearer", Roles = "admin")]
+    [HttpGet]
+    public async Task<IActionResult> SendWelcomeByUsername([FromQuery] string userName)
+    {
+        var retorno = await _passwordService.GenerateForgetCodeForUserName(userName, Models.Types.TypeCodeEnum.RegisterNewUser);
+
+        if(retorno.Success){
+            return Ok(retorno);
+        }else
+        {
+            return this.StatusCode(retorno.StatusCode,retorno);
+        }
+    }
+
+    /// <summary>
     /// Atualiza a senha do cliente, validando se o código informado é válido
     /// </summary>
     [AllowAnonymous]

@@ -5,9 +5,11 @@ namespace cliqx.auth.api.Dtos
     // o Id numérico como "id". Aqui expomos SEMPRE o externalId (string) separado do Id.
     public class ServiceDto
     {
-        public string ExternalId { get; set; }
+        // Anulável: no Create o ExternalId é gerado no servidor (não vem no request).
+        // Sem isso, o binding com Nullable habilitado o trata como obrigatório.
+        public string? ExternalId { get; set; }
         public string Name { get; set; }
-        public string Description { get; set; }
+        public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
     }
 }

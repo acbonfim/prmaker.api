@@ -39,7 +39,15 @@ public class PullRequestController : ControllerBase
     public async Task<ActionResult<PullRequestRegisterResponse>> GetByCardNumber(string cardNumber, CancellationToken cancellationToken, string? repositoryId = null)
     {
         var response = await _application.GetByCardNumber(cardNumber, repositoryId, cancellationToken);
-        
+
+        return Ok(response);
+    }
+
+    [HttpGet("GetRecentByUser")]
+    public async Task<ActionResult<IReadOnlyList<PullRequestRecentResponse>>> GetRecentByUser(Guid userId, CancellationToken cancellationToken, int take = 5)
+    {
+        var response = await _application.GetRecentByUser(userId, take, cancellationToken);
+
         return Ok(response);
     }
 }

@@ -64,43 +64,47 @@ builder.Services.AddDbContext<AuthenticationContext>(x => x.UseSqlServer(
 
 
 var app = builder.Build();
-
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsDevelopment())
 {
-    var context = scope.ServiceProvider.GetRequiredService<DefaultContext>();
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<DefaultContext>();
     
-    try
-    {
-        context.Database.Migrate();
-        Console.WriteLine("Migrations do DefaultContext executadas com sucesso.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Erro ao executar migrations do DefaultContext: {ex.Message}");
-    }
+        try
+        {
+            context.Database.Migrate();
+            Console.WriteLine("Migrations do DefaultContext executadas com sucesso.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao executar migrations do DefaultContext: {ex.Message}");
+        }
 
-    var vacationContext = scope.ServiceProvider.GetRequiredService<solvace.vacations.infra.Contexts.VacationContext>();
-    try
-    {
-        vacationContext.Database.Migrate();
-        Console.WriteLine("Migrations do VacationContext executadas com sucesso.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Erro ao executar migrations do VacationContext: {ex.Message}");
-    }
+        var vacationContext = scope.ServiceProvider.GetRequiredService<solvace.vacations.infra.Contexts.VacationContext>();
+        try
+        {
+            vacationContext.Database.Migrate();
+            Console.WriteLine("Migrations do VacationContext executadas com sucesso.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao executar migrations do VacationContext: {ex.Message}");
+        }
 
-    var timelineContext = scope.ServiceProvider.GetRequiredService<solvace.timeline.infra.Contexts.TimelineContext>();
-    try
-    {
-        timelineContext.Database.Migrate();
-        Console.WriteLine("Migrations do TimelineContext executadas com sucesso.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Erro ao executar migrations do TimelineContext: {ex.Message}");
+        var timelineContext = scope.ServiceProvider.GetRequiredService<solvace.timeline.infra.Contexts.TimelineContext>();
+        try
+        {
+            timelineContext.Database.Migrate();
+            Console.WriteLine("Migrations do TimelineContext executadas com sucesso.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao executar migrations do TimelineContext: {ex.Message}");
+        }
     }
 }
+
+
 
 app.UseHttpsRedirection()
     .UseSwaggerConfig(projectName!)

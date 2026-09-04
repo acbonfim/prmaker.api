@@ -9,6 +9,7 @@ using cliqx.auth.api.Models.Identity;
 using cliqx.auth.api.Models.Types;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ProAuth.Services.Contracts;
 using ProSales.Repository.Contexts;
 
@@ -21,14 +22,18 @@ public class PasswordService : IPasswordService
     public readonly SignInManager<User> _signInManager;
     public readonly RoleManager<Role> _roleInManager;
     public readonly IMapper _mapper;
+    private readonly IEmailService _emailService;
+    private readonly IConfiguration _config;
 
-    public PasswordService(DefaultContext context, UserManager<User> userManager, SignInManager<User> signInManager, RoleManager<Role> roleInManager, IMapper mapper)
+    public PasswordService(DefaultContext context, UserManager<User> userManager, SignInManager<User> signInManager, RoleManager<Role> roleInManager, IMapper mapper, IEmailService emailService, IConfiguration config)
     {
         this.context = context;
         _userManager = userManager;
         _signInManager = signInManager;
         _roleInManager = roleInManager;
         _mapper = mapper;
+        _emailService = emailService;
+        _config = config;
     }
 
     public async Task<RetornoDto> ValidateEmailByUsernameAndEmail(string username, string email)
@@ -108,6 +113,23 @@ public class PasswordService : IPasswordService
         }
     }
 
+    public async Task<RetornoDto> ValidateForgetCodeForUsername(string username, string code)
+    {
+        var retorno = new RetornoDto();
+
+        var userFound = await _userManager.Users
+            .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpper());
+
+        if (userFound == null)
+        {
+            retorno.Message = "Usuario não encontrado";
+            retorno.StatusCode = StatusCodes.Status404NotFound;
+            return retorno;
+        }
+
+        return await ValidateForgetCodeForUserId(userFound.Id, code);
+    }
+
     public async Task<RetornoDto> GenerateForgetCodeForUserName(string userName, TypeCodeEnum type)
     {
         var retorno = new RetornoDto();
@@ -125,12 +147,22 @@ public class PasswordService : IPasswordService
             }
 
 
+            // Invalida códigos anteriores do usuário: apenas o link mais recente vale
+            // e um código já usado/antigo não pode ser reaproveitado.
+            var oldCodes = await this.context.UserForgetCodes
+                .Where(x => x.UserId == userFound.Id).ToListAsync();
+            if (oldCodes.Count > 0)
+                this.context.UserForgetCodes.RemoveRange(oldCodes);
+
             Random random = new Random();
             string randomString = "SVC-" + random.Next(0, 1000000).ToString("D6");
+
+            var expirationMinutes = int.TryParse(_config["App:ForgetCodeExpirationMinutes"], out var m) ? m : 60;
 
             var userForgetCode = new UserForgetCode();
             userForgetCode.UserId = userFound.Id;
             userForgetCode.ForgetCode = randomString;
+            userForgetCode.ExpirationDate = DateTime.Now.AddMinutes(expirationMinutes);
 
 
 
@@ -142,10 +174,11 @@ public class PasswordService : IPasswordService
                 retorno.Message = "Código enviado com sucesso para o email cadastrado";
                 retorno.StatusCode = StatusCodes.Status201Created;
 
-
-                EmailService.SendEmail(userFound, userForgetCode.ForgetCode, TypeCodeEnum.ForgetPassword);
-
-
+                // Envia o e-mail correto conforme o tipo (boas-vindas x redefinição).
+                if (type == TypeCodeEnum.RegisterNewUser)
+                    _ = _emailService.SendFirstAccessEmail(userFound, userForgetCode.ForgetCode, userForgetCode.ExpirationDate);
+                else
+                    _ = _emailService.SendResetPasswordEmail(userFound, userForgetCode.ForgetCode, userForgetCode.ExpirationDate);
 
                 return retorno;
             }
@@ -198,10 +231,23 @@ public class PasswordService : IPasswordService
 
             userFound.PasswordHash = _userManager.PasswordHasher.HashPassword(userFound, userDto.Password);
 
+            // Definir a senha por código também confirma o e-mail (fluxo de primeiro acesso).
+            userFound.EmailConfirmed = true;
+
             var appUser = await _userManager.UpdateAsync(userFound);
 
             if (appUser.Succeeded)
             {
+                // Consome o(s) código(s) usado(s) para que não seja reutilizado.
+                var usedCodes = await this.context.UserForgetCodes
+                    .Where(x => x.UserId == userFound.Id && x.ForgetCode == code)
+                    .ToListAsync();
+                if (usedCodes.Count > 0)
+                {
+                    this.context.UserForgetCodes.RemoveRange(usedCodes);
+                    await this.context.SaveChangesAsync();
+                }
+
                 var userToReturn = _mapper.Map<UserDto>(user);
 
                 retorno.Object = userToReturn;

@@ -16,6 +16,7 @@ namespace cliqx.auth.api.Dtos
         public Guid ExternalId { get; set; }
         public int CompanyId { get; set; }
         public string ChannelOrigin { get; set; }
+        public string ImagemUrlUser { get; set; }
         public List<UserRoleItemDto> UserRoles { get; set; } = new();
     }
 

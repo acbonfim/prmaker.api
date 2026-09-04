@@ -74,7 +74,30 @@ public class PullRequestApplication : IPullRequestApplication
         
         if(response == null)
             return null;
-        
+
         return response.ToResponse();
+    }
+
+    public async Task<IReadOnlyList<PullRequestRecentResponse>> GetRecentByUser(Guid userId, int take, CancellationToken cancellationToken)
+    {
+        if (take <= 0) take = 5;
+        if (take > 50) take = 50;
+
+        return await _prRepository
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt)
+            .Take(take)
+            .Select(x => new PullRequestRecentResponse
+            {
+                Id = x.Id,
+                CardNumber = x.CardNumber,
+                Description = x.Description,
+                RepositoryId = x.RepositoryId,
+                BranchPrefix = x.BranchPrefix,
+                BranchName = x.BranchName,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt,
+            })
+            .ToListAsync(cancellationToken);
     }
 }

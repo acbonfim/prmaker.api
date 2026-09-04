@@ -106,6 +106,10 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             Description = Description,
             BranchName = string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName,
             BranchPrefix = string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix,
-            RepositoryId = RepositoryId
+            RepositoryId = RepositoryId,
+            UserId = UserId,
+            CreatedAt = CreatedAt,
+            UpdatedAt = UpdatedAt,
+            CreatedBy = CreatedBy
         };
 }
