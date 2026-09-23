@@ -89,8 +89,10 @@ resource "google_artifact_registry_repository" "repo" {
 # Secret Manager: um secret + versão por entrada de var.secret_values
 # -----------------------------------------------------------------------------
 resource "google_secret_manager_secret" "secrets" {
-  for_each  = var.secret_values
-  secret_id = each.key
+  # As chaves (IDs dos secrets) não são sensíveis; só os valores são. nonsensitive() nas
+  # chaves permite o for_each sem expor os segredos.
+  for_each  = nonsensitive(toset(keys(var.secret_values)))
+  secret_id = each.value
 
   replication {
     auto {}
@@ -100,9 +102,9 @@ resource "google_secret_manager_secret" "secrets" {
 }
 
 resource "google_secret_manager_secret_version" "versions" {
-  for_each    = var.secret_values
-  secret      = google_secret_manager_secret.secrets[each.key].id
-  secret_data = each.value
+  for_each    = nonsensitive(toset(keys(var.secret_values)))
+  secret      = google_secret_manager_secret.secrets[each.value].id
+  secret_data = var.secret_values[each.value]
 }
 
 # -----------------------------------------------------------------------------
