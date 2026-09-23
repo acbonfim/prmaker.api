@@ -1,0 +1,17 @@
+# Contexto de build = raiz do repo. Ignora tudo que não é necessário para o build/publish.
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.git/
+.git/
+.github/
+publish/
+deploy/
+**/*.user
+**/*.DotSettings.user
+.DS_Store
+**/.DS_Store
+**/node_modules/
+**/appsettings.Development.json
+*.md

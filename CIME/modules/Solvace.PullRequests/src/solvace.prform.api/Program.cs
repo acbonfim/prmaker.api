@@ -8,6 +8,7 @@ using Cime.BuildingBlocks.Swagger;
 using Cime.BuildingBlocks.GlobalExtensions;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.api.Auditing;
+using solvace.prform.api.Startup;
 using solvace.prform.Infra.Contexts;
 using solvace.prform.Repositories;
 using solvace.github.application.Extensions;
@@ -63,52 +64,23 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 
 builder.Services.AddDbContext<DefaultContext>((sp, x) => x
-    .UseMySql(connString, ServerVersion.AutoDetect(connString))
+    // Banco remoto (MonsterASP) via internet pública: habilita retry em falhas transitórias.
+    .UseMySql(connString, ServerVersion.AutoDetect(connString),
+        my => my.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null))
     .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 builder.Services.AddDbContext<AuthenticationContext>(x => x.UseSqlServer(
-    builder.Configuration.GetConnectionString("AuthenticationConnection")));
+    builder.Configuration.GetConnectionString("AuthenticationConnection"),
+    sql => sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
 
 var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        var context = scope.ServiceProvider.GetRequiredService<DefaultContext>();
-    
-        try
-        {
-            context.Database.Migrate();
-            Console.WriteLine("Migrations do DefaultContext executadas com sucesso.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao executar migrations do DefaultContext: {ex.Message}");
-        }
-
-        var vacationContext = scope.ServiceProvider.GetRequiredService<solvace.vacations.infra.Contexts.VacationContext>();
-        try
-        {
-            vacationContext.Database.Migrate();
-            Console.WriteLine("Migrations do VacationContext executadas com sucesso.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao executar migrations do VacationContext: {ex.Message}");
-        }
-
-        var timelineContext = scope.ServiceProvider.GetRequiredService<solvace.timeline.infra.Contexts.TimelineContext>();
-        try
-        {
-            timelineContext.Database.Migrate();
-            Console.WriteLine("Migrations do TimelineContext executadas com sucesso.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao executar migrations do TimelineContext: {ex.Message}");
-        }
-    }
+    // Migrations dos 3 contexts MySQL, protegidas por advisory lock (GET_LOCK) para não
+    // haver corrida entre instâncias. Falha aqui é FATAL de propósito: a app não sobe e o
+    // Cloud Run mantém a revisão anterior servindo em vez de publicar um schema quebrado.
+    await app.MigrateMySqlWithLockAsync();
 }
 
 

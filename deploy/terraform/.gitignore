@@ -1,0 +1,8 @@
+# Nunca comitar state nem valores sensíveis
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+secrets.auto.tfvars
+*.auto.tfvars
+!*.auto.tfvars.example

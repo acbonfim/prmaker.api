@@ -1,25 +1,20 @@
-#See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
-
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-USER app
-WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
+# Auth API (Cime.Auth).
+# IMPORTANTE: o contexto de build DEVE ser a raiz do repositório para incluir o
+# Directory.Build.props da raiz (ele fixa a família System.IdentityModel em 7.1.2;
+# sem isso o app quebra em runtime com FileNotFoundException após o deploy).
+#   docker build -f CIME/modules/Cime.Auth/src/cime.auth.api/Dockerfile -t <img> .
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["cliqx.auth.api/cliqx.auth.api.csproj", "cliqx.auth.api/"]
-RUN dotnet restore "./cliqx.auth.api/./cliqx.auth.api.csproj"
 COPY . .
-WORKDIR "/src/cliqx.auth.api"
-RUN dotnet build "./cliqx.auth.api.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet restore "CIME/modules/Cime.Auth/src/cime.auth.api/cime.auth.api.csproj"
+RUN dotnet publish "CIME/modules/Cime.Auth/src/cime.auth.api/cime.auth.api.csproj" \
+    -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./cliqx.auth.api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
-
-FROM base AS final
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "cliqx.auth.api.dll"]
+COPY --from=build /app/publish .
+EXPOSE 8080
+ENV ASPNETCORE_HTTP_PORTS=8080
+ENTRYPOINT ["dotnet", "cime.auth.api.dll"]
