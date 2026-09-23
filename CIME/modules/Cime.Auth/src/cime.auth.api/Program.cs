@@ -20,10 +20,9 @@ var builder = WebApplication.CreateBuilder(args);
 var connetionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddDbContext<DefaultContext>(x =>
-    x.UseSqlServer(connetionString)
-    .LogTo(Console.WriteLine, LogLevel.Information)
-    .EnableSensitiveDataLogging()
-    .EnableDetailedErrors()
+    // Banco remoto (MonsterASP) via internet pública: habilita retry em falhas transitórias.
+    x.UseSqlServer(connetionString,
+        sql => sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null))
 );
 
 builder.Services.AddCors(options =>
@@ -137,13 +136,14 @@ app.UseCors("CorsPolicy");
 
 app.MapControllers();
 
-if (!builder.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment())
 {
     using (var scope = app.Services.CreateScope())
     {
-        var services = scope.ServiceProvider;
-        var dbContext = services.GetRequiredService<DefaultContext>();
-        MigrationService.ApplyMigrations(dbContext);
+        var dbContext = scope.ServiceProvider.GetRequiredService<DefaultContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Migrations");
+        // Advisory lock (sp_getapplock) + falha fatal: evita corrida entre instâncias.
+        await MigrationService.ApplyMigrationsAsync(dbContext, logger);
     }
 }
 
