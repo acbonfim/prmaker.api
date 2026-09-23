@@ -22,11 +22,22 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
 
     public PluginConfiguration Configurations { get; set; }
 
+    // Quando true, só admins podem ler a configuração deste plugin.
+    // Quando false, qualquer usuário logado pode ler.
+    public bool AdminOnly { get; set; }
+
     public Plugin(PluginRequest request)
     {
         SetDescription(request.Description);
         CreatedAt = DateTime.UtcNow;
+        AdminOnly = request.AdminOnly;
         SetConfigurations(request.Configurations);
+    }
+
+    public void SetAdminOnly(bool adminOnly)
+    {
+        AdminOnly = adminOnly;
+        UpdatedAt = DateTime.UtcNow;
     }
     
     public void SetDescription(string description)

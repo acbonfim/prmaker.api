@@ -11,6 +11,7 @@ public interface IPasswordService
 {
     Task<RetornoDto> ValidateEmailByUsernameAndEmail (string username, string email);
     Task<RetornoDto> ValidateForgetCodeForUserId (int userId, string code);
+    Task<RetornoDto> ValidateForgetCodeForUsername (string username, string code);
     Task<RetornoDto> GenerateForgetCodeForUserName (string userName, TypeCodeEnum type);
     Task<RetornoDto> UpdatePassword (UserLoginDto user,string code);
     

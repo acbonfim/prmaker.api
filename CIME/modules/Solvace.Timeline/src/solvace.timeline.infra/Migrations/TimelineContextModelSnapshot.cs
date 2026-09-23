@@ -46,6 +46,10 @@ namespace solvace.timeline.infra.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("varchar(2000)");
 
+                    b.Property<string>("SourceMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -63,6 +67,9 @@ namespace solvace.timeline.infra.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CardNumber");
+
+                    b.HasIndex("SourceMessageId")
+                        .IsUnique();
 
                     b.ToTable("TimelineEntries");
                 });

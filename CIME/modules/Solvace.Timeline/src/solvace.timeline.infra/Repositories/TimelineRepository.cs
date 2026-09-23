@@ -21,6 +21,12 @@ public class TimelineRepository : ITimelineRepository
         return entry;
     }
 
+    public async Task<bool> ExistsBySourceMessageIdAsync(string sourceMessageId, CancellationToken cancellationToken)
+    {
+        return await _context.TimelineEntries
+            .AnyAsync(e => e.SourceMessageId == sourceMessageId, cancellationToken);
+    }
+
     public async Task<TimelineEntry?> GetByIdAsync(int id, CancellationToken cancellationToken)
     {
         return await _context.TimelineEntries

@@ -149,8 +149,8 @@ namespace cime.auth.api.Migrations
                         new
                         {
                             Id = 1,
-                            ConcurrencyStamp = "B54021F0-357C-41F7-BDD4-450EB8C2350B",
-                            ExternalId = new Guid("b8aa9acd-3256-4038-83d4-f19bfc25925c"),
+                            ConcurrencyStamp = "1881AFAA-C3F9-4529-83E1-865DB155C76E",
+                            ExternalId = new Guid("2eaa21fd-7389-48dc-9413-e1470a54d852"),
                             Level = 0,
                             Name = "admin",
                             NormalizedName = "ADMIN"
@@ -158,8 +158,8 @@ namespace cime.auth.api.Migrations
                         new
                         {
                             Id = 2,
-                            ConcurrencyStamp = "FAFBFACB-8D9B-477E-8DBB-C0E5E4549FA5",
-                            ExternalId = new Guid("7a6da6b4-830d-42b8-abb7-b17242d88c94"),
+                            ConcurrencyStamp = "BC7E47E2-4446-4AA5-9F72-E893F5D906D9",
+                            ExternalId = new Guid("a9f57973-d3b5-408f-968b-56ea750f4062"),
                             Level = 0,
                             Name = "user",
                             NormalizedName = "USER"
@@ -167,8 +167,8 @@ namespace cime.auth.api.Migrations
                         new
                         {
                             Id = 3,
-                            ConcurrencyStamp = "D7960218-B3E0-49F7-93F9-1D59C4A4A85D",
-                            ExternalId = new Guid("4ec7a049-5a6e-49eb-9162-7faebc07445d"),
+                            ConcurrencyStamp = "7E8A0929-C85E-4767-B73B-40E016FC37B7",
+                            ExternalId = new Guid("57f5779e-cdf6-4b2f-93ea-a4279fd1adb2"),
                             Level = 0,
                             Name = "external_client",
                             NormalizedName = "EXTERNALCLIENT"
@@ -176,8 +176,8 @@ namespace cime.auth.api.Migrations
                         new
                         {
                             Id = 4,
-                            ConcurrencyStamp = "E76B0B51-84C2-4A32-B915-4D4EB7F5EE72",
-                            ExternalId = new Guid("a2946364-3bc0-473b-b405-376a2b83e2d6"),
+                            ConcurrencyStamp = "1EFE4CE8-7207-40CF-857F-8B900946A51F",
+                            ExternalId = new Guid("18c1446b-0bc8-4b36-8b40-5a022515ab32"),
                             Level = 0,
                             Name = "support",
                             NormalizedName = "SUPPORT"
@@ -228,6 +228,9 @@ namespace cime.auth.api.Migrations
 
                     b.Property<string>("FullName")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImagemUrlUser")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("LockoutEnabled")
@@ -283,19 +286,19 @@ namespace cime.auth.api.Migrations
                             Active = true,
                             ChannelOrigin = "WEB",
                             CompanyId = 1,
-                            ConcurrencyStamp = "dd6a23cd-47b8-4158-8d08-0aab87512f21",
-                            DataUltimoLogin = new DateTime(2025, 10, 29, 12, 27, 21, 573, DateTimeKind.Local).AddTicks(3280),
+                            ConcurrencyStamp = "e3587be9-e900-43de-ab18-9ed14d45ca2f",
+                            DataUltimoLogin = new DateTime(2026, 9, 3, 23, 18, 41, 344, DateTimeKind.Local).AddTicks(6190),
                             Departamento = "ADMIN",
                             Email = "admin@cime.com.br",
                             EmailConfirmed = true,
-                            ExternalId = new Guid("3fa2924b-5ad6-479b-b877-b15272b0b679"),
+                            ExternalId = new Guid("8d831438-1c4a-4a94-a4c3-edb1d6461d91"),
                             FullName = "Admin",
                             LockoutEnabled = false,
                             NormalizedEmail = "ADMIN@CIME.COM.BR",
                             NormalizedUserName = "ADMIN",
-                            PasswordHash = "AQAAAAIAAYagAAAAEAyWmub3yF2rQDTocmoXQGO+6DaAszdSfpcKndUT9axqPF///ObzQCn71Q7nBvezTg==",
+                            PasswordHash = "AQAAAAIAAYagAAAAEAsWoyA0TjX+c2CgKAmOeI/oTHCNA1kBku2XMLsFBLyx1Fiy7XZO79wnlulPX3hRoA==",
                             PhoneNumberConfirmed = false,
-                            SecurityStamp = "8064CAAF-1C06-4D26-857D-B9C987327FE9",
+                            SecurityStamp = "7FFBDBFE-AA98-4090-B774-3609DFC390F1",
                             TwoFactorEnabled = false,
                             UserName = "admin"
                         });

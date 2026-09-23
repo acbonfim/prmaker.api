@@ -1,3 +1,4 @@
+using cliqx.auth.api.Services;
 using cliqx.auth.api.Services.Application;
 using ProAuth.Services.Application;
 using ProAuth.Services.Contracts;
@@ -14,6 +15,7 @@ namespace Microsoft.Extensions.DependencyInjection
              services.AddScoped<IUserService, UserService>();
              services.AddScoped<IRoleService, RoleService>();
              services.AddScoped<IPasswordService, PasswordService>();
+             services.AddScoped<IEmailService, EmailService>();
              services.AddScoped<MyServicesService>();
 
             return services;

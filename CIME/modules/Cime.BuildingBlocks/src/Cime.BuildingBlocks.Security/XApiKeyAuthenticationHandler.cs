@@ -1,8 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -18,6 +21,7 @@ namespace Cime.BuildingBlocks.Security
         private readonly string _urlAuth;
         private readonly string[] _servicesAllowed;
         private readonly bool _verifyOnlineUserServices;
+        private readonly string _realTimeHubPath;
 
         [Obsolete]
         public XApiKeyAuthenticationHandler(
@@ -35,6 +39,11 @@ namespace Cime.BuildingBlocks.Security
             _servicesAllowed = servicesAllowed ?? Array.Empty<string>();
 
             _verifyOnlineUserServices = Convert.ToBoolean(authSection["VerifyOnlineUserServices"]!);
+
+            // Caminho do hub de tempo real: o SignalR autentica o esquema padrão no negotiate,
+            // então este handler precisa ignorar o hub (a autorização do WS é feita pelo
+            // RealTimeApiKeyMiddleware). Mantém consistência com o RealTime:HubPath do appsettings.
+            _realTimeHubPath = configuration.GetSection("RealTime")["HubPath"] ?? "/ws";
         }
 
         protected override async Task<Task> HandleChallengeAsync(AuthenticationProperties properties)
@@ -59,7 +68,17 @@ namespace Cime.BuildingBlocks.Security
             if (Request.Path.ToString().StartsWith("/swagger"))
                 return AuthenticateResult.NoResult();
 
+            // Hub de tempo real (SignalR): autorização feita pelo RealTimeApiKeyMiddleware.
+            if (Request.Path.StartsWithSegments(_realTimeHubPath))
+                return AuthenticateResult.NoResult();
+
             if(Request.Method == "OPTIONS")
+                return AuthenticateResult.NoResult();
+
+            // Respeita [AllowAnonymous]: endpoints marcados como públicos não exigem x-api-key.
+            // Sem isto, este handler grava 401 direto na Response e o [AllowAnonymous] do
+            // controller não tem efeito (ex.: link público do handover).
+            if (Context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() != null)
                 return AuthenticateResult.NoResult();
 
             if (!Request.Headers.TryGetValue("x-api-key", out var apiKey))
@@ -170,68 +189,97 @@ namespace Cime.BuildingBlocks.Security
             return false;
         }
 
+        // HttpClient único e reutilizável (evita exaustão de sockets / tempestade de
+        // handshakes TLS que causava "Connection reset by peer" sob carga — ex.: tráfego
+        // do WebSocket). NUNCA usar 'new HttpClient()' por requisição.
+        private static readonly HttpClient _http = CreateHttpClient();
+
+        private static HttpClient CreateHttpClient()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                MaxConnectionsPerServer = 20,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                // Força HTTP/1.1 para evitar negociações ALPN/h2 que alguns hosts
+                // compartilhados resetam durante o handshake.
+                EnableMultipleHttp2Connections = false
+            };
+
+            var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(15),
+                DefaultRequestVersion = HttpVersion.Version11,
+                DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+            };
+
+            return client;
+        }
+
+        // Retenta falhas transitórias (reset de conexão/timeout) com backoff curto.
+        private static async Task<HttpResponseMessage> SendWithRetryAsync(Func<Task<HttpResponseMessage>> send, int maxAttempts = 3)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await send().ConfigureAwait(false);
+                }
+                catch (Exception) when (attempt < maxAttempts)
+                {
+                    await Task.Delay(150 * attempt).ConfigureAwait(false);
+                }
+            }
+        }
+
         private async Task<bool> HasAccessToServices(int userId)
         {
             try
             {
-                using (var client = new HttpClient())
+                var urlBase = $"{_urlAuth}/Service/HasAccessToServices?userId={userId}";
+                var payload = JsonConvert.SerializeObject(_servicesAllowed);
+
+                using var response = await SendWithRetryAsync(() =>
                 {
-                    var urlBase = $"{_urlAuth}/Service/HasAccessToServices?userId={userId}";
-                    HttpContent content = new StringContent(JsonConvert.SerializeObject(_servicesAllowed), Encoding.UTF8, "application/json");
+                    var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                    return _http.PostAsync(urlBase, content);
+                }).ConfigureAwait(false);
 
-                    HttpResponseMessage response = await client.PostAsync(urlBase, content).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = response.Content.ReadAsStringAsync().Result.AsTypedReturn<RetornoDto<object>>();
+                var responseContent = (await response.Content.ReadAsStringAsync().ConfigureAwait(false))
+                    .AsTypedReturn<RetornoDto<object>>();
 
-                        return (bool)responseContent.Object;
-                    }
-                    else
-                    {
-                        throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
-                    }
-
-                }
+                return (bool)responseContent.Object;
             }
             catch (System.Exception e)
             {
                 throw new Exception("Erro ao processar a requisição.", e);
             }
-
         }
-
-
 
         private async Task<bool> IsUserActive(string username)
         {
             try
             {
-                using (var client = new HttpClient())
-                {
-                    var urlBase = $"{_urlAuth}/user/is-user-active?username={username}";
-                    HttpContent content = new StringContent("", Encoding.UTF8, "application/json");
+                var urlBase = $"{_urlAuth}/user/is-user-active?username={Uri.EscapeDataString(username)}";
 
-                    HttpResponseMessage response = await client.GetAsync(urlBase).ConfigureAwait(false);
+                using var response = await SendWithRetryAsync(() => _http.GetAsync(urlBase)).ConfigureAwait(false);
 
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseContent = response.Content.ReadAsStringAsync().Result.AsTypedReturn<RetornoDto<object>>();
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
 
-                        return (bool)responseContent.Object;
-                    }
-                    else
-                    {
-                        throw new Exception($"Erro na requisição. Código de status: {response.StatusCode}");
-                    }
+                var responseContent = (await response.Content.ReadAsStringAsync().ConfigureAwait(false))
+                    .AsTypedReturn<RetornoDto<object>>();
 
-                }
+                return (bool)responseContent.Object;
             }
             catch (System.Exception e)
             {
                 throw new Exception("Erro ao processar a requisição.", e);
             }
-
         }
     }
 

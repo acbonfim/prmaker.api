@@ -6,5 +6,7 @@ namespace solvace.prform.application.Contracts;
 public interface IHandoverApplication : ICommitable
 {
     Task<HandoverResponse?> GetByCardNumber(string cardNumber, CancellationToken cancellationToken);
+    Task<IReadOnlyList<HandoverRecentResponse>> GetRecent(int take, CancellationToken cancellationToken);
     Task<HandoverResponse> Save(HandoverRequest request, CancellationToken cancellationToken);
+    Task<HandoverResponse?> SetVisibility(string cardNumber, bool isPublic, CancellationToken cancellationToken);
 }

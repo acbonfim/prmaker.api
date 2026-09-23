@@ -1,0 +1,16 @@
+<Project>
+
+    <!--
+      Fixa a família Microsoft/System.IdentityModel em 7.1.2 para toda a solução.
+      Sem isto, o Microsoft.EntityFrameworkCore.SqlServer (via Microsoft.Data.SqlClient)
+      traz transitivamente a 6.35.0 nos módulos, enquanto o host (JwtBearer 8.0.2) usa a 7.1.2.
+      A divergência causava FileNotFoundException de
+      'System.IdentityModel.Tokens.Jwt, Version=7.1.2.0' em runtime após o deploy.
+    -->
+    <ItemGroup>
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="7.1.2" />
+        <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="7.1.2" />
+    </ItemGroup>
+
+</Project>

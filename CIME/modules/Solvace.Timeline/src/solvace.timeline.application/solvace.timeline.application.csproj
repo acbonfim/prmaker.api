@@ -8,6 +8,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\solvace.timeline.domain\solvace.timeline.domain.csproj" />
+      <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.RealTime\Cime.BuildingBlocks.RealTime.csproj" />
     </ItemGroup>
 
 </Project>

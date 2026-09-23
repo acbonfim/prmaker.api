@@ -64,7 +64,8 @@ public class PluginConfigurationController : ControllerBase
             var pluginResponse = new PluginRespose();
             pluginResponse.Id = plugin.Id;
             pluginResponse.Description = plugin.Description;
-        
+            pluginResponse.AdminOnly = plugin.AdminOnly;
+
             if(!string.IsNullOrEmpty(plugin.Configurations.Options))
                 pluginResponse.Configurations = plugin.Configurations.Options.JsonToListOfDictionaries()[0];
             pluginsResponse.Add(pluginResponse);
@@ -73,24 +74,25 @@ public class PluginConfigurationController : ControllerBase
     }
     
     [HttpGet("get-all-by-id")]
-    [Authorize(Roles = "admin, support")]
     public async Task<ActionResult<PluginRespose>> GetPluginById([FromQuery]int id, CancellationToken cancellationToken)
     {
-        var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
-        var pluginsFreeIds = new List<int> {EPlugin.AI,EPlugin.AZURE_DEVOPS, EPlugin.PULLREQUEST};
-        
-        if (!pluginsFreeIds.Any(x => x == id) && !roles.Contains("admin"))
-            return Forbid();
-        
         var plugin = _pluginCacheManager.GetCachedPluginById(id);
-    
+
         if (plugin == null)
         {
             plugin = await _application.GetPluginById(id, cancellationToken);
         }
-        
+
+        // Regra por plugin: AdminOnly => somente admin; caso contrário, qualquer usuário logado.
+        if (plugin.AdminOnly)
+        {
+            var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+            if (!roles.Contains("admin"))
+                return Forbid();
+        }
+
         IDictionary<string, string> dictionary = new Dictionary<string, string>();
-        
+
         if(!string.IsNullOrEmpty(plugin.Configurations.Options))
             dictionary = plugin.Configurations.Options.JsonToListOfDictionaries()[0];
 
@@ -98,7 +100,8 @@ public class PluginConfigurationController : ControllerBase
             {
                 Id = plugin.Id,
                 Configurations = dictionary,
-                Description = plugin.Description
+                Description = plugin.Description,
+                AdminOnly = plugin.AdminOnly
             }
         );
     }

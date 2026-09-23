@@ -16,6 +16,13 @@ public class HandoverRegister : IEntity<int>, IAuditableEntity
     /// <summary>Conteúdo do formulário preenchido, em markdown.</summary>
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Quando true, a passagem de conhecimento pode ser acessada pelo link público
+    /// (sem autenticação). Quando false, apenas usuários autenticados têm acesso.
+    /// Novos handovers nascem públicos.
+    /// </summary>
+    public bool IsPublic { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -23,11 +30,12 @@ public class HandoverRegister : IEntity<int>, IAuditableEntity
 
     protected HandoverRegister() { }
 
-    public HandoverRegister(string cardNumber, string content, string? repositoryId)
+    public HandoverRegister(string cardNumber, string content, string? repositoryId, bool isPublic = true)
     {
         CardNumber = cardNumber;
         Content = content;
         RepositoryId = repositoryId;
+        IsPublic = isPublic;
         CreatedAt = DateTime.UtcNow;
     }
 
@@ -39,6 +47,13 @@ public class HandoverRegister : IEntity<int>, IAuditableEntity
         UpdatedAt = DateTime.UtcNow;
     }
 
+    /// <summary>Define se o handover pode ser acessado pelo link público.</summary>
+    public void SetVisibility(bool isPublic)
+    {
+        IsPublic = isPublic;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public HandoverResponse ToResponse() =>
         new()
         {
@@ -46,6 +61,7 @@ public class HandoverRegister : IEntity<int>, IAuditableEntity
             CardNumber = CardNumber,
             RepositoryId = RepositoryId,
             Content = Content,
+            IsPublic = IsPublic,
             CreatedAt = CreatedAt,
             UpdatedAt = UpdatedAt
         };

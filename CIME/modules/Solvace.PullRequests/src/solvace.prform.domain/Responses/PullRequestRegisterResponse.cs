@@ -10,4 +10,8 @@ public class PullRequestRegisterResponse
     public string BranchName { get; set; } = string.Empty;
     public string? RepositoryId { get; set; }
 
+    public Guid UserId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public string? CreatedBy { get; set; }
 }
