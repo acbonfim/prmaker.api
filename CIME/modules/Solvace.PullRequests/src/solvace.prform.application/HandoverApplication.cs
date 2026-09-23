@@ -32,6 +32,26 @@ public class HandoverApplication : IHandoverApplication
         return handover?.ToResponse();
     }
 
+    public async Task<IReadOnlyList<HandoverRecentResponse>> GetRecent(int take, CancellationToken cancellationToken)
+    {
+        if (take <= 0) take = 10;
+        if (take > 50) take = 50;
+
+        return await _repository
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(take)
+            .Select(x => new HandoverRecentResponse
+            {
+                Id = x.Id,
+                CardNumber = x.CardNumber,
+                RepositoryId = x.RepositoryId,
+                UserId = x.CreatedBy,
+                CreatedAt = x.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<HandoverResponse> Save(HandoverRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.CardNumber))
@@ -50,6 +70,7 @@ public class HandoverApplication : IHandoverApplication
         }
 
         var handover = new HandoverRegister(request.CardNumber, request.Content, request.RepositoryId, request.IsPublic);
+        // CreatedBy é preenchido automaticamente pelo AuditSaveChangesInterceptor (externalId do token).
         var created = await _repository.AddAsync(handover, cancellationToken);
         await CommitAsync(cancellationToken);
         return created.Entity.ToResponse();

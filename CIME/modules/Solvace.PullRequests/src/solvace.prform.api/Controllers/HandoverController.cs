@@ -26,6 +26,15 @@ public class HandoverController : ControllerBase
         return Ok(response);
     }
 
+    // Últimos handovers criados pelo time (para a home). Retorna autor (externalId),
+    // número do card e data de criação.
+    [HttpGet("GetRecent")]
+    public async Task<ActionResult<IReadOnlyList<HandoverRecentResponse>>> GetRecent([FromQuery] int take, CancellationToken cancellationToken)
+    {
+        var response = await _application.GetRecent(take <= 0 ? 10 : take, cancellationToken);
+        return Ok(response);
+    }
+
     // Link público (somente leitura), sem autenticação. Só libera quando IsPublic = true.
     // 404 quando não existe; 403 quando existe mas não é público.
     [AllowAnonymous]

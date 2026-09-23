@@ -7,6 +7,7 @@ using Cime.BuildingBlocks.Security;
 using Cime.BuildingBlocks.Swagger;
 using Cime.BuildingBlocks.GlobalExtensions;
 using Microsoft.EntityFrameworkCore;
+using solvace.prform.api.Auditing;
 using solvace.prform.Infra.Contexts;
 using solvace.prform.Repositories;
 using solvace.github.application.Extensions;
@@ -57,7 +58,13 @@ builder.Services
 
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<DefaultContext>(x => x.UseMySql(connString, ServerVersion.AutoDetect(connString)));
+// Auditoria automática (CreatedBy/UpdatedBy) a partir do usuário autenticado.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+
+builder.Services.AddDbContext<DefaultContext>((sp, x) => x
+    .UseMySql(connString, ServerVersion.AutoDetect(connString))
+    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 builder.Services.AddDbContext<AuthenticationContext>(x => x.UseSqlServer(
     builder.Configuration.GetConnectionString("AuthenticationConnection")));
