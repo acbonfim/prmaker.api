@@ -12,6 +12,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddHttpClient();
         services.AddScoped<IGitHubService, GitHubService>();
+        services.AddScoped<IPullRequestGithubApplication, PullRequestGithubApplication>();
         services.Configure<GitHubOptions>(configuration.GetSection(GitHubOptions.SectionName));
         services.AddOptions<GitHubOptions>()
             .ValidateOnStart();

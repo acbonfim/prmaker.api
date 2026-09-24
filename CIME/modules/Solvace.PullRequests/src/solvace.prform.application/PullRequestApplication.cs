@@ -22,22 +22,21 @@ public class PullRequestApplication : IPullRequestApplication
         return await _context.SaveChangesAsync(cancellationToken) > 0;
     }
 
+    /// <summary>
+    /// Upsert do registro do card (um por card). Branch/repositório do request são ignorados:
+    /// agora pertencem a cada PR do GitHub (PullRequestGithub).
+    /// </summary>
     public async Task<PullRequestRegisterResponse> Create(PullRequestRegisterRequest request, CancellationToken cancellationToken)
     {
+        var cardNumber = request.CardNumber?.Trim() ?? string.Empty;
         var requestExists = await _prRepository
-            .FirstOrDefaultAsync(x => x.CardNumber == request.CardNumber && x.RepositoryId == request.RepositoryId, cancellationToken);
+            .FirstOrDefaultAsync(x => x.CardNumber == cardNumber, cancellationToken);
 
         if (requestExists is not null)
         {
-            requestExists.SetDescription(request.Description);
-            requestExists.SetRootCause(request.RootCause);
-            requestExists.BranchName = request.BranchName;
-            requestExists.BranchPrefix = request.BranchPrefix;
-            requestExists.SetRepositoryId(request.RepositoryId);
-            _prRepository.Update(requestExists);
-            
-            if(await CommitAsync(cancellationToken))
-                return new PullRequestRegisterResponse(){Id = requestExists.Id};
+            requestExists.UpdateContent(request.Description, request.RootCause);
+            await CommitAsync(cancellationToken);
+            return new PullRequestRegisterResponse(){Id = requestExists.Id};
         }
         
         var requestRegister = request.Create(request);
@@ -49,33 +48,24 @@ public class PullRequestApplication : IPullRequestApplication
         throw new Exception("Error on save");
     }
 
-    public async Task<PullRequestRegisterResponse> Get(int id, string? repositoryId, CancellationToken cancellationToken)
+    public async Task<PullRequestRegisterResponse> Get(int id, CancellationToken cancellationToken)
     {
-        var query = _prRepository.Where(x => x.Id == id);
-        if (repositoryId != null)
-            query = query.Where(x => x.RepositoryId == repositoryId);
+        var register = await _prRepository
+            .Include(x => x.GithubPullRequests)
+            .FirstAsync(x => x.Id == id, cancellationToken);
 
-        var user = await query.FirstAsync(cancellationToken);
-        if (user == null) throw new ArgumentNullException(nameof(user));
-
-        return user.ToResponse();
+        return register.ToResponse();
     }
 
-    public async Task<PullRequestRegisterResponse> GetByCardNumber(string cardNumber, string? repositoryId, CancellationToken cancellationToken)
+    public async Task<PullRequestRegisterResponse?> GetByCardNumber(string cardNumber, CancellationToken cancellationToken)
     {
-        var query = _prRepository
-            .Where(x => x.CardNumber == cardNumber);
-        if (repositoryId != null)
-            query = query.Where(x => x.RepositoryId == repositoryId);
-
-        var response = await query
+        var response = await _prRepository
+            .AsNoTracking()
             .Include(x => x.Form)
-            .FirstOrDefaultAsync(cancellationToken);
-        
-        if(response == null)
-            return null;
+            .Include(x => x.GithubPullRequests)
+            .FirstOrDefaultAsync(x => x.CardNumber == cardNumber.Trim(), cancellationToken);
 
-        return response.ToResponse();
+        return response?.ToResponse();
     }
 
     public async Task<IReadOnlyList<PullRequestRecentResponse>> GetRecentByUser(Guid userId, int take, CancellationToken cancellationToken)
@@ -83,20 +73,30 @@ public class PullRequestApplication : IPullRequestApplication
         if (take <= 0) take = 5;
         if (take > 50) take = 50;
 
+        // Branch/repositório exibidos são os do PR do GitHub mais recente do card; o legado
+        // da própria linha fica como fallback para cards anteriores à feature 0001.
         return await _prRepository
             .Where(x => x.UserId == userId)
             .OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt)
             .Take(take)
+            .Select(x => new
+            {
+                Register = x,
+                LatestPr = x.GithubPullRequests
+                    .OrderByDescending(g => g.CreatedAt)
+                    .Select(g => new { g.RepositoryId, g.BranchPrefix, g.BranchName })
+                    .FirstOrDefault()
+            })
             .Select(x => new PullRequestRecentResponse
             {
-                Id = x.Id,
-                CardNumber = x.CardNumber,
-                Description = x.Description,
-                RepositoryId = x.RepositoryId,
-                BranchPrefix = x.BranchPrefix ?? string.Empty,
-                BranchName = x.BranchName ?? string.Empty,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt,
+                Id = x.Register.Id,
+                CardNumber = x.Register.CardNumber,
+                Description = x.Register.Description,
+                RepositoryId = x.LatestPr != null ? x.LatestPr.RepositoryId : x.Register.RepositoryId,
+                BranchPrefix = x.LatestPr != null ? x.LatestPr.BranchPrefix : x.Register.BranchPrefix ?? string.Empty,
+                BranchName = x.LatestPr != null ? x.LatestPr.BranchName : x.Register.BranchName ?? string.Empty,
+                CreatedAt = x.Register.CreatedAt,
+                UpdatedAt = x.Register.UpdatedAt,
             })
             .ToListAsync(cancellationToken);
     }

@@ -47,22 +47,32 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
 
     public PullRequestRegister(PullRequestRegisterRequest request)
     {
+        SetCardNumber(request.CardNumber);
         SetDescription(request.Description);
+        SetRootCause(request.RootCause);
         SetUser(request.UserId);
         SetForm(request.FormId);
-        CardNumber = request.CardNumber;
-        SetRootCause(request.RootCause);
         CreatedAt = DateTime.UtcNow;
-
-        BranchPrefix = request.BranchPrefix;
-        BranchName = request.BranchName;
-        RepositoryId = request.RepositoryId;
     }
 
-    public void SetRepositoryId(string repositoryId)
+    /// <summary>Aplica Description/RootCause do request: null mantém o valor atual, vazio limpa.</summary>
+    public void UpdateContent(string? description, string? rootCause)
     {
-        RepositoryId = repositoryId;
-        UpdatedAt = DateTime.UtcNow;
+        if (description is not null)
+            SetDescription(description);
+        if (rootCause is not null)
+            SetRootCause(rootCause);
+    }
+
+    private void SetCardNumber(string cardNumber)
+    {
+        var trimmed = cardNumber?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+            throw new DomainException("CardNumber cannot be empty");
+        if (trimmed.Length > MaxCardNumberLength)
+            throw new DomainException($"CardNumber cannot exceed {MaxCardNumberLength} characters");
+
+        CardNumber = trimmed;
     }
 
     /// <summary>Opcional: o card pode ser salvo sem descrição; se informada, precisa ter o tamanho mínimo.</summary>
@@ -104,19 +114,30 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
         UpdatedBy = updatedBy;
     }
     
-    public PullRequestRegisterResponse ToResponse() =>
-        new()
+    public PullRequestRegisterResponse ToResponse()
+    {
+        // Branch/repositório vêm do PR do GitHub mais recente (se carregado); o legado da
+        // própria linha fica como fallback para clientes que ainda leem esses campos.
+        var githubPrs = _githubPullRequests
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.ToResponse())
+            .ToList();
+        var latest = githubPrs.FirstOrDefault();
+
+        return new()
         {
             Id = Id,
             CardNumber = CardNumber,
             RootCause = RootCause,
             Description = Description,
-            BranchName = string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName,
-            BranchPrefix = string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix,
-            RepositoryId = RepositoryId,
+            BranchName = latest?.BranchName ?? (string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName),
+            BranchPrefix = latest?.BranchPrefix ?? (string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix),
+            RepositoryId = latest?.RepositoryId ?? RepositoryId,
             UserId = UserId,
             CreatedAt = CreatedAt,
             UpdatedAt = UpdatedAt,
-            CreatedBy = CreatedBy
+            CreatedBy = CreatedBy,
+            GithubPullRequests = githubPrs
         };
+    }
 }
