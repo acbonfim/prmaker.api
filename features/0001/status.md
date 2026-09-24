@@ -18,7 +18,7 @@
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d553331 |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front eb29ffd |
-| Q1 | Integração, regressão e publicação | ambos | todas | 5 | 🟡 | Claude + usuário | 2026-09-24 | | b3f0a52, 4f3d469, front f38d385 |
+| Q1 | Integração, regressão e publicação | ambos | todas | 5 | 🟡 | Claude + usuário | 2026-09-24 | | b3f0a52, 4f3d469, 1aa91ad, front f38d385, bcdd812 |
 
 ## Decisões
 
@@ -143,8 +143,9 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
   SELECT COUNT(*) linhas, COUNT(DISTINCT TRIM(CardNumber)) cards FROM PullRequests;
   -- depois da migração: cards = COUNT(*) FROM PullRequests; linhas = COUNT(*) FROM PullRequestsLegacyBackup = COUNT(*) FROM PullRequestsGithub WHERE Status='LEGACY'
   ```
-- **⚠️ Atenção ao testar local**: a API aplica as migrações no startup e o `appsettings.Development.json` aponta para o banco compartilhado — subir a API desta branch **migra esse banco**. A partir daí a versão antiga em produção passa a falhar ao salvar o mesmo card para um 2º repositório (índice único) e só enxerga o registro consolidado do card. Ou seja: depois de testar, publicar o backend logo (ou testar com outro banco).
+- **⚠️ Migrations**: o `StartupMigrator` só roda **fora de Development** (`Program.cs:78`) — local, em Development, é preciso aplicar à mão (`dotnet ef database update --context DefaultContext --startup-project .../solvace.prform.api`). O `appsettings.Development.json` aponta para o banco compartilhado: depois de aplicar, a versão antiga em produção passa a falhar ao salvar o mesmo card para um 2º repositório (índice único) e só enxerga o registro consolidado — publicar o backend logo depois.
 - **Após as respostas**: `GitHubService.ListRepositoriesAsync` lista todos os repos acessíveis pelo token (D6) + `ResolveRepository("dono/nome" | "nome")` usado em criar/atualizar PR, status, commits e diff; cache `github:repositories:token:{owner}`. `PullRequestController` registra na **timeline** do card ao abrir PR ("PR #n aberto pelo CIME: repo (branch → destino) — url", ou "já existente registrado"), com o usuário logado (claim `ExternalId`) ou o `userId` do request; falha na timeline só gera log. Teste descartável: 19/19.
+- **Teste do usuário (2026-09-24) — 2 problemas**: (1) não dava para escrever descrição/RC sem IA; (2) card legado sem a barra de "aberto por". **Causa**: API subiu em Development, as migrations não rodaram, `GetByCardNumber` falhava (tabela `PullRequestsGithub` inexistente) e o front escondia a barra — e com ela os botões de Descrição/RC. Usuário vai aplicar as migrations. **Correções mesmo assim** (1aa91ad, front bcdd812): rotas do card não dependem mais do plugin do GitHub (`[FromServices]` nas ações do GitHub/Timeline); a barra aparece mesmo com erro na busca (aviso + snackbar); botões **com texto** "Descrição"/"Root Cause" (✓ quando preenchido); no modal, a descrição do PR é **editável inline** (antes só prévia).
 - **Pendências**: teste manual do usuário (abrir PR, telas, popovers sobre o modal, cópia do link, IA multi-repo); prompts `PromptBug`/`PromptUS` (D10); skill `gerar-prmake`; medição de tempo da listagem (B4); commit/PR pelo usuário. Ferramentas locais usadas: `brew install mysql@8.0` (pode remover com `brew uninstall mysql@8.0`); Docker Desktop não conseguiu baixar imagens (proxy interno travado).
 
 ## Log
@@ -167,3 +168,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | F6 | Concluída (front eb29ffd). Onda 4 fechada; só falta a Q1. |
 | 2026-09-24 | Q1 | Migrações refeitas sem perda de dados (backup + LEGACY), ensaiadas em MySQL local (Up/Down/Up ok). Banco remoto não acessado (bloqueado). |
 | 2026-09-24 | Q1 | Decisões respondidas (D6 alterada, D7/D10 sem pendência, timeline ao abrir PR). Usuário autorizou os commits: b3f0a52, 4f3d469, front f38d385. Aguardando teste do usuário; perguntar sobre a skill gerar-prmake antes de finalizar. |
+| 2026-09-24 | Q1 | Teste do usuário: migrations não rodaram (API em Development). Correções de robustez e de escrita manual (1aa91ad, front bcdd812). |
