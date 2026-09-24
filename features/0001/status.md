@@ -18,7 +18,7 @@
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d553331 |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front eb29ffd |
-| Q1 | Integração, regressão e publicação | ambos | todas | 5 | 🟡 | Claude + usuário | 2026-09-24 | | b3f0a52, 4f3d469, 1aa91ad, 99a5370, front f38d385, bcdd812, ae82f80 |
+| Q1 | Integração, regressão e publicação | ambos | todas | 5 | 🟡 | Claude + usuário | 2026-09-24 | | b3f0a52, 4f3d469, 1aa91ad, 99a5370, front f38d385, bcdd812, ae82f80, f8b719d |
 
 ## Decisões
 
@@ -171,3 +171,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | Q1 | Decisões respondidas (D6 alterada, D7/D10 sem pendência, timeline ao abrir PR). Usuário autorizou os commits: b3f0a52, 4f3d469, front f38d385. Aguardando teste do usuário; perguntar sobre a skill gerar-prmake antes de finalizar. |
 | 2026-09-24 | Q1 | Teste do usuário: migrations não rodaram (API em Development). Correções de robustez e de escrita manual (1aa91ad, front bcdd812). |
 | 2026-09-24 | Q1 | 2º teste do usuário: 5 ajustes (aviso por destino, skeleton/barra fixa, cache de status, salvar atualiza barra, SignalR do card) — 99a5370, front ae82f80. |
+| 2026-09-24 | Q1 | Loading no ⟳ da lista de PRs (spinner no botão + barra de progresso com itens esmaecidos) — front f8b719d. |
