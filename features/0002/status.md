@@ -106,3 +106,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B4, F3 | Iniciadas (onda 3). |
 | 2026-09-24 | B4, F3 | Concluídas (1ff8dee, front e28e702). Onda 3 fechada; só falta a Q1. |
 | 2026-09-24 | Q1 | Chave no Terraform (0da111c), regressão 84/84, builds ok. Push de `feature/0002` nos dois repos. Restante: checklist do usuário. |
+| 2026-09-24 | Q1 | Teste do usuário: com várias integrações o modal cortava o conteúdo (blocos flex encolhendo + overflow:hidden). Corpo dos modais Minhas integrações e Abrir PR agora rola (front 628029a). |
