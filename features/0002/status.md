@@ -11,8 +11,8 @@
 | B1 | Modelo e migração (IsPersonal + UserPluginConfigurations) | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 9156545 |
 | B2 | Proteção de segredos (AES-GCM) | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | d726d29 |
 | F1 | Flag "Uso pessoal" no admin de plugins | front | contrato | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 3eaafa1 |
-| B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
-| F2 | Modal "Minhas integrações" | front | contrato | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 23854f5 |
+| F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
 | B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ⬜ | | | | |
 | F3 | Bloqueio no front | front | F2 | 3 | ⬜ | | | | |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ⬜ | | | | |
@@ -54,6 +54,22 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - `dialogEdit`: toggle "Uso pessoal" + ícone de info com o tooltip da spec; `PluginData.isPersonal`. Lista de plugins: badge "Uso pessoal".
 - `ng build` ok. Não testado no navegador.
 
+### B3 — Aplicação, cache por usuário e endpoints ✅
+- **Endpoints** (contrato §3): `GET /UserIntegration`, `PUT /UserIntegration/{pluginId}` (`{ values }`; omitido/null = mantém, `""` = limpa; chave fora do modelo → 400; sem chave de criptografia e com segredo → 503), `GET /UserIntegration/status`. `UserIntegrationController` `[Authorize]`, usuário pela claim `ExternalId`.
+- **`solvace.prform.application/UserIntegrations/`**: `UserPluginConfigurationApplication` (lista/salva/status, `IsConfigured` = D2, sugestão D7), `PluginConfigurationResolver` e `PersonalIntegrationRequiredException` (`Code = "PERSONAL_INTEGRATION_REQUIRED"`, `Plugins`).
+- **Desvio 1 (plano §1.3)**: em vez de estender o `IPluginCacheManager` (singleton), criei o serviço scoped **`IPluginConfigurationResolver.GetEffectiveConfigurationAsync(pluginName)`** — devolve o mesmo `PluginConfiguration` de hoje (as extensões `GetConfigurationValue` continuam valendo): plugin comum → global; pessoal → valores do usuário ou exceção. **É isso que a B4 deve usar no GitHub/Azure.**
+- **Desvio 2 (cache)**: chave `plugins:user:{versão}:{externalId}` com **30 min** (não 24 h): com várias instâncias no Cloud Run, o que o usuário salva numa só chega às outras quando o cache expira. Para não bloquear quem acabou de configurar, o resolvedor **relê do banco** antes de lançar o 403. `IPluginCacheManager.GetConfigurationVersion()` incrementa a cada `RefreshPluginsAsync`.
+- **403**: `PersonalIntegrationExceptionFilter` (MVC, registrado via `Configure<MvcOptions>`) → `{ error, code, plugins }`. ⚠️ Para a B4: exceções lançadas **dentro** de `try/catch (Exception)` dos services seriam engolidas — resolver a configuração **antes** dos blocos try.
+- **`get-all-by-id` de plugin pessoal (D8)**: valores do usuário (segredos `********` se salvos; campos não salvos vazios — sem sugestão, coerente com D1).
+- **Segredo inválido** (chave trocada, cifra de outro usuário): tratado como não preenchido + log de aviso.
+- **Validação**: build ok; teste descartável com DI real (SQLite, `PluginCacheManager`/`CacheService`, `HttpContext` com claim) — 23/23: listagem só de pessoais ativos, sugestão, criptografia no banco, manter/limpar segredo, resolver (pessoal/comum/sem config/sem usuário), cifra copiada entre usuários rejeitada, desmarcar volta ao global e mantém os dados, versão global, sem chave de criptografia.
+
+### F2 — "Minhas integrações" ✅ (repo front)
+- `services/user-integration.service.ts` (signals `integrations`, `status`, `hasPending`; `loadStatus`, `loadIntegrations`, `save`).
+- `components/my-integrations-dialog/`: um bloco por plugin pessoal (nome, chip Configurado/Pendente, campos dinâmicos na ordem do admin). Segredo: input de senha vazio com "•••••••• salvo — digite para trocar", mostrar/ocultar o que digitou e apagar o salvo; só é enviado se digitado (ou `""` ao apagar). Não sensível: pré-preenchido com o valor do usuário ou a sugestão ("Sugestão da configuração geral"). Salvar por plugin; **pode salvar parcial** (o chip mostra se ainda está pendente).
+- Menu do usuário: item **"Minhas integrações"** (com "!" quando pendente) e bolinha âmbar ao lado do nome; `top-menu` chama `loadStatus()` ao iniciar.
+- `ng build` ok. Não testado no navegador.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -62,3 +78,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B1, B2, F1 | Usuário aprovou o plano com os defaults D1–D9. Onda 1 iniciada. |
 | 2026-09-24 | B1, B2, F1 | Concluídas (9156545, d726d29, front 3eaafa1). Onda 1 fechada; liberadas B3 e F2. |
 | 2026-09-24 | B3, F2 | Iniciadas (onda 2). |
+| 2026-09-24 | B3, F2 | Concluídas (23854f5, front a757d00). Onda 2 fechada; liberadas B4 e F3. |

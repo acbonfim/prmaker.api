@@ -146,12 +146,12 @@ Onda 4:  Q1 (integração)
 
 ### B3 — Aplicação, cache e endpoints
 **Depende de:** B1, B2 · **Spec:** 2.1–2.3, 5, 7, 8, 9
-- [ ] `IUserPluginConfigurationApplication`: listar (pessoais ativos, campos = chaves do global, sensíveis sem valor, sugestões D7), salvar (valida chaves, mantém sensível omitido, criptografa), status.
-- [ ] Cache por usuário com versão global (seção 1.4); `PluginApplication` incrementa a versão em create/update/delete.
-- [ ] `IPluginCacheManager.GetEffectiveConfiguration(name)` + `PersonalIntegrationRequiredException` (usuário via `IHttpContextAccessor`, claim `ExternalId`).
-- [ ] `UserIntegrationController` (`GET`, `PUT {pluginId}`, `GET status`), autenticado.
-- [ ] `get-all-by-id` de plugin pessoal → valores do usuário mascarados (D8).
-- [ ] Mapear `PersonalIntegrationRequiredException` → 403 com `code` (filtro/middleware).
+- [x] `IUserPluginConfigurationApplication`: listar (pessoais ativos, campos = chaves do global, sensíveis sem valor, sugestões D7), salvar (valida chaves, mantém sensível omitido, criptografa), status.
+- [x] Cache por usuário com versão global (seção 1.4); `PluginApplication` incrementa a versão em create/update/delete.
+- [x] `IPluginCacheManager.GetEffectiveConfiguration(name)` + `PersonalIntegrationRequiredException` (usuário via `IHttpContextAccessor`, claim `ExternalId`).
+- [x] `UserIntegrationController` (`GET`, `PUT {pluginId}`, `GET status`), autenticado.
+- [x] `get-all-by-id` de plugin pessoal → valores do usuário mascarados (D8).
+- [x] Mapear `PersonalIntegrationRequiredException` → 403 com `code` (filtro/middleware).
 
 ### B4 — GitHub/Azure com o token pessoal + bloqueio
 **Depende de:** B3 · **Spec:** 3, 4
@@ -167,9 +167,9 @@ Onda 4:  Q1 (integração)
 
 ### F2 — "Minhas integrações"
 **Depende de:** contrato · **Spec:** 2, 2.1–2.3
-- [ ] Item "Minhas integrações" no menu do usuário (`top-menu`), com indicador quando há pendência.
-- [ ] Modal: um bloco por plugin pessoal (nome, status configurado/pendente, campos dinâmicos); sensíveis como senha com "••••••"/"Alterar"; salvar por plugin.
-- [ ] `UserIntegrationService` (signals): lista, status, `refresh()` após salvar.
+- [x] Item "Minhas integrações" no menu do usuário (`top-menu`), com indicador quando há pendência.
+- [x] Modal: um bloco por plugin pessoal (nome, status configurado/pendente, campos dinâmicos); sensíveis como senha com "••••••"/"Alterar"; salvar por plugin.
+- [x] `UserIntegrationService` (signals): lista, status, `refresh()` após salvar.
 
 ### F3 — Bloqueio no front
 **Depende de:** F2 · **Spec:** 4
