@@ -19,7 +19,8 @@ public class TimelineContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
+            // longtext: registros longos (análises em markdown) não podem ser cortados (0006).
+            entity.Property(e => e.Description).IsRequired().HasColumnType("longtext");
             entity.Property(e => e.UserName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UserId);
             entity.Property(e => e.SourceMessageId).HasMaxLength(200);
