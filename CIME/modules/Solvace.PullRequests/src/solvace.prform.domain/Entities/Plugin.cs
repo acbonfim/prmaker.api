@@ -40,6 +40,12 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     /// </summary>
     public string? PersonalFields { get; set; }
 
+    /// <summary>
+    /// Plugin pessoal opcional (feature 0007): aparece em "Minhas integrações", mas a falta de
+    /// configuração não bloqueia a tela de PR — só o recurso que depende dele (ex.: Teams).
+    /// </summary>
+    public bool IsOptional { get; set; }
+
     /// <summary>Chaves preenchidas pelo usuário (null = todas).</summary>
     public IReadOnlyList<string>? GetPersonalFieldKeys()
     {
@@ -83,6 +89,7 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
         CreatedAt = DateTime.UtcNow;
         AdminOnly = request.AdminOnly;
         IsPersonal = request.IsPersonal;
+        IsOptional = request.IsOptional;
         SetPersonalFields(request.PersonalFields);
         SetConfigurations(request.Configurations);
     }
@@ -90,6 +97,12 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     public void SetPersonal(bool isPersonal)
     {
         IsPersonal = isPersonal;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetOptional(bool isOptional)
+    {
+        IsOptional = isOptional;
         UpdatedAt = DateTime.UtcNow;
     }
 

@@ -5,13 +5,14 @@ namespace solvace.prform.application.Security;
 /// <summary>
 /// Campos de plugin tratados como segredo (criptografados e nunca devolvidos ao front).
 /// Por palavra do nome (PascalCase/camelCase/snake/kebab): Token, Secret, Password/Passwd, Pwd,
-/// ApiKey, ou terminando em "Key" (ex.: PrivateKey). Ex.: "PersonalAccessToken" e "Token" são
-/// sensíveis; "RootCauseFieldPath" e "Owner" não.
+/// ApiKey, Webhook (a URL do webhook é a credencial), ou terminando em "Key" (ex.: PrivateKey).
+/// Ex.: "PersonalAccessToken", "Token" e "WebhookUrl" são sensíveis; "RootCauseFieldPath" e
+/// "Owner" não.
 /// </summary>
 public static partial class SensitiveFieldPolicy
 {
     private static readonly HashSet<string> SensitiveWords =
-        new(StringComparer.OrdinalIgnoreCase) { "token", "secret", "password", "passwd", "pwd", "apikey", "pat" };
+        new(StringComparer.OrdinalIgnoreCase) { "token", "secret", "password", "passwd", "pwd", "apikey", "pat", "webhook" };
 
     public static bool IsSensitive(string? key)
     {

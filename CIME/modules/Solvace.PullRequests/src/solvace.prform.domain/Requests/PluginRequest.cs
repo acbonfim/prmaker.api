@@ -12,6 +12,9 @@ public class PluginRequest
 
     /// <summary>Plugin pessoal: chaves que o usuário preenche (null = todas; as demais ficam com o valor global).</summary>
     public List<string>? PersonalFields { get; set; }
+
+    /// <summary>Plugin pessoal opcional: não bloqueia a tela de PR quando o usuário não configurou.</summary>
+    public bool IsOptional { get; set; }
     public IDictionary<string, string> Configurations { get; set; }
     
     public Plugin Create(PluginRequest request)
