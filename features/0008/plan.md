@@ -33,4 +33,5 @@
 - [ ] Teste com um usuário não-admin: menu → Minha API Key → gerar → copiar → chamar a API prform com o header `x-api-key`.
 
 ## 4. Fora do escopo (possível evolução)
-- Revogação de chaves (lista de chaves emitidas / versão da chave no usuário e checagem no handler). Exigiria migração no SQL Server do Cime.Auth e mudança no `XApiKeyAuthenticationHandler`.
+- Revogação de chaves: registrada como débito técnico na **[feature 0009](../0009/spec.md)**.
+- Detalhe (lista de chaves emitidas / versão da chave no usuário e checagem no handler). Exigiria migração no SQL Server do Cime.Auth e mudança no `XApiKeyAuthenticationHandler`.
