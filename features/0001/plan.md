@@ -145,12 +145,12 @@ Onda 5:  Q1 (todas)
 **Depende de:** — · **Spec:** 1.3, 1.5, 4
 
 Tarefas
-- [ ] Criar entidade `PullRequestGithub` em `solvace.prform.domain/Entities/` (padrão DDD: setters privados, validação com `DomainException`, `IEntity<int>`, `IAuditableEntity`, `ToResponse()`), campos da seção 1.2 + enum/const `PullRequestGithubStatus` (`OPEN`, `MERGED`, `CLOSED`).
-- [ ] `PullRequestRegister`: `Description` e `RootCause` opcionais (validar só se não vazio); navegação `ICollection<PullRequestGithub> GithubPullRequests`; marcar `BranchPrefix/BranchName/RepositoryId` como `[Obsolete]` e nullable.
-- [ ] `DefaultContext`: `DbSet<PullRequestGithub> PullRequestsGithub`; FK com cascade; índices `(CardNumber)`, `(RepositoryId, GithubPrNumber)` único; `Description` como `longtext`.
-- [ ] Migração `ConsolidatePullRequestPerCard`: SQL (MySQL) que consolida duplicatas por `CardNumber` conforme **D1**, depois índice **único** em `PullRequests.CardNumber`.
-- [ ] Migração `AddPullRequestGithub`.
-- [ ] Requests/Responses: `OpenPullRequestGithubRequest`, `UpdatePullRequestGithubRequest`, `PullRequestGithubResponse` (contrato seção 3).
+- [x] Criar entidade `PullRequestGithub` em `solvace.prform.domain/Entities/` (padrão DDD: setters privados, validação com `DomainException`, `IEntity<int>`, `IAuditableEntity`, `ToResponse()`), campos da seção 1.2 + enum/const `PullRequestGithubStatus` (`OPEN`, `MERGED`, `CLOSED`).
+- [x] `PullRequestRegister`: `Description` e `RootCause` opcionais (validar só se não vazio); navegação `ICollection<PullRequestGithub> GithubPullRequests`; marcar `BranchPrefix/BranchName/RepositoryId` como `[Obsolete]` e nullable.
+- [x] `DefaultContext`: `DbSet<PullRequestGithub> PullRequestsGithub`; FK com cascade; índices `(CardNumber)`, `(RepositoryId, GithubPrNumber)` único; `Description` como `longtext`.
+- [x] Migração `ConsolidatePullRequestPerCard`: SQL (MySQL) que consolida duplicatas por `CardNumber` conforme **D1**, depois índice **único** em `PullRequests.CardNumber`.
+- [x] Migração `AddPullRequestGithub`.
+- [x] Requests/Responses: `OpenPullRequestGithubRequest`, `UpdatePullRequestGithubRequest`, `PullRequestGithubResponse` (contrato seção 3).
 
 Aceite
 - `dotnet build Solvace.Master.sln` ok; `dotnet ef migrations list` mostra as duas migrações; aplicadas num banco local/QA sem erro e sem cards duplicados.
