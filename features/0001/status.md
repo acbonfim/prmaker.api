@@ -14,7 +14,7 @@
 | B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 3041985 |
 | F2 | Reestruturação da tela principal | front | F1 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 721cb52 |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
-| B4 | Sync de status e hardening | back | B3 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B4 | Sync de status e hardening | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 31fdf7b |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ⬜ | | | | |
@@ -98,6 +98,12 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Validação**: `ng build` ok (só warnings pré-existentes). Sem teste no navegador/integração real.
 - **Deploy**: o front da F2 depende do backend B3 (o `POST /PullRequest` antigo exige descrição) — publicar backend antes.
 
+### B4 — Sync de status e hardening ✅
+- **Feito** (`31fdf7b`): `GitHubService.GetPullRequestsStatusAsync` com timeout de **5 s por PR** (`Task.WaitAsync` — Octokit não aceita `CancellationToken`); `TimeoutException`/falhas de rede viram `Error` no item (log Warning) em vez de exceção; log do rate limit restante após cada lote (`Warning` abaixo de 100, senão `Debug`). `PullRequestGithubApplication.ListByCard` agora captura falha total da chamada → PRs abertos saem com `statusStale: true` e o status persistido (nunca 500 por causa do GitHub). `ILogger` injetado nos dois.
+- **Já garantido na B3**: terminais (MERGED/CLOSED) não são reconsultados; cache de 60 s por PR no `GitHubService` limita a frequência de consulta (por isso não usei `StatusSyncedAt` como throttle — ele registra a última **mudança** de status).
+- **Validação**: teste descartável da B3 ampliado com "GitHub fora do ar" → 15/15 OK.
+- **Pendente (Q1)**: medir o tempo real (critério: card com 5+ PRs < 1,5 s com cache frio, < 200 ms com cache quente) — exige GitHub real; não medido.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -111,3 +117,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B3 | Concluída (3041985). Teste de lógica com SQLite + GitHub fake: 14/14. |
 | 2026-09-24 | F3, F2 | Concluídas (front 46043bd, 721cb52). Onda 2 fechada; liberadas B4 e F5. D5 resolvida pela spec; D9 alterada. |
 | 2026-09-24 | B4, F5 | Iniciadas (onda 3, sessão única, em sequência). |
+| 2026-09-24 | B4 | Concluída (31fdf7b). Teste descartável 15/15; medição de tempo pendente (Q1). |

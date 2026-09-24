@@ -201,10 +201,10 @@ Aceite
 **Depende de:** B3 · **Spec:** 3
 
 Tarefas
-- [ ] Garantir que terminais não são reconsultados e que `StatusSyncedAt` limita refresh (≥ 60 s).
-- [ ] Timeout por chamada ao GitHub (ex.: 5 s) — em falha, devolver o status persistido e `statusStale: true` em vez de erro 500.
-- [ ] Log (ILogger) de rate-limit restante do GitHub (`ApiInfo.RateLimit`) em nível Debug/Warning.
-- [ ] Revisar tratamento de erros em `GitHubService` (hoje engole exceções com mensagens genéricas) para os métodos novos: incluir a mensagem do GitHub no `Error`.
+- [x] Garantir que terminais não são reconsultados e que `StatusSyncedAt` limita refresh (≥ 60 s).
+- [x] Timeout por chamada ao GitHub (ex.: 5 s) — em falha, devolver o status persistido e `statusStale: true` em vez de erro 500.
+- [x] Log (ILogger) de rate-limit restante do GitHub (`ApiInfo.RateLimit`) em nível Debug/Warning.
+- [x] Revisar tratamento de erros em `GitHubService` (hoje engole exceções com mensagens genéricas) para os métodos novos: incluir a mensagem do GitHub no `Error`.
 
 Aceite
 - Card com 5+ PRs responde em < 1,5 s com cache frio e < 200 ms com cache quente (medir e anotar).
