@@ -21,15 +21,16 @@
 ## 3. Fases
 
 ### B1 — Descrição sem limite de 2000 (backend)
-- [ ] `TimelineEntry`: `MaxDescriptionLength = 100_000` + validação em `SetDescription`.
-- [ ] `TimelineContext`: `Description` → `longtext`, sem `HasMaxLength`.
-- [ ] Migração `TimelineDescriptionLongText` (factory de design-time temporária, sem conectar no banco; removida depois).
-- [ ] Importação do Teams: corte no `MaxDescriptionLength`.
-- [ ] Build + SQL da migração conferido (`dotnet ef migrations script`).
+- [x] `TimelineEntry`: `MaxDescriptionLength = 100_000` + validação em `SetDescription`.
+- [x] `TimelineContext`: `Description` → `longtext`, sem `HasMaxLength`.
+- [x] Migração `TimelineDescriptionLongText` (factory de design-time temporária, sem conectar no banco; removida depois).
+- [x] Importação do Teams: corte no `MaxDescriptionLength`.
+- [x] `TimelineController` Create/Update: `DomainException` → **400 `{ error }`** (antes caía no middleware genérico como erro de servidor).
+- [x] Build + SQL da migração conferido (`dotnet ef migrations script`).
 
 ### F1 — Mensagem de erro ao salvar registro (front)
-- [ ] `card-timeline`: erro de criar/editar → snackbar com a mensagem do backend.
-- [ ] `ng build`.
+- [x] `card-timeline`: erro de criar/editar → snackbar com a mensagem do backend.
+- [x] `ng build`.
 
 ### Q1 — Publicação e recuperação (usuário)
 - [ ] Merge → deploy aplica a migração.
