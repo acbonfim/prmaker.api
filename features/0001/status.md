@@ -17,7 +17,7 @@
 | B4 | Sync de status e hardening | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 31fdf7b |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d553331 |
-| F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front eb29ffd |
 | Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
 
 ## Decisões
@@ -118,6 +118,13 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **`recent-cards`**: sem mudança — o backend (B3) já devolve repo/branch do PR mais recente no mesmo formato.
 - **Riscos (Q1)**: o tema Aura do PrimeNG não tem `darkModeSelector` configurado; sobrescrevi fundo/borda dos itens do listbox para o tema escuro da tela, mas conferir visualmente. Não testado no navegador.
 
+### F6 — IA: passo Resumo + prompt multi-repo ✅ (repo front)
+- **Feito**: passo **Resumo** entre Commit e Resultado (stepper: Commit → Resumo → Resultado): para cada repositório com diff — nome, branch, nº de arquivos e `app-commit-details` (autor, data, SHA, mensagem); lista os repos do stepper sem commit (ficam fora do contexto). Rodapé: Commit → "Resumo"; Resumo → "Commits" (voltar) / "Gerar com IA"; Resultado → Copiar/Concluir.
+- **Prompt**: `helpers/ai-prompt.ts` → `buildMultiRepoDiffContext(selections)` substitui `{githubCommitDiff}` por markdown: por repo, cabeçalho (`## Repository`, branch, SHA, autor, mensagem completa) e, por arquivo, `### nome (status, +a -d)` + bloco ```diff```; sem URLs/blobs; patch > `MAX_PATCH_CHARS` (15 000) por arquivo é truncado com aviso; arquivo sem patch é sinalizado. O prompt padrão (fallback do código) passou a dizer que há vários repositórios e **um** root cause.
+- **Resultado**: continua pelo `GlobalService.onAiGenerated` → `register` → `CardPrStateService.setContent` — o RC gerado é o único do card e a descrição gerada é a que o modal "Abrir PR" envia (D3).
+- **Validação**: `ng build` ok; teste Node do `buildMultiRepoDiffContext` (2 repos + 1 sem diff, patch grande, arquivo binário) — 7/7 OK. Não testado no navegador nem com o provedor de IA real.
+- **Pendente**: spec 4.3 está truncada (D7) — implementado só o que está escrito. **Q1/D10**: os prompts `PromptBug`/`PromptUS` da configuração do plugin AI (id 3) têm prioridade sobre o fallback do código — ajustar o texto deles para mencionar múltiplos repositórios.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -135,3 +142,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | F5 | Concluída (front dd1c79d). Onda 3 fechada; liberadas F4 e F6. |
 | 2026-09-24 | F4, F6 | Iniciadas (onda 4, sessão única, em sequência). |
 | 2026-09-24 | F4 | Concluída (front d553331). |
+| 2026-09-24 | F6 | Concluída (front eb29ffd). Onda 4 fechada; só falta a Q1. |

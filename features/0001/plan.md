@@ -296,14 +296,14 @@ Aceite
 **Depende de:** F5 · **Spec:** 4.1, 4.3
 
 Tarefas
-- [ ] Novo step **Resumo** entre Commit e Resultado: lista cada repositório com o commit selecionado (Autor, Data, SHA, mensagem) no mesmo visual da tela de commit (D7).
-- [ ] `gerarPrompt()`: `{githubCommitDiff}` recebe bloco multi-repo compacto:
+- [x] Novo step **Resumo** entre Commit e Resultado: lista cada repositório com o commit selecionado (Autor, Data, SHA, mensagem) no mesmo visual da tela de commit (D7).
+- [x] `gerarPrompt()`: `{githubCommitDiff}` recebe bloco multi-repo compacto:
   ```
   ## Repository: edv-solvace-apps (branch hotfix/73001, commit 835ff36)
   <files: filename, status, patch>
   ```
   Só `filename/status/additions/deletions/patch`; truncar patch > ~15 kB por arquivo com aviso (1.3.5).
-- [ ] Resultado gera **um** RCA para o card (grava em `card-pr-state.rootCause`) e a descrição do PR (usada como default no modal F3).
+- [x] Resultado gera **um** RCA para o card (grava em `card-pr-state.rootCause`) e a descrição do PR (usada como default no modal F3).
 
 Aceite
 - Gerar com 2 repos → RCA menciona ambos; texto cai no root cause único do card.
