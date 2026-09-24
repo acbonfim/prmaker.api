@@ -59,6 +59,7 @@
 | `SystemInstruction` | não | fixo | — | Instruções fixas (R2) |
 | `Effort` | não | fixo | — | `low`/`medium`/`high`; **não usar com Haiku 4.5** (a API rejeita) |
 | `MaxRetries` | não | fixo | `3` | Retentativas automáticas do SDK (429/5xx/529) |
+| `WorkspaceId` | só p/ chave de organização | fixo (ou do usuário, se cada um usar um workspace) | — | `wrkspc_…`. A API exige o cabeçalho `anthropic-workspace-id` quando a chave **não** foi criada dentro de um workspace; chave de workspace pode deixar vazio |
 
 O plugin "AI Configurations" continua escolhendo o provedor (`Provider = Claude`) e guardando os templates `PromptBug`/`PromptUS`.
 

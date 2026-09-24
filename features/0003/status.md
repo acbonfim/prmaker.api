@@ -43,3 +43,4 @@
 | 2026-09-24 | — | 0002 mergeada (#7 back, #3 front) e em produção; `feature/0003` criada a partir de `master` nos dois repos. Plano criado com análise e sugestões (spec 5 e 6). |
 | 2026-09-24 | B1, B2 | Usuário aprovou (modelo configurável no plugin, SDK oficial). Iniciadas. |
 | 2026-09-24 | B1, B2 | Concluídas (abe503b, 1072fe0). Testes: 20/20 (ClaudeService x API falsa) e 7/7 (resolução com chave pessoal). Falta a Q1 (usuário). |
+| 2026-09-24 | Q1 | Teste do usuário: 400 "API key is not scoped to a workspace" (chave de organização). Campo opcional `WorkspaceId` no plugin → `MessageCreateParams.WorkspaceID` (cabeçalho `anthropic-workspace-id`) + mensagem orientando (bf0db85). Teste 23/23. |
