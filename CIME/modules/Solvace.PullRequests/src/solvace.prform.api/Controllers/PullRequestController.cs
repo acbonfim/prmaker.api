@@ -4,6 +4,8 @@ using solvace.prform.application.Contracts;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Requests;
 using solvace.prform.domain.Responses;
+using solvace.timeline.application.Contracts;
+using solvace.timeline.domain.Requests;
 
 namespace solvace.prform.Controllers;
 
@@ -14,11 +16,16 @@ public class PullRequestController : ControllerBase
 {
     private readonly IPullRequestApplication _application;
     private readonly IPullRequestGithubApplication _githubApplication;
+    private readonly ITimelineApplication _timelineApplication;
+    private readonly ILogger<PullRequestController> _logger;
 
-    public PullRequestController(IPullRequestApplication application, IPullRequestGithubApplication githubApplication)
+    public PullRequestController(IPullRequestApplication application, IPullRequestGithubApplication githubApplication,
+        ITimelineApplication timelineApplication, ILogger<PullRequestController> logger)
     {
         _application = application;
         _githubApplication = githubApplication;
+        _timelineApplication = timelineApplication;
+        _logger = logger;
     }
 
     /// <summary>
@@ -74,7 +81,9 @@ public class PullRequestController : ControllerBase
     {
         try
         {
-            return Ok(await _githubApplication.Open(cardNumber, request, cancellationToken));
+            var created = await _githubApplication.Open(cardNumber, request, cancellationToken);
+            await RegisterOnTimelineAsync(created, request.UserId, cancellationToken);
+            return Ok(created);
         }
         catch (DomainException e)
         {
@@ -110,6 +119,36 @@ public class PullRequestController : ControllerBase
         catch (DomainException e)
         {
             return BadRequest(new { error = e.Message });
+        }
+    }
+
+    /// <summary>
+    /// Registra na linha do tempo do card que o PR foi aberto (ou que um PR já existente foi
+    /// registrado). Falha aqui não desfaz nem falha a abertura do PR — só é logada.
+    /// </summary>
+    private async Task RegisterOnTimelineAsync(PullRequestGithubResponse pr, Guid requestUserId, CancellationToken cancellationToken)
+    {
+        var description = pr.AlreadyExisted
+            ? $"PR #{pr.Number} já existente registrado pelo CIME: {pr.RepositoryId} ({pr.BranchPrefix}{pr.BranchName} → {pr.TargetBranch}) — {pr.Url}"
+            : $"PR #{pr.Number} aberto pelo CIME: {pr.RepositoryId} ({pr.BranchPrefix}{pr.BranchName} → {pr.TargetBranch}) — {pr.Url}";
+
+        // Mesmo critério do TimelineController: usuário logado (claim ExternalId); senão, o do request.
+        var claim = User.FindFirst("ExternalId")?.Value;
+        Guid? userId = !string.IsNullOrEmpty(claim) && Guid.TryParse(claim, out var id) ? id
+            : requestUserId != Guid.Empty ? requestUserId : null;
+
+        try
+        {
+            await _timelineApplication.CreateAsync(new CreateTimelineEntryRequest
+            {
+                CardNumber = pr.CardNumber,
+                Description = description,
+                UserName = userId is null ? "CIME" : null
+            }, userId, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning(e, "PR #{Number} aberto, mas não foi possível registrar na timeline do card {CardNumber}", pr.Number, pr.CardNumber);
         }
     }
 }
