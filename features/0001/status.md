@@ -11,7 +11,7 @@
 | B1 | Modelo de dados e migração | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | c48c9d7 |
 | B2 | GitHubService multi-repo | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | 701a9d6 |
 | F1 | Estado compartilhado + componentes extraídos | front | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | front c8936ee |
-| B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 3041985 |
 | F2 | Reestruturação da tela principal | front | F1 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | B4 | Sync de status e hardening | back | B3 | 3 | ⬜ | | | | |
@@ -71,6 +71,18 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Validação**: `ng build --configuration development` ok (0 erros; warnings só pré-existentes). **Regressão visual/manual não foi feita** (não subi o front) — conferir na F2 ou na Q1: prefixo com duplo clique, autocomplete de repo, toggle, editores, IA preenchendo descrição/RC, Limpar.
 - **Obs.**: `src/environments/environment.ts` está modificado no working tree do front (apontando p/ localhost/`production:false`) — **não é desta fase e não foi commitado**.
 
+### B3 — Aplicação e endpoints de PR do card ✅
+- **Desvio de arquitetura**: a orquestração ficou em `Solvace.GitHub/.../Services/PullRequestGithubApplication.cs` (`IPullRequestGithubApplication`, registrada em `AddGitHubModule`), não no `prform.application` — o módulo GitHub já referencia `prform.application` (cache de plugins), então o inverso criaria ciclo. Ela usa o `DefaultContext` direto (mesmo padrão das outras applications).
+- **Endpoints** (conforme contrato §3): `POST /PullRequest/{card}/github`, `PUT /PullRequest/{card}/github/{id}`, `GET /PullRequest/{card}/github?refreshStatus=true`. Erros de validação/GitHub viram `DomainException` → controller responde `400 { error }`.
+- **Abrir PR**: cria o `PullRequestRegister` do card se ainda não existir (sem descrição/RC, `FormId = 1`); idempotente por `repo + número` (retorno `alreadyExisted`). O PR é criado no GitHub antes de gravar no banco — se o banco falhar, repetir a chamada só registra o existente.
+- **Listar**: só PRs não terminais são consultados; status só é gravado quando muda (`StatusSyncedAt` = última mudança de status, não "última consulta"); falha do GitHub → `statusStale: true` com o status persistido.
+- **Registro do card** (`POST /PullRequest`): upsert só por `CardNumber`; `description`/`rootCause` opcionais — **`null` mantém o valor atual, `""` limpa**; `branchPrefix/branchName/repositoryId` aceitos e ignorados (skill `gerar-prmake` continua funcionando). Corrigido bug antigo: quando nada mudava, o `Create` caía no `AddAsync` e duplicava o card.
+- **`GetByCardNumber`**: ignora `repositoryId`; inclui `githubPullRequests` (status persistido, sem refresh). `branchPrefix/branchName/repositoryId` do response vêm do PR do GitHub mais recente (fallback: legado da linha) — o front atual continua funcionando até a F2.
+- **`GetRecentByUser`**: repo/branch do PR do GitHub mais recente, fallback no legado.
+- **Validação**: build ok; `has-pending-model-changes` = sem mudanças de modelo; teste descartável (SQLite em memória + `IGitHubService` fake, no scratchpad da sessão) com 14 cenários — abrir com card novo, idempotência, 2º repo, erro do GitHub, update, refresh MERGED, `statusStale`, terminal não reconsultado, upsert null/vazio, payload legado, `GetRecentByUser` — **todos passaram**. Não testado contra MySQL/GitHub reais.
+- **Não feito**: entrada automática na Timeline ao abrir PR (o módulo GitHub não referencia o Timeline; avaliar na Q1).
+- **Incidente (corrigido)**: os commits B1 (c48c9d7) e B3 (3041985) levaram por engano versões vazias de `features/0002/spec.md` e `features/README.MD` que estavam em stage; removidos no commit seguinte, stage do usuário restaurado.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -81,3 +93,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-23 | B2 | Concluída (701a9d6). Sem teste contra o GitHub real. |
 | 2026-09-23 | F1 | Concluída (front c8936ee). Onda 1 fechada; liberadas B3, F2, F3. |
 | 2026-09-24 | B3, F2, F3 | Iniciadas (onda 2, sessão única, em sequência). |
+| 2026-09-24 | B3 | Concluída (3041985). Teste de lógica com SQLite + GitHub fake: 14/14. |

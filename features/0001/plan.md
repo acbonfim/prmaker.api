@@ -182,14 +182,14 @@ Arquivos: `Solvace.GitHub/src/solvace.github.application/{Contract/IGitHubServic
 **Depende de:** B1, B2 · **Spec:** 1.2, 1.3, 1.4, 1.5, 4
 
 Tarefas
-- [ ] `IPullRequestGithubApplication` + implementação (mesmo padrão de `PullRequestApplication`, `ICommitable`):
+- [x] `IPullRequestGithubApplication` + implementação (mesmo padrão de `PullRequestApplication`, `ICommitable`):
   - `Open(cardNumber, request)`: garante (upsert) o `PullRequestRegister` do card; chama `CreatePullRequestAsync`; persiste `PullRequestGithub` (idempotente por `repo+number`); retorna response.
   - `Update(cardNumber, id, request)`: PATCH no GitHub + atualiza snapshot.
   - `ListByCard(cardNumber, refreshStatus)`: lógica da seção 1.4 (status persistido p/ terminais; refresh paralelo p/ `OPEN`; persiste mudanças).
-- [ ] Rotas no `PullRequestController` conforme contrato (seção 3). Registrar DI no mesmo lugar onde `IPullRequestApplication` é registrado.
-- [ ] `PullRequestApplication.Create`: upsert **só por `CardNumber`**; `Description`/`RootCause` opcionais; ignora `branch*`/`repositoryId` (compat — `RepositoryId` deixa de ser `required` no request).
-- [ ] `GetByCardNumber`: ignora `repositoryId`; incluir no response a lista resumida de PRs do GitHub (sem refresh) para a tela carregar numa ida só.
-- [ ] `GetRecentByUser`: `RepositoryId/BranchPrefix/BranchName` passam a vir do PR GitHub mais recente do card (se houver).
+- [x] Rotas no `PullRequestController` conforme contrato (seção 3). Registrar DI no mesmo lugar onde `IPullRequestApplication` é registrado.
+- [x] `PullRequestApplication.Create`: upsert **só por `CardNumber`**; `Description`/`RootCause` opcionais; ignora `branch*`/`repositoryId` (compat — `RepositoryId` deixa de ser `required` no request).
+- [x] `GetByCardNumber`: ignora `repositoryId`; incluir no response a lista resumida de PRs do GitHub (sem refresh) para a tela carregar numa ida só.
+- [x] `GetRecentByUser`: `RepositoryId/BranchPrefix/BranchName` passam a vir do PR GitHub mais recente do card (se houver).
 - [ ] Registrar entrada na Timeline do card ao abrir PR (opcional, se `ITimelineApplication` estiver acessível — anotar no handoff).
 
 Aceite
