@@ -15,7 +15,7 @@
 | F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
 | B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 1ff8dee |
 | F3 | Bloqueio no front | front | F2 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front e28e702 |
-| Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ⬜ | | | | |
+| Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | 🟡 | Claude + usuário | 2026-09-24 | | 0da111c (+ push) |
 
 ## Decisões
 
@@ -82,6 +82,18 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - `auth/personal-integration.interceptor.ts` (registrado no `app.config.ts`): 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar único por rajada com ação "Configurar" (abre o modal) + `loadStatus()`. Usa `Injector` para evitar dependência circular com o `HttpClient`.
 - `ng build` ok. Não testado no navegador.
 
+### Q1 — Integração e publicação 🟡 (parte do Claude concluída; resto é do usuário)
+- **Feito**: Terraform — secret `user-integrations-encryption-key` → env `UserIntegrations__EncryptionKey` no serviço `cime-pullrequest` (`deploy/terraform/main.tf`), exemplo no `secrets.auto.tfvars.example` e nota no `deploy/README.md` (0da111c). Não validado com `terraform validate` (terraform não instalado nesta máquina).
+- **Obs.**: o serviço da API roda com `max_instances = 1` (SignalR), então o risco de cache defasado entre instâncias (B3, desvio 2) é mínimo; os 30 min continuam valendo.
+- **Regressão**: suítes descartáveis de 0001 e 0002 reexecutadas — 84/84 (b3test 25, b3p2 23, b4test 10, b2test 26); build back e front ok.
+- **Checklist do usuário (nesta ordem)**:
+  1. Gerar a chave uma vez: `openssl rand -base64 32`. Local: variável de ambiente `UserIntegrations__EncryptionKey` (não no appsettings versionado). Produção: colocar em `secrets.auto.tfvars` (`"user-integrations-encryption-key" = "<chave>"`) **antes** do `terraform apply` — sem o valor, o apply falha (o `main.tf` já referencia o secret). **Nunca trocar depois de em uso.**
+  2. Aplicar a migração `AddUserPluginConfigurations` (aditiva) — local à mão (`dotnet ef database update …`), em produção automática no deploy.
+  3. Deploy do backend antes do front.
+  4. Virada combinada com o time: marcar "Github Configurations" e "AzureDevOps Configurations" como **Uso pessoal** (a tela de PR fica bloqueada para quem ainda não configurou) → cada pessoa configura em Minhas integrações → **limpar o token/PAT global** (D9).
+  5. Teste: configurar, abrir PR (autor no GitHub passa a ser a própria pessoa), status/⟳, gerar com IA, handover, detalhes do card; usuário sem configuração vê o bloqueio e o aviso de 403.
+- **Pendência herdada da 0001**: decidir se a skill `gerar-prmake` passa a abrir o PR no GitHub (`POST /PullRequest/{card}/github`) — com a 0002 ela já herda a integração pessoal de quem roda (usa a api-key do usuário).
+
 ## Log
 
 | Data | Fase | Evento |
@@ -93,3 +105,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B3, F2 | Concluídas (23854f5, front a757d00). Onda 2 fechada; liberadas B4 e F3. |
 | 2026-09-24 | B4, F3 | Iniciadas (onda 3). |
 | 2026-09-24 | B4, F3 | Concluídas (1ff8dee, front e28e702). Onda 3 fechada; só falta a Q1. |
+| 2026-09-24 | Q1 | Chave no Terraform (0da111c), regressão 84/84, builds ok. Push de `feature/0002` nos dois repos. Restante: checklist do usuário. |

@@ -178,7 +178,7 @@ Onda 4:  Q1 (integração)
 
 ### Q1 — Integração e publicação
 **Depende de:** todas
-- [ ] Configurar `UserIntegrations:EncryptionKey` (local e Secret Manager/Cloud Run).
+- [x] Configurar `UserIntegrations:EncryptionKey` no Terraform (Secret Manager/Cloud Run) — valor real e local: usuário.
 - [ ] Aplicar migração (usuário), marcar GitHub/Azure como pessoais, cada um configurar, **limpar o token global** (D9).
 - [ ] Regressão da 0001 (abrir PR, status, IA, handover) com token pessoal.
 
