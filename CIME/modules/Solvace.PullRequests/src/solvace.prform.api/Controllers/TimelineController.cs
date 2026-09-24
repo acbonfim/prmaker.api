@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using solvace.prform.Teams;
 using solvace.timeline.application.Contracts;
+using solvace.timeline.domain.Entities.Base;
 using solvace.timeline.domain.Requests;
 using solvace.timeline.domain.Responses;
 
@@ -37,8 +38,16 @@ public class TimelineController : ControllerBase
         if (userId is null && string.IsNullOrWhiteSpace(request.UserName))
             return BadRequest("O campo 'userName' é obrigatório para registros externos (sem usuário logado).");
 
-        var result = await _timelineApplication.CreateAsync(request, userId, cancellationToken);
-        return Ok(result);
+        try
+        {
+            var result = await _timelineApplication.CreateAsync(request, userId, cancellationToken);
+            return Ok(result);
+        }
+        catch (DomainException e)
+        {
+            // Validação (ex.: descrição vazia ou acima do limite) → 400 com a mensagem para o front.
+            return BadRequest(new { error = e.Message });
+        }
     }
 
     /// <summary>
@@ -114,8 +123,15 @@ public class TimelineController : ControllerBase
         if (!CanMutate(entry))
             return StatusCode(StatusCodes.Status403Forbidden, "Você não tem permissão para editar este registro.");
 
-        var updated = await _timelineApplication.UpdateAsync(id, request, GetUserId()?.ToString(), cancellationToken);
-        return Ok(updated);
+        try
+        {
+            var updated = await _timelineApplication.UpdateAsync(id, request, GetUserId()?.ToString(), cancellationToken);
+            return Ok(updated);
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
     }
 
     /// <summary>

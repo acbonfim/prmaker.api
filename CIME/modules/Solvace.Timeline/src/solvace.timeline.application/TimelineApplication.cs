@@ -68,10 +68,10 @@ public class TimelineApplication : ITimelineApplication
         if (await _timelineRepository.ExistsBySourceMessageIdAsync(sourceMessageId, cancellationToken))
             return false;
 
-        // Respeita o limite da coluna Description (2000).
+        // Mensagem importada acima do limite é cortada (não trava a importação do grupo).
         var trimmed = (description ?? string.Empty).Trim();
-        if (trimmed.Length > 2000)
-            trimmed = trimmed[..2000];
+        if (trimmed.Length > TimelineEntry.MaxDescriptionLength)
+            trimmed = trimmed[..TimelineEntry.MaxDescriptionLength];
 
         var entry = new TimelineEntry(cardNumber, trimmed, userName, sourceMessageId, occurredAt);
         var created = await _timelineRepository.CreateAsync(entry, cancellationToken);
