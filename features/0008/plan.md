@@ -34,4 +34,4 @@
 
 ## 4. Fora do escopo (possível evolução)
 - Revogação de chaves: registrada como débito técnico na **[feature 0009](../0009/spec.md)**.
-- Detalhe (lista de chaves emitidas / versão da chave no usuário e checagem no handler). Exigiria migração no SQL Server do Cime.Auth e mudança no `XApiKeyAuthenticationHandler`.
+- Abordagens possíveis (lista de chaves emitidas ou versão da chave no usuário, checada no handler) estão na spec. As duas exigem migração no SQL Server do Cime.Auth e mudança no `XApiKeyAuthenticationHandler`.
