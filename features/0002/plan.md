@@ -176,6 +176,18 @@ Onda 4:  Q1 (integração)
 - [x] Tela de PR bloqueada (estado vazio com explicação + botão que abre o modal) enquanto `status.ready = false`; desbloqueia sozinha ao salvar.
 - [x] Interceptor: 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar com ação "Configurar" (abre o modal).
 
+### B5 — Campos fixos x campos do usuário (pedido pós-teste)
+**Depende de:** B3, B4
+- [ ] `Plugin.PersonalFields` (JSON com as chaves que o usuário preenche; `null` = todas, compatível com o que já existe) + request/response + migração aditiva.
+- [ ] Minhas integrações: campo com `editable`; fixo mostra o valor global (sensível: só "definido/não definido"); salvar campo fixo → 400; "configurado" = todos os **editáveis** preenchidos.
+- [ ] Resolvedor: configuração efetiva = campos fixos do global + campos do usuário (sem fallback nos do usuário).
+- [ ] `get-all-by-id` de plugin pessoal: fixos com o valor global (sensível mascarado).
+
+### F4 — Marcação por campo no admin + campos bloqueados no modal
+**Depende de:** B5 (contrato)
+- [ ] `dialogEdit`: com "Uso pessoal" ligado, cada campo tem "Usuário preenche" (novo campo nasce marcado).
+- [ ] "Minhas integrações": campos fixos somente leitura com 🔒 "Definido pelo administrador"; não são enviados ao salvar.
+
 ### Q1 — Integração e publicação
 **Depende de:** todas
 - [x] Configurar `UserIntegrations:EncryptionKey` no Terraform (Secret Manager/Cloud Run) — valor real e local: usuário.

@@ -15,6 +15,8 @@
 | F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
 | B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 1ff8dee |
 | F3 | Bloqueio no front | front | F2 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front e28e702 |
+| B5 | Campos fixos x campos do usuário (pós-teste) | back | B3, B4 | 5 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F4 | Marcação por campo no admin + campos bloqueados no modal | front | B5 | 5 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | 🟡 | Claude + usuário | 2026-09-24 | | 0da111c (+ push) |
 
 ## Decisões
@@ -32,6 +34,7 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | D7 | ✅ confirmada (default) | |
 | D8 | ✅ confirmada (default) | |
 | D9 | ✅ confirmada (default) | |
+| D10 | ✅ pedido do usuário | Campos de plugin pessoal podem ser **fixos** (definidos pelo admin, valor do global, somente leitura p/ o usuário) ou **do usuário**. `PersonalFields = null` = todos do usuário (compatível). Configurado = todos os editáveis preenchidos. |
 
 ## Notas de handoff
 
@@ -107,3 +110,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B4, F3 | Concluídas (1ff8dee, front e28e702). Onda 3 fechada; só falta a Q1. |
 | 2026-09-24 | Q1 | Chave no Terraform (0da111c), regressão 84/84, builds ok. Push de `feature/0002` nos dois repos. Restante: checklist do usuário. |
 | 2026-09-24 | Q1 | Teste do usuário: com várias integrações o modal cortava o conteúdo (blocos flex encolhendo + overflow:hidden). Corpo dos modais Minhas integrações e Abrir PR agora rola (front 628029a). |
+| 2026-09-24 | B5, F4 | Pedido do usuário: campos fixos x editáveis por plugin pessoal. Fases criadas e iniciadas. |
