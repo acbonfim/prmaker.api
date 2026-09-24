@@ -13,8 +13,8 @@
 | F1 | Flag "Uso pessoal" no admin de plugins | front | contrato | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 3eaafa1 |
 | B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 23854f5 |
 | F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
-| B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ⬜ | | | | |
-| F3 | Bloqueio no front | front | F2 | 3 | ⬜ | | | | |
+| B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F3 | Bloqueio no front | front | F2 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ⬜ | | | | |
 
 ## Decisões
@@ -79,3 +79,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B1, B2, F1 | Concluídas (9156545, d726d29, front 3eaafa1). Onda 1 fechada; liberadas B3 e F2. |
 | 2026-09-24 | B3, F2 | Iniciadas (onda 2). |
 | 2026-09-24 | B3, F2 | Concluídas (23854f5, front a757d00). Onda 2 fechada; liberadas B4 e F3. |
+| 2026-09-24 | B4, F3 | Iniciadas (onda 3). |
