@@ -133,16 +133,16 @@ Onda 4:  Q1 (integração)
 
 ### B1 — Modelo e migração
 **Depende de:** — · **Spec:** 1, 6, 7
-- [ ] `Plugin.IsPersonal` (+ `SetPersonal`), `PluginRequest`/`PluginRespose.IsPersonal`, `UpdateConfiguration` grava a flag, `get-all` devolve.
-- [ ] Entidade `UserPluginConfiguration` (PluginId FK, UserExternalId, Options, auditoria) + `DbSet` + índice único `(PluginId, UserExternalId)`; FK sem cascade físico (plugin é soft delete).
-- [ ] Migração `AddUserPluginConfigurations` (coluna com default `false` + tabela). Gerar com a factory temporária (ver memória `dev-db-is-prod`); ensaiar no MySQL local.
+- [x] `Plugin.IsPersonal` (+ `SetPersonal`), `PluginRequest`/`PluginRespose.IsPersonal`, `UpdateConfiguration` grava a flag, `get-all` devolve.
+- [x] Entidade `UserPluginConfiguration` (PluginId FK, UserExternalId, Options, auditoria) + `DbSet` + índice único `(PluginId, UserExternalId)`; FK sem cascade físico (plugin é soft delete).
+- [x] Migração `AddUserPluginConfigurations` (coluna com default `false` + tabela). Gerar com a factory temporária (ver memória `dev-db-is-prod`); ensaiar no MySQL local.
 
 ### B2 — Proteção de segredos
 **Depende de:** — · **Spec:** 6 (+ ponto 1.5.1)
-- [ ] `ISecretProtector` (AES-GCM, chave de 32 bytes em Base64 em `UserIntegrations:EncryptionKey`); formato versionado (`v1:` + nonce + tag + cifra).
-- [ ] Sem chave configurada: API sobe, mas salvar integração pessoal → 500 com mensagem clara (nunca grava em texto puro).
-- [ ] `SensitiveFieldPolicy` (regra do D3).
-- [ ] Teste descartável: ida e volta, adulteração detectada, chave errada falha.
+- [x] `ISecretProtector` (AES-GCM, chave de 32 bytes em Base64 em `UserIntegrations:EncryptionKey`); formato versionado (`v1:` + nonce + tag + cifra).
+- [x] Sem chave configurada: API sobe, mas salvar integração pessoal → 500 com mensagem clara (nunca grava em texto puro).
+- [x] `SensitiveFieldPolicy` (regra do D3).
+- [x] Teste descartável: ida e volta, adulteração detectada, chave errada falha.
 
 ### B3 — Aplicação, cache e endpoints
 **Depende de:** B1, B2 · **Spec:** 2.1–2.3, 5, 7, 8, 9
@@ -162,8 +162,8 @@ Onda 4:  Q1 (integração)
 
 ### F1 — Flag "Uso pessoal" no admin de plugins
 **Depende de:** contrato · **Spec:** 1
-- [ ] Toggle "Uso pessoal" no `dialogEdit` com tooltip: "Configurações marcadas como de uso pessoal precisam ser preenchidas por cada usuário (em Minhas integrações) para usar a aplicação."
-- [ ] Indicação visual (badge) na lista de plugins.
+- [x] Toggle "Uso pessoal" no `dialogEdit` com tooltip: "Configurações marcadas como de uso pessoal precisam ser preenchidas por cada usuário (em Minhas integrações) para usar a aplicação."
+- [x] Indicação visual (badge) na lista de plugins.
 
 ### F2 — "Minhas integrações"
 **Depende de:** contrato · **Spec:** 2, 2.1–2.3
