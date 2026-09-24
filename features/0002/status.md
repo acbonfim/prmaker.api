@@ -15,8 +15,8 @@
 | F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
 | B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 1ff8dee |
 | F3 | Bloqueio no front | front | F2 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front e28e702 |
-| B5 | Campos fixos x campos do usuário (pós-teste) | back | B3, B4 | 5 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
-| F4 | Marcação por campo no admin + campos bloqueados no modal | front | B5 | 5 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B5 | Campos fixos x campos do usuário (pós-teste) | back | B3, B4 | 5 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | d0b59c3 |
+| F4 | Marcação por campo no admin + campos bloqueados no modal | front | B5 | 5 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d51db52 |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | 🟡 | Claude + usuário | 2026-09-24 | | 0da111c (+ push) |
 
 ## Decisões
@@ -85,15 +85,27 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - `auth/personal-integration.interceptor.ts` (registrado no `app.config.ts`): 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar único por rajada com ação "Configurar" (abre o modal) + `loadStatus()`. Usa `Injector` para evitar dependência circular com o `HttpClient`.
 - `ng build` ok. Não testado no navegador.
 
+### B5 — Campos fixos x campos do usuário ✅ (pedido do usuário)
+- `Plugin.PersonalFields` (longtext, JSON com as chaves que o usuário preenche; **null = todas**, compatível) + `IsUserField(key)`/`SetPersonalFields`/`GetPersonalFieldKeys`; `PluginRequest/PluginRespose.PersonalFields`; `UpdateConfiguration` grava (⚠️ como `AdminOnly`/`IsPersonal`: quem mandar o PUT sem o campo zera para null = todos do usuário — os dois chamadores do front mandam o plugin inteiro).
+- Minhas integrações: `UserIntegrationFieldResponse.Editable`; campo fixo = valor global somente leitura (sensível: só `hasValue`); salvar campo fixo → 400; **configurado = todos os campos do usuário preenchidos** (plugin com todos os campos fixos nunca fica pendente).
+- `BuildEffectiveValues`: configuração efetiva = fixos com o valor global + campos do usuário (sem fallback nestes). Admin mudando um valor fixo vale na hora para todos; valor antigo do usuário num campo que virou fixo é ignorado (mas fica guardado).
+- Migração `20260924054817_AddPluginPersonalFields` (aditiva, nullable) — ensaiada up/down/up no MySQL 8 local.
+- Teste descartável b3p2 ampliado: **31/31** (fixo somente leitura com valor global, salvar fixo bloqueado, configurado só com os campos do usuário, efetiva combinada, admin muda fixo, `null` = todos editáveis, todos fixos = só global e nada pendente).
+
+### F4 — Marcação por campo + campos bloqueados ✅ (repo front)
+- `dialogEdit` (aba de configurações, plugin pessoal): aviso explicativo + checkbox **"Usuário preenche"** por campo (tooltip fixo x usuário); campo novo nasce marcado; lista limpa ao remover campo/salvar. `PluginData.personalFields`.
+- Minhas integrações: campo fixo em modo somente leitura com 🔒 e hint "Definido pelo administrador" (segredo fixo mostra só `••••••••` se definido); nunca é enviado ao salvar.
+- `ng build` ok. Não testado no navegador.
+
 ### Q1 — Integração e publicação 🟡 (parte do Claude concluída; resto é do usuário)
 - **Feito**: Terraform — secret `user-integrations-encryption-key` → env `UserIntegrations__EncryptionKey` no serviço `cime-pullrequest` (`deploy/terraform/main.tf`), exemplo no `secrets.auto.tfvars.example` e nota no `deploy/README.md` (0da111c). Não validado com `terraform validate` (terraform não instalado nesta máquina).
 - **Obs.**: o serviço da API roda com `max_instances = 1` (SignalR), então o risco de cache defasado entre instâncias (B3, desvio 2) é mínimo; os 30 min continuam valendo.
 - **Regressão**: suítes descartáveis de 0001 e 0002 reexecutadas — 84/84 (b3test 25, b3p2 23, b4test 10, b2test 26); build back e front ok.
 - **Checklist do usuário (nesta ordem)**:
   1. Gerar a chave uma vez: `openssl rand -base64 32`. Local: variável de ambiente `UserIntegrations__EncryptionKey` (não no appsettings versionado). Produção: colocar em `secrets.auto.tfvars` (`"user-integrations-encryption-key" = "<chave>"`) **antes** do `terraform apply` — sem o valor, o apply falha (o `main.tf` já referencia o secret). **Nunca trocar depois de em uso.**
-  2. Aplicar a migração `AddUserPluginConfigurations` (aditiva) — local à mão (`dotnet ef database update …`), em produção automática no deploy.
+  2. Aplicar as migrações `AddUserPluginConfigurations` e `AddPluginPersonalFields` (aditivas) — local à mão (`dotnet ef database update …`), em produção automática no deploy.
   3. Deploy do backend antes do front.
-  4. Virada combinada com o time: marcar "Github Configurations" e "AzureDevOps Configurations" como **Uso pessoal** (a tela de PR fica bloqueada para quem ainda não configurou) → cada pessoa configura em Minhas integrações → **limpar o token/PAT global** (D9).
+  4. Virada combinada com o time: marcar "Github Configurations" e "AzureDevOps Configurations" como **Uso pessoal** e, em cada um, deixar marcado "Usuário preenche" só no que é pessoal (ex.: `Token`/`PersonalAccessToken`; `Owner`, `Organization`, `Project`, `ApiVersion`… fixos) (a tela de PR fica bloqueada para quem ainda não configurou) → cada pessoa configura em Minhas integrações → **limpar o token/PAT global** (D9).
   5. Teste: configurar, abrir PR (autor no GitHub passa a ser a própria pessoa), status/⟳, gerar com IA, handover, detalhes do card; usuário sem configuração vê o bloqueio e o aviso de 403.
 - **Pendência herdada da 0001**: decidir se a skill `gerar-prmake` passa a abrir o PR no GitHub (`POST /PullRequest/{card}/github`) — com a 0002 ela já herda a integração pessoal de quem roda (usa a api-key do usuário).
 
@@ -111,3 +123,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | Q1 | Chave no Terraform (0da111c), regressão 84/84, builds ok. Push de `feature/0002` nos dois repos. Restante: checklist do usuário. |
 | 2026-09-24 | Q1 | Teste do usuário: com várias integrações o modal cortava o conteúdo (blocos flex encolhendo + overflow:hidden). Corpo dos modais Minhas integrações e Abrir PR agora rola (front 628029a). |
 | 2026-09-24 | B5, F4 | Pedido do usuário: campos fixos x editáveis por plugin pessoal. Fases criadas e iniciadas. |
+| 2026-09-24 | B5, F4 | Concluídas (d0b59c3, front d51db52): campos fixos (valor global, somente leitura) x campos do usuário. Push nos dois repos. |
