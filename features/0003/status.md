@@ -44,3 +44,4 @@
 | 2026-09-24 | B1, B2 | Usuário aprovou (modelo configurável no plugin, SDK oficial). Iniciadas. |
 | 2026-09-24 | B1, B2 | Concluídas (abe503b, 1072fe0). Testes: 20/20 (ClaudeService x API falsa) e 7/7 (resolução com chave pessoal). Falta a Q1 (usuário). |
 | 2026-09-24 | Q1 | Teste do usuário: 400 "API key is not scoped to a workspace" (chave de organização). Campo opcional `WorkspaceId` no plugin → `MessageCreateParams.WorkspaceID` (cabeçalho `anthropic-workspace-id`) + mensagem orientando (bf0db85). Teste 23/23. |
+| 2026-09-24 | — | Teste do usuário: popovers Descrição/Root Cause da tela principal abriam vazios (com check verde). Causa: conteúdo do `p-popover` projetado e instanciado no carregamento, antes do card; agora `<ng-template #content>` renderizado ao abrir (front 7332ebd, branch feature/0003 do front). |
