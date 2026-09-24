@@ -16,7 +16,7 @@
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
 | B4 | Sync de status e hardening | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 31fdf7b |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
-| F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d553331 |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
 
@@ -112,6 +112,12 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Extra**: `helpers/commit.ts` + `app-commit-details` (reusar no Resumo da F6). Corrigido bug: com o formato do backend (`title` + `description` separados) a descrição do commit perdia a 1ª linha.
 - **Validação**: `ng build` ok (sem warnings novos). Não testado no navegador.
 
+### F4 — Painel de PRs abertos do card ✅ (repo front)
+- **Feito**: `components/github-pr-list/` substitui a lista provisória da F2 no painel "Pull Requests". `p-orderList` só como lista selecionável (`.p-orderlist-controls` escondido via CSS, `dragdrop=false`, sem manter seleção). Item: avatar + nome (usuário do CIME, `getPhotosByExternalIds` **em lote** com cache por componente), branch, `repo → destino · #número`, data de abertura e status à direita (`OPEN` verde, `MERGED` lilás, `CLOSED` vermelho — cores do GitHub; chip `DRAFT`; ícone `sync_problem` quando `statusStale`). Clique → `openPrDialog(pr)` (modo edição).
+- **Carga**: na busca do card a lista vem do `GetByCardNumber` (status persistido) e, se houver PRs, `refreshGithubPrs()` chama `GET /PullRequest/{card}/github?refreshStatus=true` **uma vez** em segundo plano (descarta a resposta se o card mudou). Botão ⟳ no cabeçalho do painel força a atualização.
+- **`recent-cards`**: sem mudança — o backend (B3) já devolve repo/branch do PR mais recente no mesmo formato.
+- **Riscos (Q1)**: o tema Aura do PrimeNG não tem `darkModeSelector` configurado; sobrescrevi fundo/borda dos itens do listbox para o tema escuro da tela, mas conferir visualmente. Não testado no navegador.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -128,3 +134,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B4 | Concluída (31fdf7b). Teste descartável 15/15; medição de tempo pendente (Q1). |
 | 2026-09-24 | F5 | Concluída (front dd1c79d). Onda 3 fechada; liberadas F4 e F6. |
 | 2026-09-24 | F4, F6 | Iniciadas (onda 4, sessão única, em sequência). |
+| 2026-09-24 | F4 | Concluída (front d553331). |

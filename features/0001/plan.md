@@ -265,11 +265,11 @@ Aceite
 **Depende de:** F3, B4 · **Spec:** 1.4, 3, 3.1
 
 Tarefas
-- [ ] `app-card-panel` "Pull Requests" na tela principal com `p-orderList` **sem controles de ordenação** (`[dragdrop]=false`, ocultar botões), item: branch (`prefix+name`), repositório, data, `app-user-avatar` + nome (usuário CIME — ver 1.3.1), **status à direita**: `OPEN` verde, `MERGED` lilás, `CLOSED` vermelho (+ badge "draft").
-- [ ] Carregar via `GET .../github?refreshStatus=true` ao buscar o card; skeleton enquanto carrega; ícone de "status desatualizado" se `statusStale`.
-- [ ] Resolver nomes/fotos em lote (`getPhotosByExternalIds` com todos os `userId`).
-- [ ] Clique no item → abre o modal F3 em modo edição (3.1).
-- [ ] Atualizar `recent-cards` para o novo formato de `GetRecentByUser`.
+- [x] `app-card-panel` "Pull Requests" na tela principal com `p-orderList` **sem controles de ordenação** (`[dragdrop]=false`, ocultar botões), item: branch (`prefix+name`), repositório, data, `app-user-avatar` + nome (usuário CIME — ver 1.3.1), **status à direita**: `OPEN` verde, `MERGED` lilás, `CLOSED` vermelho (+ badge "draft").
+- [x] Carregar via `GET .../github?refreshStatus=true` ao buscar o card; skeleton enquanto carrega; ícone de "status desatualizado" se `statusStale`.
+- [x] Resolver nomes/fotos em lote (`getPhotosByExternalIds` com todos os `userId`).
+- [x] Clique no item → abre o modal F3 em modo edição (3.1).
+- [x] Atualizar `recent-cards` para o novo formato de `GetRecentByUser`.
 
 Aceite
 - Card com PRs em 3 estados mostra cores corretas; 1 request para listar.
