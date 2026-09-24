@@ -14,8 +14,8 @@
 | B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 3041985 |
 | F2 | Reestruturação da tela principal | front | F1 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 721cb52 |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
-| B4 | Sync de status e hardening | back | B3 | 3 | ⬜ | | | | |
-| F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ⬜ | | | | |
+| B4 | Sync de status e hardening | back | B3 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ⬜ | | | | |
 | Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
@@ -110,3 +110,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B3, F2, F3 | Iniciadas (onda 2, sessão única, em sequência). |
 | 2026-09-24 | B3 | Concluída (3041985). Teste de lógica com SQLite + GitHub fake: 14/14. |
 | 2026-09-24 | F3, F2 | Concluídas (front 46043bd, 721cb52). Onda 2 fechada; liberadas B4 e F5. D5 resolvida pela spec; D9 alterada. |
+| 2026-09-24 | B4, F5 | Iniciadas (onda 3, sessão única, em sequência). |
