@@ -8,9 +8,9 @@
 
 | Fase | Descrição | Repo | Depende de | Onda | Status | Responsável | Início | Conclusão | Commits |
 |---|---|---|---|---|---|---|---|---|---|
-| B1 | Modelo de dados e migração | back | — | 1 | ⬜ | | | | |
-| B2 | GitHubService multi-repo | back | — | 1 | ⬜ | | | | |
-| F1 | Estado compartilhado + componentes extraídos | front | — | 1 | ⬜ | | | | |
+| B1 | Modelo de dados e migração | back | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-23 | | |
+| B2 | GitHubService multi-repo | back | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-23 | | |
+| F1 | Estado compartilhado + componentes extraídos | front | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-23 | | |
 | B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ⬜ | | | | |
 | F2 | Reestruturação da tela principal | front | F1 | 2 | ⬜ | | | | |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ⬜ | | | | |
@@ -46,3 +46,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | Data | Fase | Evento |
 |---|---|---|
 | 2026-09-23 | — | Plano criado; branches `feature/0001` criadas a partir de `master` nos dois repos. |
+| 2026-09-23 | B1, B2, F1 | Iniciadas (onda 1, sessão única, em sequência). |
