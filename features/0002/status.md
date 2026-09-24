@@ -13,8 +13,8 @@
 | F1 | Flag "Uso pessoal" no admin de plugins | front | contrato | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 3eaafa1 |
 | B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 23854f5 |
 | F2 | Modal "Minhas integrações" | front | contrato | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front a757d00 |
-| B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
-| F3 | Bloqueio no front | front | F2 | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 1ff8dee |
+| F3 | Bloqueio no front | front | F2 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front e28e702 |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ⬜ | | | | |
 
 ## Decisões
@@ -70,6 +70,18 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - Menu do usuário: item **"Minhas integrações"** (com "!" quando pendente) e bolinha âmbar ao lado do nome; `top-menu` chama `loadStatus()` ao iniciar.
 - `ng build` ok. Não testado no navegador.
 
+### B4 — GitHub/Azure com token pessoal + bloqueio ✅
+- **`GitHubService`**: não lê mais o plugin no construtor. `EnsureClientAsync` (1ª linha de cada método público, **fora** dos try/catch) resolve via `IPluginConfigurationResolver("Github Configurations")` e cria o `GitHubClient` com o token efetivo. `Config`/`Client` substituem `_plugin`/`_gitHubClient`. Caches de repositórios e de status passam a ter o **escopo do token** na chave (`SHA-256(token)[..16]`) — com token pessoal, cada usuário tem os seus (repos visíveis dependem do token).
+- **`AzureService`**: idem (`EnsureConfigAsync`), e o PAT vai no header `Basic` montado **por requisição** (`CreateClient()`); o `HttpClient` nomeado "AzureDevOps" ficou só com Accept/User-Agent (antes fixava o PAT global na criação).
+- **Construtores não lançam mais** sem token — resolver o service no DI sempre funciona; a falta de configuração aparece só quando a operação roda (403 se for pessoal; `InvalidOperationException` "Token GitHub não configurado" se o plugin global estiver sem token, como antes).
+- `PullRequestGithubApplication.ListByCard` não engole mais a `PersonalIntegrationRequiredException` como "GitHub indisponível" (sobe como 403); listagem sem refresh (só banco) continua funcionando.
+- **Validação**: teste descartável sem rede (DI real + handler HTTP falso) — 10/10: resolver sem config não lança; GitHub/Azure sem config → exceção (inclusive dentro do `CreatePullRequest`); `ListByCard(refresh)` não vira `statusStale`; Azure usa PAT/Organization/Project **do usuário** no request; dois usuários, dois PATs; filtro → 403 `{ error, code, plugins }`.
+
+### F3 — Bloqueio no front ✅ (repo front)
+- Tela de PR: com `status.ready === false`, mostra o bloqueio (lista do que falta + "Configurar minhas integrações") no lugar do conteúdo; ao salvar no modal o status atualiza e a tela libera sozinha. Status desconhecido (falha ao consultar) **não** bloqueia — o backend barra de qualquer forma. Com a tela bloqueada, a busca automática por querystring não dispara.
+- `auth/personal-integration.interceptor.ts` (registrado no `app.config.ts`): 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar único por rajada com ação "Configurar" (abre o modal) + `loadStatus()`. Usa `Injector` para evitar dependência circular com o `HttpClient`.
+- `ng build` ok. Não testado no navegador.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -80,3 +92,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B3, F2 | Iniciadas (onda 2). |
 | 2026-09-24 | B3, F2 | Concluídas (23854f5, front a757d00). Onda 2 fechada; liberadas B4 e F3. |
 | 2026-09-24 | B4, F3 | Iniciadas (onda 3). |
+| 2026-09-24 | B4, F3 | Concluídas (1ff8dee, front e28e702). Onda 3 fechada; só falta a Q1. |

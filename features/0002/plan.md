@@ -155,10 +155,10 @@ Onda 4:  Q1 (integração)
 
 ### B4 — GitHub/Azure com o token pessoal + bloqueio
 **Depende de:** B3 · **Spec:** 3, 4
-- [ ] `GitHubService`: configuração lida por operação via `GetEffectiveConfiguration`; cliente Octokit criado sob demanda com o token do usuário; caches de repositórios/status passam a ser **por usuário** (repos visíveis dependem do token).
-- [ ] `AzureService` + `HttpClient` "AzureDevOps": PAT por requisição (header montado no service).
-- [ ] Todas as rotas GitHub/Azure/PR-GitHub devolvem o 403 do D4 sem configuração.
-- [ ] Teste descartável: plugin comum (lê global), pessoal configurado (lê do usuário), pessoal pendente (403), plugin desmarcado (volta ao global).
+- [x] `GitHubService`: configuração lida por operação via `GetEffectiveConfiguration`; cliente Octokit criado sob demanda com o token do usuário; caches de repositórios/status passam a ser **por usuário** (repos visíveis dependem do token).
+- [x] `AzureService` + `HttpClient` "AzureDevOps": PAT por requisição (header montado no service).
+- [x] Todas as rotas GitHub/Azure/PR-GitHub devolvem o 403 do D4 sem configuração.
+- [x] Teste descartável: plugin comum (lê global), pessoal configurado (lê do usuário), pessoal pendente (403), plugin desmarcado (volta ao global).
 
 ### F1 — Flag "Uso pessoal" no admin de plugins
 **Depende de:** contrato · **Spec:** 1
@@ -173,8 +173,8 @@ Onda 4:  Q1 (integração)
 
 ### F3 — Bloqueio no front
 **Depende de:** F2 · **Spec:** 4
-- [ ] Tela de PR bloqueada (estado vazio com explicação + botão que abre o modal) enquanto `status.ready = false`; desbloqueia sozinha ao salvar.
-- [ ] Interceptor: 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar com ação "Configurar" (abre o modal).
+- [x] Tela de PR bloqueada (estado vazio com explicação + botão que abre o modal) enquanto `status.ready = false`; desbloqueia sozinha ao salvar.
+- [x] Interceptor: 403 `PERSONAL_INTEGRATION_REQUIRED` → snackbar com ação "Configurar" (abre o modal).
 
 ### Q1 — Integração e publicação
 **Depende de:** todas
