@@ -71,12 +71,12 @@ Assim o front faz 1 request e o custo com a API do GitHub cai com o tempo (a mai
 
 | # | Tema | Default adotado no plano |
 |---|---|---|
-| D1 | Consolidação de linhas antigas por card | Manter a linha mais recente (`UpdatedAt ?? CreatedAt`); `Description`/`RootCause` = o mais recente não vazio. |
+| D1 | ✅ Consolidação de linhas antigas por card | Manter a linha mais recente (`UpdatedAt ?? CreatedAt`); `Description`/`RootCause` = o mais recente não vazio. |
 | D2 | Dados de branch/repo das linhas antigas | **Não** migrar para `PullRequestsGithub` (não há número de PR). Colunas antigas ficam nulas/obsoletas até a remoção. |
 | D3 | Onde fica a "descrição" | Descrição é **do card** (`PullRequests.Description`, compartilhada — item 2.2 "reflete em todos os lugares"). Cada PR do GitHub guarda um **snapshot** de título/descrição enviados. |
 | D4 | Clique num PR existente (3.1) | Modal abre preenchido; repo/branch **somente leitura**; ação principal = "Atualizar PR" (PATCH título/descrição no GitHub + banco) e "Copiar link". |
 | D5 | "esses dois botões" (2.2.1) | ✅ Popovers **Descrição** e **Root Cause** (no pr-info-card da tela e no modal). |
-| D6 | Lista de repositórios | Repos da org `Owner` acessíveis pelo token (`GET /orgs/{owner}/repos`, cache 10 min). Fallback: `ActiveRepositories` da config. |
+| D6 | Lista de repositórios | ✅ Todos os repos acessíveis pelo token (id `nome` p/ Owner do plugin, `dono/nome` p/ outros), cache 10 min. Fallback: `ActiveRepositories` da config. |
 | D7 | Spec 4.3 truncada | Implementar o que está escrito (resumo repo + commit: autor, data, SHA, mensagem). Completar quando a spec for corrigida. |
 | D8 | PR em draft | Tratado como `OPEN` (flag `IsDraft` exposta para exibir badge). |
 | D9 | Título padrão do PR | ✅ `AB#{card} {LABEL DO DESTINO}` (convenção que já existia no código), editável no modal. |
@@ -190,7 +190,7 @@ Tarefas
 - [x] `PullRequestApplication.Create`: upsert **só por `CardNumber`**; `Description`/`RootCause` opcionais; ignora `branch*`/`repositoryId` (compat — `RepositoryId` deixa de ser `required` no request).
 - [x] `GetByCardNumber`: ignora `repositoryId`; incluir no response a lista resumida de PRs do GitHub (sem refresh) para a tela carregar numa ida só.
 - [x] `GetRecentByUser`: `RepositoryId/BranchPrefix/BranchName` passam a vir do PR GitHub mais recente do card (se houver).
-- [ ] Registrar entrada na Timeline do card ao abrir PR (opcional, se `ITimelineApplication` estiver acessível — anotar no handoff).
+- [x] Registrar entrada na Timeline do card ao abrir PR (feito na Q1, no `PullRequestController`).
 
 Aceite
 - Fluxo via Swagger: `POST /PullRequest` sem description/rootCause → 200; `POST /PullRequest/{card}/github` → PR criado + linha gravada; `GET .../github?refreshStatus=true` lista com status; payload antigo da skill `gerar-prmake` continua retornando 200.

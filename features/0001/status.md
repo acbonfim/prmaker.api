@@ -18,7 +18,7 @@
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d553331 |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front eb29ffd |
-| Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
+| Q1 | Integração, regressão e publicação | ambos | todas | 5 | 🟡 | Claude + usuário | 2026-09-24 | | b3f0a52, 4f3d469, front f38d385 |
 
 ## Decisões
 
@@ -26,16 +26,18 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 
 | # | Situação | Observação |
 |---|---|---|
-| D1 | a confirmar | |
-| D2 | a confirmar | |
-| D3 | aplicada (confirmar) | O modal envia a descrição **do card** (estado compartilhado); cada PR guarda o snapshot enviado. |
-| D4 | aplicada (confirmar) | Clique num PR → modal em modo edição: repo/branch/destino somente leitura; "Atualizar PR", "Copiar link", "Abrir no GitHub". |
+| D1 | ✅ confirmada | Mantém a linha mais recente do card; desc/RC = mais recente não vazio. Nada é apagado sem backup: tabela `PullRequestsLegacyBackup` guarda tudo como estava. |
+| D2 | **alterada pelo usuário** | "Manter dados antigos setando valor padrão": cada linha antiga vira registro `LEGACY` em `PullRequestsGithub` (defaults: repo `edv-solvace`, branch `hotfix/<card>`, título `AB#<card>`, destino vazio, sem nº de PR). |
+| D3 | ✅ confirmada | O modal envia a descrição **do card** (estado compartilhado); cada PR guarda o snapshot enviado. |
+| D4 | ✅ confirmada | Clique num PR → modal em modo edição: repo/branch/destino somente leitura; "Atualizar PR", "Copiar link", "Abrir no GitHub". |
 | D5 | definida pela spec | 2.2.1 diz que a seção do modal é "parecida com o pr-info-card… com esses dois botões" → o pr-info-card (tela e modal) tem os 2 popovers: Descrição e Root Cause (RC oculto para US). |
-| D6 | a confirmar | |
-| D7 | a confirmar | spec 4.3 truncada |
-| D8 | a confirmar | |
-| D9 | alterada | Título padrão segue a convenção que já existia no código: `AB#<card> <LABEL DA BRANCH DE DESTINO>`; acompanha a troca de destino até o usuário editar. |
-| D10 | a confirmar | |
+| D6 | ✅ alterada pelo usuário | Lista **todos os repositórios que o usuário do token acessa** (`GetAllForCurrent`, afiliação all, sem arquivados). Id = `nome` para repos do Owner do plugin (compatível com os dados existentes) e `dono/nome` para os demais; todas as operações (abrir/atualizar PR, status, commits, diff) resolvem os dois formatos. |
+| D7 | ✅ sem pendência | A 4.3 não estava truncada: o trecho final é o exemplo do card de commit (a última linha é a mensagem do commit). O passo Resumo já atende. |
+| D8 | ✅ confirmada | Draft = OPEN + chip DRAFT. |
+| D9 | ✅ alterada | Título padrão segue a convenção que já existia no código: `AB#<card> <LABEL DA BRANCH DE DESTINO>`; acompanha a troca de destino até o usuário editar. |
+| D10 | ✅ sem mudança | Prompts `PromptBug`/`PromptUS` ficam como estão: o `{githubCommitDiff}` passa a receber o bloco multi-repo sem precisar alterar o texto. |
+
+**Outras respostas do usuário (2026-09-24)**: (1) RC das linhas descartadas visível só no backup — ok; (2) manter `PullRequestsLegacyBackup` definitivamente; (3) defaults do LEGACY — ok; (10) registrar na timeline ao abrir PR — **sim** (feito); (11) remoção de "Descrição montada"/"RCA" da tela — ok; (12) atualizar a skill `gerar-prmake` — **perguntar de novo antes de finalizar a feature**, depois do teste do usuário.
 
 ## Notas de handoff
 
@@ -125,6 +127,26 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Validação**: `ng build` ok; teste Node do `buildMultiRepoDiffContext` (2 repos + 1 sem diff, patch grande, arquivo binário) — 7/7 OK. Não testado no navegador nem com o provedor de IA real.
 - **Pendente**: spec 4.3 está truncada (D7) — implementado só o que está escrito. **Q1/D10**: os prompts `PromptBug`/`PromptUS` da configuração do plugin AI (id 3) têm prioridade sobre o fallback do código — ajustar o texto deles para mencionar múltiplos repositórios.
 
+### Q1 — Integração, regressão e publicação 🟡 (em andamento)
+- **Respostas do usuário (2026-09-24)**: pode rodar a migração desde que sem perda de dados; ele mesmo testa abrir PR no GitHub; ele abre o PR para a master e commita após testar localmente; dados antigos devem ser mantidos com valores padrão.
+- **Migrações refeitas para não perder dados** (arquivos em `solvace.prform.infra/Migrations`):
+  - `ConsolidatePullRequestPerCard`: antes de tudo `CREATE TABLE IF NOT EXISTS PullRequestsLegacyBackup AS SELECT * FROM PullRequests` (cópia integral); depois TRIM + consolidação por card (D1) + `varchar(50)` + índice único. **`Down` agora restaura tudo** a partir do backup (valores originais e linhas removidas) e apaga o backup.
+  - `AddPullRequestGithub` **regenerada** (agora `20260924033240_…`; a `…024910_…` foi removida — nunca tinha sido aplicada): `GithubPrNumber`/`GithubPrId` anuláveis; ao final insere **um registro `LEGACY` por linha antiga** (lendo do backup) com branch/repo/descrição/autor/datas preservados e os defaults do D2.
+- **Código**: `PullRequestGithubStatus.Legacy` (terminal — não consulta o GitHub); `PullRequestGithub.IsLegacy`/`PromoteLegacy(...)`; abrir PR para a mesma branch+repo de um LEGACY **promove** o registro (não duplica); `PUT` em LEGACY → 400. Front: `number` anulável, chip cinza tracejado "LEGADO" com tooltip; clique num LEGACY abre o modal em **modo criação** preenchido com repo/branch dele; LEGACY não conta como "PR já existe" no modal.
+- **Ensaio das migrações em MySQL 8.0.46 local** (Homebrew, `mysqld` temporário, dados sintéticos com 9 linhas/5 cards cobrindo: card com 3 repos, desc/RC vazios na linha mais nova, card com espaços + linha sem repositório/branch, empate de data, unicode/emoji, descrição de 50 kB, repo só com espaços): Up → 11/11 checks (backup idêntico ao original campo a campo; 1 registro por card; 9 LEGACY; toda linha antiga tem seu LEGACY com repo/branch/desc/autor/datas; regras D1; defaults D2; FKs). **Rollback → tabela idêntica ao original** e tabelas novas removidas; re-Up ok.
+- **Camada de aplicação** (teste descartável, agora também contra o MySQL local): 19/19 — inclui LEGACY (não consultado, update bloqueado, promoção ao abrir PR).
+- **Não feito (bloqueado)**: leitura/diagnóstico do banco remoto foi negada pela política de permissões da sessão — nenhuma consulta nem migração foi executada no banco compartilhado. Rodar antes de subir a API desta branch:
+  ```sql
+  SELECT VERSION();                                                    -- 8.0+ (ROW_NUMBER)
+  SELECT MAX(CHAR_LENGTH(TRIM(CardNumber))) FROM PullRequests;         -- <= 50
+  SELECT MAX(CHAR_LENGTH(TRIM(RepositoryId))), MAX(CHAR_LENGTH(BranchPrefix)), MAX(CHAR_LENGTH(BranchName)) FROM PullRequests; -- <= 200, 50, 200 (acima disso é truncado no LEGACY; o backup guarda o original)
+  SELECT COUNT(*) linhas, COUNT(DISTINCT TRIM(CardNumber)) cards FROM PullRequests;
+  -- depois da migração: cards = COUNT(*) FROM PullRequests; linhas = COUNT(*) FROM PullRequestsLegacyBackup = COUNT(*) FROM PullRequestsGithub WHERE Status='LEGACY'
+  ```
+- **⚠️ Atenção ao testar local**: a API aplica as migrações no startup e o `appsettings.Development.json` aponta para o banco compartilhado — subir a API desta branch **migra esse banco**. A partir daí a versão antiga em produção passa a falhar ao salvar o mesmo card para um 2º repositório (índice único) e só enxerga o registro consolidado do card. Ou seja: depois de testar, publicar o backend logo (ou testar com outro banco).
+- **Após as respostas**: `GitHubService.ListRepositoriesAsync` lista todos os repos acessíveis pelo token (D6) + `ResolveRepository("dono/nome" | "nome")` usado em criar/atualizar PR, status, commits e diff; cache `github:repositories:token:{owner}`. `PullRequestController` registra na **timeline** do card ao abrir PR ("PR #n aberto pelo CIME: repo (branch → destino) — url", ou "já existente registrado"), com o usuário logado (claim `ExternalId`) ou o `userId` do request; falha na timeline só gera log. Teste descartável: 19/19.
+- **Pendências**: teste manual do usuário (abrir PR, telas, popovers sobre o modal, cópia do link, IA multi-repo); prompts `PromptBug`/`PromptUS` (D10); skill `gerar-prmake`; medição de tempo da listagem (B4); commit/PR pelo usuário. Ferramentas locais usadas: `brew install mysql@8.0` (pode remover com `brew uninstall mysql@8.0`); Docker Desktop não conseguiu baixar imagens (proxy interno travado).
+
 ## Log
 
 | Data | Fase | Evento |
@@ -143,3 +165,5 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | F4, F6 | Iniciadas (onda 4, sessão única, em sequência). |
 | 2026-09-24 | F4 | Concluída (front d553331). |
 | 2026-09-24 | F6 | Concluída (front eb29ffd). Onda 4 fechada; só falta a Q1. |
+| 2026-09-24 | Q1 | Migrações refeitas sem perda de dados (backup + LEGACY), ensaiadas em MySQL local (Up/Down/Up ok). Banco remoto não acessado (bloqueado). |
+| 2026-09-24 | Q1 | Decisões respondidas (D6 alterada, D7/D10 sem pendência, timeline ao abrir PR). Usuário autorizou os commits: b3f0a52, 4f3d469, front f38d385. Aguardando teste do usuário; perguntar sobre a skill gerar-prmake antes de finalizar. |
