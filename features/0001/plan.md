@@ -164,12 +164,12 @@ Arquivos principais: `Entities/PullRequestRegister.cs`, `Entities/PullRequestGit
 **Depende de:** — · **Spec:** 1.1, 1.2, 3
 
 Tarefas
-- [ ] `CreatePullRequestAsync`: novo parâmetro `repository` (fallback no `Repo` do plugin). Tratar 422 "A pull request already exists" → buscar o PR aberto `head→base` (`PullRequest.GetAllForRepository` com `PullRequestRequest{Head="owner:branch", Base=...}`) e retornar com flag `AlreadyExisted`.
-- [ ] `UpdatePullRequestAsync(repository, number, title, body)`.
-- [ ] `ListRepositoriesAsync()`: repos da org `Owner` (Octokit `Repository.GetAllForOrg`), mapeado para `{id,label,private,defaultBranch}`, ordenado por nome, cache 10 min via `ICacheService`.
-- [ ] `GetPullRequestsStatusAsync(IEnumerable<(repo, number)>)`: paralelo com `SemaphoreSlim(5)`, cache 60 s por `repo#number`; status = `MERGED` se `merged`, senão `state` (`open`/`closed`) em maiúsculas; inclui `IsDraft`, `MergedAt`, `ClosedAt`.
-- [ ] `PullRequestResponse`: `Number` como `int`; incluir `Repository`, `AlreadyExisted`.
-- [ ] `GitHubController`: `GET /GitHub/repositories`; manter `POST /GitHub/pull-request` com query opcional `repository` (compat).
+- [x] `CreatePullRequestAsync`: novo parâmetro `repository` (fallback no `Repo` do plugin). Tratar 422 "A pull request already exists" → buscar o PR aberto `head→base` (`PullRequest.GetAllForRepository` com `PullRequestRequest{Head="owner:branch", Base=...}`) e retornar com flag `AlreadyExisted`.
+- [x] `UpdatePullRequestAsync(repository, number, title, body)`.
+- [x] `ListRepositoriesAsync()`: repos da org `Owner` (Octokit `Repository.GetAllForOrg`), mapeado para `{id,label,private,defaultBranch}`, ordenado por nome, cache 10 min via `ICacheService`.
+- [x] `GetPullRequestsStatusAsync(IEnumerable<(repo, number)>)`: paralelo com `SemaphoreSlim(5)`, cache 60 s por `repo#number`; status = `MERGED` se `merged`, senão `state` (`open`/`closed`) em maiúsculas; inclui `IsDraft`, `MergedAt`, `ClosedAt`.
+- [x] `PullRequestResponse`: `Number` como `int`; incluir `Repository`, `AlreadyExisted`.
+- [x] `GitHubController`: `GET /GitHub/repositories`; manter `POST /GitHub/pull-request` com query opcional `repository` (compat).
 
 Aceite
 - Build ok. Teste manual (Swagger) contra um repo de teste: criar PR, criar de novo (retorna o existente), listar repos, consultar status de PR aberto/mergeado/fechado.
