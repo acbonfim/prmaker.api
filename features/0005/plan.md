@@ -21,20 +21,20 @@
 
 | # | Tema | Padrão adotado | Observação |
 |---|---|---|---|
-| D1 | Cor de destaque do filtro ativo (`--cc-special`) | **Primária do CIME (azul)** | No ComandaCerta é roxo; trocar é mudar 1 token no `styles.scss` |
+| D1 | Cor de destaque do filtro ativo (`--cc-special`) | **Azul no tom da primária do CIME** (`#3d8bfd`) | No ComandaCerta é roxo. A primária do CIME no escuro é um azul claro, que deixaria o check branco sem contraste. Trocar é mudar 1 token no `styles.scss` |
 | D2 | "Pré-carregados/pré-selecionados" (specs 3 e 6) | Opções já listadas ao abrir, com os valores existentes no card; **nenhuma marcada** | Se a ideia for abrir já com algo marcado (ex.: só OPEN), é um ajuste pequeno |
 
 ## 3. Fases
 
 ### F1 — Componentes de filtro (cópia do ComandaCerta)
-- [ ] `components/popover/cc-popover.component.ts` (cópia).
-- [ ] `components/filter-bar/filter-bar.models.ts` e `filter-bar.component.ts` (cópia + recarga das opções ao abrir).
-- [ ] Tokens `--cc-*` no `styles.scss`.
+- [x] `components/popover/cc-popover.component.ts` (cópia).
+- [x] `components/filter-bar/filter-bar.models.ts` e `filter-bar.component.ts` (cópia + recarga das opções ao abrir).
+- [x] Tokens `--cc-*` no `styles.scss`.
 
 ### F2 — Filtros no painel de PRs + altura dos cabeçalhos
-- [ ] `github-pr-list`: `FilterProvider` com Status/Branch/Repositório a partir dos PRs do card; lista filtrada (E entre filtros, OU dentro); mensagem para filtro sem resultado; filtros limpos ao trocar de card.
-- [ ] `app-card-panel` e `card-timeline`: cabeçalho com altura fixa igual.
-- [ ] `ng build` sem erros; teste da lógica de filtro.
+- [x] `github-pr-list`: `FilterProvider` com Status/Branch/Repositório a partir dos PRs do card; lista filtrada (E entre filtros, OU dentro); mensagem para filtro sem resultado; filtros limpos ao trocar de card.
+- [x] `app-card-panel` e `card-timeline`: cabeçalho com altura fixa igual.
+- [x] `ng build` sem erros; teste da lógica de filtro.
 
 ### Q1 — Validação (usuário)
 - [ ] Card com vários PRs (repos, branches e status diferentes): conferir as opções, a combinação dos filtros, a troca de card e a altura dos dois cabeçalhos.
