@@ -28,8 +28,9 @@ public class PullRequestGithub : IEntity<int>, IAuditableEntity
     public string BranchName { get; private set; } = string.Empty;
     public string TargetBranch { get; private set; } = string.Empty;
 
-    public int GithubPrNumber { get; private set; }
-    public long GithubPrId { get; private set; }
+    /// <summary>null nos registros legados (migrados do modelo antigo, sem PR no GitHub).</summary>
+    public int? GithubPrNumber { get; private set; }
+    public long? GithubPrId { get; private set; }
     public string Url { get; private set; } = string.Empty;
 
     public string Title { get; private set; } = string.Empty;
@@ -62,16 +63,39 @@ public class PullRequestGithub : IEntity<int>, IAuditableEntity
         TargetBranch = Required(request.TargetBranch, nameof(TargetBranch), MaxBranchNameLength);
         UserId = request.UserId;
 
+        LinkGithub(githubPrNumber, githubPrId, url);
+        SetContent(request.Title, request.Description);
+        SetStatus(status, isDraft);
+        CreatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Registro legado (sem PR no GitHub, ver PullRequestGithubStatus.Legacy).</summary>
+    public bool IsLegacy => GithubPrNumber is null;
+
+    /// <summary>
+    /// Transforma um registro legado no PR recém-aberto para a mesma branch/repositório,
+    /// em vez de criar outra linha para o card.
+    /// </summary>
+    public void PromoteLegacy(OpenPullRequestGithubRequest request, int githubPrNumber, long githubPrId, string url, string status, bool isDraft)
+    {
+        if (!IsLegacy)
+            throw new DomainException("Only legacy records can be promoted");
+
+        TargetBranch = Required(request.TargetBranch, nameof(TargetBranch), MaxBranchNameLength);
+        UserId = request.UserId;
+        LinkGithub(githubPrNumber, githubPrId, url);
+        SetContent(request.Title, request.Description);
+        SetStatus(status, isDraft);
+    }
+
+    private void LinkGithub(int githubPrNumber, long githubPrId, string url)
+    {
         if (githubPrNumber <= 0)
             throw new DomainException("GitHub pull request number is required");
 
         GithubPrNumber = githubPrNumber;
         GithubPrId = githubPrId;
         Url = Required(url, nameof(Url), MaxUrlLength);
-
-        SetContent(request.Title, request.Description);
-        SetStatus(status, isDraft);
-        CreatedAt = DateTime.UtcNow;
     }
 
     public void SetContent(string title, string? description)

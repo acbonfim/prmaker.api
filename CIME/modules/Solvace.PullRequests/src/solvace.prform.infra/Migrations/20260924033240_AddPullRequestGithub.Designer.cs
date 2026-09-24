@@ -12,7 +12,7 @@ using solvace.prform.Infra.Contexts;
 namespace solvace.prform.infra.Migrations
 {
     [DbContext(typeof(DefaultContext))]
-    [Migration("20260924024910_AddPullRequestGithub")]
+    [Migration("20260924033240_AddPullRequestGithub")]
     partial class AddPullRequestGithub
     {
         /// <inheritdoc />
@@ -184,10 +184,10 @@ namespace solvace.prform.infra.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<long>("GithubPrId")
+                    b.Property<long?>("GithubPrId")
                         .HasColumnType("bigint");
 
-                    b.Property<int>("GithubPrNumber")
+                    b.Property<int?>("GithubPrNumber")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDraft")

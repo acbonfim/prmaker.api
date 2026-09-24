@@ -181,10 +181,10 @@ namespace solvace.prform.infra.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<long>("GithubPrId")
+                    b.Property<long?>("GithubPrId")
                         .HasColumnType("bigint");
 
-                    b.Property<int>("GithubPrNumber")
+                    b.Property<int?>("GithubPrNumber")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDraft")

@@ -29,8 +29,8 @@ namespace solvace.prform.infra.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     TargetBranch = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    GithubPrNumber = table.Column<int>(type: "int", nullable: false),
-                    GithubPrId = table.Column<long>(type: "bigint", nullable: false),
+                    GithubPrNumber = table.Column<int>(type: "int", nullable: true),
+                    GithubPrId = table.Column<long>(type: "bigint", nullable: true),
                     Url = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Title = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
@@ -76,6 +76,28 @@ namespace solvace.prform.infra.Migrations
                 table: "PullRequestsGithub",
                 columns: new[] { "RepositoryId", "GithubPrNumber" },
                 unique: true);
+
+            // Mantém os dados antigos: cada linha do modelo anterior (card x repositório, salva em
+            // PullRequestsLegacyBackup) vira um registro LEGACY — branch/repositório/descrição/autor/
+            // datas preservados; sem PR no GitHub (número/id nulos). Padrões para o que faltava:
+            // repositório 'edv-solvace' e branch 'hotfix/<card>' (os mesmos defaults da tela antiga),
+            // destino vazio e título 'AB#<card>'.
+            migrationBuilder.Sql(@"
+INSERT INTO PullRequestsGithub
+    (PullRequestRegisterId, CardNumber, RepositoryId, BranchPrefix, BranchName, TargetBranch,
+     GithubPrNumber, GithubPrId, Url, Title, Description, Status, IsDraft, StatusSyncedAt,
+     UserId, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy)
+SELECT p.Id, p.CardNumber,
+       LEFT(COALESCE(NULLIF(TRIM(b.RepositoryId), ''), 'edv-solvace'), 200),
+       LEFT(COALESCE(NULLIF(TRIM(b.BranchPrefix), ''), 'hotfix/'), 50),
+       LEFT(COALESCE(NULLIF(TRIM(b.BranchName), ''), p.CardNumber), 200),
+       '', NULL, NULL, '',
+       LEFT(CONCAT('AB#', p.CardNumber), 500),
+       b.Description, 'LEGACY', 0, NULL,
+       b.UserId, b.CreatedAt, b.UpdatedAt, b.CreatedBy, b.UpdatedBy
+FROM PullRequestsLegacyBackup b
+JOIN PullRequests p ON p.CardNumber = TRIM(b.CardNumber)
+ORDER BY b.Id;");
         }
 
         /// <inheritdoc />

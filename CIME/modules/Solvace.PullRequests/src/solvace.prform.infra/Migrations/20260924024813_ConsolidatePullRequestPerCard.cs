@@ -10,6 +10,12 @@ namespace solvace.prform.infra.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Sem perda de dados: antes de consolidar, copia a tabela inteira como estava.
+            // O backup é a fonte dos registros legados criados em AddPullRequestGithub (um por
+            // card x repositório) e do Down desta migração. IF NOT EXISTS: numa reexecução após
+            // falha parcial, preserva o backup original (o SELECT só insere se a tabela for criada).
+            migrationBuilder.Sql("CREATE TABLE IF NOT EXISTS PullRequestsLegacyBackup AS SELECT * FROM PullRequests;");
+
             // Consolida os registros por card (antes havia um por card x repositório) para
             // permitir o índice único em CardNumber. Mantém a linha mais recente
             // (UpdatedAt ?? CreatedAt, desempate pelo maior Id) e copia para ela o
@@ -77,7 +83,6 @@ WHERE d.rn > 1;");
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // A consolidação dos registros por card (Up) não é reversível: só o schema é revertido.
             migrationBuilder.DropIndex(
                 name: "IX_PullRequests_CardNumber",
                 table: "PullRequests");
@@ -128,6 +133,22 @@ WHERE d.rn > 1;");
                 oldNullable: true)
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
+
+            // Restaura as linhas e os valores originais (as criadas depois da migração ficam).
+            migrationBuilder.Sql(@"
+UPDATE PullRequests p
+JOIN PullRequestsLegacyBackup b ON b.Id = p.Id
+SET p.CardNumber = b.CardNumber, p.Description = b.Description, p.RootCause = b.RootCause,
+    p.BranchPrefix = b.BranchPrefix, p.BranchName = b.BranchName, p.RepositoryId = b.RepositoryId;");
+
+            migrationBuilder.Sql(@"
+INSERT INTO PullRequests (Id, BranchName, BranchPrefix, CardNumber, CreatedAt, CreatedBy, Description, FormId, RepositoryId, RootCause, UpdatedAt, UpdatedBy, UserId)
+SELECT b.Id, b.BranchName, b.BranchPrefix, b.CardNumber, b.CreatedAt, b.CreatedBy, b.Description, b.FormId, b.RepositoryId, b.RootCause, b.UpdatedAt, b.UpdatedBy, b.UserId
+FROM PullRequestsLegacyBackup b
+LEFT JOIN PullRequests p ON p.Id = b.Id
+WHERE p.Id IS NULL;");
+
+            migrationBuilder.Sql("DROP TABLE PullRequestsLegacyBackup;");
         }
     }
 }

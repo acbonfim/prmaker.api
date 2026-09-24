@@ -59,8 +59,23 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
             .FirstOrDefaultAsync(x => x.RepositoryId == pr.Repository && x.GithubPrNumber == pr.Number, cancellationToken);
         if (entity is null)
         {
-            entity = new PullRequestGithub(register, request, pr.Number, pr.Id, pr.Url, pr.Status, pr.IsDraft);
-            await _context.PullRequestsGithub.AddAsync(entity, cancellationToken);
+            // Registro legado (migrado do modelo antigo) para a mesma branch/repositório: vira este PR.
+            var prefix = request.BranchPrefix?.Trim() ?? string.Empty;
+            var name = request.BranchName.Trim();
+            var legacy = await _context.PullRequestsGithub
+                .FirstOrDefaultAsync(x => x.CardNumber == cardNumber && x.GithubPrNumber == null
+                    && x.RepositoryId == pr.Repository && x.BranchPrefix == prefix && x.BranchName == name, cancellationToken);
+
+            if (legacy is not null)
+            {
+                legacy.PromoteLegacy(request, pr.Number, pr.Id, pr.Url, pr.Status, pr.IsDraft);
+                entity = legacy;
+            }
+            else
+            {
+                entity = new PullRequestGithub(register, request, pr.Number, pr.Id, pr.Url, pr.Status, pr.IsDraft);
+                await _context.PullRequestsGithub.AddAsync(entity, cancellationToken);
+            }
         }
         else
         {
@@ -84,8 +99,10 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         var entity = await _context.PullRequestsGithub
             .FirstOrDefaultAsync(x => x.Id == id && x.CardNumber == cardNumber, cancellationToken)
             ?? throw new DomainException($"PR {id} não encontrado para o card {cardNumber}");
+        if (entity.IsLegacy)
+            throw new DomainException("Registro legado sem PR no GitHub — use Abrir PR para criá-lo");
 
-        var pr = await _gitHubService.UpdatePullRequestAsync(entity.RepositoryId, entity.GithubPrNumber,
+        var pr = await _gitHubService.UpdatePullRequestAsync(entity.RepositoryId, entity.GithubPrNumber!.Value,
             request.Title.Trim(), request.Description, cancellationToken);
 
         if (pr is null || !string.IsNullOrEmpty(pr.Error))
@@ -114,14 +131,14 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         var stale = new HashSet<int>();
         if (refreshStatus)
         {
-            var open = entities.Where(x => !PullRequestGithubStatus.IsTerminal(x.Status)).ToList();
+            var open = entities.Where(x => !x.IsLegacy && !PullRequestGithubStatus.IsTerminal(x.Status)).ToList();
             if (open.Count > 0)
             {
                 IReadOnlyList<PullRequestStatusResponse> statuses;
                 try
                 {
                     statuses = await _gitHubService.GetPullRequestsStatusAsync(
-                        open.Select(x => (x.RepositoryId, x.GithubPrNumber)), cancellationToken);
+                        open.Select(x => (x.RepositoryId, x.GithubPrNumber!.Value)), cancellationToken);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -133,7 +150,7 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
 
                 foreach (var entity in open)
                 {
-                    if (!byKey.TryGetValue((entity.RepositoryId, entity.GithubPrNumber), out var status)
+                    if (!byKey.TryGetValue((entity.RepositoryId, entity.GithubPrNumber!.Value), out var status)
                         || !string.IsNullOrEmpty(status.Error))
                     {
                         stale.Add(entity.Id);

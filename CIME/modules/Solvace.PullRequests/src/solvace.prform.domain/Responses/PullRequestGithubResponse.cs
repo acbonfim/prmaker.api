@@ -9,12 +9,13 @@ public class PullRequestGithubResponse
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
     public string TargetBranch { get; set; } = string.Empty;
-    public int Number { get; set; }
+    /// <summary>null nos registros legados (sem PR no GitHub).</summary>
+    public int? Number { get; set; }
     public string Url { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>OPEN, MERGED ou CLOSED.</summary>
+    /// <summary>OPEN, MERGED, CLOSED ou LEGACY (migrado do modelo antigo, sem PR no GitHub).</summary>
     public string Status { get; set; } = string.Empty;
     public bool IsDraft { get; set; }
     public DateTimeOffset? StatusSyncedAt { get; set; }
