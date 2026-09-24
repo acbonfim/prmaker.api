@@ -8,16 +8,16 @@
 
 | Fase | Descrição | Repo | Depende de | Onda | Status | Responsável | Início | Conclusão | Commits |
 |---|---|---|---|---|---|---|---|---|---|
-| B1 | `ClaudeService` com o SDK oficial | back | — | 1 | ⬜ | | | | |
-| B2 | IA resolvida por requisição + chave pessoal (0002) | back | — | 1 | ⬜ | | | | |
+| B1 | `ClaudeService` com o SDK oficial | back | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| B2 | IA resolvida por requisição + chave pessoal (0002) | back | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | Q1 | Configuração do plugin, teste real e publicação | ambos | B1, B2 | 2 | ⬜ | | | | |
 
 ## Decisões
 
 | # | Tema | Situação | Observação |
 |---|---|---|---|
-| D1 | Modelo | a confirmar | Recomendação: `claude-haiku-4-5` (≈ US$ 0,04 por geração). Configurável no plugin. |
-| D2 | SDK oficial `Anthropic` x HTTP cru | a confirmar | Recomendação: SDK (retries/erros tipados). Os demais provedores seguem em HTTP cru. |
+| D1 | Modelo | ✅ confirmada | **Sempre o campo `Model` do plugin "Claude Plugin"** (o usuário/admin troca lá, sem deploy). `claude-haiku-4-5` só como padrão quando o campo estiver vazio. |
+| D2 | SDK oficial `Anthropic` x HTTP cru | ✅ confirmada | Recomendação: SDK (retries/erros tipados). Os demais provedores seguem em HTTP cru. |
 | D3 | Sugestões R3 (saída estruturada) e R4 (prompt no backend) | a confirmar | Fora desta feature; viram features próprias se aprovadas. |
 
 ## Notas de handoff
@@ -29,3 +29,4 @@
 | Data | Fase | Evento |
 |---|---|---|
 | 2026-09-24 | — | 0002 mergeada (#7 back, #3 front) e em produção; `feature/0003` criada a partir de `master` nos dois repos. Plano criado com análise e sugestões (spec 5 e 6). |
+| 2026-09-24 | B1, B2 | Usuário aprovou (modelo configurável no plugin, SDK oficial). Iniciadas. |
