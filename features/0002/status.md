@@ -11,8 +11,8 @@
 | B1 | Modelo e migração (IsPersonal + UserPluginConfigurations) | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 9156545 |
 | B2 | Proteção de segredos (AES-GCM) | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | d726d29 |
 | F1 | Flag "Uso pessoal" no admin de plugins | front | contrato | 1 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 3eaafa1 |
-| B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | ⬜ | | | | |
-| F2 | Modal "Minhas integrações" | front | contrato | 2 | ⬜ | | | | |
+| B3 | Aplicação, cache por usuário e endpoints | back | B1, B2 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F2 | Modal "Minhas integrações" | front | contrato | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | B4 | GitHub/Azure com token pessoal + bloqueio | back | B3 | 3 | ⬜ | | | | |
 | F3 | Bloqueio no front | front | F2 | 3 | ⬜ | | | | |
 | Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ⬜ | | | | |
@@ -61,3 +61,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | — | 0001 mergeada (PRs #5 back / #2 front); `master` local atualizada nos dois repos; branches `feature/0002` criadas a partir dela. Plano criado. |
 | 2026-09-24 | B1, B2, F1 | Usuário aprovou o plano com os defaults D1–D9. Onda 1 iniciada. |
 | 2026-09-24 | B1, B2, F1 | Concluídas (9156545, d726d29, front 3eaafa1). Onda 1 fechada; liberadas B3 e F2. |
+| 2026-09-24 | B3, F2 | Iniciadas (onda 2). |
