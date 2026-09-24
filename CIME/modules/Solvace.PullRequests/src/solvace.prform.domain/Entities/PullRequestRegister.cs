@@ -3,16 +3,24 @@ using solvace.prform.domain.Responses;
 
 namespace solvace.prform.domain.Entities;
 
+/// <summary>
+/// Registro do tratamento de um card: um por card, com Description e Root Cause únicos
+/// para todos os repositórios envolvidos. Os PRs abertos no GitHub ficam em <see cref="PullRequestGithub"/>.
+/// </summary>
 public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
 {
+    public const int MaxCardNumberLength = 50;
     private const int MinDescriptionLength = 3;
     
     public int Id { get; set; }
     
     public string CardNumber { get; set; } = string.Empty;
     public string RootCause { get; set; } = string.Empty;
-    public string BranchPrefix { get; set; } = string.Empty;
-    public string BranchName { get; set; } = string.Empty;
+
+    // Legado: branch/repositório passaram a ser do PR do GitHub (PullRequestGithub).
+    // Mantidos apenas por compatibilidade até a remoção das colunas.
+    public string? BranchPrefix { get; set; }
+    public string? BranchName { get; set; }
     public string? RepositoryId { get; private set; }
     
     private string _description = string.Empty;
@@ -27,6 +35,9 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
     public Form? Form { get; private set; }
     public int FormId { get; private set; }
 
+    private readonly List<PullRequestGithub> _githubPullRequests = new();
+    public IReadOnlyCollection<PullRequestGithub> GithubPullRequests => _githubPullRequests;
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; } 
     public string? CreatedBy { get; set; }
@@ -36,45 +47,51 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
 
     public PullRequestRegister(PullRequestRegisterRequest request)
     {
+        SetCardNumber(request.CardNumber);
         SetDescription(request.Description);
+        SetRootCause(request.RootCause);
         SetUser(request.UserId);
         SetForm(request.FormId);
-        CardNumber = request.CardNumber;
-        RootCause = request.RootCause;
         CreatedAt = DateTime.UtcNow;
-
-        BranchPrefix = request.BranchPrefix;
-        BranchName = request.BranchName;
-        RepositoryId = request.RepositoryId;
     }
 
-    public void SetRepositoryId(string repositoryId)
+    /// <summary>Aplica Description/RootCause do request: null mantém o valor atual, vazio limpa.</summary>
+    public void UpdateContent(string? description, string? rootCause)
     {
-        RepositoryId = repositoryId;
-        UpdatedAt = DateTime.UtcNow;
+        if (description is not null)
+            SetDescription(description);
+        if (rootCause is not null)
+            SetRootCause(rootCause);
     }
 
-    public void SetDescription(string description)
+    private void SetCardNumber(string cardNumber)
     {
-        if (string.IsNullOrWhiteSpace(description))
-            throw new DomainException("Description cannot be empty");
-            
-        if (description.Length < MinDescriptionLength)
+        var trimmed = cardNumber?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+            throw new DomainException("CardNumber cannot be empty");
+        if (trimmed.Length > MaxCardNumberLength)
+            throw new DomainException($"CardNumber cannot exceed {MaxCardNumberLength} characters");
+
+        CardNumber = trimmed;
+    }
+
+    /// <summary>Opcional: o card pode ser salvo sem descrição; se informada, precisa ter o tamanho mínimo.</summary>
+    public void SetDescription(string? description)
+    {
+        if (!string.IsNullOrWhiteSpace(description) && description.Length < MinDescriptionLength)
             throw new DomainException($"Description must be at least {MinDescriptionLength} characters long");
         
-        _description = description;
+        _description = description ?? string.Empty;
         UpdatedAt = DateTime.UtcNow;
     }
     
-    public void SetRootCause(string rootCause)
+    /// <summary>Opcional: o card pode ser salvo sem root cause; se informado, precisa ter o tamanho mínimo.</summary>
+    public void SetRootCause(string? rootCause)
     {
-        if (string.IsNullOrWhiteSpace(rootCause))
-            throw new DomainException("rootCause cannot be empty");
-            
-        if (rootCause.Length < MinDescriptionLength)
+        if (!string.IsNullOrWhiteSpace(rootCause) && rootCause.Length < MinDescriptionLength)
             throw new DomainException($"rootCause must be at least {MinDescriptionLength} characters long");
         
-        RootCause = rootCause;
+        RootCause = rootCause ?? string.Empty;
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -97,19 +114,30 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
         UpdatedBy = updatedBy;
     }
     
-    public PullRequestRegisterResponse ToResponse() =>
-        new()
+    public PullRequestRegisterResponse ToResponse()
+    {
+        // Branch/repositório vêm do PR do GitHub mais recente (se carregado); o legado da
+        // própria linha fica como fallback para clientes que ainda leem esses campos.
+        var githubPrs = _githubPullRequests
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.ToResponse())
+            .ToList();
+        var latest = githubPrs.FirstOrDefault();
+
+        return new()
         {
             Id = Id,
             CardNumber = CardNumber,
             RootCause = RootCause,
             Description = Description,
-            BranchName = string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName,
-            BranchPrefix = string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix,
-            RepositoryId = RepositoryId,
+            BranchName = latest?.BranchName ?? (string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName),
+            BranchPrefix = latest?.BranchPrefix ?? (string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix),
+            RepositoryId = latest?.RepositoryId ?? RepositoryId,
             UserId = UserId,
             CreatedAt = CreatedAt,
             UpdatedAt = UpdatedAt,
-            CreatedBy = CreatedBy
+            CreatedBy = CreatedBy,
+            GithubPullRequests = githubPrs
         };
+    }
 }
