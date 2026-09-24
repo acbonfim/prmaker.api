@@ -9,6 +9,7 @@ using solvace.github.domain.Options;
 using solvace.github.application.Contract;
 using solvace.github.domain.Responses;
 using solvace.prform.application;
+using solvace.prform.application.UserIntegrations;
 using Cime.BuildingBlocks.Cache;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Enums;
@@ -25,23 +26,38 @@ public class GitHubService : IGitHubService
     private const int RateLimitWarningThreshold = 100;
     private static readonly TimeSpan StatusRequestTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly IPluginCacheManager _pluginCacheManager;
+    private const string PluginName = "Github Configurations";
+
+    private readonly IPluginConfigurationResolver _configurationResolver;
     private readonly ICacheService _cacheService;
     private readonly ILogger<GitHubService> _logger;
-    private readonly GitHubClient _gitHubClient;
-    private Plugin _plugin;
 
-    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager, ICacheService cacheService, ILogger<GitHubService> logger)
+    // Configuração e cliente da requisição: token global, ou o do usuário quando o plugin é de uso
+    // pessoal (feature 0002). Criados em EnsureClientAsync, no início de cada operação.
+    private PluginConfiguration? _config;
+    private GitHubClient? _gitHubClient;
+    private string _tokenScope = string.Empty;
+
+    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginConfigurationResolver configurationResolver, ICacheService cacheService, ILogger<GitHubService> logger)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
-        _pluginCacheManager = pluginCacheManager;
+        _configurationResolver = configurationResolver;
         _cacheService = cacheService;
-        
-        _plugin = _pluginCacheManager.GetCachedPluginByName("Github Configurations");
-        
-        var token = _plugin.Configurations.GetConfigurationValue("Token");
+    }
 
+    /// <summary>
+    /// Resolve a configuração efetiva e cria o cliente com o token dela. Lança
+    /// PersonalIntegrationRequiredException (→ 403) se o plugin for pessoal e o usuário não
+    /// configurou. Chamar no início de cada operação, fora de try/catch.
+    /// </summary>
+    private async Task EnsureClientAsync(CancellationToken cancellationToken)
+    {
+        if (_gitHubClient is not null)
+            return;
+
+        _config = await _configurationResolver.GetEffectiveConfigurationAsync(PluginName, cancellationToken);
+        var token = _config.GetConfigurationValue("Token");
         if (string.IsNullOrEmpty(token))
             throw new InvalidOperationException("Token GitHub não configurado");
 
@@ -49,11 +65,22 @@ public class GitHubService : IGitHubService
         {
             Credentials = new Credentials(token)
         };
+
+        // Caches de repositórios/status separados por token: o que se enxerga depende das permissões dele.
+        _tokenScope = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(token)))[..16];
     }
+
+    private PluginConfiguration Config =>
+        _config ?? throw new InvalidOperationException("Configuração do GitHub não resolvida");
+
+    private GitHubClient Client =>
+        _gitHubClient ?? throw new InvalidOperationException("Cliente do GitHub não inicializado");
 
     public async Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default, string? repository = null)
     {
-        var repositoryId = string.IsNullOrWhiteSpace(repository) ? _plugin.Configurations.GetConfigurationValue("Repo") : repository.Trim();
+        await EnsureClientAsync(cancellationToken);
+
+        var repositoryId = string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository.Trim();
         var (owner, repo) = ResolveRepository(repositoryId);
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new PullRequestResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
@@ -66,7 +93,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            await _gitHubClient.Repository.Branch.Get(owner, repo, head);
+            await Client.Repository.Branch.Get(owner, repo, head);
         }
         catch
         {
@@ -75,7 +102,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            await _gitHubClient.Repository.Branch.Get(owner, repo, @base);
+            await Client.Repository.Branch.Get(owner, repo, @base);
         }
         catch
         {
@@ -90,7 +117,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            var pr = await _gitHubClient.PullRequest.Create(owner, repo, newPr);
+            var pr = await Client.PullRequest.Create(owner, repo, newPr);
             CacheStatus(pr, repositoryId!);
             return ToPullRequestResponse(pr, repositoryId!);
         }
@@ -126,6 +153,8 @@ public class GitHubService : IGitHubService
 
     public async Task<PullRequestResponse?> UpdatePullRequestAsync(string repository, int number, string title, string? descriptionRaw, CancellationToken cancellationToken = default)
     {
+        await EnsureClientAsync(cancellationToken);
+
         if (string.IsNullOrWhiteSpace(repository) || number <= 0 || string.IsNullOrWhiteSpace(title))
             return new PullRequestResponse { Error = "Parâmetro 'repository', 'number' ou 'title' é obrigatório" };
         var (owner, repo) = ResolveRepository(repository);
@@ -141,7 +170,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            var pr = await _gitHubClient.PullRequest.Update(owner, repo, number, update);
+            var pr = await Client.PullRequest.Update(owner, repo, number, update);
             CacheStatus(pr, repository);
             return ToPullRequestResponse(pr, repository);
         }
@@ -162,13 +191,15 @@ public class GitHubService : IGitHubService
     /// </summary>
     public async Task<IReadOnlyList<RepositoryResponse>> ListRepositoriesAsync(CancellationToken cancellationToken = default)
     {
-        var owner = _plugin.Configurations.GetConfigurationValue("Owner") ?? string.Empty;
+        await EnsureClientAsync(cancellationToken);
+
+        var owner = Config.GetConfigurationValue("Owner") ?? string.Empty;
 
         return await _cacheService.GetOrCreateAsync<IReadOnlyList<RepositoryResponse>>(
-            $"github:repositories:token:{owner}",
+            $"github:repositories:{_tokenScope}:{owner}",
             async () =>
             {
-                var repositories = await _gitHubClient.Repository.GetAllForCurrent(new RepositoryRequest
+                var repositories = await Client.Repository.GetAllForCurrent(new RepositoryRequest
                 {
                     Affiliation = RepositoryAffiliation.All,
                     Sort = RepositorySort.FullName
@@ -197,7 +228,9 @@ public class GitHubService : IGitHubService
 
     public async Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default, bool bypassCache = false)
     {
-        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        await EnsureClientAsync(cancellationToken);
+
+        var owner = Config.GetConfigurationValue("Owner");
         var targets = pullRequests
             .Where(p => !string.IsNullOrWhiteSpace(p.Repository) && p.Number > 0)
             .Distinct()
@@ -224,7 +257,7 @@ public class GitHubService : IGitHubService
             {
                 // Octokit não aceita CancellationToken: o timeout evita que um PR lento segure a listagem.
                 var (prOwner, prRepo) = ResolveRepository(t.Repository);
-                var pr = await _gitHubClient.PullRequest.Get(prOwner, prRepo, t.Number)
+                var pr = await Client.PullRequest.Get(prOwner, prRepo, t.Number)
                     .WaitAsync(StatusRequestTimeout, cancellationToken);
                 var status = new PullRequestStatusResponse
                 {
@@ -274,7 +307,7 @@ public class GitHubService : IGitHubService
     /// </summary>
     private (string Owner, string Repo) ResolveRepository(string? repository)
     {
-        var defaultOwner = _plugin.Configurations.GetConfigurationValue("Owner") ?? string.Empty;
+        var defaultOwner = Config.GetConfigurationValue("Owner") ?? string.Empty;
         var value = repository?.Trim() ?? string.Empty;
         var slash = value.IndexOf('/');
         return slash > 0 && slash < value.Length - 1
@@ -285,7 +318,7 @@ public class GitHubService : IGitHubService
     /// <summary>Loga o rate limit restante da última chamada (Warning quando está acabando).</summary>
     private void LogRateLimit()
     {
-        var rateLimit = _gitHubClient.GetLastApiInfo()?.RateLimit;
+        var rateLimit = Client.GetLastApiInfo()?.RateLimit;
         if (rateLimit is null) return;
 
         if (rateLimit.Remaining < RateLimitWarningThreshold)
@@ -302,7 +335,7 @@ public class GitHubService : IGitHubService
             Head = $"{owner}:{head}",
             Base = @base
         };
-        var prs = await _gitHubClient.PullRequest.GetAllForRepository(owner, repo, request, new ApiOptions { PageSize = 10, PageCount = 1 });
+        var prs = await Client.PullRequest.GetAllForRepository(owner, repo, request, new ApiOptions { PageSize = 10, PageCount = 1 });
         return prs.FirstOrDefault();
     }
 
@@ -323,8 +356,8 @@ public class GitHubService : IGitHubService
         string.IsNullOrWhiteSpace(descriptionRaw) ? null
             : descriptionRaw.Replace("\u0000", string.Empty).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
 
-    private static string StatusCacheKey(string owner, string repository, int number) =>
-        $"github:pr-status:{owner}/{repository}#{number}";
+    private string StatusCacheKey(string owner, string repository, int number) =>
+        $"github:pr-status:{_tokenScope}:{owner}/{repository}#{number}";
 
     /// <summary>
     /// O CIME acabou de ler o PR (criar/atualizar): grava o status fresco no cache para que uma
@@ -332,7 +365,7 @@ public class GitHubService : IGitHubService
     /// </summary>
     private void CacheStatus(PullRequest pr, string repositoryId)
     {
-        var owner = _plugin.Configurations.GetConfigurationValue("Owner") ?? string.Empty;
+        var owner = Config.GetConfigurationValue("Owner") ?? string.Empty;
         _cacheService.Set(StatusCacheKey(owner, repositoryId, pr.Number), new PullRequestStatusResponse
         {
             Repository = repositoryId,
@@ -369,15 +402,17 @@ public class GitHubService : IGitHubService
 
     public async Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default)
     {
-        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
-        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
-        var token = _plugin.Configurations.GetConfigurationValue("Token");
+        await EnsureClientAsync(cancellationToken);
+
+        var owner = Config.GetConfigurationValue("Owner");
+        var repo = Config.GetConfigurationValue("Repo");
+        var token = Config.GetConfigurationValue("Token");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CardReferencesResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(cardNumber))
             return new CardReferencesResponse { Error = "Parâmetro 'cardNumber' é obrigatório" };
 
-        var branchesTask = _gitHubClient.Repository.Branch.GetAll(owner, repo)
+        var branchesTask = Client.Repository.Branch.GetAll(owner, repo)
             .ContinueWith(t => t.Result
                 .Where(b => b.Name.Contains(cardNumber, StringComparison.OrdinalIgnoreCase))
                 .Take(maxPerType)
@@ -438,7 +473,7 @@ public class GitHubService : IGitHubService
         }, cancellationToken);
 
         var codeQuery = $"repo:{owner}/{repo} \"{cardNumber}\"";
-        var codeTask = _gitHubClient.Search.SearchCode(new SearchCodeRequest(codeQuery))
+        var codeTask = Client.Search.SearchCode(new SearchCodeRequest(codeQuery))
             .ContinueWith(t => t.Result.Items
                 .Take(maxPerType)
                 .Select(code => new CodeHitReferenceResponse { Path = code.Path, Repository = code.Repository.FullName, Url = code.HtmlUrl })
@@ -459,7 +494,9 @@ public class GitHubService : IGitHubService
 
     public async Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null)
     {
-        var (owner, repo) = ResolveRepository(repository ?? _plugin.Configurations.GetConfigurationValue("Repo"));
+        await EnsureClientAsync(cancellationToken);
+
+        var (owner, repo) = ResolveRepository(repository ?? Config.GetConfigurationValue("Repo"));
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CommitDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sha))
@@ -467,7 +504,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            var commit = await _gitHubClient.Repository.Commit.Get(owner, repo, sha);
+            var commit = await Client.Repository.Commit.Get(owner, repo, sha);
             return new CommitDiffResponse
             {
                 Sha = commit.Sha,
@@ -505,14 +542,16 @@ public class GitHubService : IGitHubService
 
     public async Task<List<BranchCommitResponse>> GetBranchCommitsAsync(string repository, string branch, CancellationToken cancellationToken = default)
     {
+        await EnsureClientAsync(cancellationToken);
+
         var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository)
-            ? _plugin.Configurations.GetConfigurationValue("Repo")
+            ? Config.GetConfigurationValue("Repo")
             : repository);
 
         var request = new CommitRequest { Sha = branch };
         var options = new ApiOptions { PageSize = 20, PageCount = 1 };
 
-        var commits = await _gitHubClient.Repository.Commit.GetAll(owner, repo, request, options);
+        var commits = await Client.Repository.Commit.GetAll(owner, repo, request, options);
 
         return commits.Select(c =>
         {
@@ -537,8 +576,10 @@ public class GitHubService : IGitHubService
 
     public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
     {
-        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
-        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
+        await EnsureClientAsync(cancellationToken);
+
+        var owner = Config.GetConfigurationValue("Owner");
+        var repo = Config.GetConfigurationValue("Repo");
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CompareDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
@@ -546,7 +587,7 @@ public class GitHubService : IGitHubService
 
         try
         {
-            var compare = await _gitHubClient.Repository.Commit.Compare(owner, repo, @base, head);
+            var compare = await Client.Repository.Commit.Compare(owner, repo, @base, head);
             return new CompareDiffResponse
             {
                 Url = compare.Url,

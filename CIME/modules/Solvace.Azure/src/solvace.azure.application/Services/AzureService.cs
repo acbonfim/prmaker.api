@@ -8,6 +8,7 @@ using Microsoft.Extensions.Http;
 using System.Net.Http;
 using solvace.azure.domain.Models;
 using solvace.prform.application;
+using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Extensions;
 
@@ -15,21 +16,52 @@ namespace solvace.azure.application.Services;
 
 public class AzureService : IAzureService
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IPluginCacheManager _pluginCacheManager;
-    private Plugin _plugin;
+    private const string PluginName = "AzureDevOps Configurations";
 
-    public AzureService(IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager)
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IPluginConfigurationResolver _configurationResolver;
+
+    // Configuração efetiva da requisição: global, ou a do usuário quando o plugin é de uso pessoal
+    // (feature 0002). Resolvida no início de cada operação (EnsureConfigAsync).
+    private PluginConfiguration? _config;
+
+    public AzureService(IHttpClientFactory httpClientFactory, IPluginConfigurationResolver configurationResolver)
     {
         _httpClientFactory = httpClientFactory;
-        _pluginCacheManager = pluginCacheManager;
-        _plugin = _pluginCacheManager.GetCachedPluginByName("AzureDevOps Configurations");
+        _configurationResolver = configurationResolver;
+    }
+
+    /// <summary>
+    /// Resolve a configuração (lança PersonalIntegrationRequiredException → 403 quando o plugin é
+    /// pessoal e o usuário não configurou). Chamar no início de cada operação, fora de try/catch.
+    /// </summary>
+    private async Task EnsureConfigAsync(CancellationToken cancellationToken)
+    {
+        _config ??= await _configurationResolver.GetEffectiveConfigurationAsync(PluginName, cancellationToken);
+    }
+
+    private PluginConfiguration Config =>
+        _config ?? throw new InvalidOperationException("Configuração do Azure DevOps não resolvida");
+
+    /// <summary>Cliente com o PAT da configuração efetiva (por requisição, não mais fixo no HttpClient nomeado).</summary>
+    private HttpClient CreateClient()
+    {
+        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var personalAccessToken = Config.GetConfigurationValue("PersonalAccessToken");
+        if (!string.IsNullOrEmpty(personalAccessToken))
+        {
+            var authValue = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{personalAccessToken}"));
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
+        }
+        return client;
     }
 
     public async Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default)
     {
+        await EnsureConfigAsync(cancellationToken);
+
         var baseUrl = GetAzureBaseUrl();
-        var apiVersion =  _plugin.Configurations.GetConfigurationValue("ApiVersion");
+        var apiVersion =  Config.GetConfigurationValue("ApiVersion");
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
         var query = $"";
@@ -37,7 +69,7 @@ public class AzureService : IAzureService
         
         url += query + fields;
 
-        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var client = CreateClient();
         var response = await client.GetAsync(url, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -52,6 +84,8 @@ public class AzureService : IAzureService
 
     public async Task<AzureWorkItem?> UpdateRootCauseAsync(string id, UpdateRootCauseRequest bodyRaw, CancellationToken cancellationToken = default)
     {
+        await EnsureConfigAsync(cancellationToken);
+
         string rootCauseText = bodyRaw.RootCause ?? string.Empty;
         if (!string.IsNullOrEmpty(rootCauseText) && rootCauseText.TrimStart().StartsWith("{"))
         {
@@ -67,7 +101,7 @@ public class AzureService : IAzureService
         }
 
         var baseUrl = GetAzureBaseUrl();
-        var apiVersion =  _plugin.Configurations.GetConfigurationValue("ApiVersion");
+        var apiVersion =  Config.GetConfigurationValue("ApiVersion");
         var url = $"{baseUrl}/wit/workitems/{id}?api-version={apiVersion}";
 
         var jsonOptions = new JsonSerializerOptions
@@ -76,13 +110,13 @@ public class AzureService : IAzureService
             WriteIndented = false
         };
         
-        var rootCauseFieldPath =  _plugin.Configurations.GetConfigurationValue("RootCauseFieldPath");
+        var rootCauseFieldPath =  Config.GetConfigurationValue("RootCauseFieldPath");
 
         var patchData = new[] { new { op = "add", path = rootCauseFieldPath, value = rootCauseText } };
         var json = JsonSerializer.Serialize(patchData, jsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json-patch+json");
 
-        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var client = CreateClient();
         var response = await client.PatchAsync(url, content, cancellationToken);
         
         if (!response.IsSuccessStatusCode)
@@ -94,12 +128,14 @@ public class AzureService : IAzureService
 
     public async Task<AzureCardFullResponse?> GetCardFullAsync(string id, CancellationToken cancellationToken = default)
     {
+        await EnsureConfigAsync(cancellationToken);
+
         var baseUrl = GetAzureBaseUrl();
-        var apiVersion = _plugin.Configurations.GetConfigurationValue("ApiVersion");
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
         if (string.IsNullOrWhiteSpace(apiVersion))
             apiVersion = "7.0";
 
-        var client = _httpClientFactory.CreateClient("AzureDevOps");
+        var client = CreateClient();
 
         // 1) Work item com todos os campos (inclui todos os custom fields)
         var workItemUrl = $"{baseUrl}/wit/workitems/{id}?$expand=all&api-version={apiVersion}";
@@ -219,7 +255,7 @@ public class AzureService : IAzureService
 
     private AzureCardAlerts BuildAlerts(Dictionary<string, JsonElement> fields)
     {
-        var rootCausePath = _plugin.Configurations.GetConfigurationValue("RootCauseFieldPath");
+        var rootCausePath = Config.GetConfigurationValue("RootCauseFieldPath");
         var rootCauseField = string.IsNullOrWhiteSpace(rootCausePath)
             ? "Custom.RCATechnicalCategorytext"
             : rootCausePath.Replace("/fields/", string.Empty).Trim('/');
@@ -322,8 +358,8 @@ public class AzureService : IAzureService
 
     private string GetAzureBaseUrl()
     {
-        var organization =  _plugin.Configurations.GetConfigurationValue("Organization");
-        var project =  _plugin.Configurations.GetConfigurationValue("Project");
+        var organization =  Config.GetConfigurationValue("Organization");
+        var project =  Config.GetConfigurationValue("Project");
         if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(project))
             throw new InvalidOperationException("Configurações do Azure DevOps não encontradas");
         var encodedProject = Uri.EscapeDataString(project);
@@ -332,8 +368,8 @@ public class AzureService : IAzureService
 
     private string GetWorkItemBrowserUrl(string id)
     {
-        var organization = _plugin.Configurations.GetConfigurationValue("Organization");
-        var project = _plugin.Configurations.GetConfigurationValue("Project");
+        var organization = Config.GetConfigurationValue("Organization");
+        var project = Config.GetConfigurationValue("Project");
         var encodedProject = Uri.EscapeDataString(project);
         return $"https://dev.azure.com/{organization}/{encodedProject}/_workitems/edit/{id}";
     }
