@@ -97,31 +97,31 @@ Onda 4:  Q1 (Workflow real + teste)
 ```
 
 ### B1 — Plugin "Teams Configurations" + plugin pessoal opcional
-- [ ] `Plugin.IsOptional` (+ request/response/`UpdateConfiguration`); `UserIntegration/status`: opcional não entra em `pending`; lista de integrações traz `optional`.
-- [ ] `SensitiveFieldPolicy`: palavra `webhook` sensível.
-- [ ] Migração `AddTeamsPlugin` (coluna + insert idempotente), gerada sem conectar no banco; SQL conferido.
+- [x] `Plugin.IsOptional` (+ request/response/`UpdateConfiguration`); `UserIntegration/status`: opcional não entra em `pending`; lista de integrações traz `optional`.
+- [x] `SensitiveFieldPolicy`: palavra `webhook` sensível.
+- [x] Migração `AddTeamsPlugin` (coluna + insert idempotente), gerada sem conectar no banco; SQL conferido.
 
 ### B2 — Envio da aprovação para o Teams
-- [ ] `TeamsApprovalService`: resolve o plugin (pessoal), valida a URL, monta o Adaptive Card pelo modelo, `POST` com timeout.
-- [ ] `TeamsController`: `GET status`, `POST approval` (400 com mensagem clara; 403 da 0002 sem configuração).
-- [ ] Teste contra servidor HTTP local falso (payload do cartão, placeholders, allowlist, erros do Workflow).
+- [x] `TeamsApprovalService`: resolve o plugin (pessoal), valida a URL, monta o Adaptive Card pelo modelo, `POST` com timeout.
+- [x] `TeamsController`: `GET status`, `POST approval` (400 com mensagem clara; 403 da 0002 sem configuração).
+- [x] Teste contra servidor HTTP local falso (payload do cartão, placeholders, allowlist, erros do Workflow).
 
 ### B3 — Alterar status do PR no GitHub
-- [ ] `GitHubService.SetPullRequestStatusAsync` (REST fechar/reabrir; GraphQL draft/pronto).
-- [ ] `PUT /PullRequest/{card}/github/{id}/status` + atualização do registro.
-- [ ] Teste contra API falsa (sequência de chamadas por transição; transições inválidas).
+- [x] `GitHubService.SetPullRequestStatusAsync` (REST fechar/reabrir; GraphQL draft/pronto).
+- [x] `PUT /PullRequest/{card}/github/{id}/status` + atualização do registro.
+- [x] Teste contra API falsa (sequência de chamadas por transição; transições inválidas).
 
 ### F1 — Plugin opcional no front + estado do Teams
-- [ ] Admin (`plugin/dialogEdit`): toggle "Opcional" para plugin pessoal.
-- [ ] *Minhas integrações*: selo "Opcional" e instrução do Workflow.
-- [ ] `TeamsService` (`status`, `requestApproval`) e `setGithubPrStatus` no `PullRequestService`.
+- [x] Admin (`plugin/dialogEdit`): toggle "Opcional" para plugin pessoal.
+- [x] *Minhas integrações*: selo "Opcional" e instrução do Workflow.
+- [x] `TeamsService` (`status`, `requestApproval`) e `setGithubPrStatus` no `PullRequestService`.
 
 ### F2 — Botão Teams + menu de atalhos na linha do PR
-- [ ] Botão Teams (habilitado conforme status/configuração) e botão ⚡ no item; clique direito na linha; tooltip de dica.
-- [ ] Menu: Abrir no GitHub, Copiar link, Abrir PR rápido, Alterar status (submenu).
+- [x] Botão Teams (habilitado conforme status/configuração) e botão ⚡ no item; clique direito na linha; tooltip de dica.
+- [x] Menu: Abrir no GitHub, Copiar link, Abrir PR rápido, Alterar status (submenu).
 
 ### F3 — Abrir PR rápido
-- [ ] Popover com `app-target-branch-toggle` → `POST /PullRequest/{card}/github` com repositório/branch da linha; copia o link; atualiza a lista.
+- [x] Popover com `app-target-branch-toggle` → `POST /PullRequest/{card}/github` com repositório/branch da linha; copia o link; atualiza a lista.
 
 ### Q1 — Validação (usuário)
 - [ ] Criar o Workflow no grupo do Teams e colar a URL em *Minhas integrações*; ajustar `GroupName`/modelo no plugin (admin).
