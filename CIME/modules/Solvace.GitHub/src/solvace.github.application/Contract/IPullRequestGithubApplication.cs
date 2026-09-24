@@ -13,5 +13,6 @@ public interface IPullRequestGithubApplication
 {
     Task<PullRequestGithubResponse> Open(string cardNumber, OpenPullRequestGithubRequest request, CancellationToken cancellationToken);
     Task<PullRequestGithubResponse> Update(string cardNumber, int id, UpdatePullRequestGithubRequest request, CancellationToken cancellationToken);
-    Task<IReadOnlyList<PullRequestGithubResponse>> ListByCard(string cardNumber, bool refreshStatus, CancellationToken cancellationToken);
+    /// <param name="forceRefresh">Com refreshStatus, ignora o cache de status do GitHub.</param>
+    Task<IReadOnlyList<PullRequestGithubResponse>> ListByCard(string cardNumber, bool refreshStatus, CancellationToken cancellationToken, bool forceRefresh = false);
 }

@@ -1,9 +1,12 @@
+using Cime.BuildingBlocks.RealTime;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using solvace.github.application.Contract;
 using solvace.github.domain.Responses;
 using solvace.prform.domain.Entities;
+using solvace.prform.application;
 using solvace.prform.domain.Enums;
+using solvace.prform.domain.RealTime;
 using solvace.prform.domain.Requests;
 using solvace.prform.domain.Responses;
 using solvace.prform.Infra.Contexts;
@@ -18,12 +21,15 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
     private readonly DefaultContext _context;
     private readonly IGitHubService _gitHubService;
     private readonly ILogger<PullRequestGithubApplication> _logger;
+    private readonly IRealTimeNotifier _realTimeNotifier;
 
-    public PullRequestGithubApplication(DefaultContext context, IGitHubService gitHubService, ILogger<PullRequestGithubApplication> logger)
+    public PullRequestGithubApplication(DefaultContext context, IGitHubService gitHubService, ILogger<PullRequestGithubApplication> logger,
+        IRealTimeNotifier realTimeNotifier)
     {
         _context = context;
         _gitHubService = gitHubService;
         _logger = logger;
+        _realTimeNotifier = realTimeNotifier;
     }
 
     public async Task<PullRequestGithubResponse> Open(string cardNumber, OpenPullRequestGithubRequest request, CancellationToken cancellationToken)
@@ -84,6 +90,7 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+        await _realTimeNotifier.NotifyCardUpdatedAsync(cardNumber, PullRequestRealTimeEvents.Actions.GithubPrOpened, entity.Id, cancellationToken);
 
         var response = entity.ToResponse();
         response.AlreadyExisted = pr.AlreadyExisted;
@@ -111,6 +118,7 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         entity.SetContent(request.Title, request.Description);
         entity.SetStatus(pr.Status, pr.IsDraft);
         await _context.SaveChangesAsync(cancellationToken);
+        await _realTimeNotifier.NotifyCardUpdatedAsync(cardNumber, PullRequestRealTimeEvents.Actions.GithubPrUpdated, entity.Id, cancellationToken);
 
         return entity.ToResponse();
     }
@@ -120,7 +128,7 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
     /// são consultados no GitHub (em paralelo, com cache — ver GitHubService); MERGED/CLOSED
     /// devolvem o status persistido. Mudanças de status são gravadas.
     /// </summary>
-    public async Task<IReadOnlyList<PullRequestGithubResponse>> ListByCard(string cardNumber, bool refreshStatus, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PullRequestGithubResponse>> ListByCard(string cardNumber, bool refreshStatus, CancellationToken cancellationToken, bool forceRefresh = false)
     {
         cardNumber = NormalizeCard(cardNumber);
         var entities = await _context.PullRequestsGithub
@@ -138,7 +146,7 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
                 try
                 {
                     statuses = await _gitHubService.GetPullRequestsStatusAsync(
-                        open.Select(x => (x.RepositoryId, x.GithubPrNumber!.Value)), cancellationToken);
+                        open.Select(x => (x.RepositoryId, x.GithubPrNumber!.Value)), cancellationToken, forceRefresh);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -163,7 +171,11 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
                 }
 
                 if (_context.ChangeTracker.HasChanges())
+                {
                     await _context.SaveChangesAsync(cancellationToken);
+                    // Outras telas com o card aberto também passam a ver o status novo.
+                    await _realTimeNotifier.NotifyCardUpdatedAsync(cardNumber, PullRequestRealTimeEvents.Actions.GithubPrStatusChanged, null, cancellationToken);
+                }
             }
         }
 

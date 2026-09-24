@@ -91,6 +91,7 @@ public class GitHubService : IGitHubService
         try
         {
             var pr = await _gitHubClient.PullRequest.Create(owner, repo, newPr);
+            CacheStatus(pr, repositoryId!);
             return ToPullRequestResponse(pr, repositoryId!);
         }
         catch (ApiValidationException e) when (IsPullRequestAlreadyExists(e))
@@ -100,6 +101,7 @@ public class GitHubService : IGitHubService
             if (existing is null)
                 return new PullRequestResponse { Error = $"Já existe um PR para '{head}' → '{@base}', mas não foi possível localizá-lo" };
 
+            CacheStatus(existing, repositoryId!);
             var response = ToPullRequestResponse(existing, repositoryId!);
             response.AlreadyExisted = true;
             return response;
@@ -140,6 +142,7 @@ public class GitHubService : IGitHubService
         try
         {
             var pr = await _gitHubClient.PullRequest.Update(owner, repo, number, update);
+            CacheStatus(pr, repository);
             return ToPullRequestResponse(pr, repository);
         }
         catch (NotFoundException)
@@ -192,7 +195,7 @@ public class GitHubService : IGitHubService
             RepositoriesCacheMinutes);
     }
 
-    public async Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default, bool bypassCache = false)
     {
         var owner = _plugin.Configurations.GetConfigurationValue("Owner");
         var targets = pullRequests
@@ -212,8 +215,8 @@ public class GitHubService : IGitHubService
         using var throttle = new SemaphoreSlim(StatusMaxParallelism);
         var tasks = targets.Select(async t =>
         {
-            var cacheKey = $"github:pr-status:{owner}/{t.Repository}#{t.Number}";
-            if (_cacheService.TryGetValue<PullRequestStatusResponse>(cacheKey, out var cached) && cached is not null)
+            var cacheKey = StatusCacheKey(owner, t.Repository, t.Number);
+            if (!bypassCache && _cacheService.TryGetValue<PullRequestStatusResponse>(cacheKey, out var cached) && cached is not null)
                 return cached;
 
             await throttle.WaitAsync(cancellationToken);
@@ -319,6 +322,27 @@ public class GitHubService : IGitHubService
     private static string? NormalizeBody(string? descriptionRaw) =>
         string.IsNullOrWhiteSpace(descriptionRaw) ? null
             : descriptionRaw.Replace("\u0000", string.Empty).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
+
+    private static string StatusCacheKey(string owner, string repository, int number) =>
+        $"github:pr-status:{owner}/{repository}#{number}";
+
+    /// <summary>
+    /// O CIME acabou de ler o PR (criar/atualizar): grava o status fresco no cache para que uma
+    /// listagem logo em seguida não devolva um status antigo (ex.: draft que já virou aberto).
+    /// </summary>
+    private void CacheStatus(PullRequest pr, string repositoryId)
+    {
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner") ?? string.Empty;
+        _cacheService.Set(StatusCacheKey(owner, repositoryId, pr.Number), new PullRequestStatusResponse
+        {
+            Repository = repositoryId,
+            Number = pr.Number,
+            Status = PullRequestGithubStatus.From(pr.State.StringValue, pr.Merged),
+            IsDraft = pr.Draft,
+            MergedAt = pr.MergedAt,
+            ClosedAt = pr.ClosedAt
+        }, StatusCacheMinutes);
+    }
 
     private static PullRequestResponse ToPullRequestResponse(PullRequest pr, string repository) =>
         new()

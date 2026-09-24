@@ -1,6 +1,8 @@
+using Cime.BuildingBlocks.RealTime;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.application.Contracts;
 using solvace.prform.domain.Entities;
+using solvace.prform.domain.RealTime;
 using solvace.prform.domain.Requests;
 using solvace.prform.domain.Responses;
 using solvace.prform.Infra.Contexts;
@@ -10,11 +12,13 @@ namespace solvace.prform.application;
 public class PullRequestApplication : IPullRequestApplication
 {
     private readonly DefaultContext _context;
+    private readonly IRealTimeNotifier _realTimeNotifier;
     private DbSet<PullRequestRegister> _prRepository;
     
-    public PullRequestApplication(DefaultContext context)
+    public PullRequestApplication(DefaultContext context, IRealTimeNotifier realTimeNotifier)
     {
         _context = context;
+        _realTimeNotifier = realTimeNotifier;
         _prRepository = context.PullRequests;
     }
     public async Task<bool> CommitAsync(CancellationToken cancellationToken)
@@ -24,7 +28,8 @@ public class PullRequestApplication : IPullRequestApplication
 
     /// <summary>
     /// Upsert do registro do card (um por card). Branch/repositório do request são ignorados:
-    /// agora pertencem a cada PR do GitHub (PullRequestGithub).
+    /// agora pertencem a cada PR do GitHub (PullRequestGithub). Devolve o registro salvo
+    /// (autor/datas atualizados) e avisa em tempo real quem está com o card aberto.
     /// </summary>
     public async Task<PullRequestRegisterResponse> Create(PullRequestRegisterRequest request, CancellationToken cancellationToken)
     {
@@ -36,16 +41,18 @@ public class PullRequestApplication : IPullRequestApplication
         {
             requestExists.UpdateContent(request.Description, request.RootCause);
             await CommitAsync(cancellationToken);
-            return new PullRequestRegisterResponse(){Id = requestExists.Id};
+            await _realTimeNotifier.NotifyCardUpdatedAsync(requestExists.CardNumber, PullRequestRealTimeEvents.Actions.RegisterSaved, requestExists.Id, cancellationToken);
+            return requestExists.ToResponse();
         }
         
         var requestRegister = request.Create(request);
         
-        var response = await _prRepository.AddAsync(requestRegister, cancellationToken);
-        if(await CommitAsync(cancellationToken))
-            return new PullRequestRegisterResponse(){Id = response.Entity.Id};
-        
-        throw new Exception("Error on save");
+        await _prRepository.AddAsync(requestRegister, cancellationToken);
+        if (!await CommitAsync(cancellationToken))
+            throw new Exception("Error on save");
+
+        await _realTimeNotifier.NotifyCardUpdatedAsync(requestRegister.CardNumber, PullRequestRealTimeEvents.Actions.RegisterSaved, requestRegister.Id, cancellationToken);
+        return requestRegister.ToResponse();
     }
 
     public async Task<PullRequestRegisterResponse> Get(int id, CancellationToken cancellationToken)

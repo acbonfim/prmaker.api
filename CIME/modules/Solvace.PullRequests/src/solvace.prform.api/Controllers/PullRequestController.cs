@@ -108,15 +108,17 @@ public class PullRequestController : ControllerBase
 
     /// <summary>
     /// PRs do GitHub do card, mais recentes primeiro. refreshStatus consulta no GitHub
-    /// apenas os PRs ainda abertos (MERGED/CLOSED usam o status persistido).
+    /// apenas os PRs ainda abertos (MERGED/CLOSED usam o status persistido); forceRefresh
+    /// ignora o cache de status (60 s).
     /// </summary>
     [HttpGet("{cardNumber}/github")]
     public async Task<ActionResult<IReadOnlyList<PullRequestGithubResponse>>> ListGithubPullRequests(string cardNumber,
-        [FromServices] IPullRequestGithubApplication githubApplication, CancellationToken cancellationToken, bool refreshStatus = true)
+        [FromServices] IPullRequestGithubApplication githubApplication, CancellationToken cancellationToken,
+        bool refreshStatus = true, bool forceRefresh = false)
     {
         try
         {
-            return Ok(await githubApplication.ListByCard(cardNumber, refreshStatus, cancellationToken));
+            return Ok(await githubApplication.ListByCard(cardNumber, refreshStatus, cancellationToken, forceRefresh));
         }
         catch (DomainException e)
         {
