@@ -5,9 +5,9 @@ namespace solvace.prform.application.UserIntegrations;
 
 /// <summary>
 /// Porta única para as integrações lerem a configuração de um plugin:
-/// plugin comum → configuração global (como sempre); plugin de uso pessoal → valores do usuário
-/// da requisição (claim ExternalId), sem fallback para o global (D1). Sem configuração pessoal
-/// completa → <see cref="PersonalIntegrationRequiredException"/> (403).
+/// plugin comum → configuração global (como sempre); plugin de uso pessoal → campos fixos com o
+/// valor global + campos do usuário da requisição (claim ExternalId), estes sem fallback para o
+/// global (D1). Sem os campos do usuário preenchidos → <see cref="PersonalIntegrationRequiredException"/> (403).
 /// </summary>
 public interface IPluginConfigurationResolver
 {
@@ -61,7 +61,9 @@ public class PluginConfigurationResolver : IPluginConfigurationResolver
                 throw new PersonalIntegrationRequiredException(new[] { plugin.Description });
         }
 
-        return new PluginConfiguration(new List<IDictionary<string, string>> { new Dictionary<string, string>(mine) });
+        // Campos fixos (definidos pelo admin) + campos do usuário.
+        var effective = _userConfigurations.BuildEffectiveValues(plugin, mine);
+        return new PluginConfiguration(new List<IDictionary<string, string>> { effective });
     }
 
     private async Task<Plugin?> FindPluginAsync(string name, CancellationToken cancellationToken)

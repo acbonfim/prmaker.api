@@ -34,8 +34,14 @@ public interface IUserPluginConfigurationApplication
     /// <summary>Plugins de uso pessoal ativos (não excluídos).</summary>
     Task<IReadOnlyList<Plugin>> GetPersonalPluginsAsync(CancellationToken cancellationToken);
 
-    /// <summary>Configurado = todos os campos do modelo global preenchidos pelo usuário (D2).</summary>
+    /// <summary>Configurado = todos os campos DO USUÁRIO preenchidos (os fixos vêm do global).</summary>
     bool IsConfigured(Plugin plugin, IReadOnlyDictionary<string, string> userValues);
+
+    /// <summary>
+    /// Configuração efetiva de um plugin pessoal: campos fixos com o valor global + campos do
+    /// usuário com o valor dele (sem fallback para o global).
+    /// </summary>
+    Dictionary<string, string> BuildEffectiveValues(Plugin plugin, IReadOnlyDictionary<string, string> userValues);
 }
 
 /// <summary>
@@ -116,14 +122,19 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
         if (unknown.Count > 0)
             throw new DomainException($"Campos que não existem no plugin {plugin.Description}: {string.Join(", ", unknown)}");
 
+        var fixedKeys = incoming.Keys.Where(k => !plugin.IsUserField(k)).ToList();
+        if (fixedKeys.Count > 0)
+            throw new DomainException($"Campos definidos pelo administrador não podem ser alterados: {string.Join(", ", fixedKeys)}");
+
         var entity = await _context.UserPluginConfigurations
             .FirstOrDefaultAsync(x => x.PluginId == pluginId && x.UserExternalId == userExternalId, cancellationToken);
         var stored = Deserialize(entity?.Options);
         var context = ProtectionContext(pluginId, userExternalId);
 
-        // Recria só com as chaves do modelo atual (chaves removidas do global somem daqui).
+        // Recria só com as chaves do usuário no modelo atual (removidas do global ou que viraram
+        // fixas somem daqui).
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var key in templateKeys)
+        foreach (var key in templateKeys.Where(plugin.IsUserField))
         {
             stored.TryGetValue(key, out var current);
             if (!incoming.TryGetValue(key, out var value) || value is null)
@@ -205,7 +216,22 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
     }
 
     public bool IsConfigured(Plugin plugin, IReadOnlyDictionary<string, string> userValues) =>
-        TemplateKeys(plugin).All(k => userValues.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v));
+        TemplateKeys(plugin).Where(plugin.IsUserField)
+            .All(k => userValues.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v));
+
+    public Dictionary<string, string> BuildEffectiveValues(Plugin plugin, IReadOnlyDictionary<string, string> userValues)
+    {
+        var template = plugin.Configurations?.GetAllConfigurations() ?? new Dictionary<string, string>();
+        var effective = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, globalValue) in template)
+        {
+            if (!plugin.IsUserField(key))
+                effective[key] = globalValue; // fixo: definido pelo administrador
+            else if (userValues.TryGetValue(key, out var mine))
+                effective[key] = mine;
+        }
+        return effective;
+    }
 
     private UserIntegrationResponse ToResponse(Plugin plugin, UserPluginValues values)
     {
@@ -215,6 +241,20 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
         var fields = template.Select(t =>
         {
             var sensitive = SensitiveFieldPolicy.IsSensitive(t.Key);
+
+            if (!plugin.IsUserField(t.Key))
+            {
+                // Fixo: valor da configuração global, somente leitura (segredo nunca é exposto).
+                return new UserIntegrationFieldResponse
+                {
+                    Key = t.Key,
+                    Editable = false,
+                    Sensitive = sensitive,
+                    HasValue = !string.IsNullOrEmpty(t.Value),
+                    Value = sensitive || string.IsNullOrEmpty(t.Value) ? null : t.Value
+                };
+            }
+
             var hasValue = mine.TryGetValue(t.Key, out var userValue) && !string.IsNullOrEmpty(userValue);
 
             if (sensitive)

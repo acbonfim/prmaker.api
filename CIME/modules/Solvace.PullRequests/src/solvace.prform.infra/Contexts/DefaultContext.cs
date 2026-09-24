@@ -56,6 +56,10 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
             .Property(x => x.IsPersonal)
             .HasDefaultValue(false);
 
+        modelBuilder.Entity<Plugin>()
+            .Property(x => x.PersonalFields)
+            .HasColumnType("longtext");
+
         modelBuilder.Entity<UserPluginConfiguration>(b =>
         {
             b.ToTable("UserPluginConfigurations");

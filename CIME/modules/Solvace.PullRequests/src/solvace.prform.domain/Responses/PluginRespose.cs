@@ -6,6 +6,7 @@ public class PluginRespose
     public string Description { get; set; }
     public bool AdminOnly { get; set; }
     public bool IsPersonal { get; set; }
+    public IReadOnlyList<string>? PersonalFields { get; set; }
 
     public IDictionary<string, string> Configurations { get; set; }
 }

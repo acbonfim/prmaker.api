@@ -28,6 +28,9 @@ public class UserIntegrationFieldResponse
 
     /// <summary>Value veio do plugin global como sugestão (o usuário ainda não salvou esse campo).</summary>
     public bool Suggested { get; set; }
+
+    /// <summary>false = campo fixo, definido pelo administrador na configuração global (somente leitura).</summary>
+    public bool Editable { get; set; } = true;
 }
 
 public class UserIntegrationStatusResponse
