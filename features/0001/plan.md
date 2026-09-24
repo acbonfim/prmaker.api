@@ -280,12 +280,12 @@ Aceite
 **Depende de:** F1 (e contrato; integração real após B3) · **Spec:** 4.2
 
 Tarefas
-- [ ] `dialog-prompt`: dentro do step "Commit", `mat-stepper orientation="vertical"` com **um step por repositório** de `githubPrs` (título = id do repo). Cada step usa a branch do PR daquele repo para listar commits (`GET /GitHub/commits`).
-- [ ] Visual de autor/data/SHA/descrição/diff igual ao atual, dentro de cada step.
-- [ ] Armazenar `Map<repo, { commit, diff }>`; step com diff buscado → `completed` (ícone de concluído).
-- [ ] Botão "Adicionar repositório": `app-repo-autocomplete` com `[exclude]` = repos já no stepper + botão `+`; novo repo pede a branch (default `prefix+card`) e entra no stepper. Não permitir duplicado.
-- [ ] Avançar para o próximo passo exige **≥ 1 diff** buscado.
-- [ ] Dados do dialog passam a ser `{ cardNumber, cardType, githubPrs }` (não mais repo/branch únicos).
+- [x] `dialog-prompt`: dentro do step "Commit", `mat-stepper orientation="vertical"` com **um step por repositório** de `githubPrs` (título = id do repo). Cada step usa a branch do PR daquele repo para listar commits (`GET /GitHub/commits`).
+- [x] Visual de autor/data/SHA/descrição/diff igual ao atual, dentro de cada step.
+- [x] Armazenar `Map<repo, { commit, diff }>`; step com diff buscado → `completed` (ícone de concluído).
+- [x] Botão "Adicionar repositório": `app-repo-autocomplete` com `[exclude]` = repos já no stepper + botão `+`; novo repo pede a branch (default `prefix+card`) e entra no stepper. Não permitir duplicado.
+- [x] Avançar para o próximo passo exige **≥ 1 diff** buscado.
+- [x] Dados do dialog passam a ser `{ cardNumber, cardType, githubPrs }` (não mais repo/branch únicos).
 
 Aceite
 - Buscar diff em 2 repos distintos; ambos marcados como concluídos; repo duplicado bloqueado.

@@ -15,7 +15,7 @@
 | F2 | Reestruturação da tela principal | front | F1 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 721cb52 |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
 | B4 | Sync de status e hardening | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 31fdf7b |
-| F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
 | F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ⬜ | | | | |
 | Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
@@ -104,6 +104,14 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Validação**: teste descartável da B3 ampliado com "GitHub fora do ar" → 15/15 OK.
 - **Pendente (Q1)**: medir o tempo real (critério: card com 5+ PRs < 1,5 s com cache frio, < 200 ms com cache quente) — exige GitHub real; não medido.
 
+### F5 — IA: stepper vertical multi-repo ✅ (repo front)
+- **Feito**: no `dialog-prompt`, o passo "Commit" é um `mat-stepper` vertical (`[linear]="false"`) com um step por repositório — título = id do repo + branch. Cada step usa `app-repo-commit-picker` (branch editável com recarregar, busca de commit por autocomplete, `app-commit-details`, `app-git-diff-viewer`); ao escolher o commit o diff é buscado e a seleção emitida. Step com diff = concluído (ícone ✓ via `STEPPER_GLOBAL_OPTIONS { displayDefaultIndicatorType: false }` + `[state]`; o lápis de "edit" foi trocado pelo número). "Adicionar repositório" = `app-repo-autocomplete` com `[exclude]` dos repos já no stepper + botão `+` (duplicado bloqueado); repos adicionados à mão têm "Remover". Botão "Gerar com IA" exige ≥ 1 diff.
+- **Estado**: `CardPrStateService.aiRepositories` / `aiSelections` / `aiSelectedDiffs` (tipos `AiRepository`, `RepoCommitSelection`) — sobrevivem a fechar/reabrir o dialog e são zerados ao trocar de card (`loadRegister` com outro card, `reset`).
+- **Entrada**: `DialogPromptData { cardNumber, isAiGenerate, cardType, repositories, defaultBranch, repositoryFallback }`; o `register` monta `repositories` a partir dos PRs do card (branch do PR mais recente por repo). **Desvio**: se o card não tem PR, o stepper já vem com o repositório/branch padrão (mantém o fluxo antigo de um repo só) em vez de vazio.
+- **Prompt (provisório até a F6)**: `{githubCommitDiff}` recebe um JSON com `[{ repository, branch, commit, message, diff }]` de todos os repos com diff.
+- **Extra**: `helpers/commit.ts` + `app-commit-details` (reusar no Resumo da F6). Corrigido bug: com o formato do backend (`title` + `description` separados) a descrição do commit perdia a 1ª linha.
+- **Validação**: `ng build` ok (sem warnings novos). Não testado no navegador.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -118,3 +126,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | F3, F2 | Concluídas (front 46043bd, 721cb52). Onda 2 fechada; liberadas B4 e F5. D5 resolvida pela spec; D9 alterada. |
 | 2026-09-24 | B4, F5 | Iniciadas (onda 3, sessão única, em sequência). |
 | 2026-09-24 | B4 | Concluída (31fdf7b). Teste descartável 15/15; medição de tempo pendente (Q1). |
+| 2026-09-24 | F5 | Concluída (front dd1c79d). Onda 3 fechada; liberadas F4 e F6. |
