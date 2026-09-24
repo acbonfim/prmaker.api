@@ -62,6 +62,7 @@ public class PluginApplication : IPluginApplication
 
         plugin.SetConfigurations(request.Configurations);
         plugin.SetAdminOnly(request.AdminOnly);
+        plugin.SetPersonal(request.IsPersonal);
 
         if (await CommitAsync(cancellationToken))
         {

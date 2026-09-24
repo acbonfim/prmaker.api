@@ -26,12 +26,26 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     // Quando false, qualquer usuário logado pode ler.
     public bool AdminOnly { get; set; }
 
+    /// <summary>
+    /// Uso pessoal: cada usuário preenche os mesmos campos deste plugin com os próprios valores
+    /// (ex.: token), guardados em <see cref="UserPluginConfiguration"/>. A configuração global
+    /// passa a servir de modelo dos campos. Plugins não pessoais são lidos como sempre.
+    /// </summary>
+    public bool IsPersonal { get; set; }
+
     public Plugin(PluginRequest request)
     {
         SetDescription(request.Description);
         CreatedAt = DateTime.UtcNow;
         AdminOnly = request.AdminOnly;
+        IsPersonal = request.IsPersonal;
         SetConfigurations(request.Configurations);
+    }
+
+    public void SetPersonal(bool isPersonal)
+    {
+        IsPersonal = isPersonal;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetAdminOnly(bool adminOnly)
