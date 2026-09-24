@@ -63,10 +63,17 @@
 - Register carrega o status do Teams ao abrir, sem bloquear, e repassa `targetOptions`/`userId` para a lista.
 - `ng build` sem erros. **Não testado no navegador** (a tela depende da API real).
 
-## Log
+### Ajustes pós-merge (front 022e5fc, branch `feature/0007-ajustes`)
+- **Atalhos em popover:** o botão direito e o ⚡ abrem um `cc-popover` (mais rápido que o `mat-menu`), com linhas no visual das opções do `cc-filter-bar`. "Alterar status" abre as opções **dentro** do próprio popover. "Abrir PR rápido" troca o conteúdo do mesmo painel (com "voltar"), sem abrir outro. Botão direito com o popover aberto fecha o popover em vez de abrir o menu do navegador. O caret aponta para o centro do ⚡.
+- **Spinner do Teams:** trocado o `mat-spinner` (ficava descentralizado no botão de 26px) pelo ícone `sync` girando no próprio centro, a mesma técnica do ⟳ do painel.
+- **Troca de status:** o popover fecha na hora e **só o status da linha** vira skeleton (`pr-skeleton__chip`) até o GitHub responder. "Alterar status" fica desabilitado nesse PR enquanto isso.
+- `ng build` ok. Não testado no navegador.
+
 
 | Data | Fase | Evento |
 |---|---|---|
 | 2026-09-24 | — | 0006 mergeada (#11 back, #7 front). `feature/0007` criada a partir de `master` nos dois repos. Usuário escolheu Workflow webhook (D1). Plano criado; B1 iniciada. |
 | 2026-09-24 | B1, B3, B2 | Concluídas (5529f7b, 4641197, d9ebd16). Testes: migração em MySQL descartável, 50/50 (status GitHub), 41/41 (Teams). F1 iniciada. |
+| 2026-09-24 | — | PRs mergeados (#13 back, #9 front). |
+| 2026-09-24 | ajustes | Popover no lugar do mat-menu, spinner do Teams e skeleton do status (front 022e5fc). |
 | 2026-09-24 | F1, F2, F3 | Concluídas (front 953a46e, a8873b9). Falta Q1: criar o Workflow no Teams, deploy (aplica a migração) e teste na tela. |
