@@ -5,6 +5,7 @@ using solvace.github.application.Contract;
 using solvace.github.domain.Responses;
 using solvace.prform.domain.Entities;
 using solvace.prform.application;
+using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Enums;
 using solvace.prform.domain.RealTime;
 using solvace.prform.domain.Requests;
@@ -148,9 +149,10 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
                     statuses = await _gitHubService.GetPullRequestsStatusAsync(
                         open.Select(x => (x.RepositoryId, x.GithubPrNumber!.Value)), cancellationToken, forceRefresh);
                 }
-                catch (Exception e) when (e is not OperationCanceledException)
+                catch (Exception e) when (e is not OperationCanceledException and not PersonalIntegrationRequiredException)
                 {
                     // GitHub indisponível: a lista sai com o status persistido, marcada como desatualizada.
+                    // (Falta de integração pessoal não é indisponibilidade: sobe como 403.)
                     _logger.LogWarning(e, "Falha ao atualizar status dos PRs do card {CardNumber}", cardNumber);
                     statuses = Array.Empty<PullRequestStatusResponse>();
                 }

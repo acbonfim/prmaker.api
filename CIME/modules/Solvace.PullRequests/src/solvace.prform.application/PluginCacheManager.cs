@@ -16,11 +16,18 @@ public interface IPluginCacheManager
     string? GetPluginConfigurationValue(int pluginId, string key);
     IDictionary<string, string>? GetAllPluginConfigurations(int pluginId);
     bool HasPluginConfiguration(int pluginId, string key);
+
+    /// <summary>
+    /// Versão da configuração global: muda a cada recarga (create/update/delete de plugin).
+    /// Entra na chave dos caches por usuário (integrações pessoais), que assim se invalidam juntos.
+    /// </summary>
+    long GetConfigurationVersion();
 }
 
 public class PluginCacheManager : IPluginCacheManager
 {
     private const string PluginsCacheKey = "plugins:all";
+    private const string VersionCacheKey = "plugins:version";
     private const int CacheExpirationMinutes = 1440; // 24 horas
     
     private readonly ICacheService _cacheService;
@@ -49,7 +56,10 @@ public class PluginCacheManager : IPluginCacheManager
         var pluginsList = plugins.ToList();
         
         _cacheService.Set(PluginsCacheKey, pluginsList, CacheExpirationMinutes);
+        _cacheService.Set(VersionCacheKey, GetConfigurationVersion() + 1, int.MaxValue);
     }
+
+    public long GetConfigurationVersion() => _cacheService.Get<long>(VersionCacheKey);
 
     public IEnumerable<Plugin>? GetCachedPlugins()
     {

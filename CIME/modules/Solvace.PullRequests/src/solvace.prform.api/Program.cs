@@ -34,6 +34,13 @@ builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
 builder.Services.AddScoped<IPluginApplication, PluginApplication>();
 
 builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
+// Integrações pessoais (feature 0002): segredos dos usuários criptografados com a chave de UserIntegrations.
+builder.Services.Configure<solvace.prform.application.Security.UserIntegrationOptions>(
+    builder.Configuration.GetSection(solvace.prform.application.Security.UserIntegrationOptions.SectionName));
+builder.Services.AddSingleton<solvace.prform.application.Security.ISecretProtector, solvace.prform.application.Security.AesGcmSecretProtector>();
+builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IUserPluginConfigurationApplication, solvace.prform.application.UserIntegrations.UserPluginConfigurationApplication>();
+builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IPluginConfigurationResolver, solvace.prform.application.UserIntegrations.PluginConfigurationResolver>();
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
 
 // Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o

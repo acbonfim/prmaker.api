@@ -20,25 +20,10 @@ public static class ServiceCollectionExtensions
         services.AddOptions<AzureDevOpsOptions>()
             .ValidateOnStart();
         
-        services.AddHttpClient("AzureDevOps", (serviceProvider, client) =>
+        // O PAT não é mais fixado aqui: o AzureService monta o header a cada requisição com a
+        // configuração efetiva (global ou a do usuário, quando o plugin é de uso pessoal).
+        services.AddHttpClient("AzureDevOps", client =>
         {
-            var pluginCache = serviceProvider.GetRequiredService<IPluginCacheManager>();
-            var plugin = pluginCache.GetCachedPluginByName("AzureDevOps Configurations");
-        
-            if (plugin == null)
-                pluginCache.RefreshPluginsAsync().Wait();
-            
-            var personalAccessToken = plugin!.Configurations.GetConfigurationValue("PersonalAccessToken");
-            
-            if (!string.IsNullOrEmpty(personalAccessToken))
-            {
-                var authValue = Convert.ToBase64String(
-                    System.Text.Encoding.ASCII.GetBytes($":{personalAccessToken}")
-                );
-                client.DefaultRequestHeaders.Authorization = 
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
-            }
-        
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             client.DefaultRequestHeaders.Add("User-Agent", "SolvacePRForm/1.0");
         });

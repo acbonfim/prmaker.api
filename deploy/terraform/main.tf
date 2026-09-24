@@ -24,6 +24,9 @@ locals {
         "AzureDevOps__PersonalAccessToken"            = "azuredevops-pat"
         "GitHub__Token"                               = "github-token"
         "RealTime__ApiKey"                            = "realtime-apikey"
+        # Integrações pessoais (feature 0002): chave AES-256 dos tokens dos usuários.
+        # NUNCA trocar depois de em uso: os tokens salvos deixam de ser legíveis.
+        "UserIntegrations__EncryptionKey" = "user-integrations-encryption-key"
       }
     }
     auth = {

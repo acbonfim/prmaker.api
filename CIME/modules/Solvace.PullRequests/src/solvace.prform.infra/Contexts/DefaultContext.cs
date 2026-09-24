@@ -11,6 +11,7 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     public DbSet<Plugin> Plugins { get; set; }
     public DbSet<HandoverRegister> Handovers { get; set; }
     public DbSet<PullRequestGithub> PullRequestsGithub { get; set; }
+    public DbSet<UserPluginConfiguration> UserPluginConfigurations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +48,28 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
             b.Property(x => x.Status).HasMaxLength(PullRequestGithub.MaxStatusLength);
             b.HasIndex(x => x.CardNumber);
             b.HasIndex(x => new { x.RepositoryId, x.GithubPrNumber }).IsUnique();
+        });
+
+        // Plugins de uso pessoal: um registro por usuário x plugin. O plugin é soft delete,
+        // então não há cascade físico — os dados do usuário ficam (e só deixam de ser lidos).
+        modelBuilder.Entity<Plugin>()
+            .Property(x => x.IsPersonal)
+            .HasDefaultValue(false);
+
+        modelBuilder.Entity<Plugin>()
+            .Property(x => x.PersonalFields)
+            .HasColumnType("longtext");
+
+        modelBuilder.Entity<UserPluginConfiguration>(b =>
+        {
+            b.ToTable("UserPluginConfigurations");
+            b.Property(x => x.Options).HasColumnType("longtext");
+            b.HasIndex(x => new { x.PluginId, x.UserExternalId }).IsUnique();
+            b.HasIndex(x => x.UserExternalId);
+            b.HasOne(x => x.Plugin)
+                .WithMany()
+                .HasForeignKey(x => x.PluginId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

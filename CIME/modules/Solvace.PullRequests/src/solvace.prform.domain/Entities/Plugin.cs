@@ -26,12 +26,71 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     // Quando false, qualquer usuário logado pode ler.
     public bool AdminOnly { get; set; }
 
+    /// <summary>
+    /// Uso pessoal: cada usuário preenche os mesmos campos deste plugin com os próprios valores
+    /// (ex.: token), guardados em <see cref="UserPluginConfiguration"/>. A configuração global
+    /// passa a servir de modelo dos campos. Plugins não pessoais são lidos como sempre.
+    /// </summary>
+    public bool IsPersonal { get; set; }
+
+    /// <summary>
+    /// Plugin pessoal: JSON com as chaves que CADA USUÁRIO preenche. As demais são fixas — valem
+    /// os valores desta configuração global e o usuário só as vê. null = todas as chaves são do
+    /// usuário (comportamento original).
+    /// </summary>
+    public string? PersonalFields { get; set; }
+
+    /// <summary>Chaves preenchidas pelo usuário (null = todas).</summary>
+    public IReadOnlyList<string>? GetPersonalFieldKeys()
+    {
+        if (string.IsNullOrWhiteSpace(PersonalFields))
+            return null;
+        try
+        {
+            return Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(PersonalFields);
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>O campo é preenchido pelo usuário (true) ou fixo, vindo desta configuração global (false).</summary>
+    public bool IsUserField(string key)
+    {
+        if (!IsPersonal)
+            return false;
+        var keys = GetPersonalFieldKeys();
+        return keys is null || keys.Contains(key, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Define as chaves preenchidas pelo usuário (null = todas).</summary>
+    public void SetPersonalFields(IEnumerable<string>? keys)
+    {
+        PersonalFields = keys is null
+            ? null
+            : Newtonsoft.Json.JsonConvert.SerializeObject(keys
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Select(k => k.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList());
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public Plugin(PluginRequest request)
     {
         SetDescription(request.Description);
         CreatedAt = DateTime.UtcNow;
         AdminOnly = request.AdminOnly;
+        IsPersonal = request.IsPersonal;
+        SetPersonalFields(request.PersonalFields);
         SetConfigurations(request.Configurations);
+    }
+
+    public void SetPersonal(bool isPersonal)
+    {
+        IsPersonal = isPersonal;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetAdminOnly(bool adminOnly)
