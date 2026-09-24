@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using solvace.github.application.Contract;
+using solvace.github.domain.Responses;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Enums;
 using solvace.prform.domain.Requests;
@@ -15,11 +17,13 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
 
     private readonly DefaultContext _context;
     private readonly IGitHubService _gitHubService;
+    private readonly ILogger<PullRequestGithubApplication> _logger;
 
-    public PullRequestGithubApplication(DefaultContext context, IGitHubService gitHubService)
+    public PullRequestGithubApplication(DefaultContext context, IGitHubService gitHubService, ILogger<PullRequestGithubApplication> logger)
     {
         _context = context;
         _gitHubService = gitHubService;
+        _logger = logger;
     }
 
     public async Task<PullRequestGithubResponse> Open(string cardNumber, OpenPullRequestGithubRequest request, CancellationToken cancellationToken)
@@ -113,8 +117,18 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
             var open = entities.Where(x => !PullRequestGithubStatus.IsTerminal(x.Status)).ToList();
             if (open.Count > 0)
             {
-                var statuses = await _gitHubService.GetPullRequestsStatusAsync(
-                    open.Select(x => (x.RepositoryId, x.GithubPrNumber)), cancellationToken);
+                IReadOnlyList<PullRequestStatusResponse> statuses;
+                try
+                {
+                    statuses = await _gitHubService.GetPullRequestsStatusAsync(
+                        open.Select(x => (x.RepositoryId, x.GithubPrNumber)), cancellationToken);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // GitHub indisponível: a lista sai com o status persistido, marcada como desatualizada.
+                    _logger.LogWarning(e, "Falha ao atualizar status dos PRs do card {CardNumber}", cardNumber);
+                    statuses = Array.Empty<PullRequestStatusResponse>();
+                }
                 var byKey = statuses.ToDictionary(s => (s.Repository, s.Number));
 
                 foreach (var entity in open)

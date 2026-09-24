@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Http;
 using System.Net.Http;
@@ -21,14 +22,18 @@ public class GitHubService : IGitHubService
     private const int RepositoriesCacheMinutes = 10;
     private const int StatusCacheMinutes = 1;
     private const int StatusMaxParallelism = 5;
+    private const int RateLimitWarningThreshold = 100;
+    private static readonly TimeSpan StatusRequestTimeout = TimeSpan.FromSeconds(5);
 
     private readonly IPluginCacheManager _pluginCacheManager;
     private readonly ICacheService _cacheService;
+    private readonly ILogger<GitHubService> _logger;
     private readonly GitHubClient _gitHubClient;
     private Plugin _plugin;
 
-    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager, ICacheService cacheService)
+    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager, ICacheService cacheService, ILogger<GitHubService> logger)
     {
+        _logger = logger;
         _httpClientFactory = httpClientFactory;
         _pluginCacheManager = pluginCacheManager;
         _cacheService = cacheService;
@@ -213,7 +218,9 @@ public class GitHubService : IGitHubService
             await throttle.WaitAsync(cancellationToken);
             try
             {
-                var pr = await _gitHubClient.PullRequest.Get(owner, t.Repository, t.Number);
+                // Octokit não aceita CancellationToken: o timeout evita que um PR lento segure a listagem.
+                var pr = await _gitHubClient.PullRequest.Get(owner, t.Repository, t.Number)
+                    .WaitAsync(StatusRequestTimeout, cancellationToken);
                 var status = new PullRequestStatusResponse
                 {
                     Repository = t.Repository,
@@ -234,13 +241,38 @@ public class GitHubService : IGitHubService
             {
                 return new PullRequestStatusResponse { Repository = t.Repository, Number = t.Number, Error = DescribeApiError(e) };
             }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout ao consultar status do PR {Repository}#{Number} no GitHub", t.Repository, t.Number);
+                return new PullRequestStatusResponse { Repository = t.Repository, Number = t.Number, Error = "Tempo esgotado ao consultar o GitHub" };
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Falha de rede etc.: devolve o item com erro (o chamador usa o status persistido).
+                _logger.LogWarning(e, "Falha ao consultar status do PR {Repository}#{Number} no GitHub", t.Repository, t.Number);
+                return new PullRequestStatusResponse { Repository = t.Repository, Number = t.Number, Error = "Falha ao consultar o GitHub" };
+            }
             finally
             {
                 throttle.Release();
             }
         });
 
-        return await Task.WhenAll(tasks);
+        var result = await Task.WhenAll(tasks);
+        LogRateLimit();
+        return result;
+    }
+
+    /// <summary>Loga o rate limit restante da última chamada (Warning quando está acabando).</summary>
+    private void LogRateLimit()
+    {
+        var rateLimit = _gitHubClient.GetLastApiInfo()?.RateLimit;
+        if (rateLimit is null) return;
+
+        if (rateLimit.Remaining < RateLimitWarningThreshold)
+            _logger.LogWarning("Rate limit do GitHub baixo: {Remaining}/{Limit} (reset {Reset:u})", rateLimit.Remaining, rateLimit.Limit, rateLimit.Reset);
+        else
+            _logger.LogDebug("Rate limit do GitHub: {Remaining}/{Limit}", rateLimit.Remaining, rateLimit.Limit);
     }
 
     private async Task<PullRequest?> FindOpenPullRequestAsync(string owner, string repo, string head, string @base)
