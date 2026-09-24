@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 | B1 | Modelo de dados e migração | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | c48c9d7 |
 | B2 | GitHubService multi-repo | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | 701a9d6 |
-| F1 | Estado compartilhado + componentes extraídos | front | — | 1 | 🟡 | Claude (sessão principal) | 2026-09-23 | | |
+| F1 | Estado compartilhado + componentes extraídos | front | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | front c8936ee |
 | B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ⬜ | | | | |
 | F2 | Reestruturação da tela principal | front | F1 | 2 | ⬜ | | | | |
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ⬜ | | | | |
@@ -61,6 +61,16 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Para B3**: status é calculado com `PullRequestGithubStatus.From` (prform.domain) — use `PullRequestStatusResponse.Status` direto em `PullRequestGithub.SetStatus`. Octokit 9 não aceita `CancellationToken`; timeout por chamada fica para a B4 (`Task.WaitAsync`).
 - **Pendente**: não foi testado contra o GitHub real (rodar a API local aplicaria as migrações no banco de produção — ver B1). Validar via Swagger em QA na Q1.
 
+### F1 — Estado compartilhado + componentes extraídos ✅ (repo front)
+- **Feito**: `services/card-pr-state.service.ts` (signals `cardNumber`, `register`, `description`, `rootCause` — markdown, `null` = nada carregado —, `githubPrs`, `repositories`, `repositoriesWithPr`; `loadRegister`, `setContent`, `upsertGithubPr`, `reset`, `loadRepositories(fallback)` com fallback para `ActiveRepositories`). `services/pull-request.service.ts` com os tipos/métodos do contrato §3. `helpers/markdown.ts` (`mdToHtml`/`htmlToMd`, com a regra de tachado). `interfaces/RepoOption.ts`.
+- **Componentes** (standalone, signals `input()/model()`):
+  - `app-markdown-editor` — p-editor com valor em markdown; re-renderiza só em mudança externa e ignora `onTextChange` com `source !== 'user'` (evita eco entre dois editores abertos — útil para o popover da F2/F3). Estilos do Quill migrados para cá.
+  - `app-pr-description-panel` / `app-root-cause-panel` — `app-card-panel` + editor ligado ao `CardPrStateService`; aceitam `[panel-actions]` e `[loading]`. **Use-os no modal/popovers (F2/F3)**: editar em qualquer um reflete nos outros.
+  - `app-branch-input` (`[(prefix)]`, `[(name)]`, `[readonly]`), `app-repo-autocomplete` (`[options]`, `[exclude]`, `[(value)]` objeto ou texto digitado, `(selected)`, `[loading]`, `[readonly]`), `app-target-branch-toggle` (`[options]`, `[(value)]`, `[loading]`, `[disabled]`).
+- **Tela**: `register.component` usa os componentes; o espelhamento estado → `this.pullRequest` é feito por `effect` (`onSharedContentChange`). CSS migrado saiu do `register.component.css`. Novo skeleton global `.cime-skeleton` em `styles.scss`.
+- **Validação**: `ng build --configuration development` ok (0 erros; warnings só pré-existentes). **Regressão visual/manual não foi feita** (não subi o front) — conferir na F2 ou na Q1: prefixo com duplo clique, autocomplete de repo, toggle, editores, IA preenchendo descrição/RC, Limpar.
+- **Obs.**: `src/environments/environment.ts` está modificado no working tree do front (apontando p/ localhost/`production:false`) — **não é desta fase e não foi commitado**.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -69,3 +79,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-23 | B1, B2, F1 | Iniciadas (onda 1, sessão única, em sequência). |
 | 2026-09-23 | B1 | Concluída (c48c9d7). Migrações geradas, não aplicadas. |
 | 2026-09-23 | B2 | Concluída (701a9d6). Sem teste contra o GitHub real. |
+| 2026-09-23 | F1 | Concluída (front c8936ee). Onda 1 fechada; liberadas B3, F2, F3. |

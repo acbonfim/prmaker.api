@@ -215,13 +215,13 @@ Aceite
 **Depende de:** — · **Spec:** 1.1, 2.2, 2.3
 
 Tarefas
-- [ ] `services/pull-request.service.ts`: tipos e métodos do contrato (seção 3): `getRepositories`, `openGithubPr`, `updateGithubPr`, `listGithubPrs`, `saveCard`, `getByCardNumber`.
-- [ ] Novo `services/card-pr-state.service.ts` (signals): `cardNumber`, `pullRequest` (description, rootCause), `githubPrs`, `repositories`; setters usados por tela principal, modal e popovers → edição em um lugar reflete em todos (2.2 / 2.3).
-- [ ] Extrair componente **`app-branch-input`** (prefixo editável por duplo clique + nome) do `register.component` (`onPrefixDoubleClick`, `onPrefixBlur`, `onPrefixChange`) com `[(prefix)]`/`[(name)]`.
-- [ ] Extrair **`app-repo-autocomplete`** (input + `mat-autocomplete`, `[(value)]`, `[exclude]` para esconder repos já usados) — reutilizado no modal (F3) e no stepper da IA (F5).
-- [ ] Extrair **`app-target-branch-toggle`** (toggle `ActiveBranchs`).
-- [ ] Extrair editores **`app-pr-description-panel`** e **`app-root-cause-panel`** (conteúdo atual dos `app-card-panel` de Descrição/Root Cause, ligados ao `card-pr-state`).
-- [ ] Nenhuma mudança visual ainda: `register.component` passa a usar os componentes extraídos.
+- [x] `services/pull-request.service.ts`: tipos e métodos do contrato (seção 3): `getRepositories`, `openGithubPr`, `updateGithubPr`, `listGithubPrs`, `saveCard`, `getByCardNumber`.
+- [x] Novo `services/card-pr-state.service.ts` (signals): `cardNumber`, `pullRequest` (description, rootCause), `githubPrs`, `repositories`; setters usados por tela principal, modal e popovers → edição em um lugar reflete em todos (2.2 / 2.3).
+- [x] Extrair componente **`app-branch-input`** (prefixo editável por duplo clique + nome) do `register.component` (`onPrefixDoubleClick`, `onPrefixBlur`, `onPrefixChange`) com `[(prefix)]`/`[(name)]`.
+- [x] Extrair **`app-repo-autocomplete`** (input + `mat-autocomplete`, `[(value)]`, `[exclude]` para esconder repos já usados) — reutilizado no modal (F3) e no stepper da IA (F5).
+- [x] Extrair **`app-target-branch-toggle`** (toggle `ActiveBranchs`).
+- [x] Extrair editores **`app-pr-description-panel`** e **`app-root-cause-panel`** (conteúdo atual dos `app-card-panel` de Descrição/Root Cause, ligados ao `card-pr-state`).
+- [x] Nenhuma mudança visual ainda: `register.component` passa a usar os componentes extraídos.
 
 Aceite
 - `ng build` ok; tela principal funciona igual à de hoje (regressão manual).
