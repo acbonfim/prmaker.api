@@ -106,6 +106,21 @@ public class PullRequestController : ControllerBase
         }
     }
 
+    /// <summary>Troca o status do PR no GitHub: OPEN (reabre / pronto para revisão), DRAFT ou CLOSED.</summary>
+    [HttpPut("{cardNumber}/github/{id:int}/status")]
+    public async Task<ActionResult<PullRequestGithubResponse>> SetGithubPullRequestStatus(string cardNumber, int id, SetPullRequestGithubStatusRequest request,
+        [FromServices] IPullRequestGithubApplication githubApplication, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await githubApplication.SetStatus(cardNumber, id, request, cancellationToken));
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+    }
+
     /// <summary>
     /// PRs do GitHub do card, mais recentes primeiro. refreshStatus consulta no GitHub
     /// apenas os PRs ainda abertos (MERGED/CLOSED usam o status persistido); forceRefresh

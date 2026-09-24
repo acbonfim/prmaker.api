@@ -97,8 +97,9 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
         var plugins = await GetPersonalPluginsAsync(cancellationToken);
         var values = await GetUserValuesAsync(userExternalId, cancellationToken);
 
+        // Opcionais (ex.: Teams) não bloqueiam a tela: só o recurso deles fica indisponível.
         var pending = plugins
-            .Where(p => !IsConfigured(p, values.For(p.Id)))
+            .Where(p => !p.IsOptional && !IsConfigured(p, values.For(p.Id)))
             .Select(p => new UserIntegrationPendingResponse { PluginId = p.Id, Description = p.Description })
             .ToList();
 
@@ -276,6 +277,7 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
             PluginId = plugin.Id,
             Description = plugin.Description,
             Configured = IsConfigured(plugin, mine),
+            Optional = plugin.IsOptional,
             Fields = fields,
             UpdatedAt = values.UpdatedAt.TryGetValue(plugin.Id, out var updated) ? updated : null
         };

@@ -124,6 +124,31 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         return entity.ToResponse();
     }
 
+    public async Task<PullRequestGithubResponse> SetStatus(string cardNumber, int id, SetPullRequestGithubStatusRequest request, CancellationToken cancellationToken)
+    {
+        cardNumber = NormalizeCard(cardNumber);
+        if (string.IsNullOrWhiteSpace(request.Status))
+            throw new DomainException("Status é obrigatório");
+
+        var entity = await _context.PullRequestsGithub
+            .FirstOrDefaultAsync(x => x.Id == id && x.CardNumber == cardNumber, cancellationToken)
+            ?? throw new DomainException($"PR {id} não encontrado para o card {cardNumber}");
+        if (entity.IsLegacy)
+            throw new DomainException("Registro legado sem PR no GitHub — use Abrir PR para criá-lo");
+
+        var pr = await _gitHubService.SetPullRequestStatusAsync(entity.RepositoryId, entity.GithubPrNumber!.Value,
+            request.Status, cancellationToken);
+
+        if (pr is null || !string.IsNullOrEmpty(pr.Error))
+            throw new DomainException(pr?.Error is { Length: > 0 } error ? error : "Erro ao alterar o status do PR no GitHub");
+
+        entity.SetStatus(pr.Status, pr.IsDraft);
+        await _context.SaveChangesAsync(cancellationToken);
+        await _realTimeNotifier.NotifyCardUpdatedAsync(cardNumber, PullRequestRealTimeEvents.Actions.GithubPrUpdated, entity.Id, cancellationToken);
+
+        return entity.ToResponse();
+    }
+
     /// <summary>
     /// PRs do card, mais recentes primeiro. Com refreshStatus, só os PRs não terminais (OPEN)
     /// são consultados no GitHub (em paralelo, com cache — ver GitHubService); MERGED/CLOSED
