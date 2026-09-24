@@ -18,10 +18,10 @@
 ## 3. Fases
 
 ### F1 — Renderização automática de markdown na timeline (front)
-- [ ] `helpers/markdown-detect.ts` (`looksLikeMarkdown`) + pipe puro `timelineMarkdown` (html ou null).
-- [ ] `card-timeline`: markdown → `[innerHTML]`; texto normal → como hoje; clique em link abre nova aba.
-- [ ] Estilos do conteúdo markdown.
-- [ ] Teste do detector com os textos reais da imagem + casos de borda (sem falso positivo em texto normal).
+- [x] `helpers/markdown-detect.ts` (`looksLikeMarkdown`) + pipe puro `timelineMarkdown` (html ou null).
+- [x] `card-timeline`: markdown → `[innerHTML]`; texto normal → como hoje; clique em link abre nova aba.
+- [x] Estilos do conteúdo markdown.
+- [x] Teste do detector com os textos reais da imagem + casos de borda (sem falso positivo em texto normal).
 
 ### Q1 — Validação (usuário)
 - [ ] Abrir um card com registros em markdown (ex.: análise da skill `analisar-bug`) e registros normais; conferir os dois.
