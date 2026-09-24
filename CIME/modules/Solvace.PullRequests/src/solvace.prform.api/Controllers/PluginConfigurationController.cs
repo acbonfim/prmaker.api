@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using solvace.prform.application;
 using solvace.prform.application.Contracts;
+using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Enums;
 using solvace.prform.domain.Extensions;
 using solvace.prform.domain.Requests;
@@ -21,11 +22,16 @@ public class PluginConfigurationController : ControllerBase
 {
     private readonly IPluginApplication _application;
     private readonly IPluginCacheManager _pluginCacheManager;
+    private readonly IUserPluginConfigurationApplication _userConfigurations;
+    private readonly IPluginConfigurationResolver _resolver;
 
-    public PluginConfigurationController(IPluginApplication application, IPluginCacheManager pluginCacheManager)
+    public PluginConfigurationController(IPluginApplication application, IPluginCacheManager pluginCacheManager,
+        IUserPluginConfigurationApplication userConfigurations, IPluginConfigurationResolver resolver)
     {
         _application = application;
         _pluginCacheManager = pluginCacheManager;
+        _userConfigurations = userConfigurations;
+        _resolver = resolver;
     }
     
     [Authorize(Roles = "admin")]
@@ -94,7 +100,12 @@ public class PluginConfigurationController : ControllerBase
 
         IDictionary<string, string> dictionary = new Dictionary<string, string>();
 
-        if(!string.IsNullOrEmpty(plugin.Configurations.Options))
+        if (plugin.IsPersonal)
+        {
+            // Uso pessoal (D8): devolve os valores DO USUÁRIO, com segredos mascarados — nunca o global.
+            dictionary = await PersonalValuesAsync(plugin.Id, cancellationToken);
+        }
+        else if(!string.IsNullOrEmpty(plugin.Configurations.Options))
             dictionary = plugin.Configurations.Options.JsonToListOfDictionaries()[0];
 
         return Ok(new PluginRespose()
@@ -117,4 +128,20 @@ public class PluginConfigurationController : ControllerBase
         return Ok(user);
     }
     
+
+    private const string SecretMask = "********";
+
+    private async Task<IDictionary<string, string>> PersonalValuesAsync(int pluginId, CancellationToken cancellationToken)
+    {
+        if (_resolver.CurrentUserExternalId is not { } user)
+            return new Dictionary<string, string>();
+
+        var item = (await _userConfigurations.ListAsync(user, cancellationToken)).FirstOrDefault(x => x.PluginId == pluginId);
+        if (item is null)
+            return new Dictionary<string, string>();
+
+        return item.Fields.ToDictionary(
+            f => f.Key,
+            f => f.Sensitive ? (f.HasValue ? SecretMask : string.Empty) : (f.HasValue ? f.Value ?? string.Empty : string.Empty));
+    }
 }
