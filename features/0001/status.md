@@ -11,9 +11,9 @@
 | B1 | Modelo de dados e migração | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | c48c9d7 |
 | B2 | GitHubService multi-repo | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | 701a9d6 |
 | F1 | Estado compartilhado + componentes extraídos | front | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | front c8936ee |
-| B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ⬜ | | | | |
-| F2 | Reestruturação da tela principal | front | F1 | 2 | ⬜ | | | | |
-| F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ⬜ | | | | |
+| B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F2 | Reestruturação da tela principal | front | F1 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | B4 | Sync de status e hardening | back | B3 | 3 | ⬜ | | | | |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ⬜ | | | | |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
@@ -80,3 +80,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-23 | B1 | Concluída (c48c9d7). Migrações geradas, não aplicadas. |
 | 2026-09-23 | B2 | Concluída (701a9d6). Sem teste contra o GitHub real. |
 | 2026-09-23 | F1 | Concluída (front c8936ee). Onda 1 fechada; liberadas B3, F2, F3. |
+| 2026-09-24 | B3, F2, F3 | Iniciadas (onda 2, sessão única, em sequência). |
