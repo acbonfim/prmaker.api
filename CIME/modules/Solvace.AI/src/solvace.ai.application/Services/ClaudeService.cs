@@ -63,6 +63,8 @@ public class ClaudeService : IAIService
                 ? (MessageCreateParamsSystem?)null
                 : _options.SystemInstruction.Trim(),
             OutputConfig = effort is null ? null : new OutputConfig { Effort = effort.Value },
+            // Cabeçalho anthropic-workspace-id: só para chaves de organização (sem workspace).
+            WorkspaceID = string.IsNullOrWhiteSpace(_options.WorkspaceId) ? null : _options.WorkspaceId.Trim(),
             // Sem temperature/top_p: os modelos atuais (Sonnet 5, Opus 5…) rejeitam amostragem manual.
             Messages = [new() { Role = Role.User, Content = prompt }],
         };
@@ -87,6 +89,11 @@ public class ClaudeService : IAIService
         catch (AnthropicNotFoundException)
         {
             return Failure($"Modelo '{model}' não encontrado na API da Anthropic — confira o campo Model do plugin", model);
+        }
+        catch (AnthropicBadRequestException e) when (e.Message.Contains("anthropic-workspace-id", StringComparison.OrdinalIgnoreCase))
+        {
+            return Failure("Esta ApiKey do Claude não pertence a um workspace da Anthropic: informe o WorkspaceId (wrkspc_...) no plugin " +
+                           "ou use uma chave criada dentro de um workspace (console.anthropic.com > Workspaces)", model);
         }
         catch (AnthropicBadRequestException e)
         {

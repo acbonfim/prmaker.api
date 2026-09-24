@@ -47,6 +47,7 @@ public class AIServiceFactory
             // Específicos do Claude (ignorados pelos demais providers).
             MaxRetries = NullIfEmpty(configuration.GetConfigurationValue("MaxRetries")),
             Effort = NullIfEmpty(configuration.GetConfigurationValue("Effort")),
+            WorkspaceId = NullIfEmpty(configuration.GetConfigurationValue("WorkspaceId")),
         };
 
         var aiOptions = new AIOptions

@@ -35,4 +35,11 @@ public class ClaudeOptions
 
     /// <summary>low | medium | high | max — só em modelos que suportam (não usar com Haiku 4.5).</summary>
     public string? Effort { get; set; }
+
+    /// <summary>
+    /// ID do workspace da Anthropic (ex.: wrkspc_...). Só necessário para chaves que NÃO pertencem
+    /// a um workspace (chaves de organização): sem ele a API responde 400 pedindo o cabeçalho
+    /// anthropic-workspace-id. Chave criada dentro de um workspace pode omitir.
+    /// </summary>
+    public string? WorkspaceId { get; set; }
 }
