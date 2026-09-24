@@ -172,3 +172,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | Q1 | Teste do usuário: migrations não rodaram (API em Development). Correções de robustez e de escrita manual (1aa91ad, front bcdd812). |
 | 2026-09-24 | Q1 | 2º teste do usuário: 5 ajustes (aviso por destino, skeleton/barra fixa, cache de status, salvar atualiza barra, SignalR do card) — 99a5370, front ae82f80. |
 | 2026-09-24 | Q1 | Loading no ⟳ da lista de PRs (spinner no botão + barra de progresso com itens esmaecidos) — front f8b719d. |
+| 2026-09-24 | Q1 | Loading do ⟳ girando no próprio eixo (front e095460) e skeleton por registro na lista de PRs (front 52bba9f). Push de `feature/0001` nos dois repos (origin). Próximo: PRs para master pelo usuário; perguntar sobre a skill gerar-prmake antes de finalizar. |
