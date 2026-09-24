@@ -16,8 +16,8 @@
 | F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
 | B4 | Sync de status e hardening | back | B3 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 31fdf7b |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front dd1c79d |
-| F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
-| F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | ⬜ | | | | |
+| F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F6 | IA: passo Resumo + prompt multi-repo | front | F5 | 4 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
 | Q1 | Integração, regressão e publicação | ambos | todas | 5 | ⬜ | | | | |
 
 ## Decisões
@@ -127,3 +127,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B4, F5 | Iniciadas (onda 3, sessão única, em sequência). |
 | 2026-09-24 | B4 | Concluída (31fdf7b). Teste descartável 15/15; medição de tempo pendente (Q1). |
 | 2026-09-24 | F5 | Concluída (front dd1c79d). Onda 3 fechada; liberadas F4 e F6. |
+| 2026-09-24 | F4, F6 | Iniciadas (onda 4, sessão única, em sequência). |
