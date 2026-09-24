@@ -75,11 +75,11 @@ Assim o front faz 1 request e o custo com a API do GitHub cai com o tempo (a mai
 | D2 | Dados de branch/repo das linhas antigas | **Não** migrar para `PullRequestsGithub` (não há número de PR). Colunas antigas ficam nulas/obsoletas até a remoção. |
 | D3 | Onde fica a "descrição" | Descrição é **do card** (`PullRequests.Description`, compartilhada — item 2.2 "reflete em todos os lugares"). Cada PR do GitHub guarda um **snapshot** de título/descrição enviados. |
 | D4 | Clique num PR existente (3.1) | Modal abre preenchido; repo/branch **somente leitura**; ação principal = "Atualizar PR" (PATCH título/descrição no GitHub + banco) e "Copiar link". |
-| D5 | "esses dois botões" (2.2.1) | Interpretado como os botões de popover **Descrição** e **Root Cause**. |
+| D5 | "esses dois botões" (2.2.1) | ✅ Popovers **Descrição** e **Root Cause** (no pr-info-card da tela e no modal). |
 | D6 | Lista de repositórios | Repos da org `Owner` acessíveis pelo token (`GET /orgs/{owner}/repos`, cache 10 min). Fallback: `ActiveRepositories` da config. |
 | D7 | Spec 4.3 truncada | Implementar o que está escrito (resumo repo + commit: autor, data, SHA, mensagem). Completar quando a spec for corrigida. |
 | D8 | PR em draft | Tratado como `OPEN` (flag `IsDraft` exposta para exibir badge). |
-| D9 | Título padrão do PR | `AB#{card} - {título do card no DevOps}`, editável no modal. |
+| D9 | Título padrão do PR | ✅ `AB#{card} {LABEL DO DESTINO}` (convenção que já existia no código), editável no modal. |
 | D10 | Mudança do prompt da IA | O placeholder `{githubCommitDiff}` passa a receber um bloco multi-repo. Ajustar os textos `PromptBug`/`PromptUS` (plugin AI, id 3) para mencionar múltiplos repositórios — tarefa de dados na fase Q1. |
 
 ---
@@ -232,13 +232,13 @@ Aceite
 **Depende de:** F1 · **Spec:** 1.5, 2, 2.1, 2.3
 
 Tarefas
-- [ ] Toolbar: só o **número do card** no `pr-toolbar` e o **`pr-info-card` ao lado** (sai de baixo). Branch/repo/toggle saem da tela (vão para o modal).
-- [ ] Remover o painel de **Descrição** da tela principal (vai para o modal — 2.1).
-- [ ] Root Cause: botão no `pr-info-card` que abre **popover grande** (`p-popover` do PrimeNG, largura/altura equivalentes ao painel atual) com `app-root-cause-panel` (2.3).
-- [ ] "Salvar" → `POST /PullRequest` só com dados do card (sem exigir description/rootCause, sem branch/repo) (1.5).
-- [ ] `getPullRequestByCardNumber` sem `repositoryId`; popular `card-pr-state` (inclui PRs do GitHub).
-- [ ] "Abrir PR" passa a abrir o modal (F3) — até F3 estar pronta, manter um stub.
-- [ ] Ajustar `copyCustomButtons`/"Copiar", `openHandover` e "Gerar com IA" que hoje leem branch/repo da toolbar.
+- [x] Toolbar: só o **número do card** no `pr-toolbar` e o **`pr-info-card` ao lado** (sai de baixo). Branch/repo/toggle saem da tela (vão para o modal).
+- [x] Remover o painel de **Descrição** da tela principal (vai para o modal — 2.1).
+- [x] Root Cause: botão no `pr-info-card` que abre **popover grande** (`p-popover` do PrimeNG, largura/altura equivalentes ao painel atual) com `app-root-cause-panel` (2.3).
+- [x] "Salvar" → `POST /PullRequest` só com dados do card (sem exigir description/rootCause, sem branch/repo) (1.5).
+- [x] `getPullRequestByCardNumber` sem `repositoryId`; popular `card-pr-state` (inclui PRs do GitHub).
+- [x] "Abrir PR" passa a abrir o modal (F3) — até F3 estar pronta, manter um stub.
+- [x] Ajustar `copyCustomButtons`/"Copiar", `openHandover` e "Gerar com IA" que hoje leem branch/repo da toolbar.
 
 Aceite
 - Layout conforme item 2; editar root cause no popover reflete no botão "Salvar RC no DevOps" e no copiar.
@@ -249,12 +249,12 @@ Aceite
 **Depende de:** F1 (e contrato; integração real após B3) · **Spec:** 1.1, 1.2, 2.1, 2.2, 2.2.1, 3.1
 
 Tarefas
-- [ ] Novo `components/open-pr-dialog/` (MatDialog, padrão dos demais dialogs): `app-branch-input`, `app-repo-autocomplete` (fonte: `GET /GitHub/repositories`), `app-target-branch-toggle`, campo título (D9), `app-pr-description-panel`.
-- [ ] Botão de ícone com tooltip "Ver descrição do card" → **popover grande** com o painel de descrição (2.2).
-- [ ] Seção estilo `pr-info-card` (2.2.1): aberto por, datas, botões Descrição/Root Cause (D5); reage à troca de branch/card/repo (procura em `githubPrs` o PR correspondente a repo+branch).
-- [ ] Ação "Abrir PR" → `POST /PullRequest/{card}/github` → copia `url` para a área de transferência (`cliipboard.service`) + snackbar com link; atualiza `githubPrs` no estado.
-- [ ] Modo edição (3.1 / D4): recebe um `PullRequestGithub`, preenche tudo, repo/branch readonly, ação "Atualizar PR" + "Copiar link".
-- [ ] Tratamento de erro (branch inexistente, PR já existente → mensagem "PR já existia, link copiado").
+- [x] Novo `components/open-pr-dialog/` (MatDialog, padrão dos demais dialogs): `app-branch-input`, `app-repo-autocomplete` (fonte: `GET /GitHub/repositories`), `app-target-branch-toggle`, campo título (D9), `app-pr-description-panel`.
+- [x] Botão de ícone com tooltip "Ver descrição do card" → **popover grande** com o painel de descrição (2.2).
+- [x] Seção estilo `pr-info-card` (2.2.1): aberto por, datas, botões Descrição/Root Cause (D5); reage à troca de branch/card/repo (procura em `githubPrs` o PR correspondente a repo+branch).
+- [x] Ação "Abrir PR" → `POST /PullRequest/{card}/github` → copia `url` para a área de transferência (`cliipboard.service`) + snackbar com link; atualiza `githubPrs` no estado.
+- [x] Modo edição (3.1 / D4): recebe um `PullRequestGithub`, preenche tudo, repo/branch readonly, ação "Atualizar PR" + "Copiar link".
+- [x] Tratamento de erro (branch inexistente, PR já existente → mensagem "PR já existia, link copiado").
 
 Aceite
 - Abrir PR real num repo de teste; link copiado; linha aparece no `GET .../github`.

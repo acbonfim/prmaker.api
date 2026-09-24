@@ -12,8 +12,8 @@
 | B2 | GitHubService multi-repo | back | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | 701a9d6 |
 | F1 | Estado compartilhado + componentes extraídos | front | — | 1 | ✅ | Claude (sessão principal) | 2026-09-23 | 2026-09-23 | front c8936ee |
 | B3 | Aplicação e endpoints de PR do card | back | B1, B2 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | 3041985 |
-| F2 | Reestruturação da tela principal | front | F1 | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
-| F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | 🟡 | Claude (sessão principal) | 2026-09-24 | | |
+| F2 | Reestruturação da tela principal | front | F1 | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 721cb52 |
+| F3 | Modal "Abrir PR" | front | F1 (+B3 p/ integrar) | 2 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front 46043bd |
 | B4 | Sync de status e hardening | back | B3 | 3 | ⬜ | | | | |
 | F5 | IA: stepper vertical multi-repo | front | F1 (+B3 p/ integrar) | 3 | ⬜ | | | | |
 | F4 | Painel de PRs abertos do card | front | F3, B4 | 4 | ⬜ | | | | |
@@ -28,13 +28,13 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 |---|---|---|
 | D1 | a confirmar | |
 | D2 | a confirmar | |
-| D3 | a confirmar | |
-| D4 | a confirmar | |
-| D5 | a confirmar | |
+| D3 | aplicada (confirmar) | O modal envia a descrição **do card** (estado compartilhado); cada PR guarda o snapshot enviado. |
+| D4 | aplicada (confirmar) | Clique num PR → modal em modo edição: repo/branch/destino somente leitura; "Atualizar PR", "Copiar link", "Abrir no GitHub". |
+| D5 | definida pela spec | 2.2.1 diz que a seção do modal é "parecida com o pr-info-card… com esses dois botões" → o pr-info-card (tela e modal) tem os 2 popovers: Descrição e Root Cause (RC oculto para US). |
 | D6 | a confirmar | |
 | D7 | a confirmar | spec 4.3 truncada |
 | D8 | a confirmar | |
-| D9 | a confirmar | |
+| D9 | alterada | Título padrão segue a convenção que já existia no código: `AB#<card> <LABEL DA BRANCH DE DESTINO>`; acompanha a troca de destino até o usuário editar. |
 | D10 | a confirmar | |
 
 ## Notas de handoff
@@ -83,6 +83,21 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - **Não feito**: entrada automática na Timeline ao abrir PR (o módulo GitHub não referencia o Timeline; avaliar na Q1).
 - **Incidente (corrigido)**: os commits B1 (c48c9d7) e B3 (3041985) levaram por engano versões vazias de `features/0002/spec.md` e `features/README.MD` que estavam em stage; removidos no commit seguinte, stage do usuário restaurado.
 
+### F3 — Modal "Abrir PR" ✅ (repo front)
+- **Feito**: `components/open-pr-dialog/` (dados em `OpenPrDialogData`; retorna o `GithubPullRequest` no `afterClosed`). Campos: `app-branch-input`, `app-repo-autocomplete` (fonte `GET /GitHub/repositories` via `CardPrStateService.loadRepositories`, fallback `ActiveRepositories`), `app-target-branch-toggle`, título, toggle Draft. Seção 2.2.1 com `app-pr-info-card` (autor/datas do PR já registrado para o **repo + branch** selecionados; muda ao trocar qualquer um) e os 2 popovers. Prévia (somente leitura) da descrição que será enviada. Sucesso → `upsertGithubPr` no estado + copia a URL (snackbar com ação "Abrir"); PR que já existia → mensagem própria. Erro do backend (`{ error }`) aparece dentro do modal.
+- **Componentes novos reutilizáveis**: `app-pr-info-card` (autor/datas + slot `[info-actions]`) e `app-panel-popover-button` (`kind="description" | "rootCause"`; `p-popover` com `appendTo="body"` e `baseZIndex=1100` para ficar acima do MatDialog; tamanho em `.cime-panel-popover__body` no `styles.scss`).
+- **Riscos a conferir na Q1** (não testei no navegador): (1) popover do PrimeNG sobre o MatDialog — foco/cliques dentro do editor; (2) `navigator.clipboard.writeText` depois do HTTP pode ser negado (sem gesto do usuário) → cai no fallback do `CliipboardService`, e o snackbar sempre oferece "Abrir".
+
+### F2 — Reestruturação da tela principal ✅ (repo front)
+- **Feito**: topo = `pr-toolbar` só com o número do card + `app-pr-info-card` ao lado (quem abriu/datas + popovers Descrição/Root Cause). Branch, repositório, destino e os dois editores saíram da tela. `branchPrefix/branchName/selectedRepositoryObj/environmentName` continuam no componente como **defaults do modal** (última escolha / PR mais recente / config).
+- **Salvar** → `PullRequestService.saveCard` só com dados do card (`description`/`rootCause` do estado; `null` mantém no backend). Habilitado após buscar o card.
+- **Abrir PR** → `openPrDialog()`; habilitado após buscar o card (`canOpenPr`). Card não salvo mostra o info-card vazio ("Card ainda não salvo") para liberar popovers e Abrir PR.
+- **Lista provisória** "Pull Requests" (`app-card-panel`) com os PRs de `prState.githubPrs()` (vindos no `GetByCardNumber`, sem refresh de status); clique abre o modal em modo edição. **A F4 substitui por `p-orderList` com status/avatares/refresh.**
+- **Removidos**: `openGithubPullRequestPage`/`makeUrlLink`/`link` (substituídos pelo modal), `openDialogFullDescription`/`openDialogRCA` e seus botões (o conteúdo agora está nos popovers), `getBranchLabelByBranch`.
+- **Gerar com IA / Handover**: usam repo/branch do PR do GitHub mais recente (fallback: defaults). A F5 troca a IA para multi-repo.
+- **Validação**: `ng build` ok (só warnings pré-existentes). Sem teste no navegador/integração real.
+- **Deploy**: o front da F2 depende do backend B3 (o `POST /PullRequest` antigo exige descrição) — publicar backend antes.
+
 ## Log
 
 | Data | Fase | Evento |
@@ -94,3 +109,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-23 | F1 | Concluída (front c8936ee). Onda 1 fechada; liberadas B3, F2, F3. |
 | 2026-09-24 | B3, F2, F3 | Iniciadas (onda 2, sessão única, em sequência). |
 | 2026-09-24 | B3 | Concluída (3041985). Teste de lógica com SQLite + GitHub fake: 14/14. |
+| 2026-09-24 | F3, F2 | Concluídas (front 46043bd, 721cb52). Onda 2 fechada; liberadas B4 e F5. D5 resolvida pela spec; D9 alterada. |
