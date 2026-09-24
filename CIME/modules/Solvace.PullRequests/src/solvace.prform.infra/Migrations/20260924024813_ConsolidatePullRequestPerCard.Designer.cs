@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using solvace.prform.Infra.Contexts;
 
@@ -11,9 +12,11 @@ using solvace.prform.Infra.Contexts;
 namespace solvace.prform.infra.Migrations
 {
     [DbContext(typeof(DefaultContext))]
-    partial class DefaultContextModelSnapshot : ModelSnapshot
+    [Migration("20260924024813_ConsolidatePullRequestPerCard")]
+    partial class ConsolidatePullRequestPerCard
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -148,100 +151,6 @@ namespace solvace.prform.infra.Migrations
                     b.ToTable("PluginConfigurations");
                 });
 
-            modelBuilder.Entity("solvace.prform.domain.Entities.PullRequestGithub", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("BranchName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("BranchPrefix")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<string>("CardNumber")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<long>("GithubPrId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("GithubPrNumber")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsDraft")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<int>("PullRequestRegisterId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RepositoryId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<DateTimeOffset?>("StatusSyncedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("TargetBranch")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CardNumber");
-
-                    b.HasIndex("PullRequestRegisterId");
-
-                    b.HasIndex("RepositoryId", "GithubPrNumber")
-                        .IsUnique();
-
-                    b.ToTable("PullRequestsGithub", (string)null);
-                });
-
             modelBuilder.Entity("solvace.prform.domain.Entities.PullRequestRegister", b =>
                 {
                     b.Property<int>("Id")
@@ -311,17 +220,6 @@ namespace solvace.prform.infra.Migrations
                     b.Navigation("Plugin");
                 });
 
-            modelBuilder.Entity("solvace.prform.domain.Entities.PullRequestGithub", b =>
-                {
-                    b.HasOne("solvace.prform.domain.Entities.PullRequestRegister", "PullRequestRegister")
-                        .WithMany("GithubPullRequests")
-                        .HasForeignKey("PullRequestRegisterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PullRequestRegister");
-                });
-
             modelBuilder.Entity("solvace.prform.domain.Entities.PullRequestRegister", b =>
                 {
                     b.HasOne("solvace.prform.domain.Entities.Form", "Form")
@@ -337,11 +235,6 @@ namespace solvace.prform.infra.Migrations
                 {
                     b.Navigation("Configurations")
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("solvace.prform.domain.Entities.PullRequestRegister", b =>
-                {
-                    b.Navigation("GithubPullRequests");
                 });
 #pragma warning restore 612, 618
         }

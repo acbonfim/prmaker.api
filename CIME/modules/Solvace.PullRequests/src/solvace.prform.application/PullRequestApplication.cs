@@ -93,8 +93,8 @@ public class PullRequestApplication : IPullRequestApplication
                 CardNumber = x.CardNumber,
                 Description = x.Description,
                 RepositoryId = x.RepositoryId,
-                BranchPrefix = x.BranchPrefix,
-                BranchName = x.BranchName,
+                BranchPrefix = x.BranchPrefix ?? string.Empty,
+                BranchName = x.BranchName ?? string.Empty,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt,
             })
