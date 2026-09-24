@@ -3,7 +3,8 @@ namespace solvace.github.domain.Responses;
 public class PullRequestResponse
 {
     public long Id { get; set; }
-    public string Number { get; set; } = string.Empty;
+    public int Number { get; set; }
+    public string Repository { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
@@ -19,6 +20,12 @@ public class PullRequestResponse
     public string Head { get; set; } = string.Empty;
     public string Base { get; set; } = string.Empty;
     public bool IsDraft { get; set; }
+
+    /// <summary>OPEN, MERGED ou CLOSED (ver PullRequestGithubStatus).</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>true quando já existia PR aberto para head→base e ele foi devolvido no lugar de criar outro.</summary>
+    public bool AlreadyExisted { get; set; }
     public string Error { get; set; } = string.Empty;
 
 }

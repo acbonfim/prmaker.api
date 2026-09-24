@@ -8,7 +8,9 @@ using solvace.github.domain.Options;
 using solvace.github.application.Contract;
 using solvace.github.domain.Responses;
 using solvace.prform.application;
+using Cime.BuildingBlocks.Cache;
 using solvace.prform.domain.Entities;
+using solvace.prform.domain.Enums;
 using solvace.prform.domain.Extensions;
 
 namespace solvace.github.application.Services;
@@ -16,14 +18,20 @@ namespace solvace.github.application.Services;
 public class GitHubService : IGitHubService
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private const int RepositoriesCacheMinutes = 10;
+    private const int StatusCacheMinutes = 1;
+    private const int StatusMaxParallelism = 5;
+
     private readonly IPluginCacheManager _pluginCacheManager;
+    private readonly ICacheService _cacheService;
     private readonly GitHubClient _gitHubClient;
     private Plugin _plugin;
 
-    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager)
+    public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginCacheManager pluginCacheManager, ICacheService cacheService)
     {
         _httpClientFactory = httpClientFactory;
         _pluginCacheManager = pluginCacheManager;
+        _cacheService = cacheService;
         
         _plugin = _pluginCacheManager.GetCachedPluginByName("Github Configurations");
         
@@ -38,76 +46,254 @@ public class GitHubService : IGitHubService
         };
     }
 
-    public async Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default)
+    public async Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default, string? repository = null)
     {
         var owner = _plugin.Configurations.GetConfigurationValue("Owner");
-        var repo = _plugin.Configurations.GetConfigurationValue("Repo");
+        var repo = string.IsNullOrWhiteSpace(repository) ? _plugin.Configurations.GetConfigurationValue("Repo") : repository.Trim();
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new PullRequestResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(sourceBranch) || string.IsNullOrWhiteSpace(targetBranch) || string.IsNullOrWhiteSpace(title))
             return new PullRequestResponse { Error = "Parâmetro 'sourceBranch', 'targetBranch' ou 'title' é obrigatório" };
 
-        var description = string.IsNullOrWhiteSpace(descriptionRaw) ? null
-            : descriptionRaw.Replace("\u0000", string.Empty).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
+        var description = NormalizeBody(descriptionRaw);
+        var head = sourceBranch.Replace("refs/heads/", string.Empty);
+        var @base = targetBranch.Replace("refs/heads/", string.Empty);
 
         try
         {
-            await _gitHubClient.Repository.Branch.Get(owner, repo, sourceBranch.Replace("refs/heads/", ""));
-            await _gitHubClient.Repository.Branch.Get(owner, repo, targetBranch.Replace("refs/heads/", ""));
+            await _gitHubClient.Repository.Branch.Get(owner, repo, head);
         }
         catch
         {
-            return new PullRequestResponse { Error = "Branch não encontrada" };
+            return new PullRequestResponse { Error = $"Branch '{head}' não encontrada no repositório '{repo}'" };
         }
 
-        var head = sourceBranch.Replace("refs/heads/", string.Empty);
-        var @base = targetBranch.Replace("refs/heads/", string.Empty);
+        try
+        {
+            await _gitHubClient.Repository.Branch.Get(owner, repo, @base);
+        }
+        catch
+        {
+            return new PullRequestResponse { Error = $"Branch '{@base}' não encontrada no repositório '{repo}'" };
+        }
+
         var newPr = new NewPullRequest(title, head, @base)
         {
-            Body = string.IsNullOrEmpty(description) ? null : description,
+            Body = description,
             Draft = draft
         };
 
         try
         {
             var pr = await _gitHubClient.PullRequest.Create(owner, repo, newPr);
-            return new PullRequestResponse
-            {
-                Id = pr.Id,
-                Number = pr.Number.ToString(),
-                Title = pr.Title,
-                Body = pr.Body,
-                State = pr.State.StringValue,
-                CreatedAt = pr.CreatedAt.ToString(),
-                UpdatedAt = pr.UpdatedAt.ToString() ?? string.Empty,
-                ClosedAt = pr.ClosedAt?.ToString() ?? string.Empty,
-                MergedAt = pr.MergedAt?.ToString() ?? string.Empty,
-                Author = pr.User.Login,
-                AuthorAvatarUrl = pr.User.AvatarUrl,
-                AuthorUrl = pr.User.HtmlUrl,
-                Url = pr.HtmlUrl,
-                Head = pr.Head.Label,
-                Base = pr.Base.Label,
-                IsDraft = pr.Draft
-            };
+            return ToPullRequestResponse(pr, repo);
+        }
+        catch (ApiValidationException e) when (IsPullRequestAlreadyExists(e))
+        {
+            // Idempotência: já existe PR aberto para head→base, devolve o existente.
+            var existing = await FindOpenPullRequestAsync(owner, repo, head, @base);
+            if (existing is null)
+                return new PullRequestResponse { Error = $"Já existe um PR para '{head}' → '{@base}', mas não foi possível localizá-lo" };
+
+            var response = ToPullRequestResponse(existing, repo);
+            response.AlreadyExisted = true;
+            return response;
         }
         catch (NotFoundException)
         {
             return new PullRequestResponse { Error = "Repositório ou branches não encontrados" };
         }
-        catch (ApiValidationException)
+        catch (ApiValidationException e)
         {
-            return new PullRequestResponse { Error = "Validação da PR falhou na API" };
+            return new PullRequestResponse { Error = $"Validação da PR falhou na API: {DescribeApiError(e)}" };
         }
-        catch (ApiException)
+        catch (ApiException e)
         {
-            return new PullRequestResponse { Error = "Erro na API do GitHub" };
+            return new PullRequestResponse { Error = $"Erro na API do GitHub: {DescribeApiError(e)}" };
         }
         catch (Exception)
         {
             return new PullRequestResponse { Error = "Erro ao criar PR" };
         }
     }
+
+    public async Task<PullRequestResponse?> UpdatePullRequestAsync(string repository, int number, string title, string? descriptionRaw, CancellationToken cancellationToken = default)
+    {
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        if (string.IsNullOrWhiteSpace(owner))
+            return new PullRequestResponse { Error = "Configurações do GitHub (owner) não encontradas" };
+        if (string.IsNullOrWhiteSpace(repository) || number <= 0 || string.IsNullOrWhiteSpace(title))
+            return new PullRequestResponse { Error = "Parâmetro 'repository', 'number' ou 'title' é obrigatório" };
+
+        var update = new PullRequestUpdate
+        {
+            Title = title,
+            // String vazia limpa a descrição no GitHub; null manteria a anterior.
+            Body = NormalizeBody(descriptionRaw) ?? string.Empty
+        };
+
+        try
+        {
+            var pr = await _gitHubClient.PullRequest.Update(owner, repository, number, update);
+            return ToPullRequestResponse(pr, repository);
+        }
+        catch (NotFoundException)
+        {
+            return new PullRequestResponse { Error = $"PR #{number} não encontrado no repositório '{repository}'" };
+        }
+        catch (ApiException e)
+        {
+            return new PullRequestResponse { Error = $"Erro na API do GitHub: {DescribeApiError(e)}" };
+        }
+    }
+
+    public async Task<IReadOnlyList<RepositoryResponse>> ListRepositoriesAsync(CancellationToken cancellationToken = default)
+    {
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        if (string.IsNullOrWhiteSpace(owner))
+            return Array.Empty<RepositoryResponse>();
+
+        return await _cacheService.GetOrCreateAsync<IReadOnlyList<RepositoryResponse>>(
+            $"github:repositories:{owner}",
+            async () =>
+            {
+                IReadOnlyList<Repository> repositories;
+                try
+                {
+                    repositories = await _gitHubClient.Repository.GetAllForOrg(owner);
+                }
+                catch (NotFoundException)
+                {
+                    // Owner é um usuário e não uma organização: usa os repos acessíveis pelo token.
+                    var all = await _gitHubClient.Repository.GetAllForCurrent();
+                    repositories = all
+                        .Where(r => string.Equals(r.Owner?.Login, owner, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                }
+
+                return repositories
+                    .Where(r => !r.Archived)
+                    .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(r => new RepositoryResponse
+                    {
+                        Id = r.Name,
+                        Label = r.Name,
+                        Private = r.Private,
+                        DefaultBranch = r.DefaultBranch ?? string.Empty
+                    })
+                    .ToList();
+            },
+            RepositoriesCacheMinutes);
+    }
+
+    public async Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default)
+    {
+        var owner = _plugin.Configurations.GetConfigurationValue("Owner");
+        var targets = pullRequests
+            .Where(p => !string.IsNullOrWhiteSpace(p.Repository) && p.Number > 0)
+            .Distinct()
+            .ToList();
+
+        if (targets.Count == 0)
+            return Array.Empty<PullRequestStatusResponse>();
+        if (string.IsNullOrWhiteSpace(owner))
+            return targets.Select(t => new PullRequestStatusResponse
+            {
+                Repository = t.Repository, Number = t.Number, Error = "Configurações do GitHub (owner) não encontradas"
+            }).ToList();
+
+        // Consultas em paralelo com limite, para não estourar o rate limit secundário do GitHub.
+        using var throttle = new SemaphoreSlim(StatusMaxParallelism);
+        var tasks = targets.Select(async t =>
+        {
+            var cacheKey = $"github:pr-status:{owner}/{t.Repository}#{t.Number}";
+            if (_cacheService.TryGetValue<PullRequestStatusResponse>(cacheKey, out var cached) && cached is not null)
+                return cached;
+
+            await throttle.WaitAsync(cancellationToken);
+            try
+            {
+                var pr = await _gitHubClient.PullRequest.Get(owner, t.Repository, t.Number);
+                var status = new PullRequestStatusResponse
+                {
+                    Repository = t.Repository,
+                    Number = t.Number,
+                    Status = PullRequestGithubStatus.From(pr.State.StringValue, pr.Merged),
+                    IsDraft = pr.Draft,
+                    MergedAt = pr.MergedAt,
+                    ClosedAt = pr.ClosedAt
+                };
+                _cacheService.Set(cacheKey, status, StatusCacheMinutes);
+                return status;
+            }
+            catch (NotFoundException)
+            {
+                return new PullRequestStatusResponse { Repository = t.Repository, Number = t.Number, Error = "PR não encontrado" };
+            }
+            catch (ApiException e)
+            {
+                return new PullRequestStatusResponse { Repository = t.Repository, Number = t.Number, Error = DescribeApiError(e) };
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        });
+
+        return await Task.WhenAll(tasks);
+    }
+
+    private async Task<PullRequest?> FindOpenPullRequestAsync(string owner, string repo, string head, string @base)
+    {
+        var request = new PullRequestRequest
+        {
+            State = ItemStateFilter.Open,
+            Head = $"{owner}:{head}",
+            Base = @base
+        };
+        var prs = await _gitHubClient.PullRequest.GetAllForRepository(owner, repo, request, new ApiOptions { PageSize = 10, PageCount = 1 });
+        return prs.FirstOrDefault();
+    }
+
+    private static bool IsPullRequestAlreadyExists(ApiValidationException e) =>
+        e.ApiError?.Errors?.Any(x => x.Message?.Contains("already exists", StringComparison.OrdinalIgnoreCase) == true) == true;
+
+    private static string DescribeApiError(ApiException e)
+    {
+        var details = e.ApiError?.Errors?
+            .Select(x => x.Message)
+            .Where(m => !string.IsNullOrWhiteSpace(m))
+            .ToList();
+        var message = e.ApiError?.Message ?? e.Message;
+        return details is { Count: > 0 } ? $"{message} ({string.Join("; ", details)})" : message;
+    }
+
+    private static string? NormalizeBody(string? descriptionRaw) =>
+        string.IsNullOrWhiteSpace(descriptionRaw) ? null
+            : descriptionRaw.Replace("\u0000", string.Empty).Replace("\r\n", "\n").Replace("\r", "\n").Trim();
+
+    private static PullRequestResponse ToPullRequestResponse(PullRequest pr, string repository) =>
+        new()
+        {
+            Id = pr.Id,
+            Number = pr.Number,
+            Repository = repository,
+            Title = pr.Title,
+            Body = pr.Body,
+            State = pr.State.StringValue,
+            Status = PullRequestGithubStatus.From(pr.State.StringValue, pr.Merged),
+            CreatedAt = pr.CreatedAt.ToString(),
+            UpdatedAt = pr.UpdatedAt.ToString() ?? string.Empty,
+            ClosedAt = pr.ClosedAt?.ToString() ?? string.Empty,
+            MergedAt = pr.MergedAt?.ToString() ?? string.Empty,
+            Author = pr.User.Login,
+            AuthorAvatarUrl = pr.User.AvatarUrl,
+            AuthorUrl = pr.User.HtmlUrl,
+            Url = pr.HtmlUrl,
+            Head = pr.Head.Label,
+            Base = pr.Base.Label,
+            IsDraft = pr.Draft
+        };
 
     public async Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default)
     {

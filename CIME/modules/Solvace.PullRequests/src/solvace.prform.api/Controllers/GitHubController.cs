@@ -27,13 +27,26 @@ public class GitHubController : ControllerBase
     [FromQuery] string targetBranch,
     [FromQuery] string title,
     [FromQuery] bool draft,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    [FromQuery] string? repository = null)
     {
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         var body = await reader.ReadToEndAsync(cancellationToken);
-        var result = await _githubService.CreatePullRequestAsync(sourceBranch, targetBranch, title, draft, body, cancellationToken);
+        var result = await _githubService.CreatePullRequestAsync(sourceBranch, targetBranch, title, draft, body, cancellationToken, repository);
         if (result == null)
             return BadRequest(new { error = "Erro ao criar o PR" });
+        if (!string.IsNullOrEmpty(result.Error))
+            return BadRequest(new { error = result.Error });
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lista os repositórios (não arquivados) do owner configurado no plugin do GitHub. Cache de 10 min.
+    /// </summary>
+    [HttpGet("repositories")]
+    public async Task<ActionResult<IReadOnlyList<RepositoryResponse>>> GetRepositories(CancellationToken cancellationToken)
+    {
+        var result = await _githubService.ListRepositoriesAsync(cancellationToken);
         return Ok(result);
     }
 
