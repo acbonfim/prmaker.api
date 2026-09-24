@@ -72,17 +72,17 @@ Onda 2:  Q1 (configuração, teste real, publicação)
 ```
 
 ### B1 — `ClaudeService` com o SDK oficial
-- [ ] Pacote `Anthropic` no `solvace.ai.application`.
-- [ ] `ClaudeOptions`: padrões atuais (Model `claude-haiku-4-5`, BaseUrl `https://api.anthropic.com`, `MaxOutputTokens`, `TimeoutSeconds`, `MaxRetries`, `SystemInstruction`, `Effort`).
-- [ ] `GenerateContentAsync`: `Messages.Create` com `Model`, `MaxTokens`, `System` (se houver), prompt como mensagem do usuário, sem `temperature`; `Effort` só se configurado.
-- [ ] Resposta: junta os blocos de texto; `stop_reason` `max_tokens` → erro claro (resposta cortada) ; `refusal` → erro; `TokensUsed` = entrada + saída.
-- [ ] Erros tipados → mensagens em português (chave inválida, sem permissão, limite/sobrecarga após as retentativas, conexão, 400).
-- [ ] Teste descartável contra um servidor HTTP local falso (formato da requisição enviada, sucesso, 401, 429 com retry, 529, `max_tokens`).
+- [x] Pacote `Anthropic` no `solvace.ai.application`.
+- [x] `ClaudeOptions`: padrões atuais (Model `claude-haiku-4-5`, BaseUrl `https://api.anthropic.com`, `MaxOutputTokens`, `TimeoutSeconds`, `MaxRetries`, `SystemInstruction`, `Effort`).
+- [x] `GenerateContentAsync`: `Messages.Create` com `Model`, `MaxTokens`, `System` (se houver), prompt como mensagem do usuário, sem `temperature`; `Effort` só se configurado.
+- [x] Resposta: junta os blocos de texto; `stop_reason` `max_tokens` → erro claro (resposta cortada) ; `refusal` → erro; `TokensUsed` = entrada + saída.
+- [x] Erros tipados → mensagens em português (chave inválida, sem permissão, limite/sobrecarga após as retentativas, conexão, 400).
+- [x] Teste descartável contra um servidor HTTP local falso (formato da requisição enviada, sucesso, 401, 429 com retry, 529, `max_tokens`).
 
 ### B2 — IA resolvida por requisição + chave pessoal
-- [ ] `IAIService` registrado como um serviço que, **a cada chamada**, resolve "AI Configurations" e "`{Provider} Plugin`" via `IPluginConfigurationResolver` (0002) — chave pessoal quando o plugin for de uso pessoal; sem configuração → 403 `PERSONAL_INTEGRATION_REQUIRED` (o front já trata).
-- [ ] `AIServiceFactory.CreateService(provider, PluginConfiguration)` (hoje recebe `Plugin`) + mapeamento dos campos novos.
-- [ ] Construtores dos provedores deixam de derrubar o DI (a falta de configuração vira erro na chamada).
+- [x] `IAIService` registrado como um serviço que, **a cada chamada**, resolve "AI Configurations" e "`{Provider} Plugin`" via `IPluginConfigurationResolver` (0002) — chave pessoal quando o plugin for de uso pessoal; sem configuração → 403 `PERSONAL_INTEGRATION_REQUIRED` (o front já trata).
+- [x] `AIServiceFactory.CreateService(provider, PluginConfiguration)` (hoje recebe `Plugin`) + mapeamento dos campos novos.
+- [x] Construtores dos provedores deixam de derrubar o DI (a falta de configuração vira erro na chamada).
 
 ### Q1 — Configuração e publicação (usuário)
 - [ ] Plugin "Claude Plugin": `ApiKey` (Usuário preenche), `Model`, e demais campos da seção 3; marcar **Uso pessoal**.
