@@ -19,29 +19,35 @@ namespace solvace.ai.application.Services;
 public class AIServiceFactory
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IPluginCacheManager _pluginCacheManager;
     private readonly AIOptions _options;
 
-    public AIServiceFactory(IHttpClientFactory httpClientFactory, IOptions<AIOptions> options, IPluginCacheManager pluginCacheManager)
+    public AIServiceFactory(IHttpClientFactory httpClientFactory, IOptions<AIOptions> options)
     {
         _httpClientFactory = httpClientFactory;
-        _pluginCacheManager = pluginCacheManager;
         _options = options.Value;
     }
 
-    public IAIService CreateService(string providerName, Plugin plugin)
+    /// <summary>
+    /// Cria o provedor com a configuração EFETIVA do plugin "{Provider} Plugin" — global, ou a do
+    /// usuário quando o plugin é de uso pessoal (feature 0002; ver PluginAIService).
+    /// </summary>
+    public IAIService CreateService(string providerName, PluginConfiguration configuration)
     {
         var providerOptions = new
         {
-            ApiKey = plugin.Configurations.GetConfigurationValue("ApiKey"),
-            BaseUrl = plugin.Configurations.GetConfigurationValue("BaseUrl"),
-            Model = plugin.Configurations.GetConfigurationValue("Model"),
+            ApiKey = configuration.GetConfigurationValue("ApiKey"),
+            BaseUrl = configuration.GetConfigurationValue("BaseUrl"),
+            Model = configuration.GetConfigurationValue("Model"),
             // Parâmetros opcionais específicos do Gemini 3.x (ignorados pelos demais providers,
             // que não possuem essas propriedades no seu option type).
-            SystemInstruction = NullIfEmpty(plugin.Configurations.GetConfigurationValue("SystemInstruction")),
-            ThinkingLevel = NullIfEmpty(plugin.Configurations.GetConfigurationValue("ThinkingLevel")),
-            MaxOutputTokens = NullIfEmpty(plugin.Configurations.GetConfigurationValue("MaxOutputTokens")),
-            TimeoutSeconds = NullIfEmpty(plugin.Configurations.GetConfigurationValue("TimeoutSeconds")),
+            SystemInstruction = NullIfEmpty(configuration.GetConfigurationValue("SystemInstruction")),
+            ThinkingLevel = NullIfEmpty(configuration.GetConfigurationValue("ThinkingLevel")),
+            MaxOutputTokens = NullIfEmpty(configuration.GetConfigurationValue("MaxOutputTokens")),
+            TimeoutSeconds = NullIfEmpty(configuration.GetConfigurationValue("TimeoutSeconds")),
+            // Específicos do Claude (ignorados pelos demais providers).
+            MaxRetries = NullIfEmpty(configuration.GetConfigurationValue("MaxRetries")),
+            Effort = NullIfEmpty(configuration.GetConfigurationValue("Effort")),
+            WorkspaceId = NullIfEmpty(configuration.GetConfigurationValue("WorkspaceId")),
         };
 
         var aiOptions = new AIOptions

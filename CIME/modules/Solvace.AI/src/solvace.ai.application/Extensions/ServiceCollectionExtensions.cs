@@ -18,18 +18,9 @@ public static class ServiceCollectionExtensions
         services.Configure<AIOptions>(configuration.GetSection(AIOptions.SectionName));
         services.AddOptions<AIOptions>()
             .ValidateOnStart();
-        services.AddScoped<IAIService>(serviceProvider =>
-        {
-            var factory = serviceProvider.GetRequiredService<AIServiceFactory>();
-            var pluginCache = serviceProvider.GetRequiredService<IPluginCacheManager>();
-            var plugin = pluginCache.GetCachedPluginByName("AI Configurations");
-            var providerName = plugin.Configurations.GetConfigurationValue("Provider");
-            
-            var pluginProvider = pluginCache.GetCachedPluginByName(providerName + " Plugin");
-            
-            
-            return factory.CreateService(providerName, pluginProvider);
-        });
+        // Resolvido por chamada (não no DI): usa a configuração efetiva do plugin do provedor,
+        // inclusive a ApiKey pessoal do usuário (feature 0002/0003).
+        services.AddScoped<IAIService, PluginAIService>();
 
         return services;
     }
