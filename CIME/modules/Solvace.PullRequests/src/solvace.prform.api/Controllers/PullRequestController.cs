@@ -15,16 +15,14 @@ namespace solvace.prform.Controllers;
 public class PullRequestController : ControllerBase
 {
     private readonly IPullRequestApplication _application;
-    private readonly IPullRequestGithubApplication _githubApplication;
-    private readonly ITimelineApplication _timelineApplication;
     private readonly ILogger<PullRequestController> _logger;
 
-    public PullRequestController(IPullRequestApplication application, IPullRequestGithubApplication githubApplication,
-        ITimelineApplication timelineApplication, ILogger<PullRequestController> logger)
+    // IPullRequestGithubApplication/ITimelineApplication são injetados por ação ([FromServices]):
+    // o GitHubService lança exceção no construtor se o plugin do GitHub não estiver configurado,
+    // e isso não pode derrubar as rotas do card (buscar/salvar) que não usam o GitHub.
+    public PullRequestController(IPullRequestApplication application, ILogger<PullRequestController> logger)
     {
         _application = application;
-        _githubApplication = githubApplication;
-        _timelineApplication = timelineApplication;
         _logger = logger;
     }
 
@@ -77,12 +75,14 @@ public class PullRequestController : ControllerBase
     /// devolve o existente com alreadyExisted = true.
     /// </summary>
     [HttpPost("{cardNumber}/github")]
-    public async Task<ActionResult<PullRequestGithubResponse>> OpenGithubPullRequest(string cardNumber, OpenPullRequestGithubRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<PullRequestGithubResponse>> OpenGithubPullRequest(string cardNumber, OpenPullRequestGithubRequest request,
+        [FromServices] IPullRequestGithubApplication githubApplication, [FromServices] ITimelineApplication timelineApplication,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var created = await _githubApplication.Open(cardNumber, request, cancellationToken);
-            await RegisterOnTimelineAsync(created, request.UserId, cancellationToken);
+            var created = await githubApplication.Open(cardNumber, request, cancellationToken);
+            await RegisterOnTimelineAsync(timelineApplication, created, request.UserId, cancellationToken);
             return Ok(created);
         }
         catch (DomainException e)
@@ -93,11 +93,12 @@ public class PullRequestController : ControllerBase
 
     /// <summary>Atualiza título/descrição de um PR já aberto (GitHub + registro).</summary>
     [HttpPut("{cardNumber}/github/{id:int}")]
-    public async Task<ActionResult<PullRequestGithubResponse>> UpdateGithubPullRequest(string cardNumber, int id, UpdatePullRequestGithubRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<PullRequestGithubResponse>> UpdateGithubPullRequest(string cardNumber, int id, UpdatePullRequestGithubRequest request,
+        [FromServices] IPullRequestGithubApplication githubApplication, CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await _githubApplication.Update(cardNumber, id, request, cancellationToken));
+            return Ok(await githubApplication.Update(cardNumber, id, request, cancellationToken));
         }
         catch (DomainException e)
         {
@@ -110,11 +111,12 @@ public class PullRequestController : ControllerBase
     /// apenas os PRs ainda abertos (MERGED/CLOSED usam o status persistido).
     /// </summary>
     [HttpGet("{cardNumber}/github")]
-    public async Task<ActionResult<IReadOnlyList<PullRequestGithubResponse>>> ListGithubPullRequests(string cardNumber, CancellationToken cancellationToken, bool refreshStatus = true)
+    public async Task<ActionResult<IReadOnlyList<PullRequestGithubResponse>>> ListGithubPullRequests(string cardNumber,
+        [FromServices] IPullRequestGithubApplication githubApplication, CancellationToken cancellationToken, bool refreshStatus = true)
     {
         try
         {
-            return Ok(await _githubApplication.ListByCard(cardNumber, refreshStatus, cancellationToken));
+            return Ok(await githubApplication.ListByCard(cardNumber, refreshStatus, cancellationToken));
         }
         catch (DomainException e)
         {
@@ -126,7 +128,7 @@ public class PullRequestController : ControllerBase
     /// Registra na linha do tempo do card que o PR foi aberto (ou que um PR já existente foi
     /// registrado). Falha aqui não desfaz nem falha a abertura do PR — só é logada.
     /// </summary>
-    private async Task RegisterOnTimelineAsync(PullRequestGithubResponse pr, Guid requestUserId, CancellationToken cancellationToken)
+    private async Task RegisterOnTimelineAsync(ITimelineApplication timelineApplication, PullRequestGithubResponse pr, Guid requestUserId, CancellationToken cancellationToken)
     {
         var description = pr.AlreadyExisted
             ? $"PR #{pr.Number} já existente registrado pelo CIME: {pr.RepositoryId} ({pr.BranchPrefix}{pr.BranchName} → {pr.TargetBranch}) — {pr.Url}"
@@ -139,7 +141,7 @@ public class PullRequestController : ControllerBase
 
         try
         {
-            await _timelineApplication.CreateAsync(new CreateTimelineEntryRequest
+            await timelineApplication.CreateAsync(new CreateTimelineEntryRequest
             {
                 CardNumber = pr.CardNumber,
                 Description = description,
