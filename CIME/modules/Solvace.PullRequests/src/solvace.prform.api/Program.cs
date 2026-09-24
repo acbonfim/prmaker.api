@@ -40,6 +40,9 @@ builder.Services.Configure<solvace.prform.application.Security.UserIntegrationOp
 builder.Services.AddSingleton<solvace.prform.application.Security.ISecretProtector, solvace.prform.application.Security.AesGcmSecretProtector>();
 builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IUserPluginConfigurationApplication, solvace.prform.application.UserIntegrations.UserPluginConfigurationApplication>();
 builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IPluginConfigurationResolver, solvace.prform.application.UserIntegrations.PluginConfigurationResolver>();
+// Pedido de aprovação de PR no Teams via Workflow (feature 0007).
+builder.Services.AddScoped<solvace.prform.application.Teams.ITeamsApprovalService, solvace.prform.application.Teams.TeamsApprovalService>();
+builder.Services.AddHttpClient(solvace.prform.application.Teams.TeamsApprovalService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
 
