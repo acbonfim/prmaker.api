@@ -17,7 +17,7 @@
 | F3 | Bloqueio no front | front | F2 | 3 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front e28e702 |
 | B5 | Campos fixos x campos do usuário (pós-teste) | back | B3, B4 | 5 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | d0b59c3 |
 | F4 | Marcação por campo no admin + campos bloqueados no modal | front | B5 | 5 | ✅ | Claude (sessão principal) | 2026-09-24 | 2026-09-24 | front d51db52 |
-| Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | 🟡 | Claude + usuário | 2026-09-24 | | 0da111c (+ push) |
+| Q1 | Integração, chave de criptografia e publicação | ambos | todas | 4 | ✅ | Claude + usuário | 2026-09-24 | 2026-09-24 | 0da111c, merge #7 (back) / #3 (front) |
 
 ## Decisões
 
@@ -97,7 +97,7 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 - Minhas integrações: campo fixo em modo somente leitura com 🔒 e hint "Definido pelo administrador" (segredo fixo mostra só `••••••••` se definido); nunca é enviado ao salvar.
 - `ng build` ok. Não testado no navegador.
 
-### Q1 — Integração e publicação 🟡 (parte do Claude concluída; resto é do usuário)
+### Q1 — Integração e publicação ✅
 - **Feito**: Terraform — secret `user-integrations-encryption-key` → env `UserIntegrations__EncryptionKey` no serviço `cime-pullrequest` (`deploy/terraform/main.tf`), exemplo no `secrets.auto.tfvars.example` e nota no `deploy/README.md` (0da111c). Não validado com `terraform validate` (terraform não instalado nesta máquina).
 - **Obs.**: o serviço da API roda com `max_instances = 1` (SignalR), então o risco de cache defasado entre instâncias (B3, desvio 2) é mínimo; os 30 min continuam valendo.
 - **Regressão**: suítes descartáveis de 0001 e 0002 reexecutadas — 84/84 (b3test 25, b3p2 23, b4test 10, b2test 26); build back e front ok.
@@ -125,3 +125,4 @@ Defaults em `plan.md` §2. Registrar aqui quando confirmadas/alteradas.
 | 2026-09-24 | B5, F4 | Pedido do usuário: campos fixos x editáveis por plugin pessoal. Fases criadas e iniciadas. |
 | 2026-09-24 | B5, F4 | Concluídas (d0b59c3, front d51db52): campos fixos (valor global, somente leitura) x campos do usuário. Push nos dois repos. |
 | 2026-09-24 | Q1 | Chave das integrações pessoais aplicada em produção via Terraform (secret + IAM + env no cime-pullrequest, revisão 00006 Ready). Falta a chave no ambiente local. |
+| 2026-09-24 | Q1 | Usuário testou e aprovou; 0002 mergeada (#7 back, #3 front) e em produção. **Feature 0002 concluída.** |
