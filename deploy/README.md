@@ -85,6 +85,7 @@ O módulo RealTime usa SignalR (hub em `/ws`). Já está configurado para funcio
 
 ## Notas importantes
 
+- **Chave das integrações pessoais (`user-integrations-encryption-key` → `UserIntegrations__EncryptionKey`):** gere uma vez com `openssl rand -base64 32` e **não troque** depois que os usuários salvarem tokens em "Minhas integrações" — com outra chave os valores salvos ficam ilegíveis e cada um precisa salvar de novo. Sem ela, a API sobe, mas recusa salvar tokens pessoais (503).
 - **Segredos rotacionados:** as chaves atuais estão no `appsettings.json` versionado (senhas de banco, token GitHub, PAT Azure, JWT, SMTP). Gere novas e coloque só no `secrets.auto.tfvars` / Secret Manager. Considere remover os valores do `appsettings.json`.
 - **Host do banco:** de fora do MonsterASP use o host `.public.databaseasp.net` (a Auth API usava o host interno `db30567.databaseasp.net` — no Cloud Run tem que ser `db30567.public.databaseasp.net`).
 - **Cold start:** com `min_instances = 0`, a 1ª request após ociosidade demora alguns segundos (abre conexão nova com o banco remoto). Se incomodar, suba `min_instances = 1` no `terraform.tfvars` (sai do custo zero).
