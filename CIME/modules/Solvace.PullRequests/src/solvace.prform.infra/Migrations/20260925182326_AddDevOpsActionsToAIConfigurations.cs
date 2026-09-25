@@ -55,6 +55,7 @@ namespace solvace.prform.infra.Migrations
             ["Provider"] = new { label = "Provedor de IA", hidden = true },
             ["PromptBug"] = new { label = "Prompt do PR (Bug)", hidden = true },
             ["PromptUS"] = new { label = "Prompt do PR (User Story)", hidden = true },
+            ["TemplatePassagemConhecimento"] = new { label = "Modelo da passagem de conhecimento (handover)", hidden = true },
             ["BugSummaryPrompt"] = new { label = "Prompt do resumo não técnico (Bug)", hidden = true },
             ["BugTestInProductionRequiredArea"] = new { label = "Área exigida para mover para Test in production (Bug)" },
             ["BugTestInProductionArea"] = new { label = "Área ao mover para Test in production (Bug)", optional = true, useGlobalDefault = true },

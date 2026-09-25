@@ -5,14 +5,14 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| B1 | Configuração por campo nos plugins (`FieldSettings`) | 1 | — | ⬜ pendente | — | — |
-| B2 | Campos da 0011 no "AI Configurations" (migração) | 2 | B1 | ⬜ pendente | — | — |
-| B3 | Resumo não técnico (colunas + endpoint + comentário) | 2 | — | ⬜ pendente | — | — |
-| B4 | Ações no DevOps (endpoints + config efetiva) | 2 | B1, B2 | ⬜ pendente | — | — |
-| F1 | Rótulos e campos opcionais em "Minhas integrações" | 2 | B1 | ⬜ pendente | — | — |
-| F2 | Botão e menu "Ações DevOps" | 3 | B4 | ⬜ pendente | — | — |
-| F3 | Editor do resumo não técnico | 3 | B3, F2 | ⬜ pendente | — | — |
-| S1 | Skill `gerar-prmake` salva o resumo pela API | 3 | B3 | ⬜ pendente | — | — |
+| B1 | Configuração por campo nos plugins (`FieldSettings`) | 1 | — | ✅ concluída | Claude | `99651bf` |
+| B2 | Campos da 0011 no "AI Configurations" (migração) | 2 | B1 | ✅ concluída | Claude | `99651bf`, (ajuste handover oculto) |
+| B3 | Resumo não técnico (colunas + endpoint + comentário) | 2 | — | ✅ concluída | Claude | `99651bf`, `221a2eb` |
+| B4 | Ações no DevOps (endpoints + config efetiva) | 2 | B1, B2 | ✅ concluída | Claude | `99651bf` |
+| F1 | Rótulos e campos opcionais em "Minhas integrações" | 2 | B1 | ✅ concluída | Claude | front `c7d6ec2` |
+| F2 | Botão e menu "Ações DevOps" | 3 | B4 | ✅ concluída | Claude | front `469c547` |
+| F3 | Editor do resumo não técnico | 3 | B3, F2 | ✅ concluída | Claude | front `469c547` |
+| S1 | Skill `gerar-prmake` salva o resumo pela API | 3 | B3 | ✅ concluída | Claude | fora do repo (`~/.claude/skills/gerar-prmake`) |
 | Q1 | Publicação e teste | 4 | todas | ⬜ pendente | usuário | — |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
@@ -28,5 +28,13 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`). No front, `src/environments/environment.ts` é alteração local do usuário e não deve ser commitado.
 - O app é zoneless: nos componentes antigos, `cdr.detectChanges()`; nos novos, signals.
 
+## Notas da implementação
+- **Migrações** (`AddPluginFieldSettings`, `AddDevOpsActionsToAIConfigurations`, `AddPullRequestSummary`) validadas num MySQL 8.0 descartável local (porta 33911, dados no scratchpad): subir → descer → subir de novo ok; chave já existente no JSON mantida; área com barra invertida única; plugin do Teams intocado; `Options` → longtext.
+- **"AI Configurations" vira pessoal + opcional**: `get-all-by-id?id=3` continua devolvendo os campos fixos (PromptBug/PromptUS/TemplatePassagemConhecimento) com o valor global. Campos fixos marcados `hidden` não aparecem em "Minhas integrações"; **outras chaves fixas que existirem no plugin de produção aparecem lá como somente leitura** — ocultar depois, se incomodar (FieldSettings).
+- **Tempo real**: salvar o resumo emite `summary-saved` (a tela atualiza só o resumo, sem o aviso de "card atualizado em outro lugar").
+- **Skill**: resumo agora vai por `POST /PullRequest/{card}/summary` (grava no PRMake e atualiza o mesmo comentário). Resposta 404 (API sem a 0011) cai no `azure-comment.sh` antigo; `LEGACY_COMMENT=1` força o caminho antigo. Backup dos arquivos originais no scratchpad da sessão.
+- **Não testado de ponta a ponta** (a API local aponta para o banco de produção): as chamadas ao DevOps (PATCH de campos, comentários) e as telas só foram compiladas — validar no Q1.
+
 ## Log
 - 2026-09-25 — Planejamento: `plan.md` e `status.md` criados; branches `feature/0011` criadas nos dois repos.
+- 2026-09-25 — B1–B4, F1–F3 e S1 implementadas; backend e front compilando. Falta o Q1 (publicação e teste).
