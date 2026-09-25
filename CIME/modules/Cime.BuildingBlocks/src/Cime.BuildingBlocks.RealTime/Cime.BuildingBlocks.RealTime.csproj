@@ -11,4 +11,9 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- Mesma versão trazida pelo JwtBearer 8.0.2 (Cime.BuildingBlocks.Security). -->
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
+    </ItemGroup>
+
 </Project>

@@ -3,8 +3,9 @@ using Microsoft.AspNetCore.Http;
 namespace Cime.BuildingBlocks.RealTime;
 
 /// <summary>
-/// Valida a chave compartilhada antes de permitir acesso ao hub. Roda apenas no HubPath.
-/// Lê a chave do header "x-api-key" (enviado no negotiate) ou da query string
+/// Valida o acesso ao hub em processo. Roda apenas no HubPath. Aceita a chave compartilhada
+/// (legado) ou um token de conexão emitido pela API (<see cref="RealTimeTokens"/>), lidos do
+/// header "x-api-key"/"Authorization: Bearer" (negotiate) ou da query string
 /// ("x-api-key"/"access_token") — necessária no upgrade WebSocket, onde o browser não
 /// envia headers customizados. As opções são resolvidas por request via
 /// <see cref="IRealTimeOptionsProvider"/> (plugin + fallback de ambiente).
@@ -31,16 +32,22 @@ public class RealTimeApiKeyMiddleware
             return;
         }
 
-        // Sem chave configurada => gate desligado (ambientes locais).
-        if (string.IsNullOrWhiteSpace(options.ApiKey))
+        var hasApiKey = !string.IsNullOrWhiteSpace(options.ApiKey);
+        var hasTokenKey = !string.IsNullOrWhiteSpace(options.TokenSigningKey);
+
+        // Sem chave nem token configurados => gate desligado (ambientes locais).
+        if (!hasApiKey && !hasTokenKey)
         {
             await _next(context);
             return;
         }
 
         var provided = ExtractKey(context.Request);
+        var authorized =
+            (hasApiKey && string.Equals(provided, options.ApiKey, StringComparison.Ordinal)) ||
+            (hasTokenKey && RealTimeTokens.IsValid(provided, options.TokenSigningKey!));
 
-        if (!string.Equals(provided, options.ApiKey, StringComparison.Ordinal))
+        if (!authorized)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsync("Unauthorized: invalid WebSocket api key");
@@ -54,6 +61,10 @@ public class RealTimeApiKeyMiddleware
     {
         if (request.Headers.TryGetValue("x-api-key", out var header) && !string.IsNullOrWhiteSpace(header))
             return header.ToString();
+
+        var authorization = request.Headers.Authorization.ToString();
+        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return authorization["Bearer ".Length..].Trim();
 
         if (request.Query.TryGetValue("x-api-key", out var queryKey) && !string.IsNullOrWhiteSpace(queryKey))
             return queryKey.ToString();

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Cime.BuildingBlocks.RealTime;
 
@@ -17,11 +18,21 @@ public static class RealTimeServiceExtensions
     public static IServiceCollection AddRealTimeService(this IServiceCollection services, IConfiguration configuration)
     {
         // Ambiente (appsettings) — usado como fallback pelo provider.
-        services.Configure<RealTimeOptions>(configuration.GetSection(RealTimeOptions.SectionName));
+        var section = configuration.GetSection(RealTimeOptions.SectionName);
+        services.Configure<RealTimeOptions>(section);
 
         // Provider padrão (só ambiente). O host pode registrar o seu (ex.: plugin) antes desta
         // chamada; TryAdd respeita o que já estiver registrado.
         services.TryAddSingleton<IRealTimeOptionsProvider, DefaultRealTimeOptionsProvider>();
+        services.AddSingleton<IRealTimeConnectionService, RealTimeConnectionService>();
+
+        if (section.Get<RealTimeOptions>()?.IsRelay == true)
+        {
+            // Hub no relay externo: a API só publica por HTTP e não mantém WebSocket aberto.
+            services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(3));
+            services.AddSingleton<IRealTimeNotifier, RelayRealTimeNotifier>();
+            return services;
+        }
 
         services.AddSignalR();
         services.AddSingleton<IRealTimeNotifier, RealTimeNotifier>();
@@ -38,6 +49,10 @@ public static class RealTimeServiceExtensions
 
     public static WebApplication UseRealTimeService(this WebApplication app)
     {
+        // No modo Relay não há hub nesta aplicação.
+        if (app.Services.GetRequiredService<IOptions<RealTimeOptions>>().Value.IsRelay)
+            return app;
+
         var options = app.Services.GetRequiredService<IRealTimeOptionsProvider>().GetOptions();
 
         app.UseMiddleware<RealTimeApiKeyMiddleware>();
