@@ -29,7 +29,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - ✅ Merge do front (#13): deploy do front ok.
 - ✅ `terraform apply` (rodado pelo usuário; o apply foi bloqueado para o Claude pelo modo automático): 6 criados, 2 alterados. Revisão `cime-pullrequest-00019` com `RealTime__Mode=Relay`, timeout 300, max 2; `/ws` na API → 404. State e tfvars copiados para `deploy/terraform` do diretório principal (backup `terraform.tfstate.pre-0013`).
 - 🟨 Monitoring: `00019` cobrou 27 s nos primeiros minutos; as revisões antigas (`00017`/`00018`) seguem cobrando enquanto os WebSockets abertos antes do apply não fecham (timeout antigo de 3600 s) → devem zerar em até ~1 h.
-- ⬜ Teste nas telas (duas abas), com o usuário logado (o Claude não tem api-key para o endpoint autenticado).
+- ✅ Teste nas telas em duas abas: funcionou (usuário, 2026-09-25).
 - ⬜ Limpeza posterior: secret `realtime-apikey`, `apiKeyWS` do front, domínio `api.softhouse.app.br` cadastrado no site40755 (o DNS aponta para o Cloud Run).
 
 ## Notas da implementação
