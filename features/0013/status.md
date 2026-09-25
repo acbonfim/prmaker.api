@@ -25,10 +25,11 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - ✅ Secrets no GitHub: `MONSTER_*` (4), `REALTIME_RELAY_KEY`, `REALTIME_TOKEN_SIGNING_KEY` (gerados com `openssl rand -base64 48`).
 - ✅ Relay publicado pelo workflow (gatilho temporário na branch, já removido) e validado em produção: health 200, publish sem chave 401, negotiate sem token 401, cliente JS 9.0.6 por **WebSocket** com token recebeu o evento, CORS só para `app.softhouse.app.br`. Latência do Brasil ~0,6 s por request novo com TLS (servidor na Europa).
 - ✅ `terraform plan` (cópia de trabalho no scratchpad com o state do diretório principal): só o esperado — 2 secrets + IAM, envs do relay, timeout 300, sem afinidade, max 2 instâncias; imagem intocada.
-- ⬜ Merge do backend (#18) → API sobe ainda em modo em processo.
-- ⬜ Merge do front (#13).
-- ⬜ `terraform apply`, depois copiar `terraform.tfstate` e as 2 chaves novas do `secrets.auto.tfvars` para `deploy/terraform` do diretório principal.
-- ⬜ Teste nas telas (duas abas) + queda do `billable_instance_time` no Monitoring.
+- ✅ Merge do backend (#18): Cloud Run (`cime-pullrequest-00018`) e relay publicados; `RealTime/connection` existe (401 sem chave).
+- ✅ Merge do front (#13): deploy do front ok.
+- ✅ `terraform apply` (rodado pelo usuário; o apply foi bloqueado para o Claude pelo modo automático): 6 criados, 2 alterados. Revisão `cime-pullrequest-00019` com `RealTime__Mode=Relay`, timeout 300, max 2; `/ws` na API → 404. State e tfvars copiados para `deploy/terraform` do diretório principal (backup `terraform.tfstate.pre-0013`).
+- 🟨 Monitoring: `00019` cobrou 27 s nos primeiros minutos; as revisões antigas (`00017`/`00018`) seguem cobrando enquanto os WebSockets abertos antes do apply não fecham (timeout antigo de 3600 s) → devem zerar em até ~1 h.
+- ⬜ Teste nas telas (duas abas), com o usuário logado (o Claude não tem api-key para o endpoint autenticado).
 - ⬜ Limpeza posterior: secret `realtime-apikey`, `apiKeyWS` do front, domínio `api.softhouse.app.br` cadastrado no site40755 (o DNS aponta para o Cloud Run).
 
 ## Notas da implementação
@@ -47,4 +48,5 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Log
 - 2026-09-25 — Planejamento: spec, `plan.md` e `status.md` criados; worktrees `feature/0013` criadas nos dois repos.
+- 2026-09-25 — Q1: relay publicado em `prformapi.runasp.net`, PRs #18 (back) e #13 (front) mergeados, `terraform apply` feito; modo Relay ativo em produção.
 - 2026-09-25 — B1, B2, F1, F2 e I1 implementadas e testadas localmente (relay + cliente C# e JS). Falta o Q1 (site no MonsterASP, secrets, terraform apply, merge e teste).
