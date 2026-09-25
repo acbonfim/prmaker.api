@@ -35,6 +35,13 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - **Skill**: resumo agora vai por `POST /PullRequest/{card}/summary` (grava no PRMake e atualiza o mesmo comentário). Resposta 404 (API sem a 0011) cai no `azure-comment.sh` antigo; `LEGACY_COMMENT=1` força o caminho antigo. Backup dos arquivos originais no scratchpad da sessão.
 - **Não testado de ponta a ponta** (a API local aponta para o banco de produção): as chamadas ao DevOps (PATCH de campos, comentários) e as telas só foram compiladas — validar no Q1.
 
+## Ajustes pós-teste (branch `feature/0011-ajustes`)
+1. **"Salve o card antes" não liberava após salvar**: o `savePullRequest` não guardava o `id` do registro recém-criado na tela; agora guarda (e o menu também olha `prState.register()`).
+2. **Resumo: salvar ≠ publicar + tela de contexto**: `POST PullRequest/{card}/summary` ganhou `publish` (padrão `true`, usado pela skill); `false` só grava no PRMake. Colunas `SummaryUpdatedAt`/`SummaryPublishedAt` (migração `AdjustPullRequestSummary`, com backfill dos já publicados). O diálogo tem as abas **Resumo** (visualizar/editar, gerar de novo, **Salvar**, **Publicar/Atualizar na discussion**, status salvo/publicado/desatualizado) e **Contexto enviado à IA** (situação do card, problema, discussion, timeline, PRs, descrição, RC, commits das branches dos PRs com diff — marcáveis — e o prompt final copiável).
+3. **IA inventando correção**: o novo `BugSummaryPrompt` usa `{context}` e regras de veracidade (só diz que foi corrigido com evidência: PR, descrição, RC ou diff; sem isso, "em análise"). O contexto traz `Evidência de solução: SIM/NÃO` e a tela avisa quando não há. A migração só troca o prompt se ainda for o padrão anterior; modelo customizado sem `{context}` recebe o contexto + a regra no fim.
+- Migração validada no MySQL descartável: troca do prompt padrão, `Down` restaura, prompt editado pelo admin preservado, backfill das datas.
+
 ## Log
 - 2026-09-25 — Planejamento: `plan.md` e `status.md` criados; branches `feature/0011` criadas nos dois repos.
 - 2026-09-25 — B1–B4, F1–F3 e S1 implementadas; backend e front compilando. Falta o Q1 (publicação e teste).
+- 2026-09-25 — Ajustes pós-teste (liberação do resumo após salvar, salvar ≠ publicar, aba de contexto, prompt sem invenção) em `feature/0011-ajustes`.

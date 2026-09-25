@@ -12,6 +12,11 @@ public class PullRequestRegisterResponse
 
     /// <summary>Id do comentário do resumo na discussion do DevOps.</summary>
     public int? SummaryCommentId { get; set; }
+
+    public DateTimeOffset? SummaryUpdatedAt { get; set; }
+
+    /// <summary>Última publicação na discussion (anterior a SummaryUpdatedAt = alterações não publicadas).</summary>
+    public DateTimeOffset? SummaryPublishedAt { get; set; }
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
     public string? RepositoryId { get; set; }

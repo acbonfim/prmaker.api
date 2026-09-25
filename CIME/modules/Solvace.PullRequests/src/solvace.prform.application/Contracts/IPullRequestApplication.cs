@@ -11,8 +11,8 @@ public interface IPullRequestApplication:ICommitable
     Task<IReadOnlyList<PullRequestRecentResponse>> GetRecentByUser(Guid userId, int take, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Grava o resumo não técnico já publicado na discussion (id do comentário) e avisa em tempo
-    /// real. Sem registro do card lança DomainException.
+    /// Grava o resumo não técnico e, quando publicado na discussion, o id do comentário; avisa em
+    /// tempo real. Sem registro do card lança DomainException.
     /// </summary>
-    Task<PullRequestRegisterResponse> SaveSummary(string cardNumber, string summary, int commentId, CancellationToken cancellationToken);
+    Task<PullRequestRegisterResponse> SaveSummary(string cardNumber, string summary, int? publishedCommentId, CancellationToken cancellationToken);
 }
