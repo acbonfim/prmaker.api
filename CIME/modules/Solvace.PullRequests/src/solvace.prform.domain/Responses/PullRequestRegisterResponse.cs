@@ -6,6 +6,12 @@ public class PullRequestRegisterResponse
     public string CardNumber { get; set; } = string.Empty;
     public string RootCause { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>Resumo não técnico (Markdown) publicado na discussion do card (0011).</summary>
+    public string? Summary { get; set; }
+
+    /// <summary>Id do comentário do resumo na discussion do DevOps.</summary>
+    public int? SummaryCommentId { get; set; }
     public string BranchPrefix { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
     public string? RepositoryId { get; set; }

@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddHttpClient();
         services.AddScoped<IAzureService, AzureService>();
+        services.AddScoped<IDevOpsActionsService, DevOpsActionsService>();
         services.Configure<AzureDevOpsOptions>(configuration.GetSection(AzureDevOpsOptions.SectionName));
         services.AddOptions<AzureDevOpsOptions>()
             .ValidateOnStart();

@@ -30,6 +30,12 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
         set => SetDescription(value);
     }
     
+    /// <summary>Resumo não técnico (PT-BR + EN-US) em Markdown, publicado na discussion do card (0011).</summary>
+    public string? Summary { get; private set; }
+
+    /// <summary>Id do comentário do resumo na discussion do DevOps: salvar de novo atualiza o mesmo comentário.</summary>
+    public int? SummaryCommentId { get; private set; }
+
     public Guid UserId { get; private set; }
 
     public Form? Form { get; private set; }
@@ -62,6 +68,17 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             SetDescription(description);
         if (rootCause is not null)
             SetRootCause(rootCause);
+    }
+
+    /// <summary>Resumo não técnico publicado na discussion (id do comentário no DevOps).</summary>
+    public void SetSummary(string summary, int commentId)
+    {
+        if (string.IsNullOrWhiteSpace(summary) || summary.Trim().Length < MinDescriptionLength)
+            throw new DomainException($"summary must be at least {MinDescriptionLength} characters long");
+
+        Summary = summary;
+        SummaryCommentId = commentId;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     private void SetCardNumber(string cardNumber)
@@ -130,6 +147,8 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             CardNumber = CardNumber,
             RootCause = RootCause,
             Description = Description,
+            Summary = Summary,
+            SummaryCommentId = SummaryCommentId,
             BranchName = latest?.BranchName ?? (string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName),
             BranchPrefix = latest?.BranchPrefix ?? (string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix),
             RepositoryId = latest?.RepositoryId ?? RepositoryId,

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using solvace.azure.domain.Exceptions;
 using solvace.azure.domain.Options;
 using solvace.azure.domain.Requests;
 using solvace.azure.application.Contract;
@@ -124,6 +125,84 @@ public class AzureService : IAzureService
 
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
         return JsonSerializer.Deserialize<AzureWorkItem>(responseContent);
+    }
+
+    // Mesma versão usada pela leitura dos comentários (a API de comments ainda é preview).
+    private const string CommentsApiVersion = "7.1-preview.4";
+
+    private static readonly JsonSerializerOptions PatchJsonOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false
+    };
+
+    public async Task<long> PatchFieldsAsync(string id, IReadOnlyDictionary<string, object> fields, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
+        if (string.IsNullOrWhiteSpace(apiVersion))
+            apiVersion = "7.0";
+        var url = $"{GetAzureBaseUrl()}/wit/workitems/{Uri.EscapeDataString(id)}?api-version={apiVersion}";
+
+        var patch = fields.Select(f => new { op = "add", path = $"/fields/{f.Key}", value = f.Value }).ToArray();
+        var content = new StringContent(JsonSerializer.Serialize(patch, PatchJsonOptions), Encoding.UTF8, "application/json-patch+json");
+
+        var response = await CreateClient().PatchAsync(url, content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"O DevOps recusou a alteração: {ExtractDevOpsError(body)}");
+
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.TryGetProperty("rev", out var rev) && rev.TryGetInt64(out var value) ? value : 0;
+    }
+
+    public async Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+
+        var baseUrl = $"{GetAzureBaseUrl()}/wit/workItems/{Uri.EscapeDataString(id)}/comments";
+        var client = CreateClient();
+
+        HttpResponseMessage response;
+        if (commentId is { } existing)
+        {
+            response = await client.PatchAsync($"{baseUrl}/{existing}?api-version={CommentsApiVersion}", CommentBody(html), cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                response = await client.PostAsync($"{baseUrl}?api-version={CommentsApiVersion}", CommentBody(html), cancellationToken);
+        }
+        else
+        {
+            response = await client.PostAsync($"{baseUrl}?api-version={CommentsApiVersion}", CommentBody(html), cancellationToken);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"Não foi possível publicar o comentário na discussion: {ExtractDevOpsError(body)}");
+
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var value)
+            ? value
+            : throw DevOpsActionException.Upstream("O DevOps não devolveu o id do comentário");
+    }
+
+    private static StringContent CommentBody(string html) =>
+        new(JsonSerializer.Serialize(new { text = html }, PatchJsonOptions), Encoding.UTF8, "application/json");
+
+    /// <summary>Mensagem legível do erro do DevOps ({ "message": ... }), ou o corpo cortado.</summary>
+    private static string ExtractDevOpsError(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
+                return m.GetString() ?? string.Empty;
+        }
+        catch (JsonException)
+        {
+            // Corpo não é JSON: devolve o texto.
+        }
+        return body.Length > 300 ? body[..300] : body;
     }
 
     public async Task<AzureCardFullResponse?> GetCardFullAsync(string id, CancellationToken cancellationToken = default)

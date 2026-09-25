@@ -12,7 +12,7 @@ public class PluginConfiguration: IEntity<int>
     public int PluginId { get; set; }
     public Plugin Plugin { get; set; }
     
-    [StringLength(4000)]
+    // longtext (feature 0011): os prompts do "AI Configurations" passavam de 4000 caracteres.
     [System.Text.Json.Serialization.JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Options { get; set; }
 

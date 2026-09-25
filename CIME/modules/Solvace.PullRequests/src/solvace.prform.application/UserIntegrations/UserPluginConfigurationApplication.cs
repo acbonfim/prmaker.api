@@ -39,7 +39,8 @@ public interface IUserPluginConfigurationApplication
 
     /// <summary>
     /// Configuração efetiva de um plugin pessoal: campos fixos com o valor global + campos do
-    /// usuário com o valor dele (sem fallback para o global).
+    /// usuário com o valor dele (sem fallback para o global, exceto os opcionais com
+    /// UseGlobalDefault — feature 0011).
     /// </summary>
     Dictionary<string, string> BuildEffectiveValues(Plugin plugin, IReadOnlyDictionary<string, string> userValues);
 }
@@ -217,7 +218,7 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
     }
 
     public bool IsConfigured(Plugin plugin, IReadOnlyDictionary<string, string> userValues) =>
-        TemplateKeys(plugin).Where(plugin.IsUserField)
+        TemplateKeys(plugin).Where(k => plugin.IsUserField(k) && !plugin.IsOptionalField(k))
             .All(k => userValues.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v));
 
     public Dictionary<string, string> BuildEffectiveValues(Plugin plugin, IReadOnlyDictionary<string, string> userValues)
@@ -228,8 +229,10 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
         {
             if (!plugin.IsUserField(key))
                 effective[key] = globalValue; // fixo: definido pelo administrador
-            else if (userValues.TryGetValue(key, out var mine))
+            else if (userValues.TryGetValue(key, out var mine) && !string.IsNullOrEmpty(mine))
                 effective[key] = mine;
+            else if (plugin.UsesGlobalDefault(key))
+                effective[key] = globalValue; // opcional com padrão (0011): sem valor do usuário, vale o global
         }
         return effective;
     }
@@ -242,6 +245,7 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
         var fields = template.Select(t =>
         {
             var sensitive = SensitiveFieldPolicy.IsSensitive(t.Key);
+            var label = plugin.GetFieldLabel(t.Key);
 
             if (!plugin.IsUserField(t.Key))
             {
@@ -249,7 +253,9 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
                 return new UserIntegrationFieldResponse
                 {
                     Key = t.Key,
+                    Label = label,
                     Editable = false,
+                    Hidden = plugin.IsHiddenField(t.Key),
                     Sensitive = sensitive,
                     HasValue = !string.IsNullOrEmpty(t.Value),
                     Value = sensitive || string.IsNullOrEmpty(t.Value) ? null : t.Value
@@ -257,16 +263,29 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
             }
 
             var hasValue = mine.TryGetValue(t.Key, out var userValue) && !string.IsNullOrEmpty(userValue);
+            var optional = plugin.IsOptionalField(t.Key);
+            var usesDefault = plugin.UsesGlobalDefault(t.Key);
 
             if (sensitive)
-                return new UserIntegrationFieldResponse { Key = t.Key, Sensitive = true, HasValue = hasValue };
+                return new UserIntegrationFieldResponse
+                {
+                    Key = t.Key, Label = label, Optional = optional, Sensitive = true, HasValue = hasValue
+                };
 
-            // Não sensível sem valor salvo: sugere o valor global (D7) para não redigitar.
+            // Não sensível sem valor salvo: sugere o valor global (D7) para não redigitar. Com
+            // UsesGlobalDefault (0011) a sugestão é o valor que vale enquanto o usuário não salvar.
             return hasValue
-                ? new UserIntegrationFieldResponse { Key = t.Key, Value = userValue, HasValue = true }
+                ? new UserIntegrationFieldResponse
+                {
+                    Key = t.Key, Label = label, Optional = optional, UsesGlobalDefault = usesDefault,
+                    Value = userValue, HasValue = true
+                }
                 : new UserIntegrationFieldResponse
                 {
                     Key = t.Key,
+                    Label = label,
+                    Optional = optional,
+                    UsesGlobalDefault = usesDefault,
                     Value = string.IsNullOrEmpty(t.Value) ? null : t.Value,
                     Suggested = !string.IsNullOrEmpty(t.Value)
                 };

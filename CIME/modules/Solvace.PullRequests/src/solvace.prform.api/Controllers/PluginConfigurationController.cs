@@ -74,6 +74,7 @@ public class PluginConfigurationController : ControllerBase
             pluginResponse.IsPersonal = plugin.IsPersonal;
             pluginResponse.PersonalFields = plugin.GetPersonalFieldKeys();
             pluginResponse.IsOptional = plugin.IsOptional;
+            pluginResponse.FieldSettings = plugin.GetFieldSettings();
 
             if(!string.IsNullOrEmpty(plugin.Configurations.Options))
                 pluginResponse.Configurations = plugin.Configurations.Options.JsonToListOfDictionaries()[0];
@@ -118,7 +119,8 @@ public class PluginConfigurationController : ControllerBase
                 AdminOnly = plugin.AdminOnly,
                 IsPersonal = plugin.IsPersonal,
                 PersonalFields = plugin.GetPersonalFieldKeys(),
-                IsOptional = plugin.IsOptional
+                IsOptional = plugin.IsOptional,
+                FieldSettings = plugin.GetFieldSettings()
             }
         );
     }
@@ -144,9 +146,12 @@ public class PluginConfigurationController : ControllerBase
         if (item is null)
             return new Dictionary<string, string>();
 
-        // Campos do usuário: valor dele; fixos: valor global. Segredos sempre mascarados.
+        // Campos do usuário: valor dele (ou o global, quando o campo usa o padrão — 0011); fixos:
+        // valor global. Segredos sempre mascarados.
         return item.Fields.ToDictionary(
             f => f.Key,
-            f => f.Sensitive ? (f.HasValue ? SecretMask : string.Empty) : (f.HasValue ? f.Value ?? string.Empty : string.Empty));
+            f => f.Sensitive
+                ? (f.HasValue ? SecretMask : string.Empty)
+                : (f.HasValue || f.UsesGlobalDefault ? f.Value ?? string.Empty : string.Empty));
     }
 }
