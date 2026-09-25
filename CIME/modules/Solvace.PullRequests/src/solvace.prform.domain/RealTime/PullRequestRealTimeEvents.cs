@@ -32,5 +32,7 @@ public static class PullRequestRealTimeEvents
         public const string GithubPrUpdated = "github-pr-updated";
         /// <summary>Status de um ou mais PRs mudou no GitHub (open/merged/closed/draft).</summary>
         public const string GithubPrStatusChanged = "github-pr-status";
+        /// <summary>Resumo não técnico publicado na discussion e gravado no card (0011) — só o resumo muda.</summary>
+        public const string SummarySaved = "summary-saved";
     }
 }

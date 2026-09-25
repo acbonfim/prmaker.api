@@ -65,7 +65,7 @@ public class PullRequestApplication : IPullRequestApplication
 
         register.SetSummary(summary, commentId);
         await CommitAsync(cancellationToken);
-        await _realTimeNotifier.NotifyCardUpdatedAsync(register.CardNumber, PullRequestRealTimeEvents.Actions.RegisterSaved, register.Id, cancellationToken);
+        await _realTimeNotifier.NotifyCardUpdatedAsync(register.CardNumber, PullRequestRealTimeEvents.Actions.SummarySaved, register.Id, cancellationToken);
         return register.ToResponse();
     }
 
