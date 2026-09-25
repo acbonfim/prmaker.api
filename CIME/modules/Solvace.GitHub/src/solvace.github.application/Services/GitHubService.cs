@@ -37,6 +37,8 @@ public class GitHubService : IGitHubService
     private PluginConfiguration? _config;
     private GitHubClient? _gitHubClient;
     private string _tokenScope = string.Empty;
+    private string _token = string.Empty;
+    private Uri _apiBase = GitHubClient.GitHubApiUrl;
 
     public GitHubService(IOptions<GitHubOptions> options, IHttpClientFactory httpClientFactory, IPluginConfigurationResolver configurationResolver, ICacheService cacheService, ILogger<GitHubService> logger)
     {
@@ -61,7 +63,12 @@ public class GitHubService : IGitHubService
         if (string.IsNullOrEmpty(token))
             throw new InvalidOperationException("Token GitHub não configurado");
 
-        _gitHubClient = new GitHubClient(new ProductHeaderValue("SolvacePRForm"))
+        // ApiBaseUrl (opcional no plugin): GitHub Enterprise — padrão https://api.github.com/.
+        var apiBase = _config.GetConfigurationValue("ApiBaseUrl");
+        _apiBase = Uri.TryCreate(apiBase, UriKind.Absolute, out var customBase) ? customBase : GitHubClient.GitHubApiUrl;
+        _token = token;
+
+        _gitHubClient = new GitHubClient(new ProductHeaderValue("SolvacePRForm"), _apiBase)
         {
             Credentials = new Credentials(token)
         };
@@ -183,6 +190,113 @@ public class GitHubService : IGitHubService
             return new PullRequestResponse { Error = $"Erro na API do GitHub: {DescribeApiError(e)}" };
         }
     }
+
+    /// <summary>
+    /// Troca o status do PR no GitHub (feature 0007). CLOSED fecha e OPEN reabre (REST);
+    /// DRAFT ↔ OPEN (pronto para revisão) só existe na API GraphQL (convertPullRequestToDraft /
+    /// markPullRequestReadyForReview). Mesmo status do atual = nada muda. MERGED não muda.
+    /// </summary>
+    public async Task<PullRequestResponse?> SetPullRequestStatusAsync(string repository, int number, string targetStatus, CancellationToken cancellationToken = default)
+    {
+        await EnsureClientAsync(cancellationToken);
+
+        var target = (targetStatus ?? string.Empty).Trim().ToUpperInvariant();
+        if (target is not (PullRequestStatusTarget.Open or PullRequestStatusTarget.Draft or PullRequestStatusTarget.Closed))
+            return new PullRequestResponse { Error = $"Status '{targetStatus}' inválido — use OPEN, DRAFT ou CLOSED" };
+        if (string.IsNullOrWhiteSpace(repository) || number <= 0)
+            return new PullRequestResponse { Error = "Parâmetro 'repository' ou 'number' é obrigatório" };
+        var (owner, repo) = ResolveRepository(repository);
+        if (string.IsNullOrWhiteSpace(owner))
+            return new PullRequestResponse { Error = "Configurações do GitHub (owner) não encontradas" };
+
+        try
+        {
+            var pr = await Client.PullRequest.Get(owner, repo, number);
+            if (pr.Merged)
+                return new PullRequestResponse { Error = $"PR #{number} já foi mergeado — o status não pode mais mudar" };
+
+            var closed = pr.State.Value == ItemState.Closed;
+            var current = closed ? PullRequestStatusTarget.Closed : pr.Draft ? PullRequestStatusTarget.Draft : PullRequestStatusTarget.Open;
+
+            if (current != target)
+            {
+                if (target == PullRequestStatusTarget.Closed)
+                {
+                    pr = await Client.PullRequest.Update(owner, repo, number, new PullRequestUpdate { State = ItemState.Closed });
+                }
+                else
+                {
+                    // OPEN/DRAFT a partir de CLOSED: reabre antes (a conversão de draft exige PR aberto).
+                    if (closed)
+                        pr = await Client.PullRequest.Update(owner, repo, number, new PullRequestUpdate { State = ItemState.Open });
+
+                    var wantDraft = target == PullRequestStatusTarget.Draft;
+                    if (pr.Draft != wantDraft)
+                    {
+                        var mutation = wantDraft ? "convertPullRequestToDraft" : "markPullRequestReadyForReview";
+                        var error = await RunPullRequestMutationAsync(mutation, pr.NodeId, cancellationToken);
+                        if (error is not null)
+                            return new PullRequestResponse { Error = error };
+                        pr = await Client.PullRequest.Get(owner, repo, number);
+                    }
+                }
+            }
+
+            CacheStatus(pr, repository);
+            return ToPullRequestResponse(pr, repository);
+        }
+        catch (NotFoundException)
+        {
+            return new PullRequestResponse { Error = $"PR #{number} não encontrado no repositório '{repository}'" };
+        }
+        catch (ApiException e)
+        {
+            return new PullRequestResponse { Error = $"Erro na API do GitHub: {DescribeApiError(e)}" };
+        }
+    }
+
+    /// <summary>Mutação GraphQL sobre um PR (pelo node id). Devolve a mensagem de erro, ou null se deu certo.</summary>
+    private async Task<string?> RunPullRequestMutationAsync(string mutation, string nodeId, CancellationToken cancellationToken)
+    {
+        // api.github.com → https://api.github.com/graphql. GitHub Enterprise: o Octokit usa
+        // <host>/api/v3/ para a REST e o GraphQL fica em <host>/api/graphql.
+        var graphqlUrl = string.Equals(_apiBase.Host, GitHubClient.GitHubApiUrl.Host, StringComparison.OrdinalIgnoreCase)
+            ? new Uri(GitHubClient.GitHubApiUrl, "graphql")
+            : new Uri(_apiBase.GetLeftPart(UriPartial.Authority) + "/api/graphql");
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            query = $"mutation($id: ID!) {{ {mutation}(input: {{ pullRequestId: $id }}) {{ pullRequest {{ isDraft }} }} }}",
+            variables = new { id = nodeId }
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, graphqlUrl)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        request.Headers.UserAgent.ParseAdd("SolvacePRForm");
+
+        var http = _httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+        using var response = await http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            return $"Erro na API do GitHub (GraphQL {(int)response.StatusCode}): {Truncate(body, 300)}";
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
+        {
+            var messages = errors.EnumerateArray()
+                .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                .Where(m => !string.IsNullOrWhiteSpace(m));
+            return $"Erro na API do GitHub: {string.Join("; ", messages)}";
+        }
+        return null;
+    }
+
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max] + "…";
 
     /// <summary>
     /// Todos os repositórios (não arquivados) que o usuário do token acessa — próprios, de
@@ -626,4 +740,10 @@ public class GitHubService : IGitHubService
     }
 }
 
-
+/// <summary>Status que o usuário pode escolher ao trocar o status de um PR (feature 0007).</summary>
+public static class PullRequestStatusTarget
+{
+    public const string Open = "OPEN";
+    public const string Draft = "DRAFT";
+    public const string Closed = "CLOSED";
+}

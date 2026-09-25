@@ -12,6 +12,14 @@ public class TimelineEntry : IEntity<int>, IDescribable, IAuditableEntity
 {
     private const int MinDescriptionLength = 3;
 
+    /// <summary>
+    /// Tamanho máximo da descrição (a coluna é longtext). Acima disso o registro é recusado —
+    /// nunca cortado em silêncio (feature 0006).
+    /// </summary>
+    public const int MaxDescriptionLength = 100_000;
+
+    private static readonly System.Globalization.CultureInfo PtBr = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
     public int Id { get; set; }
 
     /// <summary>Número do card ao qual o registro está vinculado.</summary>
@@ -93,6 +101,10 @@ public class TimelineEntry : IEntity<int>, IDescribable, IAuditableEntity
 
         if (trimmed.Length < MinDescriptionLength)
             throw new DomainException($"A descrição deve ter ao menos {MinDescriptionLength} caracteres.");
+
+        if (trimmed.Length > MaxDescriptionLength)
+            throw new DomainException(string.Format(PtBr,
+                "A descrição pode ter no máximo {0:N0} caracteres (enviados: {1:N0}).", MaxDescriptionLength, trimmed.Length));
 
         _description = trimmed;
     }

@@ -9,6 +9,9 @@ public class UserIntegrationResponse
     /// <summary>Todos os campos do plugin preenchidos pelo usuário.</summary>
     public bool Configured { get; set; }
 
+    /// <summary>Opcional: sem configuração, só o recurso dele fica indisponível (não bloqueia a tela).</summary>
+    public bool Optional { get; set; }
+
     public List<UserIntegrationFieldResponse> Fields { get; set; } = new();
     public DateTimeOffset? UpdatedAt { get; set; }
 }
@@ -35,7 +38,7 @@ public class UserIntegrationFieldResponse
 
 public class UserIntegrationStatusResponse
 {
-    /// <summary>Nenhum plugin de uso pessoal pendente.</summary>
+    /// <summary>Nenhum plugin de uso pessoal obrigatório pendente (opcionais não contam).</summary>
     public bool Ready { get; set; }
     public List<UserIntegrationPendingResponse> Pending { get; set; } = new();
 }

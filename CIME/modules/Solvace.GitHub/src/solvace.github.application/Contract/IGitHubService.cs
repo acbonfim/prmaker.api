@@ -7,6 +7,8 @@ public interface IGitHubService
     /// <param name="repository">Repositório do owner configurado; quando nulo usa o "Repo" do plugin.</param>
     Task<PullRequestResponse?> CreatePullRequestAsync(string sourceBranch, string targetBranch, string title, bool draft, string? descriptionRaw, CancellationToken cancellationToken = default, string? repository = null);
     Task<PullRequestResponse?> UpdatePullRequestAsync(string repository, int number, string title, string? descriptionRaw, CancellationToken cancellationToken = default);
+    /// <param name="targetStatus">OPEN, DRAFT ou CLOSED (ver PullRequestStatusTarget).</param>
+    Task<PullRequestResponse?> SetPullRequestStatusAsync(string repository, int number, string targetStatus, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RepositoryResponse>> ListRepositoriesAsync(CancellationToken cancellationToken = default);
     /// <param name="bypassCache">true ignora o cache de status (ex.: botão "atualizar" da tela).</param>
     Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default, bool bypassCache = false);

@@ -73,6 +73,7 @@ public class PluginConfigurationController : ControllerBase
             pluginResponse.AdminOnly = plugin.AdminOnly;
             pluginResponse.IsPersonal = plugin.IsPersonal;
             pluginResponse.PersonalFields = plugin.GetPersonalFieldKeys();
+            pluginResponse.IsOptional = plugin.IsOptional;
 
             if(!string.IsNullOrEmpty(plugin.Configurations.Options))
                 pluginResponse.Configurations = plugin.Configurations.Options.JsonToListOfDictionaries()[0];
@@ -116,7 +117,8 @@ public class PluginConfigurationController : ControllerBase
                 Description = plugin.Description,
                 AdminOnly = plugin.AdminOnly,
                 IsPersonal = plugin.IsPersonal,
-                PersonalFields = plugin.GetPersonalFieldKeys()
+                PersonalFields = plugin.GetPersonalFieldKeys(),
+                IsOptional = plugin.IsOptional
             }
         );
     }
