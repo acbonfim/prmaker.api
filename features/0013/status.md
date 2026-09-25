@@ -10,7 +10,7 @@
 | F1 | `WsService` com token e URL vindos da API (fallback legado) | 1 | — | ✅ concluída | Claude | front `94ba3e4` |
 | F2 | Recarregar dados ao reconectar (`resynced`) | 2 | F1 | ✅ concluída | Claude | front `08276d7` |
 | I1 | Workflow de deploy no MonsterASP, Terraform, DNS, README | 2 | B1, B2 | ✅ concluída | Claude | `a65c1f1` |
-| Q1 | Publicação e teste | 3 | todas | 🟨 em andamento | usuário + Claude | `4ac5fd9`; PRs back #18, front #13 |
+| Q1 | Publicação e teste | 3 | todas | ✅ concluída | usuário + Claude | `4ac5fd9`; PRs back #18, front #13 |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -28,7 +28,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - ✅ Merge do backend (#18): Cloud Run (`cime-pullrequest-00018`) e relay publicados; `RealTime/connection` existe (401 sem chave).
 - ✅ Merge do front (#13): deploy do front ok.
 - ✅ `terraform apply` (rodado pelo usuário; o apply foi bloqueado para o Claude pelo modo automático): 6 criados, 2 alterados. Revisão `cime-pullrequest-00019` com `RealTime__Mode=Relay`, timeout 300, max 2; `/ws` na API → 404. State e tfvars copiados para `deploy/terraform` do diretório principal (backup `terraform.tfstate.pre-0013`).
-- 🟨 Monitoring: `00019` cobrou 27 s nos primeiros minutos; as revisões antigas (`00017`/`00018`) seguem cobrando enquanto os WebSockets abertos antes do apply não fecham (timeout antigo de 3600 s) → devem zerar em até ~1 h.
+- ✅ Monitoring (22:18 UTC): revisões antigas zeradas; a `cime-pullrequest-00019` cobrou 0–4 s por 5 min (antes: 300 s por 5 min, 24 h). Nenhum request `/ws` na API; os browsers pedem `RealTime/connection` (200). O primeiro, de 9,6 s, foi cold start da instância.
 - ✅ Teste nas telas em duas abas: funcionou (usuário, 2026-09-25).
 - ⬜ Limpeza posterior: secret `realtime-apikey`, `apiKeyWS` do front, domínio `api.softhouse.app.br` cadastrado no site40755 (o DNS aponta para o Cloud Run).
 
