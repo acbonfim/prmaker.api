@@ -69,19 +69,29 @@ Push na `master` (ou rode o workflow manualmente em Actions). O pipeline builda,
 > rotacionar sem novo deploy e não expõe segredo no GitHub. GitHub variables guardam só os 5
 > identificadores do pipeline. A URL da API de auth / do backend (não secretas) vão em `plain_env`.
 
-## SignalR (WebSocket) no Cloud Run
+## Tempo real (SignalR) — relay no MonsterASP (feature 0013)
 
-O módulo RealTime usa SignalR (hub em `/ws`). Já está configurado para funcionar:
-- **`cime-pullrequest` com `max_instances = 1`**: mantém todas as conexões WebSocket na mesma
-  instância, então **não precisa de backplane (Redis)**. Continua com scale-to-zero quando ocioso.
-- **`timeout = 3600s`**: conexões WebSocket de longa duração (máximo do Cloud Run). Após isso o
-  cliente reconecta (o SignalR reconecta sozinho).
-- **`session_affinity = true`**: reforça que reconexões voltem para a mesma instância.
-- CORS/RealTime `AllowedOrigins` deve conter a origem do frontend (via `plain_env`), pois SignalR
-  com credenciais não aceita `AllowAnyOrigin`.
+O hub SignalR **não roda mais no Cloud Run**. No Cloud Run, a CPU é cobrada enquanto houver um
+request aberto, e um WebSocket é um request aberto: uma aba esquecida mantinha a `cime-pullrequest`
+cobrada 24 h (~US$ 61/mês). Agora:
 
-> Se um dia o uso crescer e precisar de mais de 1 instância, aí sim entra um backplane
-> (Redis/Memorystore) ou o Azure SignalR Service. Para 5 usuários, `max_instances = 1` é o certo.
+```
+browser ──GET /api/v1/RealTime/connection (x-api-key)──▶ cime-pullrequest ──▶ { url, accessToken (10 min) }
+browser ══wss://realtime.softhouse.app.br/ws?access_token=…══▶ relay (MonsterASP, custo fixo)
+cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grupo
+```
+
+- **Relay**: `CIME/modules/Cime.RealTime/src/Cime.RealTime.Relay`. Deploy pelo workflow
+  `deploy-realtime.yml` (Web Deploy; secrets listados no topo do arquivo). Health: `GET /health`.
+- **API**: `RealTime__Mode = Relay` + `RealTime__RelayUrl` (env) e `RealTime__RelayKey` /
+  `RealTime__TokenSigningKey` (Secret Manager). A publicação é best-effort (timeout 3 s): relay fora
+  do ar não quebra nenhuma operação, só o aviso em tempo real.
+- **Chaves**: `realtime-relay-key` e `realtime-token-signing-key` têm que ser **iguais** no Secret
+  Manager e nos secrets do GitHub (`REALTIME_RELAY_KEY`, `REALTIME_TOKEN_SIGNING_KEY`).
+- **DNS**: `realtime.softhouse.app.br` → CNAME para o site do MonsterASP (`deploy/dns`, variável
+  `realtime_cname_target`); o certificado é o Let's Encrypt do painel do MonsterASP.
+- **Rollback**: `RealTime__Mode = InProcess` e, na `cime-pullrequest`, `max_instances = 1`,
+  `timeout = 3600`, `session_affinity = true` (hub volta para a API, com o custo de antes).
 
 ## Notas importantes
 
