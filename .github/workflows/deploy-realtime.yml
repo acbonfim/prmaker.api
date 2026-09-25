@@ -14,7 +14,7 @@ name: Deploy realtime relay (MonsterASP)
 
 on:
   push:
-    branches: [master, feature/0013] # TEMPORÁRIO: feature/0013 só para validar o relay antes do merge
+    branches: [master]
     paths:
       - 'CIME/modules/Cime.RealTime/**'
       - 'CIME/modules/Cime.BuildingBlocks/src/Cime.BuildingBlocks.RealTime/**'
