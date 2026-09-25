@@ -19,7 +19,7 @@ locals {
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
         RealTime__Mode         = "Relay"
-        RealTime__RelayUrl     = "https://realtime.${var.domain}"
+        RealTime__RelayUrl     = var.realtime_relay_url
       }
       secret_env = {
         "ConnectionStrings__DefaultConnection"        = "mysql-default-connection"

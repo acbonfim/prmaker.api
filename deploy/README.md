@@ -77,7 +77,7 @@ cobrada 24 h (~US$ 61/mês). Agora:
 
 ```
 browser ──GET /api/v1/RealTime/connection (x-api-key)──▶ cime-pullrequest ──▶ { url, accessToken (10 min) }
-browser ══wss://realtime.softhouse.app.br/ws?access_token=…══▶ relay (MonsterASP, custo fixo)
+browser ══wss://prformapi.runasp.net/ws?access_token=…══▶ relay (MonsterASP site40755, custo fixo)
 cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grupo
 ```
 
@@ -88,8 +88,10 @@ cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grup
   do ar não quebra nenhuma operação, só o aviso em tempo real.
 - **Chaves**: `realtime-relay-key` e `realtime-token-signing-key` têm que ser **iguais** no Secret
   Manager e nos secrets do GitHub (`REALTIME_RELAY_KEY`, `REALTIME_TOKEN_SIGNING_KEY`).
-- **DNS**: `realtime.softhouse.app.br` → CNAME para o site do MonsterASP (`deploy/dns`, variável
-  `realtime_cname_target`); o certificado é o Let's Encrypt do painel do MonsterASP.
+- **Endereço**: `https://prformapi.runasp.net` (site40755, que antes rodava a API antiga), variável
+  `realtime_relay_url`. Para usar domínio próprio: adicionar o domínio no painel, criar o CNAME
+  (`deploy/dns`, variável `realtime_cname_target = "site40755.siteasp.net."`), ativar o Let's Encrypt
+  e trocar `realtime_relay_url`.
 - **Rollback**: `RealTime__Mode = InProcess` e, na `cime-pullrequest`, `max_instances = 1`,
   `timeout = 3600`, `session_affinity = true` (hub volta para a API, com o custo de antes).
 

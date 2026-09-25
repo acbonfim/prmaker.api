@@ -32,6 +32,12 @@ variable "enable_domain_mapping" {
   default     = false
 }
 
+variable "realtime_relay_url" {
+  description = "URL base do relay de tempo real (feature 0013), site do MonsterASP."
+  type        = string
+  default     = "https://prformapi.runasp.net"
+}
+
 variable "min_instances" {
   description = "Instâncias mínimas por serviço. 0 = scale-to-zero (mais barato, com cold start)."
   type        = number
