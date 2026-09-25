@@ -162,14 +162,19 @@ public class DevOpsActionsService : IDevOpsActionsService
 
     public async Task<PullRequestRegisterResponse> SaveSummaryAsync(string cardNumber, SaveSummaryRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Summary) || string.IsNullOrWhiteSpace(request.Html))
+        if (string.IsNullOrWhiteSpace(request.Summary))
             throw new DomainException("Resumo vazio");
+        if (request.Publish && string.IsNullOrWhiteSpace(request.Html))
+            throw new DomainException("Resumo em HTML vazio: informe o html para publicar na discussion");
 
         var register = await _pullRequestApplication.GetByCardNumber(cardNumber, cancellationToken)
-                       ?? throw new DomainException($"Salve o card {cardNumber} no PRMake antes de publicar o resumo");
+                       ?? throw new DomainException($"Salve o card {cardNumber} no PRMake antes de salvar o resumo");
+
+        if (!request.Publish)
+            return await _pullRequestApplication.SaveSummary(register.CardNumber, request.Summary, null, cancellationToken);
 
         // Primeiro publica: se o DevOps falhar, nada é gravado no PRMake.
-        var commentId = await _azureService.UpsertCommentAsync(register.CardNumber, request.Html, register.SummaryCommentId, cancellationToken);
+        var commentId = await _azureService.UpsertCommentAsync(register.CardNumber, request.Html!, register.SummaryCommentId, cancellationToken);
         return await _pullRequestApplication.SaveSummary(register.CardNumber, request.Summary, commentId, cancellationToken);
     }
 

@@ -19,8 +19,8 @@ public interface IDevOpsActionsService
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Publica o resumo não técnico na discussion (cria ou atualiza o mesmo comentário) e grava no
-    /// registro do card. Sem registro salvo: DomainException.
+    /// Grava o resumo não técnico no registro do card e, com Publish, publica na discussion (cria ou
+    /// atualiza o mesmo comentário). Sem registro salvo: DomainException.
     /// </summary>
     Task<PullRequestRegisterResponse> SaveSummaryAsync(string cardNumber, SaveSummaryRequest request, CancellationToken cancellationToken = default);
 }

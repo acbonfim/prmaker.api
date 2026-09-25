@@ -33,8 +33,14 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
     /// <summary>Resumo não técnico (PT-BR + EN-US) em Markdown, publicado na discussion do card (0011).</summary>
     public string? Summary { get; private set; }
 
-    /// <summary>Id do comentário do resumo na discussion do DevOps: salvar de novo atualiza o mesmo comentário.</summary>
+    /// <summary>Id do comentário do resumo na discussion do DevOps: publicar de novo atualiza o mesmo comentário.</summary>
     public int? SummaryCommentId { get; private set; }
+
+    /// <summary>Última vez que o resumo foi salvo no PRMake.</summary>
+    public DateTimeOffset? SummaryUpdatedAt { get; private set; }
+
+    /// <summary>Última publicação na discussion (anterior a SummaryUpdatedAt = há alterações não publicadas).</summary>
+    public DateTimeOffset? SummaryPublishedAt { get; private set; }
 
     public Guid UserId { get; private set; }
 
@@ -70,15 +76,22 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             SetRootCause(rootCause);
     }
 
-    /// <summary>Resumo não técnico publicado na discussion (id do comentário no DevOps).</summary>
-    public void SetSummary(string summary, int commentId)
+    /// <summary>Grava o resumo não técnico no PRMake (sem publicar).</summary>
+    public void SetSummary(string summary)
     {
         if (string.IsNullOrWhiteSpace(summary) || summary.Trim().Length < MinDescriptionLength)
             throw new DomainException($"summary must be at least {MinDescriptionLength} characters long");
 
         Summary = summary;
+        SummaryUpdatedAt = DateTime.UtcNow;
+        UpdatedAt = SummaryUpdatedAt;
+    }
+
+    /// <summary>O resumo atual foi publicado na discussion (id do comentário no DevOps).</summary>
+    public void MarkSummaryPublished(int commentId)
+    {
         SummaryCommentId = commentId;
-        UpdatedAt = DateTime.UtcNow;
+        SummaryPublishedAt = DateTime.UtcNow;
     }
 
     private void SetCardNumber(string cardNumber)
@@ -149,6 +162,8 @@ public class PullRequestRegister : IEntity<int>, IDescribable, IAuditableEntity
             Description = Description,
             Summary = Summary,
             SummaryCommentId = SummaryCommentId,
+            SummaryUpdatedAt = SummaryUpdatedAt,
+            SummaryPublishedAt = SummaryPublishedAt,
             BranchName = latest?.BranchName ?? (string.IsNullOrEmpty(BranchName) ? CardNumber : BranchName),
             BranchPrefix = latest?.BranchPrefix ?? (string.IsNullOrEmpty(BranchPrefix) ? "hotfix/" : BranchPrefix),
             RepositoryId = latest?.RepositoryId ?? RepositoryId,

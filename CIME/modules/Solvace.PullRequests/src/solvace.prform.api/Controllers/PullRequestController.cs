@@ -48,8 +48,8 @@ public class PullRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Publica o resumo não técnico (PT/EN) na discussion do card — cria o comentário ou atualiza
-    /// o mesmo já publicado — e grava no registro do card (feature 0011). Exige o card salvo.
+    /// Grava o resumo não técnico (PT/EN) no registro do card e, com publish (padrão), publica na
+    /// discussion — cria o comentário ou atualiza o mesmo já publicado (feature 0011). Exige o card salvo.
     /// </summary>
     [HttpPost("{cardNumber}/summary")]
     public async Task<ActionResult<PullRequestRegisterResponse>> SaveSummary(string cardNumber, SaveSummaryRequest request,
@@ -69,8 +69,9 @@ public class PullRequestController : ControllerBase
             return StatusCode(e.StatusCode, new { error = e.Message });
         }
 
-        await AzureController.RegisterOnTimelineAsync(timeline, saved.CardNumber,
-            "Resumo não técnico (PT/EN) publicado na discussion do card pelo CIME.", _logger, User, cancellationToken);
+        if (request.Publish)
+            await AzureController.RegisterOnTimelineAsync(timeline, saved.CardNumber,
+                "Resumo não técnico (PT/EN) publicado na discussion do card pelo CIME.", _logger, User, cancellationToken);
         return Ok(saved);
     }
 

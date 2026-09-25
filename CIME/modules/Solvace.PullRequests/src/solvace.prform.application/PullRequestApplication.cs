@@ -55,7 +55,7 @@ public class PullRequestApplication : IPullRequestApplication
         return requestRegister.ToResponse();
     }
 
-    public async Task<PullRequestRegisterResponse> SaveSummary(string cardNumber, string summary, int commentId, CancellationToken cancellationToken)
+    public async Task<PullRequestRegisterResponse> SaveSummary(string cardNumber, string summary, int? publishedCommentId, CancellationToken cancellationToken)
     {
         var card = cardNumber?.Trim() ?? string.Empty;
         var register = await _prRepository
@@ -63,7 +63,9 @@ public class PullRequestApplication : IPullRequestApplication
             .FirstOrDefaultAsync(x => x.CardNumber == card, cancellationToken)
             ?? throw new DomainException($"Card {card} ainda não foi salvo no PRMake");
 
-        register.SetSummary(summary, commentId);
+        register.SetSummary(summary);
+        if (publishedCommentId is { } commentId)
+            register.MarkSummaryPublished(commentId);
         await CommitAsync(cancellationToken);
         await _realTimeNotifier.NotifyCardUpdatedAsync(register.CardNumber, PullRequestRealTimeEvents.Actions.SummarySaved, register.Id, cancellationToken);
         return register.ToResponse();
