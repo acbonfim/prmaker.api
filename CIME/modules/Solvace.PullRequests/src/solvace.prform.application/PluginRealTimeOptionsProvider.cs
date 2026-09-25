@@ -38,7 +38,14 @@ public class PluginRealTimeOptionsProvider : IRealTimeOptionsProvider
             HubPath = NullIfEmpty(cfg.GetConfigurationValue("HubPath")) ?? _envOptions.HubPath,
             ApiKey = NullIfEmpty(cfg.GetConfigurationValue("ApiKey")) ?? _envOptions.ApiKey,
             // Chave ausente => fallback ambiente; presente (mesmo vazia) => valor do plugin.
-            AllowedOrigins = originsRaw is null ? _envOptions.AllowedOrigins : ParseOrigins(originsRaw)
+            AllowedOrigins = originsRaw is null ? _envOptions.AllowedOrigins : ParseOrigins(originsRaw),
+            // Modo, relay e token: só do ambiente (secrets do Cloud Run), nunca do plugin.
+            Mode = _envOptions.Mode,
+            RelayUrl = _envOptions.RelayUrl,
+            RelayKey = _envOptions.RelayKey,
+            TokenSigningKey = _envOptions.TokenSigningKey,
+            TokenLifetimeMinutes = _envOptions.TokenLifetimeMinutes,
+            PublicHubUrl = _envOptions.PublicHubUrl
         };
     }
 

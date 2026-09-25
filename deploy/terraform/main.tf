@@ -9,13 +9,17 @@ locals {
   services = {
     pullrequest = {
       service_name = "cime-pullrequest"
-      # SignalR: max_instances = 1 mantém todas as conexões WebSocket na MESMA instância,
-      # dispensando backplane (Redis). Continua com scale-to-zero (min = 0) quando ocioso.
-      max_instances    = 1
-      timeout_seconds  = 3600 # conexões WebSocket de longa duração (máx. do Cloud Run)
-      session_affinity = true
+      # Tempo real (feature 0013): o hub SignalR roda no relay do MonsterASP e a API só publica
+      # por HTTP. Sem WebSocket aberto aqui, a instância volta a dormir (antes: cobrada 24 h) e
+      # não precisa mais de instância única nem de timeout longo.
+      # Rollback: RealTime__Mode = "InProcess", max_instances = 1, timeout 3600, affinity true.
+      max_instances    = var.max_instances
+      timeout_seconds  = 300
+      session_affinity = false
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
+        RealTime__Mode         = "Relay"
+        RealTime__RelayUrl     = var.realtime_relay_url
       }
       secret_env = {
         "ConnectionStrings__DefaultConnection"        = "mysql-default-connection"
@@ -23,7 +27,11 @@ locals {
         "Auth__Secret"                                = "jwt-secret"
         "AzureDevOps__PersonalAccessToken"            = "azuredevops-pat"
         "GitHub__Token"                               = "github-token"
-        "RealTime__ApiKey"                            = "realtime-apikey"
+        "RealTime__ApiKey"                            = "realtime-apikey" # legado (rollback InProcess)
+        # Relay (feature 0013): chave do POST /publish e chave HMAC dos tokens do navegador.
+        # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
+        "RealTime__RelayKey"        = "realtime-relay-key"
+        "RealTime__TokenSigningKey" = "realtime-token-signing-key"
         # Integrações pessoais (feature 0002): chave AES-256 dos tokens dos usuários.
         # NUNCA trocar depois de em uso: os tokens salvos deixam de ser legíveis.
         "UserIntegrations__EncryptionKey" = "user-integrations-encryption-key"

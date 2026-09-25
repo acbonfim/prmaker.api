@@ -1,0 +1,64 @@
+name: Deploy realtime relay (MonsterASP)
+
+# Relay de tempo real (feature 0013): hub SignalR hospedado no MonsterASP (custo fixo, já pago),
+# fora do Cloud Run. Publica via Web Deploy, como na documentação do MonsterASP.
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   MONSTER_WEBSITE_NAME, MONSTER_SERVER_COMPUTER_NAME (https://siteXXXX.siteasp.net:8172),
+#   MONSTER_SERVER_USERNAME, MONSTER_SERVER_PASSWORD  — do painel (WebDeploy account)
+#   REALTIME_RELAY_KEY, REALTIME_TOKEN_SIGNING_KEY    — os MESMOS valores dos secrets
+#                                                      realtime-relay-key / realtime-token-signing-key
+#                                                      do Secret Manager (Cloud Run)
+# Variable (opcional): REALTIME_ALLOWED_ORIGINS — origens separadas por vírgula
+#                      (padrão https://app.softhouse.app.br).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'CIME/modules/Cime.RealTime/**'
+      - 'CIME/modules/Cime.BuildingBlocks/src/Cime.BuildingBlocks.RealTime/**'
+      - 'Directory.Build.props'
+      - '.github/workflows/deploy-realtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        run: dotnet publish CIME/modules/Cime.RealTime/src/Cime.RealTime.Relay/Cime.RealTime.Relay.csproj -c Release -o publish --runtime win-x86 --self-contained false
+
+      # Segredos só no servidor: gera o appsettings.Production.json a partir dos secrets do GitHub.
+      - name: Config de produção
+        shell: pwsh
+        env:
+          RELAY_KEY: ${{ secrets.REALTIME_RELAY_KEY }}
+          TOKEN_KEY: ${{ secrets.REALTIME_TOKEN_SIGNING_KEY }}
+          ORIGINS: ${{ vars.REALTIME_ALLOWED_ORIGINS }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELAY_KEY) -or [string]::IsNullOrWhiteSpace($env:TOKEN_KEY)) {
+            throw "Configure os secrets REALTIME_RELAY_KEY e REALTIME_TOKEN_SIGNING_KEY."
+          }
+          if ($env:TOKEN_KEY.Length -lt 32) { throw "REALTIME_TOKEN_SIGNING_KEY precisa de 32+ caracteres." }
+          $origins = if ([string]::IsNullOrWhiteSpace($env:ORIGINS)) { @('https://app.softhouse.app.br') } else { $env:ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
+          $config = @{ RealTime = @{ RelayKey = $env:RELAY_KEY; TokenSigningKey = $env:TOKEN_KEY; AllowedOrigins = @($origins) } }
+          $config | ConvertTo-Json -Depth 5 | Set-Content -Path publish/appsettings.Production.json -Encoding utf8
+
+      - name: Deploy no MonsterASP (Web Deploy)
+        uses: rasmusbuchholdt/simply-web-deploy@2.1.0
+        with:
+          website-name: ${{ secrets.MONSTER_WEBSITE_NAME }}
+          server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
