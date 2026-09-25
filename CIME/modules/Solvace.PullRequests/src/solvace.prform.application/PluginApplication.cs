@@ -65,6 +65,9 @@ public class PluginApplication : IPluginApplication
         plugin.SetPersonal(request.IsPersonal);
         plugin.SetOptional(request.IsOptional);
         plugin.SetPersonalFields(request.PersonalFields);
+        // null = mantém (a tela de plugins ainda não edita a configuração por campo).
+        if (request.FieldSettings is not null)
+            plugin.SetFieldSettings(request.FieldSettings);
 
         if (await CommitAsync(cancellationToken))
         {

@@ -20,6 +20,18 @@ public class UserIntegrationFieldResponse
 {
     public string Key { get; set; } = string.Empty;
 
+    /// <summary>Nome amigável do campo (null = exibir a chave).</summary>
+    public string? Label { get; set; }
+
+    /// <summary>Campo do usuário que não é obrigatório (não conta para o plugin estar configurado).</summary>
+    public bool Optional { get; set; }
+
+    /// <summary>Sem valor do usuário, vale o valor global (em Value, com Suggested = true).</summary>
+    public bool UsesGlobalDefault { get; set; }
+
+    /// <summary>Campo fixo que não deve aparecer em "Minhas integrações".</summary>
+    public bool Hidden { get; set; }
+
     /// <summary>Valor do usuário (ou sugestão do global, ver Suggested). Sempre null para campo sensível.</summary>
     public string? Value { get; set; }
 

@@ -15,6 +15,10 @@ public class PluginRequest
 
     /// <summary>Plugin pessoal opcional: não bloqueia a tela de PR quando o usuário não configurou.</summary>
     public bool IsOptional { get; set; }
+
+    /// <summary>Configuração por campo (nome amigável, opcional, padrão global, oculto). null = mantém a atual.</summary>
+    public Dictionary<string, PluginFieldSetting>? FieldSettings { get; set; }
+
     public IDictionary<string, string> Configurations { get; set; }
     
     public Plugin Create(PluginRequest request)

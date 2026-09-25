@@ -46,6 +46,60 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     /// </summary>
     public bool IsOptional { get; set; }
 
+    /// <summary>
+    /// JSON com a configuração de cada campo (feature 0011): nome amigável, campo do usuário
+    /// opcional, uso do valor global como padrão e campo fixo oculto. Ver <see cref="PluginFieldSetting"/>.
+    /// null = nenhum campo configurado (comportamento original).
+    /// </summary>
+    public string? FieldSettings { get; set; }
+
+    /// <summary>Configuração dos campos por chave (sem diferenciar maiúsculas).</summary>
+    public IReadOnlyDictionary<string, PluginFieldSetting> GetFieldSettings()
+    {
+        var empty = new Dictionary<string, PluginFieldSetting>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(FieldSettings))
+            return empty;
+        try
+        {
+            var parsed = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, PluginFieldSetting>>(FieldSettings);
+            return parsed is null
+                ? empty
+                : new Dictionary<string, PluginFieldSetting>(parsed.Where(p => p.Value is not null), StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            return empty;
+        }
+    }
+
+    private PluginFieldSetting? GetFieldSetting(string key) =>
+        GetFieldSettings().TryGetValue(key, out var setting) ? setting : null;
+
+    /// <summary>Nome amigável do campo (null = sem nome definido; exibir a chave).</summary>
+    public string? GetFieldLabel(string key) =>
+        GetFieldSetting(key)?.Label is { Length: > 0 } label ? label : null;
+
+    /// <summary>Campo do usuário que não é obrigatório para o plugin estar configurado.</summary>
+    public bool IsOptionalField(string key) => IsUserField(key) && GetFieldSetting(key)?.Optional == true;
+
+    /// <summary>Campo do usuário opcional que cai para o valor global quando o usuário não preencheu.</summary>
+    public bool UsesGlobalDefault(string key) => IsOptionalField(key) && GetFieldSetting(key)?.UseGlobalDefault == true;
+
+    /// <summary>Campo fixo oculto em "Minhas integrações".</summary>
+    public bool IsHiddenField(string key) => !IsUserField(key) && GetFieldSetting(key)?.Hidden == true;
+
+    /// <summary>Define a configuração dos campos (null = remove).</summary>
+    public void SetFieldSettings(IDictionary<string, PluginFieldSetting>? settings)
+    {
+        FieldSettings = settings is null
+            ? null
+            : Newtonsoft.Json.JsonConvert.SerializeObject(settings
+                .Where(s => !string.IsNullOrWhiteSpace(s.Key) && s.Value is not null)
+                .GroupBy(s => s.Key.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Last().Value));
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     /// <summary>Chaves preenchidas pelo usuário (null = todas).</summary>
     public IReadOnlyList<string>? GetPersonalFieldKeys()
     {
@@ -91,6 +145,7 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
         IsPersonal = request.IsPersonal;
         IsOptional = request.IsOptional;
         SetPersonalFields(request.PersonalFields);
+        SetFieldSettings(request.FieldSettings);
         SetConfigurations(request.Configurations);
     }
 

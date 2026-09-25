@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using solvace.azure.application.Contract;
+using solvace.azure.domain.Exceptions;
+using solvace.azure.domain.Requests;
 using solvace.github.application.Contract;
 using solvace.prform.application.Contracts;
 using solvace.prform.domain.Entities;
@@ -42,6 +45,33 @@ public class PullRequestController : ControllerBase
         {
             return BadRequest(new { error = e.Message });
         }
+    }
+
+    /// <summary>
+    /// Publica o resumo não técnico (PT/EN) na discussion do card — cria o comentário ou atualiza
+    /// o mesmo já publicado — e grava no registro do card (feature 0011). Exige o card salvo.
+    /// </summary>
+    [HttpPost("{cardNumber}/summary")]
+    public async Task<ActionResult<PullRequestRegisterResponse>> SaveSummary(string cardNumber, SaveSummaryRequest request,
+        [FromServices] IDevOpsActionsService actionsService, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken)
+    {
+        PullRequestRegisterResponse saved;
+        try
+        {
+            saved = await actionsService.SaveSummaryAsync(cardNumber, request, cancellationToken);
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+        catch (DevOpsActionException e)
+        {
+            return StatusCode(e.StatusCode, new { error = e.Message });
+        }
+
+        await AzureController.RegisterOnTimelineAsync(timeline, saved.CardNumber,
+            "Resumo não técnico (PT/EN) publicado na discussion do card pelo CIME.", _logger, User, cancellationToken);
+        return Ok(saved);
     }
 
     /// <param name="repositoryId">Legado: aceito e ignorado.</param>
