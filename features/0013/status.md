@@ -10,7 +10,7 @@
 | F1 | `WsService` com token e URL vindos da API (fallback legado) | 1 | — | ✅ concluída | Claude | front `94ba3e4` |
 | F2 | Recarregar dados ao reconectar (`resynced`) | 2 | F1 | ✅ concluída | Claude | front `08276d7` |
 | I1 | Workflow de deploy no MonsterASP, Terraform, DNS, README | 2 | B1, B2 | ✅ concluída | Claude | `a65c1f1` |
-| Q1 | Publicação e teste | 3 | todas | ⬜ pendente | usuário + Claude | — |
+| Q1 | Publicação e teste | 3 | todas | 🟨 em andamento | usuário + Claude | `4ac5fd9`; PRs back #18, front #13 |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -20,9 +20,16 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - Notificação ao relay aguardada no request, timeout 3 s, sem exceção (Cloud Run estrangula CPU fora do request).
 - Modo `InProcess` mantido para dev e rollback.
 
-## Pendências do usuário (para o Q1)
-- Site no MonsterASP: criar um novo ou reaproveitar o slot do `prformapi.runasp.net` (código antigo, dá 500 no `POST /PullRequest`).
-- Ativar o Web Deploy no painel e cadastrar no GitHub (`acbonfim/prmaker.api`): `MONSTER_WEBSITE_NAME`, `MONSTER_SERVER_COMPUTER_NAME`, `MONSTER_SERVER_USERNAME`, `MONSTER_SERVER_PASSWORD`, `REALTIME_RELAY_KEY`, `REALTIME_TOKEN_SIGNING_KEY`.
+## Q1 — andamento
+- ✅ Site: `prformapi.runasp.net` (site40755, servidor EU), reaproveitado; a API antiga saiu (404). Web Deploy ativo.
+- ✅ Secrets no GitHub: `MONSTER_*` (4), `REALTIME_RELAY_KEY`, `REALTIME_TOKEN_SIGNING_KEY` (gerados com `openssl rand -base64 48`).
+- ✅ Relay publicado pelo workflow (gatilho temporário na branch, já removido) e validado em produção: health 200, publish sem chave 401, negotiate sem token 401, cliente JS 9.0.6 por **WebSocket** com token recebeu o evento, CORS só para `app.softhouse.app.br`. Latência do Brasil ~0,6 s por request novo com TLS (servidor na Europa).
+- ✅ `terraform plan` (cópia de trabalho no scratchpad com o state do diretório principal): só o esperado — 2 secrets + IAM, envs do relay, timeout 300, sem afinidade, max 2 instâncias; imagem intocada.
+- ⬜ Merge do backend (#18) → API sobe ainda em modo em processo.
+- ⬜ Merge do front (#13).
+- ⬜ `terraform apply`, depois copiar `terraform.tfstate` e as 2 chaves novas do `secrets.auto.tfvars` para `deploy/terraform` do diretório principal.
+- ⬜ Teste nas telas (duas abas) + queda do `billable_instance_time` no Monitoring.
+- ⬜ Limpeza posterior: secret `realtime-apikey`, `apiKeyWS` do front, domínio `api.softhouse.app.br` cadastrado no site40755 (o DNS aponta para o Cloud Run).
 
 ## Notas da implementação
 - **Testado localmente** (relay rodando + console C# no scratchpad, 12/12): publish sem `X-Relay-Key` → 401; conexão sem token, com token de outra chave ou expirado → 401; `RealTimeConnectionService` no modo Relay devolve `url` + token; WebSocket direto e via negotiate (como o browser); evento no grupo com payload camelCase idêntico ao SignalR em processo (`{"cardNumber":"12345","action":"register-saved","entityId":7}`); `NotifyAll` sem payload; evento de outro grupo não vaza; relay fora do ar não lança exceção. CORS do preflight com a origem do app ok.
