@@ -1,4 +1,4 @@
-# Feature 0014 — Autenticação do SQL Server para o MySQL
+# Feature 0014 — Autenticação do SQL Server para o PostgreSQL 18
 
 > Spec: [`spec.md`](./spec.md) · Status/controle: [`status.md`](./status.md)
 > Branch: `feature/0014` (worktree `../prform.api-0014`), a partir de `master`. Só backend.
@@ -8,54 +8,64 @@
 ### Cime.Auth (`CIME/modules/Cime.Auth/src/cime.auth.api`)
 - `DefaultContext : IdentityDbContext<User, Role, int, …>` com `UserForgetCodes`, `UserServices` e `Services`. Dez tabelas: `AspNetRoles`, `AspNetUsers`, `AspNetRoleClaims`, `AspNetUserClaims`, `AspNetUserLogins`, `AspNetUserRoles`, `AspNetUserTokens`, `Services`, `UserServices`, `UserForgetCodes`.
 - Duas migrações SQL Server (`Init`, `AddImagemUrlUser`).
-- Tipos usados: `nvarchar(max|256|450)`, `int`/`bigint` identity, `bit`, `datetime2`, `datetimeoffset` (`LockoutEnd`), `uniqueidentifier` (`ExternalId`…). Índices únicos filtrados (`[NormalizedName] IS NOT NULL`), sintaxe só do SQL Server.
-- **SQL específico do SQL Server só no `MigrationService`** (`sp_getapplock`). Não há `FromSql`/`ExecuteSql` no código.
-- **Seeds não determinísticos**: `HasData` de papéis (1–4) e do admin (Id 1) com `Guid.NewGuid()`, `DateTime.Now` e `PasswordHasher` (salt aleatório). Um `migrations add` sempre gera `UpdateData`, que resetaria o admin de produção (ver memória "Provider EF"). A senha `Copa#2026` está no código.
+- Tipos usados: `nvarchar(max|256|450)`, `int`/`bigint` identity, `bit`, `datetime2`, `datetimeoffset` (`LockoutEnd`), `uniqueidentifier` (`ExternalId`…). Índices únicos filtrados, sintaxe só do SQL Server.
+- **SQL específico do SQL Server só no `MigrationService`** (`sp_getapplock`). Não há `FromSql`/`ExecuteSql`.
+- **Datas gravadas**: todas com `DateTime.Now` (`DataUltimoLogin`, `UserForgetCode.ExpirationDate`, `BasicEntity.CreatedAt`), comparadas com `DateTime.Now`. O `LockoutEnd` (Identity) usa `DateTimeOffset.UtcNow`. O `DateTime.UtcNow` do `TokenService` vai só para o JWT, não para o banco.
+- **Comparações de texto** já são explícitas: `NormalizedUserName == x.ToUpper()`, `UserName.ToLower() == …`, busca com `ToLower().Contains(term)`. Funcionam igual no Postgres (que diferencia maiúsculas por padrão).
+- **Seeds não determinísticos**: `HasData` de papéis (1–4) e do admin (Id 1) com `Guid.NewGuid()`, `DateTime.Now` e `PasswordHasher` (salt aleatório). Um `migrations add` sempre gera `UpdateData`. A senha `Copa#2026` está no código.
 
 ### API de PR
-- `AuthenticationContext` (SQL Server, `ConnectionStrings:AuthenticationConnection`) mapeia só `AspNetUsers` (`ExternalId`, `FullName`, `Departamento`), **somente leitura**, em `UserRepository`/`TimelineUserRepository`. Não há join com as tabelas do PR (a busca é sempre por um contexto só).
-- Os 3 contextos MySQL (Default, Vacation, Timeline) já dividem o `db31021` e o `__EFMigrationsHistory`. O lock de migração é `GET_LOCK` (`StartupMigrator`).
-- Não há colisão de nomes: o PR tem `Users`, o auth tem `AspNetUsers`.
+- `AuthenticationContext` (SQL Server, `ConnectionStrings:AuthenticationConnection`) mapeia só `AspNetUsers` (`ExternalId`, `FullName`, `Departamento`), **somente leitura**, em `UserRepository`/`TimelineUserRepository`. Não roda migrações.
+- O resto da API continua no MySQL (`db31021`) até a feature do PR.
 
 ### Infra
-- Os bancos do MonsterASP (MySQL `db31021` e SQL Server `db30567`) estão em `148.251.141.66` (Hetzner, Falkenstein). O Cloud Run está em us-central1.
+- Bancos no MonsterASP em `148.251.141.66` (Hetzner, Falkenstein); Cloud Run em us-central1.
 - Terraform: o secret `sqlserver-auth-connection` é usado por `cime-auth` (`ConnectionStrings__DefaultConnection`) e por `cime-pullrequest` (`ConnectionStrings__AuthenticationConnection`).
-- Local: MySQL 8.0 via Homebrew (usado na 0011). Docker instalado, mas desligado: é necessário para subir um SQL Server de teste.
+- O `db31021` (MySQL) tem tabelas `AspNet*` legadas de uma versão antiga da auth, sem uso. **Com o Postgres elas saem do caminho crítico**: limpeza opcional na Q3, com backup.
+- Local: Docker instalado, mas desligado (necessário para SQL Server e Postgres de teste). Npgsql 8.0.2 no cache do NuGet.
 
 ## 2. Decisões de arquitetura
 
-### D1 — Database próprio no mesmo servidor MySQL (recomendado)
-No MySQL, *schema* e *database* são a mesma coisa. Não existe "mesmo database com schema diferente" como no SQL Server/Postgres. As opções reais:
+### D1 — Database Postgres próprio, tabelas no schema `auth`
+- Database novo no MonsterASP (criado pelo usuário), dedicado ao sistema.
+- Tudo da auth no schema **`auth`** (`HasDefaultSchema("auth")`), com o histórico em `auth.__EFMigrationsHistory`.
+- Quando o PR vier (próxima feature), ele entra **no mesmo database, com schema próprio**. É a separação por responsabilidade que o MySQL não oferece. A leitura de `auth."AspNetUsers"` pela API de PR passa a ser no mesmo database. Um usuário do Postgres por módulo (dono do seu schema; o PR só com `SELECT` em `auth."AspNetUsers"`) fica para quando o MonsterASP permitir criar papéis.
+- **Nomes**: mantém o padrão do EF (`"AspNetUsers"`, `"NormalizedUserName"`, entre aspas). Trocar para snake_case seria só estética, e aumentaria o risco e o mapeamento do migrador.
 
-| | A) Database separado (novo `dbXXXXX` no MonsterASP) | B) Mesmo database `db31021` |
+### D2 — Conexão com chave nova: `ConnectionStrings:AuthDatabase`
+- Mesmo secret novo (`postgres-auth-connection`) para `cime-auth` e `cime-pullrequest`.
+- Com a chave nova, a env entra antes do deploy (o código antigo a ignora), e o rollback (revisão anterior) continua achando a chave SQL Server antiga.
+
+### D3 — Mapeamento de tipos (sem mudar semântica)
+| SQL Server | Postgres | Observação |
 |---|---|---|
-| Responsabilidade | Isolada: dono, backup e restore independentes | Misturada com os dados do PR |
-| Credenciais | Usuário próprio; o PR só **lê** (idealmente usuário read-only) | Uma credencial com acesso a tudo |
-| Migrações | Histórico próprio, sem risco de colidir | Precisa de `MigrationsHistoryTable` separado |
-| Custo/limite | Depende do plano do MonsterASP permitir mais um MySQL | Nenhum |
-| Mover no futuro | Muda uma connection string | Precisa separar tabelas |
+| `int`/`bigint` identity | `integer`/`bigint` `GENERATED BY DEFAULT AS IDENTITY` | depois do `copy`, `setval` da sequência para max(id) |
+| `nvarchar(n)` / `nvarchar(max)` | `varchar(n)` / `text` | `text` não aceita `\0`: o `check` acusa |
+| `bit` | `boolean` | |
+| `uniqueidentifier` | `uuid` | nativo |
+| `datetime2` | **`timestamp without time zone`** | convenção global no modelo. Guarda o valor como está (as datas são `DateTime.Now`); o Npgsql exige `Kind` compatível e `Now` é compatível. Perde só os 100 ns (7 → 6 casas) |
+| `datetimeoffset` (`LockoutEnd`) | `timestamp with time zone` | o Npgsql só grava offset 0: o migrador converte para UTC |
 
-**Escolha: A.** Não há joins entre auth e PR (o PR lê usuários por um contexto próprio), então separar não custa nada em código. Se o plano do MonsterASP não permitir outro database, cair para B com `MigrationsHistoryTable("__EFMigrationsHistory_Auth")`.
+Collation padrão do database (determinística): diferencia acento. As colunas `Normalized*` já vêm em maiúsculas, então a unicidade se comporta como o `CI_AS` de hoje.
 
-### D2 — Nova connection string com nome novo: `ConnectionStrings:AuthDatabase`
-O código novo lê a chave nova. Assim o Terraform pode adicionar a env **antes** do deploy (o código antigo a ignora), o deploy troca o provider, e o rollback (revisão anterior do Cloud Run) continua achando a chave SQL Server antiga. Sem janela em que código e configuração não batem.
+### D4 — Migrações do zero, sem `HasData`
+- Novo conjunto `InitialPostgres` gerado do modelo atual. As migrações SQL Server saem (ficam no histórico do git).
+- `HasData` removido. Papéis padrão e admin inicial são criados por um **seeder idempotente no startup**, só com as tabelas vazias. A senha do admin vem de `Seed:AdminPassword` (secret) e nunca do código. Em produção os dados vêm migrados, então o seeder não faz nada.
+- Lock de migração: `pg_advisory_lock`/`pg_advisory_unlock` (chave fixa da auth) no lugar do `sp_getapplock`.
 
-### D3 — Migrações MySQL do zero, sem `HasData`
-- Novo conjunto de migrações MySQL (`InitialMySql`) gerado do modelo atual. As migrações SQL Server saem (ficam no histórico do git).
-- `HasData` removido. Papéis padrão e admin passam a ser criados por um **seeder idempotente no startup**, só se não existirem. A senha do admin inicial vem de configuração/secret e nunca do código. Em produção os dados vêm migrados, então o seeder não faz nada.
-- Collation do database do auth: **`utf8mb4_0900_as_ci`** (case-insensitive e accent-sensitive, como o `SQL_Latin1_General_CP1_CI_AS` do SQL Server). O padrão do MySQL 8 (`_ai_ci`) ignora acento e poderia fazer "JOAO" e "JOÃO" colidirem no índice único de `NormalizedUserName`.
-
-### D4 — Migrador de dados dedicado (console), com verificação por hash
-Ferramenta `tools/Cime.Auth.DataMigrator` (fora da solução da API):
-- **`check`** (só leitura): contagens, valores que não cabem no destino (tamanho, datas fora de faixa), duplicidades que o MySQL rejeitaria (unicidade com collation diferente, espaços no fim — SQL Server ignora na comparação, o MySQL 8 não), e o destino precisa estar vazio.
-- **`copy`**: numa transação no MySQL, tabela a tabela na ordem das FKs, **com os ids originais**. Conversões:
-  - `uniqueidentifier` → `char(36)` minúsculo;
-  - `datetime2(7)` → `datetime(6)` (perde só os 100 ns);
-  - `datetimeoffset` → UTC;
-  - `bit` → `tinyint(1)`.
-  Ajusta `AUTO_INCREMENT` para max+1. Aborta se o destino tiver dados.
-- **`verify`**: contagem e hash por linha (valores canônicos), origem × destino. Lista o que diferir (faltando, sobrando, divergente). **Critério de "nenhum dado perdido": `verify` com zero diferenças.**
-- Quem roda contra produção é o **usuário** (o Claude não lê o banco de produção). Credenciais por variável de ambiente, nunca em arquivo versionado.
+### D5 — Migrador de dados dedicado, com verificação por hash
+Ferramenta `tools/Cime.Auth.DataMigrator` (console, fora da solução da API), com referência ao projeto da auth para aplicar as mesmas migrações:
+- **`check`** (só leitura nos dois):
+  - contagens;
+  - valores que não cabem no destino;
+  - `\0` em texto;
+  - datas fora de faixa;
+  - schema `auth` inexistente ou vazio no destino.
+- **`schema`**: aplica as migrações da auth no destino. No deploy, a Cime.Auth encontra tudo aplicado e não faz nada.
+- **`copy`**: numa transação no Postgres, tabela a tabela na ordem das FKs, **com os ids originais**. Conversões conforme D3. Ao final, `setval` das sequências. Aborta se o destino tiver dados.
+- **`verify`**: contagem e hash por linha (valores canônicos), origem × destino. Lista faltando, sobrando e divergente. **Critério de "nenhum dado perdido": `verify` com zero diferenças.**
+- **`reset`**: `DROP SCHEMA auth CASCADE`, para refazer depois de um ensaio. Exige `--confirm <nome-do-database>` e recusa se houver outros schemas com tabelas.
+- Credenciais por variável de ambiente, nunca em arquivo versionado. Quem roda contra produção é o **usuário** (o Claude não lê o banco de produção).
 
 ## 3. Fases
 
@@ -66,68 +76,70 @@ Ferramenta `tools/Cime.Auth.DataMigrator` (fora da solução da API):
 | 3 | I1 |
 | 4 | Q1 (ensaio) → Q2 (virada) → Q3 (limpeza, após o período de segurança) |
 
-### B1 — Cime.Auth no MySQL (backend)
-- Pomelo 8.0.1 no lugar de `EntityFrameworkCore.SqlServer`; `UseMySql(AuthDatabase, MySqlServerVersion(8.0))` (versão fixa, sem `AutoDetect`, que conecta no design-time e no cold start).
-- Collation `utf8mb4_0900_as_ci` no modelo.
-- Remove `HasData`; `AuthSeeder` idempotente (papéis 1–4 e admin inicial por config `Seed:AdminPassword`, só se a tabela estiver vazia).
-- Apaga as migrações SQL Server; gera `InitialMySql` (factory de design-time com connection string fictícia, como na 0001/0011).
-- `MigrationService` com `GET_LOCK`/`RELEASE_LOCK`.
-- Build ok; migração aplicada num MySQL local descartável (subir → descer → subir).
+### B1 — Cime.Auth no Postgres (backend)
+- `Npgsql.EntityFrameworkCore.PostgreSQL` 8.0.x no lugar de `EntityFrameworkCore.SqlServer`; `UseNpgsql(AuthDatabase, b => b.MigrationsHistoryTable("__EFMigrationsHistory", "auth"))`.
+- `HasDefaultSchema("auth")`; convenção `DateTime` → `timestamp without time zone`.
+- Remove `HasData`; `AuthSeeder` idempotente.
+- Apaga as migrações SQL Server; gera `InitialPostgres` (factory de design-time com connection string fictícia, removida depois).
+- `MigrationService` com `pg_advisory_lock`.
+- Validação: build; migração num Postgres 18 local descartável (subir → descer → subir).
 
-### B2 — `AuthenticationContext` da API de PR no MySQL (backend)
-`UseMySql(AuthDatabase)` com versão fixa. Mapeamento de `ExternalId` como `char(36)`, igual ao do auth.
+### B2 — `AuthenticationContext` da API de PR no Postgres (backend)
+`UseNpgsql(AuthDatabase)`, `ToTable("AspNetUsers", "auth")`, `ExternalId` como `uuid`. Continua somente leitura e fora do `StartupMigrator`. A API de PR passa a ter os dois providers (Pomelo para o resto, Npgsql para a auth) até a feature do PR.
 
 ### M1 — Migrador de dados (ferramenta)
-`tools/Cime.Auth.DataMigrator` com `check`, `copy` e `verify`, relatório em texto. Lista explícita de tabelas e colunas, gerada a partir do modelo; falha se a origem tiver coluna desconhecida (nada é ignorado em silêncio).
+`tools/Cime.Auth.DataMigrator` com `check`, `schema`, `copy`, `verify` e `reset`, relatório em texto. Mapeamento explícito de tabelas e colunas. Falha se a origem tiver coluna desconhecida: nada é ignorado em silêncio.
 
-### T1 — Ensaio local completo
-1. SQL Server 2022 em Docker, schema criado pelas migrações SQL Server atuais (tag anterior à B1), mais dados sintéticos com casos de borda:
+### T1 — Ensaio local completo (Docker: SQL Server 2022 + Postgres 18)
+1. SQL Server com o schema das migrações SQL Server atuais (tag anterior à B1), mais dados sintéticos com casos de borda:
    - acentos, emoji e nulos;
    - tamanhos máximos;
    - `LockoutEnd` com offset;
    - datas com 7 casas;
    - claims, tokens e logins;
    - ids com buracos;
-   - papéis extras (`gestor`).
-2. MySQL 8 local com o `InitialMySql`.
-3. `check` → `copy` → `verify` = 0 diferenças.
-4. Subir a Cime.Auth local contra o MySQL: login com um usuário migrado (senha original), refresh token, api-key, gestão de usuários.
-5. Subir a API de PR contra o MySQL do auth (só o `AuthenticationContext`): nomes na timeline e departamentos.
-6. Casos negativos: destino com dados → `copy` recusa; linha alterada depois da cópia → `verify` acusa.
+   - papel extra `gestor`;
+   - `\0` e espaços no fim (para o `check` acusar).
+2. `check` → `schema` → `copy` → `verify` = 0 diferenças; novo registro depois da cópia recebe o id seguinte (sequência ajustada).
+3. Cime.Auth local contra o Postgres: login com usuário migrado (senha original), refresh token, api-key, gestão de usuários/serviços/papéis, busca, reenvio e validade de código.
+4. API de PR local (só o `AuthenticationContext`) contra o Postgres: nomes na timeline e departamentos.
+5. Casos negativos: destino com dados → `copy` recusa; linha alterada depois da cópia → `verify` acusa; `reset` sem `--confirm` recusa.
 
 ### I1 — Infra (Terraform + docs)
-- Secret `mysql-auth-connection`.
-- Env `ConnectionStrings__AuthDatabase` em `cime-auth` e `cime-pullrequest`, com o secret de leitura para o PR se houver usuário read-only.
+- Secret `postgres-auth-connection` → `ConnectionStrings__AuthDatabase` em `cime-auth` e `cime-pullrequest`.
+- Secret `auth-seed-admin-password` → `Seed__AdminPassword` em `cime-auth` (só usado com banco vazio).
 - Mantém `sqlserver-auth-connection` até a Q3.
 - `deploy/README.md`: runbook da virada e do rollback.
 
-### Q1 — Ensaio em produção, sem virar (usuário + Claude)
-1. Criar o database MySQL do auth no MonsterASP (e, se possível, um usuário read-only para o PR).
-2. Backup do SQL Server pelo painel.
-3. Usuário roda `check` e `copy` do SQL Server de produção para o MySQL novo, e depois `verify`.
-4. Claude sobe a Cime.Auth **local** apontando para o MySQL novo (somente leitura na prática: login de teste) para validar. Depois o database é **esvaziado** para a virada.
+### Q1 — Ensaio no database real, que ainda não tem uso (usuário + Claude)
+O database Postgres é novo e dedicado, então o ensaio pode ser nele mesmo:
+1. Usuário roda `check` → `schema` → `copy` → `verify` do SQL Server de produção para o Postgres novo.
+2. Claude sobe a Cime.Auth **local** contra esse Postgres (sem auto-migrate) e valida login, api-key e telas com os dados reais.
+3. `reset` (esvazia o schema `auth`) para a virada.
 
 ### Q2 — Virada (janela curta combinada, fora do horário de uso)
-1. `terraform apply` (I1): envs e secret novos. O código antigo ignora.
-2. Início da janela: `copy` (destino vazio) → `verify` = 0.
-3. Merge do PR → deploy de `cime-auth` e `cime-pullrequest` (~2–3 min) já no MySQL.
-4. `verify` de novo (SQL Server × MySQL). Qualquer escrita no SQL Server durante o deploy aparece aqui e é reconciliada (com poucos usuários, esperado: nada ou um `DataUltimoLogin`).
+1. Antes da janela: `terraform apply` da I1 (o código antigo ignora as envs novas); backup do SQL Server pelo painel.
+2. Início: `check` → `schema` → `copy` → `verify` = 0.
+3. Merge do PR → deploy de `cime-auth` e `cime-pullrequest` (~2–3 min) já no Postgres.
+4. `verify` de novo. Qualquer escrita no SQL Server durante o deploy aparece aqui e é reconciliada (com poucos usuários, esperado: nada ou um `DataUltimoLogin`).
 5. Teste: login, api-key, gestão de usuários, nomes na timeline.
 
 **Rollback** (enquanto o SQL Server estiver guardado):
-- Voltar o tráfego para a revisão anterior das duas APIs (`gcloud run services update-traffic … --to-revisions=<anterior>=100`), que lê a chave SQL Server antiga.
-- Escritas feitas no MySQL depois da virada são listadas pelo `verify` e reaplicadas à mão, se houver.
+- Voltar o tráfego das duas APIs para a revisão anterior (`gcloud run services update-traffic … --to-revisions=<anterior>=100`), que lê o SQL Server.
+- Escritas feitas no Postgres depois da virada são listadas pelo `verify` e reaplicadas à mão, se houver.
 
 ### Q3 — Limpeza (depois de ~30 dias estável)
-Remover `sqlserver-auth-connection`, a env `AuthenticationConnection`, o banco SQL Server do MonsterASP e o suporte a SQL Server da ferramenta.
+- Remover `sqlserver-auth-connection`, as envs antigas (`ConnectionStrings__DefaultConnection` da auth e `AuthenticationConnection` do PR) e o banco SQL Server do MonsterASP.
+- Opcional: `mysqldump` + `DROP` das tabelas `AspNet*` legadas do `db31021` (e das linhas antigas no `__EFMigrationsHistory`).
 
 ## 4. Riscos e cuidados
-- **Collation/unicidade**: tratada pela D3 e pelo `check` (duplicidades acusadas antes da cópia).
-- **Espaços no fim de strings**: o SQL Server ignora na comparação e o MySQL 8 não. O `check` lista os casos; o `copy` preserva o valor exato.
-- **Precisão de data**: `datetime2(7)` → `datetime(6)` perde os 100 ns. O `verify` compara em microssegundos.
-- **Guid**: o Pomelo usa `char(36)`. `ExternalId` é consultado por igualdade pelo PR e pela timeline. Validado na T1.
-- **Api-keys e JWT** não dependem do banco (usam `ExternalId` e a chave JWT), mas são validados na T1 e na Q2.
-- **Banco de dev = produção**: não rodar a Cime.Auth local contra o SQL Server de produção com auto-migrate. A B1 usa MySQL local descartável.
+- **Datas**: o Npgsql recusa `DateTime` com `Kind` incompatível com a coluna. Com `timestamp without time zone` e `DateTime.Now`, é compatível. A T1 exercita todos os pontos que gravam data. Código novo que gravar `DateTime.UtcNow` nessas colunas quebraria: fica anotado no `CLAUDE.md` da auth.
+- **Sequências**: inserir ids explícitos não avança a identity. Sem o `setval`, o próximo `INSERT` colidiria. Coberto no `copy` e testado na T1.
+- **`\0` em texto e datas fora de faixa**: o `check` acusa antes.
+- **Maiúsculas**: as consultas atuais já normalizam; código novo com `==` em texto não normalizado diferenciaria maiúsculas. Anotado.
+- **Api-keys e JWT** não dependem do banco (usam `ExternalId` e a chave JWT). Validados na T1 e na Q2.
+- **Banco de dev = produção**: nada roda contra produção com auto-migrate a partir da máquina local.
 
-## 5. Fora do escopo
-Mover o banco para fora do MonsterASP, trocar a região do Cloud Run e unificar a Cime.Auth na API de PR.
+## 5. Fora do escopo e próximos passos
+- **Próxima feature — PR para o Postgres + .NET 10**: levar os contextos Default/Vacation/Timeline para o mesmo database (schema próprio), reaproveitando o migrador (MySQL → Postgres). Revisar comparações de texto (o MySQL ignora maiúsculas e o Postgres não). Upgrade para .NET 10 / EF Core 10 (o suporte ao .NET 8 acaba em 10/11/2026; o Pomelo ainda não tem EF Core 10).
+- Mover o banco para fora do MonsterASP e trocar a região do Cloud Run.
