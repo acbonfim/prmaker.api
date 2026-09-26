@@ -54,12 +54,15 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 | Senha SMTP (`email-password`) | `appsettings` da auth (git) | ⬜ | ⬜ | ⬜ |
 | Token GitHub (`github-token`) | `appsettings` da API (git) | ⬜ | ⬜ | ⬜ |
 | PAT Azure DevOps (`azuredevops-pat`) | `appsettings` da API (git) | ⬜ | ⬜ | ⬜ |
-| Segredo JWT (`jwt-secret`) | `appsettings` da API (git) | ⬜ | ⬜ | ⬜ |
+| Segredo JWT (`jwt-secret`) | `appsettings` da API (git) + código da auth (git) | ⬜ (invalida todas as api-keys/sessões: avisar usuários e atualizar as skills) | ⬜ (`cime-auth-secrets` e `cime-pullrequest-secrets`) | ⬜ |
 | Chaves de IA | `appsettings` da API (git) | ⬜ | ⬜ | ⬜ |
 | Senha Web Deploy MonsterASP | conversa (0013) | ⬜ | ⬜ | ⬜ |
 | Senha do `db70140` | conversa (0014) | — (banco será excluído) | — | — |
 | Senha do `db70152` (premium, em uso) | conversa (2026-09-26) | ⬜ | ⬜ (`postgres-auth-connection` e `postgres-prform-connection`) | ⬜ |
-| api-key pessoal do usuário (x-api-key) | conversa (0015, Q1) | ⬜ (gerar nova no app) | — | ⬜ |
+| api-key pessoal do usuário (x-api-key) | conversa (0015, Q1) | ⚠️ gerar outra **não** revoga: a api-key é um JWT que não expira (`ValidateLifetime=false`) e não fica registrada; só a troca do `jwt-secret` invalida (todas as chaves e sessões) | — | ⬜ |
+
+## Melhoria registrada (fora do escopo)
+- **Api-keys revogáveis**: hoje a api-key não expira e não fica registrada. Proposta: incluir o `SecurityStamp` (ou um id de chave guardado) no token e conferir na validação, de modo que gerar uma nova invalide as anteriores.
 
 ## Decisões
 - D1: duas ondas (código cedo; bancos/secrets depois do período de segurança).
