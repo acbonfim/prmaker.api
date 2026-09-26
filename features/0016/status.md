@@ -11,7 +11,7 @@
 | C3 | Tempo real só com token (back + front) | A | 0015 estável | ✅ concluída | Claude | `423bcf9`, front `0069568` |
 | C4 | Arquivos e docs obsoletos (`CLAUDE.md`, `deploy/README.md`, `deploy.md`, pipeline e scripts antigos) | A | — | ✅ concluída | Claude | `0b170fe` |
 | C5 | Deploy da onda A + testes | A | C1–C4 | ✅ concluída | Claude (autorizado) | PRs back #21, front #14 |
-| S1 | Segredos consolidados: 1 secret JSON por serviço montado como arquivo (custo zero) | A | C5 | 🟨 PR aberto | Claude | (este PR) |
+| S1 | Segredos consolidados: 1 secret JSON por serviço montado como arquivo (custo zero) | A | C5 | ✅ concluída | Claude (autorizado) | PR #23 |
 | R1 | Rotação das credenciais expostas | B | — | ⬜ pendente | usuário + Claude | — |
 | B1 | **Ponto sem volta**: remover os secrets individuais e legados e as envs `secret_env` (sobram só os 2 JSON da S1 → Secret Manager a custo zero) | B | C5; SQL Server ≥ ~2026-10-26; MySQL ≥ 0015 + 30 dias | ⬜ pendente | usuário + Claude | — |
 | B2 | Backups finais (mysqldump, .bak) | B | B1 | ⬜ pendente | usuário | — |
@@ -47,6 +47,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - Cada secret JSON pertence a um só serviço: não há binding compartilhado (resolve a armadilha dos grants para esses secrets).
 - Testado localmente: auth e API sobem e funcionam **só com o arquivo** (auth recusa subir sem chaves e subiu; login, api-key, validação na API, leitura de usuários, token do tempo real).
 - Plano: 6 criados (2 secrets + versões + acesso), 2 alterados (volume + mount nos serviços), 0 destruídos. A ordem de deploy é livre: sem o código novo o arquivo é ignorado, e sem o volume o código usa as envs.
+- **Publicado (2026-09-26 ~03:15 UTC)**: PR #23 mergeado → `cime-auth-00025`, `cime-pullrequest-00027`; `terraform apply` (6 criados, 2 alterados, 0 destruídos) → `cime-auth-00026-tzx` e `cime-pullrequest-00028-zqx` com o volume `app-secrets` (`cime-auth-secrets`/`cime-pullrequest-secrets`) em `/secrets`. Serviços saudáveis, sem erros. Hoje: 15 secrets (13 individuais/legados + 2 JSON); depois da B1: 2.
 
 ## Checklist de rotação (R1)
 | Credencial | Onde está exposta | Trocada no provedor | Secret atualizado | Teste |
