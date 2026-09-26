@@ -17,6 +17,12 @@ using Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Segredos de produção (0016): um único secret JSON por serviço no Secret Manager, montado pelo
+// Cloud Run como arquivo (cabe na cota grátis). Tem precedência sobre appsettings e variáveis de
+// ambiente; ausente no dev. SECRETS_FILE permite outro caminho (testes locais).
+var secretsFile = Environment.GetEnvironmentVariable("SECRETS_FILE") ?? "/secrets/appsettings.secrets.json";
+builder.Configuration.AddJsonFile(secretsFile, optional: true, reloadOnChange: false);
+
 // Chaves dos tokens vêm da configuração (0016); falha no startup se faltarem.
 Settings.Configure(builder.Configuration);
 
