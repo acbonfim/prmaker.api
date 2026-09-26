@@ -34,6 +34,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 | Chaves de IA | `appsettings` da API (git) | ⬜ | ⬜ | ⬜ |
 | Senha Web Deploy MonsterASP | conversa (0013) | ⬜ | ⬜ | ⬜ |
 | Senha do `db70140` | conversa (0014) | ⬜ | ⬜ | ⬜ |
+| api-key pessoal do usuário (x-api-key) | conversa (0015, Q1) | ⬜ (gerar nova no app) | — | ⬜ |
 
 ## Decisões
 - D1: duas ondas (código cedo; bancos/secrets depois do período de segurança).
