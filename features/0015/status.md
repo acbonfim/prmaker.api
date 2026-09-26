@@ -11,7 +11,7 @@
 | T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ✅ concluída | Claude | (commit I1) |
 | Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | ✅ concluída | usuário + Claude | — |
-| Q2 | Virada (janela curta) | 5 | Q1 | ⬜ pendente | usuário + Claude | — |
+| Q2 | Virada (janela curta) | 5 | Q1 | ✅ concluída | Claude (autorizado pelo usuário) | PR #20 (merge 01:37 UTC) |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -45,6 +45,15 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
   - 2ª rodada: **24/26**. As 2 restantes (`UserIntegration` e `/status`) são **de ambiente**: a API local não tem `UserIntegrations:EncryptionKey` (secret de produção), então os tokens pessoais não são decifrados. O `verify` prova que as 6 linhas de `UserPluginConfigurations` são idênticas byte a byte, e a decifração depende só da chave e dos bytes.
 - ✅ `reset --confirm db70140` do perfil `prform`: sobrou só o schema `auth` (usuários intactos).
 
+## Q2 — virada (2026-09-26, ~01:30–01:40 UTC)
+- `postgres-prform-connection` no `secrets.auto.tfvars` (`Ssl Mode=Require`) e `terraform apply`: 3 criados, 2 alterados (na auth, só o ajuste cosmético do `scaling`). Revisão de **rollback**: `cime-pullrequest-00022-xw2` (env nova, código lendo o MariaDB). State copiado (backup `terraform.tfstate.pre-0015`).
+- Cópia final: `schema` → `copy` (check ok) → `verify` = **0 diferenças** (01:35 UTC).
+- PR #20 mergeado às 01:37 pelo Claude, com autorização explícita do usuário ("pode fazer o merge você também pra esse caso") → deploy ok: `cime-pullrequest-00023-c99` (e `cime-auth-00020-nkd`, republicada pelo pipeline sem mudança). Migrations no-op nos 3 contextos.
+- `verify` pós-deploy: **0 diferenças** (nenhuma escrita no MariaDB durante a troca; nada a reconciliar).
+- Produção com a api-key do usuário: 20/20 leituras ok (cards, PRs do GitHub, timeline, handovers, férias, calendário, saldos, plugins na ordem por id, forms, integrações pessoais **prontas** — confirma que as 2 diferenças do Q1 eram só a chave ausente localmente —, tempo real). Nenhum erro nos logs das revisões novas.
+- `~/.cime-apikey` apagado depois dos testes. **O usuário deve gerar uma api-key nova** (a antiga passou pela conversa).
+- MariaDB `db31021` fica intacto como fallback até **~2026-10-26** (0016).
+
 ## Notas de handoff
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
 - Ao rodar a API localmente: integrações externas desligadas (SMTP, DevOps, GitHub, Teams, IA). Nunca contra os bancos de produção com auto-migrate.
@@ -54,4 +63,5 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - 2026-09-26 — Planejamento: spec, `plan.md` e `status.md`; worktree `feature/0015`.
 - 2026-09-26 — B0 concluída (auditoria de datas e textos, seção 1.1 do plano).
 - 2026-09-26 — B1, M1 e T1 concluídas (ensaio local com contrato da API idêntico).
+- 2026-09-26 — Q2: virada concluída; a API principal inteira no PostgreSQL (`db70140`: auth, prform, vacations, timeline).
 - 2026-09-26 — Q1 concluída: cópia real (MariaDB → Postgres) com 0 diferenças; contrato 24/26 (2 de ambiente); fix de ordenação.
