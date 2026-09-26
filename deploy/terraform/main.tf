@@ -35,6 +35,9 @@ locals {
         # Usuários da auth no PostgreSQL (feature 0014). A AuthenticationConnection (SQL Server)
         # fica até a limpeza (Q3): é o que a revisão anterior lê num rollback.
         "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
+        # Módulos prform/vacations/timeline no PostgreSQL (feature 0015). A DefaultConnection (MySQL)
+        # fica até a limpeza (0016): é o que a revisão anterior lê num rollback.
+        "ConnectionStrings__PrformDatabase" = "postgres-prform-connection"
         # Integrações pessoais (feature 0002): chave AES-256 dos tokens dos usuários.
         # NUNCA trocar depois de em uso: os tokens salvos deixam de ser legíveis.
         "UserIntegrations__EncryptionKey" = "user-integrations-encryption-key"
