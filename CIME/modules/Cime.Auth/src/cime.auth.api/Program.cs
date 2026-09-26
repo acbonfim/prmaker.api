@@ -17,12 +17,15 @@ using Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connetionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// PostgreSQL (feature 0014), tabelas no schema "auth". A chave é nova de propósito: a versão
+// anterior (SQL Server) lia "DefaultConnection", então as duas convivem durante a virada/rollback.
+var connetionString = builder.Configuration.GetConnectionString("AuthDatabase");
 
 builder.Services.AddDbContext<DefaultContext>(x =>
     // Banco remoto (MonsterASP) via internet pública: habilita retry em falhas transitórias.
-    x.UseSqlServer(connetionString,
-        sql => sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null))
+    x.UseNpgsql(connetionString, npgsql => npgsql
+        .MigrationsHistoryTable("__EFMigrationsHistory", DefaultContext.Schema)
+        .EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null))
 );
 
 builder.Services.AddCors(options =>
@@ -142,8 +145,10 @@ if (!app.Environment.IsDevelopment())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<DefaultContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Migrations");
-        // Advisory lock (sp_getapplock) + falha fatal: evita corrida entre instâncias.
-        await MigrationService.ApplyMigrationsAsync(dbContext, logger);
+        // Advisory lock (pg_advisory_lock) + falha fatal: evita corrida entre instâncias. O seed
+        // (papéis padrão e admin inicial, só com o banco vazio) roda dentro do mesmo lock.
+        await MigrationService.ApplyMigrationsAsync(dbContext, logger,
+            () => AuthSeeder.SeedAsync(scope.ServiceProvider, logger));
     }
 }
 
