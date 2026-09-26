@@ -9,7 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using cliqx.auth.api.Models.Identity;
 using cliqx.auth.api.Security;
 using ProSales.Repository.Contexts;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Reflection;
 using Services;
 

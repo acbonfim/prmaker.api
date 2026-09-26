@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CIME (Client Integration and Management Ecosystem) — a .NET 8.0 modular monolith API for pull request management, integrating with GitHub, Azure DevOps, and AI providers. Written in C# with nullable reference types and implicit usings enabled.
+CIME (Client Integration and Management Ecosystem) — a .NET 10 modular monolith API for pull request management, integrating with GitHub, Azure DevOps, and AI providers. Written in C# with nullable reference types and implicit usings enabled.
 
 ## Build & Run Commands
 

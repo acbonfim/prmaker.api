@@ -3,7 +3,7 @@
     <!-- Migra dados para o PostgreSQL: perfil "auth" (SQL Server, feature 0014) e "prform" (MySQL, feature 0015). -->
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>Cime.DataMigrator</RootNamespace>
@@ -13,7 +13,7 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.6" />
         <PackageReference Include="MySqlConnector" Version="2.3.5" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     </ItemGroup>
 
     <ItemGroup>
