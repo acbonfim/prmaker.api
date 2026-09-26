@@ -32,9 +32,6 @@ locals {
         # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
         "RealTime__RelayKey"        = "realtime-relay-key"
         "RealTime__TokenSigningKey" = "realtime-token-signing-key"
-        # Usuários da auth no PostgreSQL (feature 0014). A AuthenticationConnection (SQL Server)
-        # fica até a limpeza (Q3): é o que a revisão anterior lê num rollback.
-        "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
         # Módulos prform/vacations/timeline no PostgreSQL (feature 0015). A DefaultConnection (MySQL)
         # fica até a limpeza (0016): é o que a revisão anterior lê num rollback.
         "ConnectionStrings__PrformDatabase" = "postgres-prform-connection"

@@ -83,10 +83,9 @@ builder.Services.AddDbContext<DefaultContext>((sp, x) => x
         .EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null))
     .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
-// Usuários da Cime.Auth (PostgreSQL, feature 0014). Chave nova: a versão anterior (SQL Server) lia
-// "AuthenticationConnection", que continua existindo para o rollback.
+// Usuários da Cime.Auth (schema "auth"), no mesmo database dos módulos do host (0016).
 builder.Services.AddDbContext<AuthenticationContext>(x => x.UseNpgsql(
-    builder.Configuration.GetConnectionString("AuthDatabase"),
+    connString,
     npgsql => npgsql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null)));
 
 
