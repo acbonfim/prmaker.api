@@ -6,7 +6,7 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| C1 | Remover Pomelo/SqlServer/Sqlite; `AuthenticationContext` na `PrformDatabase` | A | 0015 estável | ⬜ pendente | Claude | — |
+| C1 | Remover Pomelo/SqlServer/Sqlite; `AuthenticationContext` na `PrformDatabase` | A | 0015 estável (virada em 2026-09-26) | ⬜ pendente | Claude | — |
 | C2 | Valores reais fora dos `appsettings`; chaves mortas; dev local | A | 0015 estável | ⬜ pendente | Claude | — |
 | C3 | Tempo real só com token (back + front) | A | 0015 estável | ⬜ pendente | Claude | — |
 | C4 | Arquivos e docs obsoletos (`CLAUDE.md`, `deploy/README.md`, `deploy.md`, pipeline e scripts antigos) | A | — | ⬜ pendente | Claude | — |
@@ -21,7 +21,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Datas
 - Virada da 0014 (auth → Postgres): 2026-09-26 → SQL Server `db30567` pode sair a partir de ~2026-10-26.
-- Virada da 0015 (PR → Postgres): a preencher → MySQL `db31021` pode sair 30 dias depois.
+- Virada da 0015 (PR → Postgres): 2026-09-26 → MariaDB `db31021` pode sair a partir de ~2026-10-26. (A origem era **MariaDB 10.11**, não MySQL; tem também a `pullrequestslegacybackup` com 217 linhas e as tabelas `aspnet*`/`services` legadas, que precisam entrar no backup final.)
 - Suporte ao .NET 8 acaba em 2026-11-10: a onda A (sem Pomelo) precisa estar pronta antes do upgrade.
 
 ## Checklist de rotação (R1)
