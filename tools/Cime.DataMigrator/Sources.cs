@@ -92,19 +92,21 @@ public sealed class MySqlSource : ISource
 
     public async Task<List<string>> NotesAsync()
     {
+        // A coluna PAD_ATTRIBUTE só existe no MySQL 8; no MariaDB (produção é MariaDB 10.11) a regra
+        // vem do nome: "nopad" e as 0900 do MySQL não ignoram espaço no fim; as demais ignoram.
         const string sql = """
-            SELECT DISTINCT c.collation_name, co.pad_attribute
-            FROM information_schema.columns c JOIN information_schema.collations co ON co.collation_name = c.collation_name
-            WHERE c.table_schema = DATABASE() AND c.collation_name IS NOT NULL
+            SELECT DISTINCT collation_name FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND collation_name IS NOT NULL
             """;
         var notes = new List<string>();
         await using var cmd = new MySqlCommand(sql, _conn);
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
         {
-            var pad = r.GetString(1);
-            notes.Add($"collation de texto na origem: {r.GetString(0)} ({pad})" +
-                      (pad == "PAD SPACE" ? " — ignora espaço no fim na comparação; o Postgres não ignora" : ""));
+            var name = r.GetString(0);
+            var noPad = name.Contains("nopad", StringComparison.OrdinalIgnoreCase) || name.Contains("_0900_");
+            notes.Add($"collation de texto na origem: {name} ({(noPad ? "NO PAD" : "PAD SPACE")})" +
+                      (noPad ? "" : " — ignora espaço no fim na comparação; o Postgres não ignora"));
         }
         return notes;
     }
