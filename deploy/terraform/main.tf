@@ -85,6 +85,41 @@ locals {
       }
     ]
   ])
+
+  # ---------------------------------------------------------------------------
+  # Segredos por serviço num ÚNICO secret JSON (0016), montado pelo Cloud Run como arquivo
+  # /secrets/appsettings.secrets.json e lido pelo .NET como mais um appsettings (precedência sobre
+  # env). 2 versões ativas no total: dentro da cota grátis do Secret Manager (6). Os valores vêm do
+  # mesmo var.secret_values. Cada secret pertence a UM serviço (sem binding compartilhado).
+  # Os secrets individuais (secret_env acima) saem na 0016/B1, junto com os legados.
+  # ---------------------------------------------------------------------------
+  service_secret_files = {
+    pullrequest = {
+      secret_id = "cime-pullrequest-secrets"
+      content = {
+        ConnectionStrings = { PrformDatabase = var.secret_values["postgres-prform-connection"] }
+        Auth              = { Secret = var.secret_values["jwt-secret"] }
+        AzureDevOps       = { PersonalAccessToken = var.secret_values["azuredevops-pat"] }
+        GitHub            = { Token = var.secret_values["github-token"] }
+        RealTime = {
+          RelayKey        = var.secret_values["realtime-relay-key"]
+          TokenSigningKey = var.secret_values["realtime-token-signing-key"]
+        }
+        UserIntegrations = { EncryptionKey = var.secret_values["user-integrations-encryption-key"] }
+      }
+    }
+    auth = {
+      secret_id = "cime-auth-secrets"
+      content = {
+        ConnectionStrings = { AuthDatabase = var.secret_values["postgres-auth-connection"] }
+        Email             = { Password = var.secret_values["email-password"] }
+        Auth = {
+          Secret        = var.secret_values["jwt-secret"]
+          SecretRefresh = var.secret_values["jwt-refresh-secret"]
+        }
+      }
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -138,6 +173,33 @@ resource "google_secret_manager_secret_version" "versions" {
 }
 
 # -----------------------------------------------------------------------------
+# Secret JSON por serviço (0016): um secret + versão + acesso só do runtime SA
+# -----------------------------------------------------------------------------
+resource "google_secret_manager_secret" "service_files" {
+  for_each  = toset(keys(local.service_secret_files))
+  secret_id = local.service_secret_files[each.value].secret_id
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "service_files" {
+  for_each    = toset(keys(local.service_secret_files))
+  secret      = google_secret_manager_secret.service_files[each.value].id
+  secret_data = jsonencode(local.service_secret_files[each.value].content)
+}
+
+resource "google_secret_manager_secret_iam_member" "service_files" {
+  for_each  = toset(keys(local.service_secret_files))
+  secret_id = google_secret_manager_secret.service_files[each.value].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# -----------------------------------------------------------------------------
 # Service Account de runtime dos serviços Cloud Run (menor privilégio)
 # -----------------------------------------------------------------------------
 resource "google_service_account" "runtime" {
@@ -174,6 +236,18 @@ resource "google_cloud_run_v2_service" "services" {
       max_instance_count = each.value.max_instances
     }
 
+    # Secret JSON do serviço como arquivo (0016); ver local.service_secret_files.
+    volumes {
+      name = "app-secrets"
+      secret {
+        secret = google_secret_manager_secret.service_files[each.key].secret_id
+        items {
+          version = "latest"
+          path    = "appsettings.secrets.json"
+        }
+      }
+    }
+
     containers {
       # Imagem placeholder no primeiro apply; o GitHub Actions passa a atualizar a imagem
       # a cada deploy (ver lifecycle.ignore_changes abaixo para evitar drift).
@@ -189,6 +263,11 @@ resource "google_cloud_run_v2_service" "services" {
           memory = "512Mi"
         }
         cpu_idle = true
+      }
+
+      volume_mounts {
+        name       = "app-secrets"
+        mount_path = "/secrets"
       }
 
       dynamic "env" {
@@ -218,6 +297,8 @@ resource "google_cloud_run_v2_service" "services" {
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret_iam_member.runtime_access,
+    google_secret_manager_secret_iam_member.service_files,
+    google_secret_manager_secret_version.service_files,
   ]
 
   lifecycle {

@@ -11,8 +11,9 @@
 | C3 | Tempo real só com token (back + front) | A | 0015 estável | ✅ concluída | Claude | `423bcf9`, front `0069568` |
 | C4 | Arquivos e docs obsoletos (`CLAUDE.md`, `deploy/README.md`, `deploy.md`, pipeline e scripts antigos) | A | — | ✅ concluída | Claude | `0b170fe` |
 | C5 | Deploy da onda A + testes | A | C1–C4 | ✅ concluída | Claude (autorizado) | PRs back #21, front #14 |
+| S1 | Segredos consolidados: 1 secret JSON por serviço montado como arquivo (custo zero) | A | C5 | 🟨 PR aberto | Claude | (este PR) |
 | R1 | Rotação das credenciais expostas | B | — | ⬜ pendente | usuário + Claude | — |
-| B1 | **Ponto sem volta**: grants por secret (moved/removed) e depois remover secrets/envs de fallback (Terraform) | B | C5; SQL Server ≥ ~2026-10-26; MySQL ≥ 0015 + 30 dias | ⬜ pendente | usuário + Claude | — |
+| B1 | **Ponto sem volta**: remover os secrets individuais e legados e as envs `secret_env` (sobram só os 2 JSON da S1 → Secret Manager a custo zero) | B | C5; SQL Server ≥ ~2026-10-26; MySQL ≥ 0015 + 30 dias | ⬜ pendente | usuário + Claude | — |
 | B2 | Backups finais (mysqldump, .bak) | B | B1 | ⬜ pendente | usuário | — |
 | B3 | Excluir `db30567`, `db31021` e `db70140` (Postgres gratuito, substituído pelo premium) no painel | B | B2 | ⬜ pendente | usuário | — |
 | B4 | Remover o migrador | B | B3 | ⬜ pendente | Claude | — |
@@ -39,6 +40,13 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
   3. ~~Terraform passo 2~~ **não aplicado**: o plano mostrou que tirar `ConnectionStrings__AuthDatabase`/`RealTime__ApiKey` da `cime-pullrequest` destruiria os grants `pullrequest:postgres-auth-connection` e `pullrequest:realtime-apikey`. Como **todos os serviços usam a mesma conta de serviço**, o binding é o mesmo do da auth, e a auth perderia acesso ao `postgres-auth-connection` (instâncias novas não subiriam); as revisões de rollback perderiam acesso ao `realtime-apikey`. As envs voltaram ao `main.tf` (sem uso, inofensivas) com o aviso, e a remoção foi para a **B1**, depois de trocar os grants para um por secret (`moved` de uma chave e `removed { destroy = false }` das duplicadas).
   4. Testes: login, api-key, tempo real (relay), card, férias.
 - **Deploy (2026-09-26 ~02:50–03:00 UTC)**: Terraform passo 1 aplicado (4 criados, 2 alterados); PRs #21 (back) e #14 (front) mergeados; deploys ok: `cime-auth-00023-49d` (subiu com os segredos da config), `cime-pullrequest-00025-klm`, `cime-web-00015-k5j`, relay republicado. Revisões de rollback: `cime-auth-00022-sv7`, `cime-pullrequest-00024-pf7`. Sem erros nos logs; relay 200; auth respondendo.
+
+## S1 — segredos consolidados (pedido do usuário: economia)
+- Secret Manager cobra US$ 0,06 por versão ativa acima de 6. Havia 13 (~US$ 0,42/mês). Cada API passa a ter **um único secret JSON** (`cime-pullrequest-secrets`, `cime-auth-secrets`), gerado pelo Terraform a partir do mesmo `secret_values` e montado pelo Cloud Run como `/secrets/appsettings.secrets.json`. O .NET lê como mais um appsettings (precedência sobre env). `SECRETS_FILE` troca o caminho (testes).
+- Depois da B1, que apaga os secrets individuais e os legados, sobram **2 versões ativas → custo zero**. Até lá, os individuais seguem existindo (rollback), com +2 versões temporárias.
+- Cada secret JSON pertence a um só serviço: não há binding compartilhado (resolve a armadilha dos grants para esses secrets).
+- Testado localmente: auth e API sobem e funcionam **só com o arquivo** (auth recusa subir sem chaves e subiu; login, api-key, validação na API, leitura de usuários, token do tempo real).
+- Plano: 6 criados (2 secrets + versões + acesso), 2 alterados (volume + mount nos serviços), 0 destruídos. A ordem de deploy é livre: sem o código novo o arquivo é ignorado, e sem o volume o código usa as envs.
 
 ## Checklist de rotação (R1)
 | Credencial | Onde está exposta | Trocada no provedor | Secret atualizado | Teste |
