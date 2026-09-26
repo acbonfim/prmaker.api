@@ -27,9 +27,28 @@ namespace ProSales.Repository.Contexts
         public DbSet<UserService> UserServices { get; set; }
         public DbSet<MyService> Services { get; set; }
 
+        /// <summary>Schema do PostgreSQL com todas as tabelas da autenticação (feature 0014).</summary>
+        public const string Schema = "auth";
+
+        protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+        {
+            // As datas são gravadas com DateTime.Now (horário "de parede", como no datetime2 do SQL
+            // Server). No Npgsql, DateTime vira timestamptz por padrão e exige Kind=Utc; aqui fica
+            // "timestamp without time zone", que guarda o valor como está. Não grave DateTime.UtcNow
+            // nessas colunas: o Npgsql recusa Kind=Utc em timestamp sem fuso.
+            configurationBuilder.Properties<DateTime>().HaveColumnType("timestamp without time zone");
+            configurationBuilder.Properties<DateTime?>().HaveColumnType("timestamp without time zone");
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.HasDefaultSchema(Schema);
+
+            // Sem HasData: seeds com Guid.NewGuid()/DateTime.Now/hash aleatório mudavam a cada build e
+            // todo "migrations add" gerava UpdateData que resetaria o admin de produção. Papéis padrão e
+            // admin inicial agora vêm do AuthSeeder (idempotente, só com o banco vazio).
 
             modelBuilder.Entity<UserRole>(ur =>
             {
@@ -64,59 +83,6 @@ namespace ProSales.Repository.Contexts
                 .HasForeignKey(fk => fk.UserId)
                 .IsRequired();
             });
-
-            modelBuilder.Entity<Role>(r =>
-            {
-                r.HasData(
-                    new Role() { Id = 1, Name = "admin", NormalizedName = "ADMIN", ConcurrencyStamp = Guid.NewGuid().ToString().ToUpper() }
-                    , new Role() { Id = 2, Name = "user", NormalizedName = "USER", ConcurrencyStamp = Guid.NewGuid().ToString().ToUpper() }
-                    , new Role() { Id = 3, Name = "external_client", NormalizedName = "EXTERNALCLIENT", ConcurrencyStamp = Guid.NewGuid().ToString().ToUpper() }
-                    , new Role() { Id = 4, Name = "support", NormalizedName = "SUPPORT", ConcurrencyStamp = Guid.NewGuid().ToString().ToUpper() }
-                );
-            });
-            
-            modelBuilder.Entity<User>(u =>
-            {
-                var hasher = new PasswordHasher<User>();
-                
-                var adminUser = new User
-                {
-                    Id = 1,
-                    UserName = "admin",
-                    NormalizedUserName = "ADMIN",
-                    Email = "admin@cime.com.br",
-                    NormalizedEmail = "ADMIN@CIME.COM.BR",
-                    EmailConfirmed = true,
-                    FullName = "Admin",
-                    Departamento = "ADMIN",
-                    SecurityStamp = Guid.NewGuid().ToString().ToUpper(),
-                    CompanyId = 1,
-                    ExternalId = Guid.NewGuid(),
-                    ChannelOrigin = "WEB",
-                    Active = true,
-                    DataUltimoLogin = DateTime.Now,
-                    PhoneNumberConfirmed = false,
-                    TwoFactorEnabled = false,
-                    LockoutEnabled = false,
-                    AccessFailedCount = 0
-                };
-                
-                adminUser.PasswordHash = hasher.HashPassword(adminUser, "Copa#2026");
-                
-                u.HasData(adminUser);
-            });
-            
-            modelBuilder.Entity<UserRole>(ur =>
-            {
-                ur.HasData(
-                    new UserRole
-                    {
-                        UserId = 1,
-                        RoleId = 1
-                    }
-                );
-            });
-
         }
     }
 

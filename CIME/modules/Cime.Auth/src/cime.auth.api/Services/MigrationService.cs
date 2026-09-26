@@ -1,4 +1,3 @@
-using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -7,39 +6,39 @@ using ProSales.Repository.Contexts;
 namespace Services;
 
 /// <summary>
-/// Aplica as migrations do banco SQL Server de forma segura para múltiplas instâncias.
-/// Usa sp_getapplock (lock de aplicação com escopo de sessão) para garantir que apenas
-/// UMA instância migra por vez. Falha é propagada (fatal): se as migrations não aplicarem,
-/// o app não sobe e o Cloud Run mantém a revisão anterior servindo.
+/// Aplica as migrations do banco PostgreSQL de forma segura para múltiplas instâncias.
+/// Usa advisory lock de sessão (pg_try_advisory_lock) para garantir que apenas UMA instância
+/// migra por vez. Falha é propagada (fatal): se as migrations não aplicarem, o app não sobe e o
+/// Cloud Run mantém a revisão anterior servindo.
 /// </summary>
 public class MigrationService
 {
-    private const string LockResource = "cime_auth_migrations";
-    private const int LockTimeoutMs = 120000;
+    // Chave fixa do lock (advisory locks do Postgres são por número). Só a auth usa esta chave.
+    private const long LockKey = 0x43494D45_41555448; // "CIMEAUTH"
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(2);
 
-    public static async Task ApplyMigrationsAsync(DefaultContext context, ILogger logger)
+    /// <param name="afterMigrate">Roda ainda com o lock (ex.: seed), para duas instâncias não semearem juntas.</param>
+    public static async Task ApplyMigrationsAsync(DefaultContext context, ILogger logger, Func<Task>? afterMigrate = null)
     {
         var conn = context.Database.GetDbConnection();
         await conn.OpenAsync();
 
         try
         {
-            var result = await AcquireLockAsync(conn);
-            // sp_getapplock: >= 0 sucesso (0 concedido, 1 concedido após espera); < 0 erro/timeout.
-            if (result < 0)
-                throw new InvalidOperationException(
-                    $"Não foi possível obter o lock de migração '{LockResource}' (código {result}).");
-
-            logger.LogInformation("Lock de migração adquirido. Aplicando migrations SQL Server...");
+            await AcquireLockAsync(conn);
+            logger.LogInformation("Lock de migração adquirido. Aplicando migrations PostgreSQL...");
 
             try
             {
+                // O EF usa a conexão já aberta (a mesma que segura o lock).
                 await context.Database.MigrateAsync();
                 logger.LogInformation("Migrations do DefaultContext (auth) aplicadas com sucesso.");
+                if (afterMigrate is not null)
+                    await afterMigrate();
             }
             finally
             {
-                await ReleaseLockAsync(conn);
+                await ExecuteAsync(conn, $"SELECT pg_advisory_unlock({LockKey})");
                 logger.LogInformation("Lock de migração liberado.");
             }
         }
@@ -49,41 +48,25 @@ public class MigrationService
         }
     }
 
-    private static async Task<int> AcquireLockAsync(DbConnection conn)
+    private static async Task AcquireLockAsync(DbConnection conn)
     {
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "sp_getapplock";
-        cmd.CommandType = CommandType.StoredProcedure;
-
-        var ret = cmd.CreateParameter();
-        ret.ParameterName = "@RETURN_VALUE";
-        ret.Direction = ParameterDirection.ReturnValue;
-        cmd.Parameters.Add(ret);
-
-        AddParam(cmd, "@Resource", LockResource);
-        AddParam(cmd, "@LockMode", "Exclusive");
-        AddParam(cmd, "@LockOwner", "Session");
-        AddParam(cmd, "@LockTimeout", LockTimeoutMs);
-
-        await cmd.ExecuteNonQueryAsync();
-        return ret.Value is int v ? v : Convert.ToInt32(ret.Value);
+        // pg_advisory_lock espera para sempre; tentativa com prazo evita pendurar o startup.
+        var deadline = DateTime.UtcNow + LockTimeout;
+        while (true)
+        {
+            if (await ExecuteAsync(conn, $"SELECT pg_try_advisory_lock({LockKey})") is true)
+                return;
+            if (DateTime.UtcNow >= deadline)
+                throw new InvalidOperationException(
+                    $"Não foi possível obter o lock de migração da auth em {LockTimeout.TotalSeconds:0}s.");
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
     }
 
-    private static async Task ReleaseLockAsync(DbConnection conn)
+    private static async Task<object?> ExecuteAsync(DbConnection conn, string sql)
     {
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "sp_releaseapplock";
-        cmd.CommandType = CommandType.StoredProcedure;
-        AddParam(cmd, "@Resource", LockResource);
-        AddParam(cmd, "@LockOwner", "Session");
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    private static void AddParam(DbCommand cmd, string name, object value)
-    {
-        var p = cmd.CreateParameter();
-        p.ParameterName = name;
-        p.Value = value;
-        cmd.Parameters.Add(p);
+        cmd.CommandText = sql;
+        return await cmd.ExecuteScalarAsync();
     }
 }
