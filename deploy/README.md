@@ -1,10 +1,10 @@
 # Deploy — Cloud Run (Terraform + GitHub Actions)
 
 Publica as duas APIs deste repo no **Google Cloud Run**, com scale-to-zero (custo ~$0 para uso baixo).
-O banco de dados **permanece no MonsterASP** — as APIs conectam por internet pública.
+O banco é um **PostgreSQL 18 premium no MonsterASP (EUA, `db70152`)**, um database com um schema por módulo (`auth`, `prform`, `vacations`, `timeline`) — as APIs conectam por internet pública (TLS, `SSL Mode=Require`).
 
-- `cime-pullrequest` — API principal (Solvace.PullRequests), MySQL + SQL Server
-- `cime-auth` — Auth API (Cime.Auth), SQL Server
+- `cime-pullrequest` — API principal (Solvace.PullRequests + módulos), schemas `prform`/`vacations`/`timeline` (+ leitura de `auth`)
+- `cime-auth` — Auth API (Cime.Auth), schema `auth`
 
 O frontend Angular é um repo separado (`../solvace.prform.web`) — ver seção no fim.
 
@@ -95,7 +95,7 @@ cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grup
 - **Rollback**: `RealTime__Mode = InProcess` e, na `cime-pullrequest`, `max_instances = 1`,
   `timeout = 3600`, `session_affinity = true` (hub volta para a API, com o custo de antes).
 
-## Autenticação no PostgreSQL (feature 0014) — virada e rollback
+## Autenticação no PostgreSQL (feature 0014) — virada e rollback (histórico: concluída em 2026-09-26)
 
 A Cime.Auth e a leitura de usuários da API principal (`AuthenticationContext`) usam PostgreSQL
 (MonsterASP), com as tabelas no schema `auth` e a chave `ConnectionStrings__AuthDatabase`
@@ -135,7 +135,7 @@ normalizam com `ToUpper`/`ToLower`); `DateTime.MinValue` é gravado como `-infin
 volta como `MinValue` na leitura). Papéis padrão e admin inicial só são criados com o banco vazio
 (`AuthSeeder`, senha em `Seed__AdminPassword`).
 
-## API principal no PostgreSQL (feature 0015) — virada e rollback
+## API principal no PostgreSQL (feature 0015) — virada e rollback (histórico: concluída em 2026-09-26)
 
 Os contextos `DefaultContext`, `VacationContext` e `TimelineContext` usam o mesmo database da auth,
 cada um no seu schema (`prform`, `vacations`, `timeline`), com a chave `ConnectionStrings__PrformDatabase`
@@ -169,15 +169,14 @@ ignorar caixa usam `ToLower()` nos dois lados. Dev local: `docker compose up -d`
 ## Notas importantes
 
 - **Chave das integrações pessoais (`user-integrations-encryption-key` → `UserIntegrations__EncryptionKey`):** gere uma vez com `openssl rand -base64 32` e **não troque** depois que os usuários salvarem tokens em "Minhas integrações" — com outra chave os valores salvos ficam ilegíveis e cada um precisa salvar de novo. Sem ela, a API sobe, mas recusa salvar tokens pessoais (503).
-- **Segredos rotacionados:** as chaves atuais estão no `appsettings.json` versionado (senhas de banco, token GitHub, PAT Azure, JWT, SMTP). Gere novas e coloque só no `secrets.auto.tfvars` / Secret Manager. Considere remover os valores do `appsettings.json`.
-- **Host do banco:** de fora do MonsterASP use o host `.public.databaseasp.net` (a Auth API usava o host interno `db30567.databaseasp.net` — no Cloud Run tem que ser `db30567.public.databaseasp.net`).
-- **Cold start:** com `min_instances = 0`, a 1ª request após ociosidade demora alguns segundos (abre conexão nova com o banco remoto). Se incomodar, suba `min_instances = 1` no `terraform.tfvars` (sai do custo zero).
-- **Resiliência:** os `DbContext` já têm `EnableRetryOnFailure` (adicionado no `Program.cs` das duas APIs) para tolerar quedas na conexão via internet.
-- **`ServerVersion.AutoDetect`** (API principal, MySQL) abre uma conexão ao banco no startup a cada cold start. Para reduzir latência/fragilidade, considere fixar a versão: `new MySqlServerVersion(new Version(8, 0, 0))`.
-- **Migrations (seguras para múltiplas instâncias):** rodam no startup fora de `Development`, protegidas por *advisory lock* do próprio banco, então só uma instância migra por vez:
-  - `prform.api` (MySQL): `GET_LOCK`/`RELEASE_LOCK` cobrindo os 3 contexts (Default, Vacation, Timeline) — `Startup/StartupMigrator.cs`.
-  - `auth.api` (SQL Server): `sp_getapplock`/`sp_releaseapplock` — `Services/MigrationService.cs`.
-  - Falha de migration é **fatal**: o app não sobe e o Cloud Run mantém a revisão anterior servindo (não publica schema quebrado). Antes o erro era engolido e o app subia mesmo quebrado.
+- **Segredos:** nenhum valor real fica nos `appsettings.json` (0016); produção lê tudo do Secret Manager e o Development usa valores locais. Os valores antigos continuam no **histórico do git** — por isso a rotação (checklist R1 em `features/0016/status.md`).
+- **Banco:** PostgreSQL premium `db70152` (EUA, perto do Cloud Run us-central1). Trocar de banco sem mudar código: atualizar os secrets `postgres-auth-connection`/`postgres-prform-connection` no `secrets.auto.tfvars` e o `plain_env.Database__Host` (força revisão nova, que relê o secret); aplicar primeiro com `-target` nas versões dos secrets e depois o resto.
+- **Cold start:** com `min_instances = 0`, a 1ª request após ociosidade demora alguns segundos. Se incomodar, suba `min_instances = 1` (sai do custo zero).
+- **Resiliência:** os `DbContext` usam `EnableRetryOnFailure` (Npgsql) para tolerar quedas da conexão via internet.
+- **Migrations (seguras para múltiplas instâncias):** rodam no startup fora de `Development`, protegidas por *advisory lock* do PostgreSQL (`pg_try_advisory_lock` com prazo), então só uma instância migra por vez:
+  - `prform.api`: um lock cobrindo os 3 contexts (Default, Vacation, Timeline) — `Startup/StartupMigrator.cs` + `Cime.BuildingBlocks.Persistence`.
+  - `auth.api`: lock próprio, com o seed (papéis/admin só com banco vazio) dentro dele — `Services/MigrationService.cs`.
+  - Falha de migration é **fatal**: o app não sobe e o Cloud Run mantém a revisão anterior servindo.
   - Alternativa "de manual" (padrão ComandaCerta): mover as migrations pra um **job separado no pipeline** (Cloud Run Job) rodando após o deploy. Mais desacoplado, porém mais peças. Para este volume, o lock no startup é suficiente.
 
 ## Domínio custom (softhouse.app.br) — Opção A, grátis
