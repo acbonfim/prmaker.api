@@ -12,9 +12,11 @@ public static class VacationModuleExtensions
 {
     public static IServiceCollection AddVacationModule(this IServiceCollection services, IConfiguration configuration)
     {
-        // Registra o DbContext usando a mesma connection string
-        var connString = configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<VacationContext>(x => x.UseMySql(connString, ServerVersion.AutoDetect(connString)));
+        // PostgreSQL, schema "vacations" (feature 0015), mesma connection string dos outros módulos do host.
+        var connString = configuration.GetConnectionString("PrformDatabase");
+        services.AddDbContext<VacationContext>(x => x.UseNpgsql(connString, npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory", VacationContext.Schema)
+            .EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null)));
 
         // Registra os repositórios
         services.AddScoped<IVacationRepository, VacationRepository>();

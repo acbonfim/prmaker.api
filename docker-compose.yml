@@ -1,0 +1,18 @@
+# Banco local para desenvolvimento (feature 0015): PostgreSQL 18, o mesmo SGBD da produção.
+# As APIs em Development apontam para cá (appsettings.Development.json: AuthDatabase/PrformDatabase),
+# nunca para o banco de produção. Uso: docker compose up -d
+services:
+  postgres:
+    image: postgres:18
+    container_name: cime-postgres
+    environment:
+      POSTGRES_DB: cime
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - cime-postgres-data:/var/lib/postgresql
+
+volumes:
+  cime-postgres-data:
