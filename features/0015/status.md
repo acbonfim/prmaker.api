@@ -9,7 +9,7 @@
 | M1 | `tools/Cime.DataMigrator` (perfis `auth` e `prform`, tabelas do modelo EF, `reset` por schema) | 1 | — | ✅ concluída | Claude | `a662ed8`, (fix T1) |
 | B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, dev local) | 2 | B0 | ✅ concluída | Claude | `825e59f` |
 | T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
-| I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ⬜ pendente | Claude | — |
+| I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ✅ concluída | Claude | (commit I1) |
 | Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | ⬜ pendente | usuário + Claude | — |
 | Q2 | Virada (janela curta) | 5 | Q1 | ⬜ pendente | usuário + Claude | — |
 
