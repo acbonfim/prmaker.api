@@ -10,7 +10,7 @@
 | B2 | `AuthenticationContext` da API de PR no Postgres | 2 | B1 | ✅ concluída | Claude | `bbd032d` |
 | T1 | Ensaio local (Docker: SQL Server → Postgres 18; APIs contra o Postgres) | 2 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-auth-connection`) e runbook | 3 | B1, B2 | ✅ concluída | Claude | `993dfe8` |
-| Q1 | Ensaio com os dados reais no database novo, sem virar | 4 | T1, I1 | 🟨 em andamento | usuário + Claude | — |
+| Q1 | Ensaio com os dados reais no database novo, sem virar | 4 | T1, I1 | ✅ concluída | usuário + Claude | — |
 | Q2 | Virada (janela curta) | 4 | Q1 | ⬜ pendente | usuário + Claude | — |
 | Q3 | Limpeza (SQL Server; opcional: tabelas legadas do `db31021`) | 5 | Q2 | ⬜ pendente | usuário + Claude | — |
 
@@ -30,11 +30,10 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - ✅ **Criptografia**: o servidor diz `ssl=off`, mas há um proxy do MonsterASP na frente (o backend vê `127.0.0.1`). Do cliente até o proxy, a conexão é **TLS 1.3** (confirmado com `\conninfo`, inclusive com `sslmode=require`). Em produção usar `Ssl Mode=Require` (nunca cai para texto puro).
 - ✅ `lower()` com acentos ok (busca de usuários); ordenação natural.
 - ✅ `schema` aplicado (Claude). `copy` + `verify` rodados **pelo usuário** do SQL Server de produção (`db30567`, SQL Server 17): 4 papéis, 11 usuários, 2 serviços, 12 vínculos usuário-papel, 22 usuário-serviço, 14 códigos (67 linhas, demais tabelas vazias). `check` sem erros nem avisos; **verify = 0 diferenças**.
-- 🟨 Auth nova local (Development, sem migrar/semear, SMTP desligado) em `http://localhost:52050` contra o `db70140`, para o usuário testar o login pelo Swagger.
-- ⬜ Depois: `reset` do schema para a virada.
+- ✅ Auth nova local (Development, sem migrar/semear, SMTP desligado) contra o `db70140`: **login do usuário com a própria senha funcionou** (pelo Swagger; a senha não passou pelo Claude).
+- ✅ `reset --confirm db70140`: banco vazio de novo para a virada.
 
 ## Pendências do usuário
-- Testar o login pelo Swagger local.
 - Trocar a senha do `db70140` no painel (ficou registrada na conversa) antes da virada.
 - Combinar a janela da virada (Q2).
 
