@@ -10,7 +10,7 @@
 | B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, dev local) | 2 | B0 | ✅ concluída | Claude | `825e59f` |
 | T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ✅ concluída | Claude | (commit I1) |
-| Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | 🟨 em andamento | usuário + Claude | — |
+| Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | ✅ concluída | usuário + Claude | — |
 | Q2 | Virada (janela curta) | 5 | Q1 | ⬜ pendente | usuário + Claude | — |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
@@ -40,7 +40,10 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - `check` ok: 621 linhas (Forms 5, Handovers 21, Plugins 11, PluginConfigurations 11, PullRequests 221, UserPluginConfigurations 6, PullRequestsGithub 234, UserVacationBalances 9, VacationRequests 9, TimelineEntries 94).
 - **Fora do modelo (não copiadas; ficam para o backup final do MariaDB, 0016 B2)**: `aspnet*` legadas (4 papéis, 1 usuário), `services`/`userservices` (1/1), `userforgetcodes` (0), `pullrequestslegacybackup` (217).
 - `copy` + `verify` = **0 diferenças** (01:12 UTC).
-- 🟨 Comparação de contrato com dados reais: API de produção (MariaDB) × API nova local (cópia no Postgres), 20 leituras com a api-key do usuário (script `q1-contract.py`, só status e caminhos divergentes).
+- ✅ **Contrato com dados reais**: API de produção (MariaDB) × API nova local (cópia no Postgres), 26 leituras com a api-key do usuário (`q1-contract.py`, só status e caminhos divergentes):
+  - 1ª rodada: 22/26. Duas diferenças eram de **ordem** (mesmo conjunto de registros): plugins sem `ORDER BY` (o MariaDB devolve pela PK) e saldos de férias com empate na data. Corrigido com `OrderBy(Id)`/`ThenBy(Id)` (commit do fix B1).
+  - 2ª rodada: **24/26**. As 2 restantes (`UserIntegration` e `/status`) são **de ambiente**: a API local não tem `UserIntegrations:EncryptionKey` (secret de produção), então os tokens pessoais não são decifrados. O `verify` prova que as 6 linhas de `UserPluginConfigurations` são idênticas byte a byte, e a decifração depende só da chave e dos bytes.
+- ✅ `reset --confirm db70140` do perfil `prform`: sobrou só o schema `auth` (usuários intactos).
 
 ## Notas de handoff
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
@@ -51,3 +54,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - 2026-09-26 — Planejamento: spec, `plan.md` e `status.md`; worktree `feature/0015`.
 - 2026-09-26 — B0 concluída (auditoria de datas e textos, seção 1.1 do plano).
 - 2026-09-26 — B1, M1 e T1 concluídas (ensaio local com contrato da API idêntico).
+- 2026-09-26 — Q1 concluída: cópia real (MariaDB → Postgres) com 0 diferenças; contrato 24/26 (2 de ambiente); fix de ordenação.
