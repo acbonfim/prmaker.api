@@ -5,7 +5,7 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| B0 | Auditoria de datas e textos (mapeamento final, contrato do JSON) | 1 | — | ⬜ pendente | Claude | — |
+| B0 | Auditoria de datas e textos (mapeamento final, contrato do JSON) | 1 | — | ✅ concluída | Claude | (este commit) |
 | M1 | `tools/Cime.DataMigrator` (perfis `auth` e `prform`, tabelas do modelo EF, `reset` por schema) | 1 | — | ⬜ pendente | Claude | — |
 | B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, seeder, dev local) | 2 | B0 | ⬜ pendente | Claude | — |
 | T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ⬜ pendente | Claude | — |
@@ -22,6 +22,7 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - D4: `pg_try_advisory_lock` para os 3 contextos.
 - D5: migrador generalizado a partir do da 0014, lendo tabelas e ordem das FKs do modelo EF.
 - D6: dev local em Postgres Docker (fim do "banco de dev = produção").
+- B0: `DateTimeOffset` → `timestamptz`; `DateTime` → `timestamp without time zone` + conversor `Kind=Unspecified` (idêntico ao MySQL, JSON sem mudança). O front manda as datas de férias com `toISOString()` (hora 03:00 guardada). Comparações sem diferenciar maiúsculas explícitas em `RepositoryId`/`BranchPrefix`/`BranchName` (GitHub) e `EnvironmentName` (forms).
 
 ## Notas de handoff
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
@@ -30,3 +31,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Log
 - 2026-09-26 — Planejamento: spec, `plan.md` e `status.md`; worktree `feature/0015`.
+- 2026-09-26 — B0 concluída (auditoria de datas e textos, seção 1.1 do plano).

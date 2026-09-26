@@ -23,7 +23,7 @@
 - `GET_LOCK`/`RELEASE_LOCK` no `StartupMigrator`.
 - **Migrações com dados** (`Sql`/`InsertData`/`UpdateData`): `ConsolidatePullRequestPerCard`, `AddPullRequestGithub`, `AddTeamsPlugin`, `AddDevOpsActionsToAIConfigurations`, `AdjustPullRequestSummary`. Em produção os dados vêm da cópia. Um banco novo vazio não teria o plugin do Teams nem os prompts padrão (os outros plugins já são criados pela tela).
 
-### Datas — o ponto delicado
+### Datas — o ponto delicado (resolvido na auditoria 1.1)
 O Npgsql é rígido: `timestamp with time zone` exige `DateTime.Kind = Utc`, e `timestamp without time zone` recusa `Utc`. No código há 27 `DateTime.UtcNow`, 16 `DateTimeOffset.UtcNow` e 5 `DateTime.Today`.
 
 | Grupo | Colunas | Como são gravadas | Mapeamento proposto |
@@ -43,6 +43,39 @@ O Npgsql é rígido: `timestamp with time zone` exige `DateTime.Kind = Utc`, e `
 - O `db70140` (Postgres 18.6 em Windows, atrás de proxy TLS 1.3) já tem o schema `auth`. Os módulos novos entram no mesmo database.
 - A API principal já tem Npgsql 8.0.2 (0014, `AuthenticationContext`).
 - Terraform: `mysql-default-connection` → `ConnectionStrings__DefaultConnection` na `cime-pullrequest`.
+
+## 1.1 Auditoria (B0, 2026-09-26)
+
+### Datas: 22 colunas, todas `datetime(6)` no MySQL
+| Tipo .NET | Colunas | Como são gravadas | Mapeamento |
+|---|---|---|---|
+| `DateTimeOffset` | `CreatedAt`/`UpdatedAt` (todas as entidades com auditoria), `SummaryUpdatedAt`, `SummaryPublishedAt`, `StatusSyncedAt` | `DateTimeOffset.UtcNow` (offset 0) | **`timestamptz`** (padrão do Npgsql). Lê com offset 0, e o JSON continua `…+00:00` |
+| `DateTime` (instantes) | `VacationRequests.ApprovedByManagerAt`/`AuthorizedByHRAt`, `Plugins.DeletedAt` | `DateTime.UtcNow` | **`timestamp without time zone`** + conversor que grava com `Kind=Unspecified` |
+| `DateTime` (calendário) | `VacationRequests.StartDate`/`EndDate`, `UserVacationBalances.AcquisitionPeriodStart/End`, `UsagePeriodStart/End` | Vêm do front com `toISOString()` (ex.: `2026-10-01T03:00:00Z`, `Kind=Utc`). Os períodos passam por `.Date`; `StartDate`/`EndDate` **guardam a hora** (03:00 no Brasil) | idem: **`timestamp without time zone`** + conversor `Unspecified` |
+
+**Por quê**: o MySQL/Pomelo ignora o `Kind` (grava o relógio como veio) e devolve `Unspecified`, então o JSON sai **sem `Z`**. O Npgsql recusa `Kind=Utc` em `timestamp` e exige `Utc` em `timestamptz`. Com o conversor, o comportamento é **idêntico ao do MySQL**:
+- mesmos valores;
+- mesmo JSON;
+- as consultas com parâmetro `DateTime` (`AcquisitionPeriodStart == periodStart.Date`, faixas de férias) funcionam, porque o conversor também se aplica aos parâmetros.
+
+Converter as datas de calendário para `date`/`DateOnly` seria mais correto, mas muda valor (a hora 03:00) e contrato. Fica como melhoria futura das férias.
+
+`DateTime.Today` só aparece em comparações em memória (validação de férias), sem efeito no banco.
+
+### Texto
+| Consulta | Coluna | Risco no Postgres (diferencia maiúsculas, não ignora espaço no fim) | Ação |
+|---|---|---|---|
+| PullRequest/Handover/Timeline/GitHub por `CardNumber` (8 consultas) | `CardNumber` | dígitos: maiúsculas não importam; espaço no fim, sim (a entrada já faz `Trim`) | nenhuma no código; o `check` avisa valores com espaço |
+| `PullRequestGithubApplication` (upsert por `RepositoryId`+`GithubPrNumber`; legado por `RepositoryId`+`BranchPrefix`+`BranchName`) | `RepositoryId`, `BranchPrefix`, `BranchName` | hoje os dois lados vêm da mesma seleção, mas se a caixa divergir o MySQL acha o registro e o Postgres criaria um duplicado | **comparação explícita sem diferenciar maiúsculas** (`ToLower()` nos dois lados) |
+| `FormApplication` por `EnvironmentName` | `EnvironmentName` | idem | **comparação explícita sem diferenciar maiúsculas** |
+| Timeline por `SourceMessageId` | id de mensagem do Teams | valor exato, gerado pelo Teams | nenhuma |
+| Integrações pessoais por `UserExternalId` | `Guid` | — | nenhuma |
+
+- Nenhum `OrderBy` por texto no banco (as ordenações são por data).
+- O `check` do perfil `prform` imprime a collation das colunas de texto da origem (para saber se o MySQL de produção ignora espaço no fim, `PAD SPACE`) e avisa espaços no início/fim nas colunas acima.
+
+### Contrato do JSON
+Com o mapeamento acima, **nenhuma mudança esperada**. A T1 confirma com diff das respostas (MySQL × Postgres).
 
 ## 2. Decisões
 
