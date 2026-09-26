@@ -10,7 +10,7 @@
 | B3 | EF Core 10: modelo × snapshot nos 4 contextos | 2 | B1 | ✅ concluída (nenhuma mudança) | Claude | `6b193ff` |
 | B4 | Docker 10.0, workflow do relay, docs | 3 | B1 | ✅ concluída | Claude | `bb883c1` |
 | T1 | Ensaio local (contrato 8 × 10, tokens cruzados, relay, Swagger) | 4 | B1–B4 | ✅ concluída | Claude | — |
-| Q1 | Deploy | 5 | T1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | Deploy | 5 | T1 | ✅ concluída | Claude (autorizado) | PR #24 (merge 03:55 UTC) |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -25,6 +25,12 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
   - **Escritas no .NET 10**: saldo, pedido de férias com data UTC do JSON, aprovação/autorização, calendário, timeline criar/editar/apagar, registro de PR e resumo — sem erro do Npgsql; datas iguais ao comportamento atual (`03:00`).
 - **Vulnerabilidades**: MailKit 4.8 → **4.18.0** (GHSA-9j88-vvj5-vhgr), validado em execução (envio chega a tentar o SMTP). **AutoMapper 12.0.0** (GHSA-rvv3-g6hj-g44x, DoS por recursão) só tem correção a partir da 15.1.1, que tem **licença comercial**. Na auth ele só mapeia DTOs internos (19 usos, sem objetos do cliente) → risco baixo; **melhoria registrada: remover o AutoMapper da auth** (mapeamento manual).
 
+## Q1 — deploy (2026-09-26 ~03:55–04:00 UTC)
+- Rollback registrado antes do merge: `cime-auth-00026-tzx`, `cime-pullrequest-00028-zqx`; relay .NET 8 = run `36213222273` do `deploy-realtime` (rodar de novo para voltar).
+- PR #24 mergeado → deploys ok: `cime-auth-00027-mg9`, `cime-pullrequest-00029-f24` (100% do tráfego) e relay no MonsterASP.
+- Produção: nenhum erro nos logs das revisões novas; migrations no-op nos 3 contextos da API principal; auth respondendo; Swagger 200 nas duas APIs; relay `/health` ok e, com um token assinado pela chave de produção, **conexão WebSocket aceita** (o MonsterASP roda o .NET 10); token inválido e publish sem chave → 401.
+
 ## Log
 - 2026-09-26 — Planejamento (spec, plano, status); worktree `feature/0017`.
-- 2026-09-26 — B1–B4 e T1 concluídas; MailKit atualizado. Falta o Q1 (deploy).
+- 2026-09-26 — B1–B4 e T1 concluídas; MailKit atualizado.
+- 2026-09-26 — Q1: .NET 10 em produção (APIs e relay).
