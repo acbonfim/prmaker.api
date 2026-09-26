@@ -11,7 +11,7 @@
 | T1 | Ensaio local (Docker: SQL Server → Postgres 18; APIs contra o Postgres) | 2 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-auth-connection`) e runbook | 3 | B1, B2 | ✅ concluída | Claude | `993dfe8` |
 | Q1 | Ensaio com os dados reais no database novo, sem virar | 4 | T1, I1 | ✅ concluída | usuário + Claude | — |
-| Q2 | Virada (janela curta) | 4 | Q1 | ⬜ pendente | usuário + Claude | — |
+| Q2 | Virada (janela curta) | 4 | Q1 | ✅ concluída | usuário + Claude | PR #19 (merge `00:36 UTC`) |
 | Q3 | Limpeza (SQL Server; opcional: tabelas legadas do `db31021`) | 5 | Q2 | ⬜ pendente | usuário + Claude | — |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
@@ -33,9 +33,16 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - ✅ Auth nova local (Development, sem migrar/semear, SMTP desligado) contra o `db70140`: **login do usuário com a própria senha funcionou** (pelo Swagger; a senha não passou pelo Claude).
 - ✅ `reset --confirm db70140`: banco vazio de novo para a virada.
 
+## Q2 — virada (2026-09-26, ~00:30–00:40 UTC)
+- `postgres-auth-connection` no `secrets.auto.tfvars` (com `Ssl Mode=Require`) e `terraform apply` (Claude, com autorização do usuário): 4 criados, 2 alterados. Revisões com a env nova e o código antigo (**rollback**): `cime-auth-00018-5z6`, `cime-pullrequest-00020-v9h`. State copiado para `deploy/terraform` (backup `terraform.tfstate.pre-0014`).
+- Cópia final (Claude, autorizado): `schema` → `copy` (check ok) → `verify` = **0 diferenças** (67 linhas).
+- Merge do #19 **pelo usuário** (o modo automático bloqueou o merge para o Claude) → deploy ok: `cime-auth-00019-2bf`, `cime-pullrequest-00021-s5b`. Na auth, a migração foi no-op ("database is already up to date"); o seeder não rodou.
+- `verify` pós-deploy: 1 diferença no usuário 7 (`DataUltimoLogin`/`ConcurrencyStamp`). **No Postgres**, o login foi às 00:38:38 na revisão nova (200); no SQL Server, o último login era de 24/09. Ou seja, é escrita pós-virada no Postgres, e **nada se perdeu** no SQL Server durante a janela.
+- Produção: login real às 00:38 (200) e, em seguida, chamadas do app à API de PR com a api-key validada na auth (Handover, PullRequest, Vacations, UserIntegration, RealTime) todas 200; nenhum erro nos logs das duas revisões novas.
+- **Q3 (limpeza) a partir de ~2026-10-26**: remover `sqlserver-auth-connection` e as envs `ConnectionStrings__DefaultConnection` (auth) e `ConnectionStrings__AuthenticationConnection` (PR), o banco SQL Server `db30567` e o suporte a SQL Server do migrador. Opcional: `mysqldump` + `DROP` das tabelas `AspNet*` legadas do `db31021`.
+
 ## Pendências do usuário
 - Trocar a senha do `db70140` no painel (ficou registrada na conversa) antes da virada.
-- Combinar a janela da virada (Q2).
 
 ## Notas da implementação
 - **B1**: migração `InitialPostgres` validada num Postgres 18.6 (Docker): subir → descer → subir; nada no schema `public`, nenhum dado de seed na migração. Duas instâncias subindo juntas com o banco vazio: uma migra e semeia dentro do lock, a outra espera e não duplica. Admin semeado faz login; papel novo recebe id 5 (sequência ajustada).
@@ -73,4 +80,5 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-25 — Planejamento: spec, `plan.md` e `status.md`; worktree `feature/0014`.
 - 2026-09-25 — Replanejada para PostgreSQL 18 (em vez de MySQL); o PR vai para o Postgres numa feature seguinte.
+- 2026-09-26 — Q2: virada concluída; auth e leitura de usuários da API de PR no PostgreSQL (`db70140`, schema `auth`).
 - 2026-09-25 — B1, M1, B2, T1 e I1 concluídas (ensaio local completo com Docker). Falta o Q1 (database Postgres no MonsterASP + ensaio com os dados reais).
