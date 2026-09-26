@@ -33,4 +33,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-26 — Planejamento (spec, plano, status); worktree `feature/0017`.
 - 2026-09-26 — B1–B4 e T1 concluídas; MailKit atualizado.
-- 2026-09-26 — Q1: .NET 10 em produção (APIs e relay).
+- 2026-09-26 — Q1: .NET 10 em produção (APIs e relay). Usuário testou no app: tudo funcionando.
