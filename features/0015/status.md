@@ -6,9 +6,9 @@
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
 | B0 | Auditoria de datas e textos (mapeamento final, contrato do JSON) | 1 | — | ✅ concluída | Claude | (este commit) |
-| M1 | `tools/Cime.DataMigrator` (perfis `auth` e `prform`, tabelas do modelo EF, `reset` por schema) | 1 | — | ⬜ pendente | Claude | — |
-| B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, seeder, dev local) | 2 | B0 | ⬜ pendente | Claude | — |
-| T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ⬜ pendente | Claude | — |
+| M1 | `tools/Cime.DataMigrator` (perfis `auth` e `prform`, tabelas do modelo EF, `reset` por schema) | 1 | — | ✅ concluída | Claude | `a662ed8`, (fix T1) |
+| B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, dev local) | 2 | B0 | ✅ concluída | Claude | `825e59f` |
+| T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ⬜ pendente | Claude | — |
 | Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | ⬜ pendente | usuário + Claude | — |
 | Q2 | Virada (janela curta) | 5 | Q1 | ⬜ pendente | usuário + Claude | — |
@@ -24,6 +24,16 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - D6: dev local em Postgres Docker (fim do "banco de dev = produção").
 - B0: `DateTimeOffset` → `timestamptz`; `DateTime` → `timestamp without time zone` + conversor `Kind=Unspecified` (idêntico ao MySQL, JSON sem mudança). O front manda as datas de férias com `toISOString()` (hora 03:00 guardada). Comparações sem diferenciar maiúsculas explícitas em `RepositoryId`/`BranchPrefix`/`BranchName` (GitHub) e `EnvironmentName` (forms).
 
+## Notas da implementação
+- **B1**: `Cime.BuildingBlocks.Persistence` (convenção `UseUnspecifiedDateTimes` + `PostgresMigrationLock`). Migrações validadas num Postgres local com o schema `auth`: duas instâncias subindo juntas migram em série; cada contexto sobe, desce e sobe; nada fora dos 3 schemas é tocado. Tipos gerados conforme a B0.
+- **M1**: perfil `auth` revalidado no cenário da 0014 (SQL Server com o schema da auth antiga + casos de borda): `check` acusa `\0`/espaço no fim; `copy` + `verify` = 0; `reset` só apaga `auth`.
+- **T1 — ambiente**: auth local (usuários do ensaio da 0014, api-keys da maria/gestor e do admin); MySQL 8 (`utf8mb4_general_ci` no servidor) com o schema criado pela **API antiga** (código da 0014) nas próprias migrações; dados criados **pela API antiga** (saldo e pedidos de férias com aprovação/autorização, timeline, handover privado, registro de PR e resumo) + por SQL (PRs do GitHub normal e legado com caixa diferente, plugin de IA com JSON/FieldSettings/PersonalFields e acentos/emoji, plugin apagado, integração pessoal, forms, card com espaço no fim, timeline importada do Teams e sem origem, linha na `PullRequestsLegacyBackup`).
+- **T1 — migrador**: `check` ok com avisos certos (collation, tabela fora do modelo, espaço no fim); `copy` + `verify` = **0 diferenças**; conferência independente: férias com a hora 03:00 preservada, períodos à meia-noite, `timestamptz` em UTC, `DeletedAt`, JSON intacto, `GithubPrId` grande, sequências no próximo id.
+- **T1 — contrato**: 27 leituras (card, PRs do GitHub, handovers, timeline, férias, calendário, saldos, departamentos, plugins, forms, integrações) contra a API antiga (MySQL) e a nova (Postgres): **status HTTP e JSON idênticos** (inclusive `DateTime` sem `Z` e `DateTimeOffset` com `+00:00`; form por `qa` acha `QA`).
+- **T1 — escritas na API nova**: saldo (a checagem de duplicado com parâmetro `DateTime` UTC funciona), pedido de férias, aprovação/autorização (`UtcNow`), calendário, exclusão; timeline criar/editar/apagar; visibilidade do handover e rota pública; registro de PR (atualizar e novo card) e resumo. Nenhum erro do Npgsql; os únicos 500 foram regras de negócio esperadas.
+- **T1 — maiúsculas**: os predicados do upsert/legado do GitHub e do form, executados no Postgres, acham os registros gravados com outra caixa (`lower(...)`); o `==` puro não acharia (controle).
+- **T1 — negativos**: `copy` com destino cheio recusa; `reset` com nome errado recusa; `reset prform` apaga só `prform/vacations/timeline` (o `auth` fica intacto); ciclo refeito = 0.
+
 ## Notas de handoff
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
 - Ao rodar a API localmente: integrações externas desligadas (SMTP, DevOps, GitHub, Teams, IA). Nunca contra os bancos de produção com auto-migrate.
@@ -32,3 +42,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-26 — Planejamento: spec, `plan.md` e `status.md`; worktree `feature/0015`.
 - 2026-09-26 — B0 concluída (auditoria de datas e textos, seção 1.1 do plano).
+- 2026-09-26 — B1, M1 e T1 concluídas (ensaio local com contrato da API idêntico).

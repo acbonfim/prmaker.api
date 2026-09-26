@@ -74,6 +74,11 @@ Converter as datas de calendário para `date`/`DateOnly` seria mais correto, mas
 - Nenhum `OrderBy` por texto no banco (as ordenações são por data).
 - O `check` do perfil `prform` imprime a collation das colunas de texto da origem (para saber se o MySQL de produção ignora espaço no fim, `PAD SPACE`) e avisa espaços no início/fim nas colunas acima.
 
+### Achados do ensaio (T1)
+- **`PullRequestsLegacyBackup`**: tabela criada por SQL na migração `ConsolidatePullRequestPerCard` (0011), fora do modelo EF. Só servia para o `Down` daquela consolidação. **Não vai para o Postgres**; fica no backup final do MySQL (0016, B2). O `check` a lista como "fora do modelo, não será copiada".
+- **Collation real das colunas de texto** criadas pelo Pomelo: `utf8mb4_0900_ai_ci` (**NO PAD**, ignora maiúsculas **e acentos**). Espaço no fim já não era ignorado no MySQL, então nesse ponto o Postgres se comporta igual. Acentos: as colunas comparadas por texto (`CardNumber`, repositório/branch, ambiente, id do Teams) não usam acento na prática. O `ToLower()` cobre a caixa, não o acento, e isso fica anotado como diferença teórica aceita. As colunas `char(36)` (Guid) usam `ascii_general_ci` (PAD SPACE), o que é irrelevante porque Guid não tem espaço.
+- **Sem seeder (D3)**: em produção os dados vêm da cópia; num banco novo de dev, os plugins são criados pela tela (só o do Teams vinha por migração).
+
 ### Contrato do JSON
 Com o mapeamento acima, **nenhuma mudança esperada**. A T1 confirma com diff das respostas (MySQL × Postgres).
 
