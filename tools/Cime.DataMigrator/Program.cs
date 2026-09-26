@@ -109,6 +109,11 @@ class Commands(Profile profile)
         var warnings = await src.NotesAsync();
         var map = await MapAsync(src, dst, tables, errors);
 
+        // Nada fica para trás em silêncio: tabelas da origem que não estão no modelo não são copiadas.
+        var modelTables = tables.Select(t => t.Name).Append(Profile.HistoryTable).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (table, count) in (await src.TablesAsync()).Where(x => !modelTables.Contains(x.Table)))
+            warnings.Add($"tabela da origem fora do modelo, NÃO será copiada: {table} ({count} linha(s)) — preservar pelo backup final da origem");
+
         foreach (var t in tables)
         {
             if (!map.TryGetValue(t, out var cols)) continue;

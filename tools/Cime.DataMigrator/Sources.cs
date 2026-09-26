@@ -15,6 +15,8 @@ public interface ISource : IAsyncDisposable
     string Select(TableSpec t, IEnumerable<string> cols);
     /// <summary>Avisos sobre a origem que mudam o comportamento no Postgres (ex.: collation PAD SPACE).</summary>
     Task<List<string>> NotesAsync();
+    /// <summary>Todas as tabelas da origem com a contagem de linhas (para acusar o que ficaria para trás).</summary>
+    Task<List<(string Table, long Rows)>> TablesAsync();
 }
 
 /// <summary>SQL Server, tabelas em dbo (perfil auth).</summary>
@@ -43,6 +45,16 @@ public sealed class SqlServerSource : ISource
         $"SELECT {string.Join(", ", cols.Select(c => $"[{c}]"))} FROM dbo.[{t.Name}] ORDER BY {string.Join(", ", t.Key.Select(k => $"[{k}]"))}";
 
     public Task<List<string>> NotesAsync() => Task.FromResult(new List<string>());
+
+    public async Task<List<(string, long)>> TablesAsync()
+    {
+        var names = new List<string>();
+        await using (var cmd = new SqlCommand("SELECT name FROM sys.tables WHERE schema_id = SCHEMA_ID('dbo')", _conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) names.Add(r.GetString(0));
+        return await Db.CountAsync(_conn, names, n => $"SELECT COUNT_BIG(*) FROM dbo.[{n}]");
+    }
+
     public ValueTask DisposeAsync() => _conn.DisposeAsync();
 }
 
@@ -95,6 +107,15 @@ public sealed class MySqlSource : ISource
                       (pad == "PAD SPACE" ? " — ignora espaço no fim na comparação; o Postgres não ignora" : ""));
         }
         return notes;
+    }
+
+    public async Task<List<(string, long)>> TablesAsync()
+    {
+        var names = new List<string>();
+        await using (var cmd = new MySqlCommand("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'", _conn))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) names.Add(r.GetString(0));
+        return await Db.CountAsync(_conn, names, n => $"SELECT COUNT(*) FROM `{n}`");
     }
 
     public ValueTask DisposeAsync() => _conn.DisposeAsync();

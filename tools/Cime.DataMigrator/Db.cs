@@ -13,10 +13,14 @@ public static class Db
         var list = new List<Column>();
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
-            list.Add(new Column(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : Convert.ToInt32(r.GetValue(2)),
+            list.Add(new Column(r.GetString(0), r.GetString(1), MaxLength(r.IsDBNull(2) ? null : r.GetValue(2)),
                 Convert.ToBoolean(r.GetValue(3)), r.FieldCount > 4 && !r.IsDBNull(4) ? r.GetString(4) : null));
         return list;
     }
+
+    /// <summary>Tamanho máximo de texto; os do longtext do MySQL (4 GB) não cabem em int e valem "sem limite".</summary>
+    private static int? MaxLength(object? value) =>
+        value is null ? null : Convert.ToInt64(value) is var n && n <= int.MaxValue ? (int)n : null;
 
     public static async Task<List<Column>> TargetColumnsAsync(NpgsqlConnection conn, string schema, string table)
     {
@@ -35,6 +39,18 @@ public static class Db
         $"SELECT {string.Join(", ", cols.Select(Q))} FROM {t.Target} ORDER BY {string.Join(", ", t.Key.Select(Q))}";
 
     public static string Q(string ident) => $"\"{ident}\"";
+
+    public static async Task<List<(string, long)>> CountAsync(DbConnection conn, IEnumerable<string> tables, Func<string, string> sql)
+    {
+        var list = new List<(string, long)>();
+        foreach (var t in tables)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql(t);
+            list.Add((t, Convert.ToInt64(await cmd.ExecuteScalarAsync())));
+        }
+        return list;
+    }
 
     /// <summary>Datas com precisão de microssegundo (o Postgres guarda 6 casas; o datetime2 tem 7).</summary>
     public static DateTime TruncateToMicroseconds(DateTime d) => new(d.Ticks - d.Ticks % 10, d.Kind);
