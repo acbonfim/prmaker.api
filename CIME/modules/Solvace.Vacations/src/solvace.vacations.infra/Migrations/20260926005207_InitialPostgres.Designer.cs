@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using solvace.vacations.infra.Contexts;
@@ -11,9 +12,11 @@ using solvace.vacations.infra.Contexts;
 namespace solvace.vacations.infra.Migrations
 {
     [DbContext(typeof(VacationContext))]
-    partial class VacationContextModelSnapshot : ModelSnapshot
+    [Migration("20260926005207_InitialPostgres")]
+    partial class InitialPostgres
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

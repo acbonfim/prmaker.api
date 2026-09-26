@@ -67,7 +67,10 @@ builder.Services
 
 
 
-var connString = builder.Configuration.GetConnectionString("DefaultConnection");
+// PostgreSQL (feature 0015): os 3 contextos do host (prform, vacations, timeline), cada um no seu
+// schema. Chave nova de propósito: a versão anterior (MySQL) lia "DefaultConnection", que continua
+// existindo para o rollback.
+var connString = builder.Configuration.GetConnectionString("PrformDatabase");
 
 // Auditoria automática (CreatedBy/UpdatedBy) a partir do usuário autenticado.
 builder.Services.AddHttpContextAccessor();
@@ -75,8 +78,9 @@ builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 
 builder.Services.AddDbContext<DefaultContext>((sp, x) => x
     // Banco remoto (MonsterASP) via internet pública: habilita retry em falhas transitórias.
-    .UseMySql(connString, ServerVersion.AutoDetect(connString),
-        my => my.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null))
+    .UseNpgsql(connString, npgsql => npgsql
+        .MigrationsHistoryTable("__EFMigrationsHistory", DefaultContext.Schema)
+        .EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null))
     .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // Usuários da Cime.Auth (PostgreSQL, feature 0014). Chave nova: a versão anterior (SQL Server) lia
@@ -89,10 +93,10 @@ builder.Services.AddDbContext<AuthenticationContext>(x => x.UseNpgsql(
 var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
-    // Migrations dos 3 contexts MySQL, protegidas por advisory lock (GET_LOCK) para não
+    // Migrations dos 3 contexts, protegidas por advisory lock do PostgreSQL para não
     // haver corrida entre instâncias. Falha aqui é FATAL de propósito: a app não sobe e o
     // Cloud Run mantém a revisão anterior servindo em vez de publicar um schema quebrado.
-    await app.MigrateMySqlWithLockAsync();
+    await app.MigratePostgresWithLockAsync();
 }
 
 

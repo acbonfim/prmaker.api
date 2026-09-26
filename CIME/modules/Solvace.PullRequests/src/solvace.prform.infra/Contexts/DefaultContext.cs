@@ -1,3 +1,4 @@
+using Cime.BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.domain.Entities;
 
@@ -13,9 +14,20 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     public DbSet<PullRequestGithub> PullRequestsGithub { get; set; }
     public DbSet<UserPluginConfiguration> UserPluginConfigurations { get; set; }
 
+    /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
+    public const string Schema = "prform";
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // DateTime como no MySQL (Kind descartado, JSON sem "Z"); ver PostgresConventions (0015).
+        configurationBuilder.UseUnspecifiedDateTimes();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.HasDefaultSchema(Schema);
 
         // Handover nasce público. O default no banco garante que os registros já existentes
         // permaneçam públicos após a criação da coluna, até serem alterados manualmente.
@@ -62,12 +74,12 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
 
         modelBuilder.Entity<Plugin>()
             .Property(x => x.PersonalFields)
-            .HasColumnType("longtext");
+            .HasColumnType("text");
 
         modelBuilder.Entity<UserPluginConfiguration>(b =>
         {
             b.ToTable("UserPluginConfigurations");
-            b.Property(x => x.Options).HasColumnType("longtext");
+            b.Property(x => x.Options).HasColumnType("text");
             b.HasIndex(x => new { x.PluginId, x.UserExternalId }).IsUnique();
             b.HasIndex(x => x.UserExternalId);
             b.HasOne(x => x.Plugin)

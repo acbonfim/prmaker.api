@@ -40,7 +40,9 @@ public class FormApplication : IFormApplication
 
     public async Task<FormResponse> GetByEnvironment(string enrironmentName, CancellationToken cancellationToken)
     {
-        var user = await _context.Forms.Where(x => x.EnvironmentName == enrironmentName).FirstAsync(cancellationToken);
+        // Sem diferenciar maiúsculas, como no MySQL (_ci): o PostgreSQL diferencia (0015).
+        var environment = enrironmentName.ToLower();
+        var user = await _context.Forms.Where(x => x.EnvironmentName.ToLower() == environment).FirstAsync(cancellationToken);
         
         if (user == null) throw new ArgumentNullException(nameof(user));
 
