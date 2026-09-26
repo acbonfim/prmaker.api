@@ -95,6 +95,46 @@ cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grup
 - **Rollback**: `RealTime__Mode = InProcess` e, na `cime-pullrequest`, `max_instances = 1`,
   `timeout = 3600`, `session_affinity = true` (hub volta para a API, com o custo de antes).
 
+## Autenticação no PostgreSQL (feature 0014) — virada e rollback
+
+A Cime.Auth e a leitura de usuários da API principal (`AuthenticationContext`) usam PostgreSQL
+(MonsterASP), com as tabelas no schema `auth` e a chave `ConnectionStrings__AuthDatabase`
+(secret `postgres-auth-connection`). O migrador fica em `tools/Cime.Auth.DataMigrator`.
+
+```bash
+cd tools/Cime.Auth.DataMigrator
+export CIME_SOURCE_SQLSERVER='Server=db30567.public.databaseasp.net; Database=db30567; User Id=…; Password=…; TrustServerCertificate=True'
+export CIME_TARGET_POSTGRES='Host=…; Port=5432; Database=…; Username=…; Password=…; SSL Mode=Prefer'
+dotnet run -- schema    # cria o schema auth (migrações da auth)
+dotnet run -- check     # só leitura: colunas, valores que o Postgres recusaria, destino vazio
+dotnet run -- copy      # transação única, ids originais, sequências ajustadas
+dotnet run -- verify    # 0 diferenças = nenhum dado perdido
+dotnet run -- reset --confirm <database>   # apaga o schema auth para refazer
+```
+
+**Virada** (janela curta, fora do horário de uso):
+1. Antes: backup do SQL Server no painel; secret `postgres-auth-connection` no `secrets.auto.tfvars` e
+   `terraform apply` (o código antigo ignora a env nova).
+2. `reset` (se houve ensaio) → `schema` → `check` → `copy` → `verify` = 0.
+3. Merge do PR → deploy de `cime-auth` e `cime-pullrequest` já no PostgreSQL.
+4. `verify` de novo: escritas no SQL Server durante o deploy aparecem aqui (reconciliar à mão).
+5. Testar login, api-key, gestão de usuários e nomes na timeline.
+
+**Rollback** (enquanto o SQL Server existir): voltar o tráfego das duas APIs para a revisão anterior,
+que lê o SQL Server pelas chaves antigas (`DefaultConnection` na auth, `AuthenticationConnection` na
+API principal):
+```bash
+gcloud run services update-traffic cime-auth --region us-central1 --to-revisions=<revisão-anterior>=100
+gcloud run services update-traffic cime-pullrequest --region us-central1 --to-revisions=<revisão-anterior>=100
+```
+Escritas feitas no PostgreSQL depois da virada: `verify` lista (reaplicar à mão, se houver).
+
+**Cuidados no código da auth**: as datas são `DateTime.Now` gravadas em `timestamp without time zone`
+(o Npgsql recusa `DateTime.UtcNow` nessas colunas); o Postgres diferencia maiúsculas (as consultas já
+normalizam com `ToUpper`/`ToLower`); `DateTime.MinValue` é gravado como `-infinity` (padrão do Npgsql,
+volta como `MinValue` na leitura). Papéis padrão e admin inicial só são criados com o banco vazio
+(`AuthSeeder`, senha em `Seed__AdminPassword`).
+
 ## Notas importantes
 
 - **Chave das integrações pessoais (`user-integrations-encryption-key` → `UserIntegrations__EncryptionKey`):** gere uma vez com `openssl rand -base64 32` e **não troque** depois que os usuários salvarem tokens em "Minhas integrações" — com outra chave os valores salvos ficam ilegíveis e cada um precisa salvar de novo. Sem ela, a API sobe, mas recusa salvar tokens pessoais (503).

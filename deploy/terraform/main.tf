@@ -32,6 +32,9 @@ locals {
         # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
         "RealTime__RelayKey"        = "realtime-relay-key"
         "RealTime__TokenSigningKey" = "realtime-token-signing-key"
+        # Usuários da auth no PostgreSQL (feature 0014). A AuthenticationConnection (SQL Server)
+        # fica até a limpeza (Q3): é o que a revisão anterior lê num rollback.
+        "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
         # Integrações pessoais (feature 0002): chave AES-256 dos tokens dos usuários.
         # NUNCA trocar depois de em uso: os tokens salvos deixam de ser legíveis.
         "UserIntegrations__EncryptionKey" = "user-integrations-encryption-key"
@@ -46,6 +49,9 @@ locals {
         ASPNETCORE_ENVIRONMENT = "Production"
       }
       secret_env = {
+        # PostgreSQL, schema auth (feature 0014). A DefaultConnection (SQL Server) fica até a
+        # limpeza (Q3): é o que a revisão anterior lê num rollback.
+        "ConnectionStrings__AuthDatabase"      = "postgres-auth-connection"
         "ConnectionStrings__DefaultConnection" = "sqlserver-auth-connection"
         "Email__Password"                      = "email-password"
       }
