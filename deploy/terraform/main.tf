@@ -54,6 +54,10 @@ locals {
         "ConnectionStrings__AuthDatabase"      = "postgres-auth-connection"
         "ConnectionStrings__DefaultConnection" = "sqlserver-auth-connection"
         "Email__Password"                      = "email-password"
+        # Chaves dos tokens (0016): saíram do código. O Auth__Secret é o mesmo jwt-secret da API
+        # principal (ela valida as api-keys assinadas pela auth); o refresh ganhou secret próprio.
+        "Auth__Secret"        = "jwt-secret"
+        "Auth__SecretRefresh" = "jwt-refresh-secret"
       }
     }
   }
