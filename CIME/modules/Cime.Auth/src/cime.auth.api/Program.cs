@@ -17,6 +17,9 @@ using Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Chaves dos tokens vêm da configuração (0016); falha no startup se faltarem.
+Settings.Configure(builder.Configuration);
+
 // PostgreSQL (feature 0014), tabelas no schema "auth". A chave é nova de propósito: a versão
 // anterior (SQL Server) lia "DefaultConnection", então as duas convivem durante a virada/rollback.
 var connetionString = builder.Configuration.GetConnectionString("AuthDatabase");

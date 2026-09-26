@@ -27,14 +27,10 @@ locals {
         "Auth__Secret"                                = "jwt-secret"
         "AzureDevOps__PersonalAccessToken"            = "azuredevops-pat"
         "GitHub__Token"                               = "github-token"
-        "RealTime__ApiKey"                            = "realtime-apikey" # legado (rollback InProcess)
         # Relay (feature 0013): chave do POST /publish e chave HMAC dos tokens do navegador.
         # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
         "RealTime__RelayKey"        = "realtime-relay-key"
         "RealTime__TokenSigningKey" = "realtime-token-signing-key"
-        # Usuários da auth no PostgreSQL (feature 0014). A AuthenticationConnection (SQL Server)
-        # fica até a limpeza (Q3): é o que a revisão anterior lê num rollback.
-        "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
         # Módulos prform/vacations/timeline no PostgreSQL (feature 0015). A DefaultConnection (MySQL)
         # fica até a limpeza (0016): é o que a revisão anterior lê num rollback.
         "ConnectionStrings__PrformDatabase" = "postgres-prform-connection"
@@ -57,6 +53,10 @@ locals {
         "ConnectionStrings__AuthDatabase"      = "postgres-auth-connection"
         "ConnectionStrings__DefaultConnection" = "sqlserver-auth-connection"
         "Email__Password"                      = "email-password"
+        # Chaves dos tokens (0016): saíram do código. O Auth__Secret é o mesmo jwt-secret da API
+        # principal (ela valida as api-keys assinadas pela auth); o refresh ganhou secret próprio.
+        "Auth__Secret"        = "jwt-secret"
+        "Auth__SecretRefresh" = "jwt-refresh-secret"
       }
     }
   }

@@ -1,8 +1,27 @@
+using Microsoft.Extensions.Configuration;
+
 namespace cliqx.auth.api.Security
 {
+    /// <summary>
+    /// Chaves de assinatura dos tokens (acesso/api-key e refresh). Vêm da configuração
+    /// (Auth:Secret / Auth:SecretRefresh — Secret Manager em produção, appsettings.Development no dev),
+    /// nunca do código (0016). O Auth:Secret é o mesmo que a API principal usa para validar as api-keys.
+    /// </summary>
     public static class Settings
     {
-        public static string Secret = "de2044bd6d9565bb7eab8eb4a64f1eaba0fb80d691da30eabd5b8e4b011006df41ad46f2805b39dd3cd8d8943e00c3d627e3dcac26";
-        public static string SecretRefresh = "dd2044bd6d9565bb7eab8eb4a64e1eaba0fb80d691da30eabd5b8e4b01e006df41ad46f2805b39dd3cd8d8943e00c3de27e3dcac26";
+        // HMAC-SHA512 exige chave de pelo menos 512 bits.
+        private const int MinLength = 64;
+
+        public static string Secret { get; private set; } = string.Empty;
+        public static string SecretRefresh { get; private set; } = string.Empty;
+
+        public static void Configure(IConfiguration configuration)
+        {
+            Secret = configuration["Auth:Secret"] ?? string.Empty;
+            SecretRefresh = configuration["Auth:SecretRefresh"] ?? string.Empty;
+            if (Secret.Length < MinLength || SecretRefresh.Length < MinLength)
+                throw new InvalidOperationException(
+                    $"Configure Auth:Secret e Auth:SecretRefresh (mínimo {MinLength} caracteres).");
+        }
     }
 }

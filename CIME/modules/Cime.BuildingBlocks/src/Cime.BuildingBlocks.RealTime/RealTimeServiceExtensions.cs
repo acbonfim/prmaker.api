@@ -55,7 +55,7 @@ public static class RealTimeServiceExtensions
 
         var options = app.Services.GetRequiredService<IRealTimeOptionsProvider>().GetOptions();
 
-        app.UseMiddleware<RealTimeApiKeyMiddleware>();
+        app.UseMiddleware<RealTimeTokenMiddleware>();
         app.MapHub<RealTimeHub>(options.HubPath).RequireCors(CorsPolicyName);
 
         return app;

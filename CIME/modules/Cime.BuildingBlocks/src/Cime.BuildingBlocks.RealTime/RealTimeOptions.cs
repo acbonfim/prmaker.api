@@ -19,12 +19,6 @@ public class RealTimeOptions
     /// <summary>Caminho onde o hub é mapeado (default: /ws).</summary>
     public string HubPath { get; set; } = "/ws";
 
-    /// <summary>
-    /// Chave compartilhada exigida para conectar ao hub. Quando vazia, o gate é desligado
-    /// (útil em ambientes locais). Aceita via header "x-api-key" ou query string
-    /// ("x-api-key" / "access_token").
-    /// </summary>
-    public string? ApiKey { get; set; }
 
     /// <summary>
     /// Origens permitidas para a policy de CORS do hub. Quando vazia, qualquer origem é aceita
@@ -40,7 +34,7 @@ public class RealTimeOptions
 
     /// <summary>
     /// Chave HMAC-SHA256 (mínimo 32 caracteres) dos tokens de conexão do navegador, compartilhada
-    /// com o relay. Vazia => a API não emite token (o hub aceita só a <see cref="ApiKey"/>).
+    /// com o relay. Vazia => a API não emite token e o hub em processo fica aberto (só no dev).
     /// </summary>
     public string? TokenSigningKey { get; set; }
 
