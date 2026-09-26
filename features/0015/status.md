@@ -10,7 +10,7 @@
 | B1 | Default/Vacation/Timeline no Postgres (schemas, `InitialPostgres` ×3, lock, dev local) | 2 | B0 | ✅ concluída | Claude | `825e59f` |
 | T1 | Ensaio local (Docker: MySQL 8 → Postgres 18) + comparação de contrato da API | 3 | B1, M1 | ✅ concluída | Claude | — (testes no scratchpad) |
 | I1 | Terraform (`postgres-prform-connection`) e runbook | 4 | B1 | ✅ concluída | Claude | (commit I1) |
-| Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | Ensaio com os dados reais, sem virar | 5 | T1, I1 | 🟨 em andamento | usuário + Claude | — |
 | Q2 | Virada (janela curta) | 5 | Q1 | ⬜ pendente | usuário + Claude | — |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
@@ -33,6 +33,14 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - **T1 — escritas na API nova**: saldo (a checagem de duplicado com parâmetro `DateTime` UTC funciona), pedido de férias, aprovação/autorização (`UtcNow`), calendário, exclusão; timeline criar/editar/apagar; visibilidade do handover e rota pública; registro de PR (atualizar e novo card) e resumo. Nenhum erro do Npgsql; os únicos 500 foram regras de negócio esperadas.
 - **T1 — maiúsculas**: os predicados do upsert/legado do GitHub e do form, executados no Postgres, acham os registros gravados com outra caixa (`lower(...)`); o `==` puro não acharia (controle).
 - **T1 — negativos**: `copy` com destino cheio recusa; `reset` com nome errado recusa; `reset prform` apaga só `prform/vacations/timeline` (o `auth` fica intacto); ciclo refeito = 0.
+
+## Q1 — andamento (2026-09-26)
+- **A origem de produção é MariaDB 10.11** (`5.5.5-10.11.15-MariaDB`), não MySQL. Collation `utf8mb4_general_ci` (**PAD SPACE**: ignora espaço no fim). O `check` não achou nenhum valor com espaço no início/fim nas colunas de busca, então nenhum dado é afetado. O migrador foi ajustado (o MariaDB não tem `PAD_ATTRIBUTE`).
+- Nomes de tabela em minúsculas no MariaDB (`lower_case_table_names`); as tabelas do modelo casam sem diferenciar maiúsculas.
+- `check` ok: 621 linhas (Forms 5, Handovers 21, Plugins 11, PluginConfigurations 11, PullRequests 221, UserPluginConfigurations 6, PullRequestsGithub 234, UserVacationBalances 9, VacationRequests 9, TimelineEntries 94).
+- **Fora do modelo (não copiadas; ficam para o backup final do MariaDB, 0016 B2)**: `aspnet*` legadas (4 papéis, 1 usuário), `services`/`userservices` (1/1), `userforgetcodes` (0), `pullrequestslegacybackup` (217).
+- `copy` + `verify` = **0 diferenças** (01:12 UTC).
+- 🟨 Comparação de contrato com dados reais: API de produção (MariaDB) × API nova local (cópia no Postgres), 20 leituras com a api-key do usuário (script `q1-contract.py`, só status e caminhos divergentes).
 
 ## Notas de handoff
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
