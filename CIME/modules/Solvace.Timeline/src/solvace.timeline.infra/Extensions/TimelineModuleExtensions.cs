@@ -12,9 +12,11 @@ public static class TimelineModuleExtensions
 {
     public static IServiceCollection AddTimelineModule(this IServiceCollection services, IConfiguration configuration)
     {
-        // Reutiliza a mesma connection string do host (MySQL), com contexto próprio.
-        var connString = configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<TimelineContext>(x => x.UseMySql(connString, ServerVersion.AutoDetect(connString)));
+        // PostgreSQL, schema "timeline" (feature 0015), mesma connection string do host, contexto próprio.
+        var connString = configuration.GetConnectionString("PrformDatabase");
+        services.AddDbContext<TimelineContext>(x => x.UseNpgsql(connString, npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory", TimelineContext.Schema)
+            .EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null)));
 
         services.AddScoped<ITimelineRepository, TimelineRepository>();
         services.AddScoped<ITimelineApplication, TimelineApplication>();

@@ -1,3 +1,4 @@
+using Cime.BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using solvace.vacations.domain.Entities;
 
@@ -12,9 +13,20 @@ public class VacationContext : DbContext
     public DbSet<VacationRequest> VacationRequests { get; set; }
     public DbSet<UserVacationBalance> UserVacationBalances { get; set; }
 
+    /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
+    public const string Schema = "vacations";
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // DateTime como no MySQL (Kind descartado, JSON sem "Z"); ver PostgresConventions (0015).
+        configurationBuilder.UseUnspecifiedDateTimes();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.HasDefaultSchema(Schema);
 
         modelBuilder.Entity<VacationRequest>(entity =>
         {

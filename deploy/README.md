@@ -99,17 +99,17 @@ cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grup
 
 A Cime.Auth e a leitura de usuários da API principal (`AuthenticationContext`) usam PostgreSQL
 (MonsterASP), com as tabelas no schema `auth` e a chave `ConnectionStrings__AuthDatabase`
-(secret `postgres-auth-connection`). O migrador fica em `tools/Cime.Auth.DataMigrator`.
+(secret `postgres-auth-connection`). O migrador fica em `tools/Cime.DataMigrator` (perfil `auth`).
 
 ```bash
-cd tools/Cime.Auth.DataMigrator
-export CIME_SOURCE_SQLSERVER='Server=db30567.public.databaseasp.net; Database=db30567; User Id=…; Password=…; TrustServerCertificate=True'
+cd tools/Cime.DataMigrator
+export CIME_SOURCE='Server=db30567.public.databaseasp.net; Database=db30567; User Id=…; Password=…; TrustServerCertificate=True'
 export CIME_TARGET_POSTGRES='Host=…; Port=5432; Database=…; Username=…; Password=…; SSL Mode=Prefer'
-dotnet run -- schema    # cria o schema auth (migrações da auth)
-dotnet run -- check     # só leitura: colunas, valores que o Postgres recusaria, destino vazio
-dotnet run -- copy      # transação única, ids originais, sequências ajustadas
-dotnet run -- verify    # 0 diferenças = nenhum dado perdido
-dotnet run -- reset --confirm <database>   # apaga o schema auth para refazer
+dotnet run -- auth schema    # cria o schema auth (migrações da auth)
+dotnet run -- auth check     # só leitura: colunas, valores que o Postgres recusaria, destino vazio
+dotnet run -- auth copy      # transação única, ids originais, sequências ajustadas
+dotnet run -- auth verify    # 0 diferenças = nenhum dado perdido
+dotnet run -- auth reset --confirm <database>   # apaga o schema auth para refazer
 ```
 
 **Virada** (janela curta, fora do horário de uso):
@@ -134,6 +134,37 @@ Escritas feitas no PostgreSQL depois da virada: `verify` lista (reaplicar à mã
 normalizam com `ToUpper`/`ToLower`); `DateTime.MinValue` é gravado como `-infinity` (padrão do Npgsql,
 volta como `MinValue` na leitura). Papéis padrão e admin inicial só são criados com o banco vazio
 (`AuthSeeder`, senha em `Seed__AdminPassword`).
+
+## API principal no PostgreSQL (feature 0015) — virada e rollback
+
+Os contextos `DefaultContext`, `VacationContext` e `TimelineContext` usam o mesmo database da auth,
+cada um no seu schema (`prform`, `vacations`, `timeline`), com a chave `ConnectionStrings__PrformDatabase`
+(secret `postgres-prform-connection`). Migrador: perfil `prform` (origem MySQL).
+
+```bash
+cd tools/Cime.DataMigrator
+export CIME_SOURCE='Server=db31021.public.databaseasp.net; Database=db31021; Uid=…; Pwd=…; SslMode=Preferred'
+export CIME_TARGET_POSTGRES='Host=…; Port=5432; Database=…; Username=…; Password=…; SSL Mode=Require'
+dotnet run -- prform schema | check | copy | verify
+dotnet run -- prform reset --confirm <database>   # apaga só prform/vacations/timeline (nunca o auth)
+```
+O `check` avisa tabelas da origem fora do modelo (não copiadas — ex.: `PullRequestsLegacyBackup`,
+que fica no backup final do MySQL) e a collation da origem.
+
+**Virada** (janela curta, fora do horário de uso — a API principal recebe escrita o dia todo):
+1. Antes: `postgres-prform-connection` no `secrets.auto.tfvars` e `terraform apply` (o código antigo ignora).
+2. `reset` (se houve ensaio) → `schema` → `check` → `copy` → `verify` = 0.
+3. Merge do PR → deploy da `cime-pullrequest` já no PostgreSQL.
+4. `verify` de novo: escritas no MySQL durante o deploy aparecem aqui (reconciliar à mão).
+5. Testar no app: card (descrição/RC/resumo/PRs), timeline, handover, férias, plugins, integrações.
+
+**Rollback** (enquanto o MySQL existir): tráfego da `cime-pullrequest` para a revisão anterior (lê o MySQL
+pela `DefaultConnection`); escritas feitas no PostgreSQL depois da virada: `verify` lista.
+
+**Cuidados no código**: `DateTime` é `timestamp without time zone` gravado com `Kind=Unspecified`
+(`PostgresConventions.UseUnspecifiedDateTimes`, igual ao MySQL — o JSON continua sem `Z`);
+`DateTimeOffset` é `timestamptz`. O Postgres diferencia maiúsculas: comparações de texto que precisam
+ignorar caixa usam `ToLower()` nos dois lados. Dev local: `docker compose up -d` (Postgres 18).
 
 ## Notas importantes
 

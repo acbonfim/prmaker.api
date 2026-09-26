@@ -13,9 +13,11 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.1" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.Persistence\Cime.BuildingBlocks.Persistence.csproj" />
       <ProjectReference Include="..\solvace.vacations.application\solvace.vacations.application.csproj" />
       <ProjectReference Include="..\solvace.vacations.domain\solvace.vacations.domain.csproj" />
     </ItemGroup>

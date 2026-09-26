@@ -62,16 +62,18 @@ public class PullRequestGithubApplication : IPullRequestGithubApplication
         }
 
         // Idempotência: o mesmo PR (repo + número) pode voltar quando já existia no GitHub.
+        // Comparações de texto sem diferenciar maiúsculas, como no MySQL (_ci): o PostgreSQL diferencia (0015).
+        var repository = pr.Repository.ToLower();
         var entity = await _context.PullRequestsGithub
-            .FirstOrDefaultAsync(x => x.RepositoryId == pr.Repository && x.GithubPrNumber == pr.Number, cancellationToken);
+            .FirstOrDefaultAsync(x => x.RepositoryId.ToLower() == repository && x.GithubPrNumber == pr.Number, cancellationToken);
         if (entity is null)
         {
             // Registro legado (migrado do modelo antigo) para a mesma branch/repositório: vira este PR.
-            var prefix = request.BranchPrefix?.Trim() ?? string.Empty;
-            var name = request.BranchName.Trim();
+            var prefix = (request.BranchPrefix?.Trim() ?? string.Empty).ToLower();
+            var name = request.BranchName.Trim().ToLower();
             var legacy = await _context.PullRequestsGithub
                 .FirstOrDefaultAsync(x => x.CardNumber == cardNumber && x.GithubPrNumber == null
-                    && x.RepositoryId == pr.Repository && x.BranchPrefix == prefix && x.BranchName == name, cancellationToken);
+                    && x.RepositoryId.ToLower() == repository && x.BranchPrefix.ToLower() == prefix && x.BranchName.ToLower() == name, cancellationToken);
 
             if (legacy is not null)
             {

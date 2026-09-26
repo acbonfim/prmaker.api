@@ -31,6 +31,9 @@ public class PluginApplication : IPluginApplication
         await _repository
             .Include(x => x.Configurations)
             .Where(x => !x.IsDeleted)
+            // Ordem explícita: o MySQL/MariaDB devolvia pela chave primária sem ORDER BY; o PostgreSQL
+            // não garante ordem nenhuma (0015).
+            .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
     
     public async Task<Plugin> GetPluginById(int pluginId,CancellationToken cancellationToken) => 

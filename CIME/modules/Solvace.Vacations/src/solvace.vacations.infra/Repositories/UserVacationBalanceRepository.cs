@@ -45,6 +45,7 @@ public class UserVacationBalanceRepository : IUserVacationBalanceRepository
         return await _context.UserVacationBalances
             .Where(b => b.UserId == userId)
             .OrderByDescending(b => b.AcquisitionPeriodStart)
+            .ThenBy(b => b.Id) // desempate estável (o MariaDB devolvia os empates por id; 0015)
             .ToListAsync(cancellationToken);
     }
 
@@ -74,6 +75,7 @@ public class UserVacationBalanceRepository : IUserVacationBalanceRepository
                 targetDate >= b.UsagePeriodStart &&
                 targetDate <= b.UsagePeriodEnd)
             .OrderByDescending(b => b.AcquisitionPeriodStart)
+            .ThenBy(b => b.Id) // desempate estável (o MariaDB devolvia os empates por id; 0015)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -89,6 +91,7 @@ public class UserVacationBalanceRepository : IUserVacationBalanceRepository
 
         return await query
             .OrderByDescending(b => b.AcquisitionPeriodStart)
+            .ThenBy(b => b.Id) // desempate estável (o MariaDB devolvia os empates por id; 0015)
             .ToListAsync(cancellationToken);
     }
 }
