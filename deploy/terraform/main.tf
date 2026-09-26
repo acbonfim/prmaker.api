@@ -27,7 +27,6 @@ locals {
         "Auth__Secret"                                = "jwt-secret"
         "AzureDevOps__PersonalAccessToken"            = "azuredevops-pat"
         "GitHub__Token"                               = "github-token"
-        "RealTime__ApiKey"                            = "realtime-apikey" # legado (rollback InProcess)
         # Relay (feature 0013): chave do POST /publish e chave HMAC dos tokens do navegador.
         # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
         "RealTime__RelayKey"        = "realtime-relay-key"
