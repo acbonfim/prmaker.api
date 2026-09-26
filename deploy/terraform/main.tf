@@ -29,6 +29,12 @@ locals {
         "GitHub__Token"                               = "github-token"
         # Relay (feature 0013): chave do POST /publish e chave HMAC dos tokens do navegador.
         # Os MESMOS valores vão para os secrets do GitHub usados no deploy do relay.
+        # Sem uso desde a 0016, mas ficam até a B1: remover a env também destrói o grant
+        # "pullrequest:<secret>" — e o binding no GCP é compartilhado (mesma conta de serviço),
+        # então tiraria o acesso da auth ao postgres-auth-connection e das revisões de rollback
+        # ao realtime-apikey. Na B1: grants por secret (moved/removed) antes de tirar as envs.
+        "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
+        "RealTime__ApiKey"                = "realtime-apikey"
         "RealTime__RelayKey"        = "realtime-relay-key"
         "RealTime__TokenSigningKey" = "realtime-token-signing-key"
         # Módulos prform/vacations/timeline no PostgreSQL (feature 0015). A DefaultConnection (MySQL)
@@ -67,6 +73,10 @@ locals {
   ]))
 
   # Pares (serviço, secret_id) para conceder o acesso do runtime SA por secret.
+  # ATENÇÃO: todos os serviços usam a MESMA conta de serviço, então "auth:X" e "pullrequest:X" são o
+  # mesmo binding no GCP. Destruir um deles (ex.: um serviço deixa de usar X) remove o acesso do
+  # outro também. Não remova uma env que referencia um secret ainda usado por outro serviço sem
+  # antes trocar esta chave por secret_id (com blocos moved/removed) — pendência da 0016/B1.
   service_secret_grants = flatten([
     for svc_key, svc in local.services : [
       for secret_id in distinct(values(svc.secret_env)) : {
