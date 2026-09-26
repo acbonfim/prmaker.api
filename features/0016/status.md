@@ -6,11 +6,11 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| C1 | Remover Pomelo/SqlServer/Sqlite; `AuthenticationContext` na `PrformDatabase` | A | 0015 estável (virada em 2026-09-26) | ⬜ pendente | Claude | — |
-| C2 | Valores reais fora dos `appsettings`; chaves mortas; dev local | A | 0015 estável | ⬜ pendente | Claude | — |
-| C3 | Tempo real só com token (back + front) | A | 0015 estável | ⬜ pendente | Claude | — |
-| C4 | Arquivos e docs obsoletos (`CLAUDE.md`, `deploy/README.md`, `deploy.md`, pipeline e scripts antigos) | A | — | ⬜ pendente | Claude | — |
-| C5 | Deploy da onda A + testes | A | C1–C4 | ⬜ pendente | usuário + Claude | — |
+| C1 | Remover Pomelo/SqlServer/Sqlite; `AuthenticationContext` na `PrformDatabase` | A | 0015 estável | ✅ concluída | Claude | `4f1b606` |
+| C2 | Valores reais fora dos `appsettings` e do código (chaves JWT da auth); chaves mortas; dev local | A | 0015 estável | ✅ concluída | Claude | `5dd721d` |
+| C3 | Tempo real só com token (back + front) | A | 0015 estável | ✅ concluída | Claude | `423bcf9`, front `0069568` |
+| C4 | Arquivos e docs obsoletos (`CLAUDE.md`, `deploy/README.md`, `deploy.md`, pipeline e scripts antigos) | A | — | ✅ concluída | Claude | `0b170fe` |
+| C5 | Deploy da onda A + testes | A | C1–C4 | 🟨 pronto para deploy (aguarda o usuário) | usuário + Claude | — |
 | R1 | Rotação das credenciais expostas | B | — | ⬜ pendente | usuário + Claude | — |
 | B1 | **Ponto sem volta**: remover secrets/envs de fallback (Terraform) | B | C5; SQL Server ≥ ~2026-10-26; MySQL ≥ 0015 + 30 dias | ⬜ pendente | usuário + Claude | — |
 | B2 | Backups finais (mysqldump, .bak) | B | B1 | ⬜ pendente | usuário | — |
@@ -24,6 +24,20 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - Virada da 0015 (PR → Postgres): 2026-09-26 → MariaDB `db31021` pode sair a partir de ~2026-10-26. (A origem era **MariaDB 10.11**, não MySQL; tem também a `pullrequestslegacybackup` com 217 linhas e as tabelas `aspnet*`/`services` legadas, que precisam entrar no backup final.)
 - **2026-09-26 02:19 UTC — banco trocado para o PostgreSQL premium `db70152` (EUA, Salt Lake City; fuso do servidor `America/Denver`)**, perto do Cloud Run (us-central1). O `db70140` (gratuito, Alemanha) não podia ser promovido a premium pelo painel. Cópia com `pg_dump`/`pg_restore` dos schemas `auth/prform/vacations/timeline`: 24 tabelas, 690 linhas, checksums (sessões em UTC) idênticos; nenhuma escrita no antigo durante a troca. Revisões: `cime-auth-00021-l7d`, `cime-pullrequest-00024-pf7` (env `Database__Host=db70152` no `plain_env` para forçar a revisão). O `db70140` fica parado como fallback por alguns dias → excluir na onda B (sem backup necessário além do que já está no `db70152`; um `pg_dump` final por garantia). As versões antigas dos secrets (apontando para o `db70140`) foram destruídas pelo Terraform; para voltar, reverter o `secrets.auto.tfvars` (backup no scratchpad) e aplicar.
 - Suporte ao .NET 8 acaba em 2026-11-10: a onda A (sem Pomelo) precisa estar pronta antes do upgrade.
+
+## Onda A — notas (2026-09-26)
+- **C1**: Pomelo, EF SqlServer e EF Sqlite removidos de 6 projetos (Sqlite nunca foi usado). O `AuthenticationContext` usa a `PrformDatabase` (mesmo database, schema `auth`). A env `ConnectionStrings__AuthDatabase` da `cime-pullrequest` sai no Terraform, mas só **depois** do deploy (a revisão atual ainda a lê).
+- **C2**: nenhum valor real nos `appsettings.json`. Produção já lia JWT/PAT/token do GitHub/SMTP do Secret Manager; as chaves de IA eram placeholders.
+  - **Achado**: as chaves de assinatura da auth (`Settings.Secret`/`SecretRefresh`) estavam **no código**. Passaram para `Auth:Secret`/`Auth:SecretRefresh`, com os **mesmos valores**. Prova: o hash do `Settings.Secret` é igual ao do `Auth:Secret` da API, e a API valida em produção, com o `jwt-secret`, as api-keys que a auth assina. O refresh ganhou o secret `jwt-refresh-secret` (valor antigo, 106 chars). A auth não sobe sem as duas.
+  - Development com chaves só de dev (auth e API locais se entendem), sem senha SMTP; `GITHUB_*`/`AZURE_*` soltos (não lidos) removidos.
+  - Testado localmente: auth sem segredos não sobe; login, refresh e api-key com os segredos da config; a API aceita a api-key válida e recusa assinatura alterada/assinada com outra chave (403) e sem chave (401); `departments` lê usuários pela conexão única.
+- **C3**: `RealTimeTokenMiddleware` (só token); saem `ApiKey` (opções, plugin, appsettings, env) e o caminho legado do `WsService`/`apiKeyWS` no front. Testado com o cliente SignalR do front no modo em processo: com token conecta (WebSocket); sem token e com a chave `123456789` → 401.
+- **C4**: `CLAUDE.md` e `deploy/README.md` no estado atual; removidos pipeline do Bitbucket, README/script MySQL antigos da auth, `appsettings.QA.json`, `deploy.md`, `.idea`/`Cime.Auth.sln` (a auth entrou na `Solvace.Master.sln`, 29 projetos).
+- **C5 — ordem obrigatória do deploy**:
+  1. Terraform passo 1: cria `jwt-refresh-secret`, dá à auth acesso a `jwt-secret`/`jwt-refresh-secret` e as envs `Auth__Secret`/`Auth__SecretRefresh`; mantém as envs da API principal. O código atual ignora as envs novas. Plano: 4 criados, 2 alterados (na API principal, só o ajuste cosmético do `scaling`).
+  2. Merge dos PRs (backend e front) → deploy.
+  3. Terraform passo 2: remove `ConnectionStrings__AuthDatabase` e `RealTime__ApiKey` da `cime-pullrequest`.
+  4. Testes: login, api-key, tempo real (relay), card, férias.
 
 ## Checklist de rotação (R1)
 | Credencial | Onde está exposta | Trocada no provedor | Secret atualizado | Teste |
