@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc;
+using Asp.Versioning;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Cime.BuildingBlocks.Swagger;
@@ -12,11 +12,14 @@ public static class ConfigSwagger
     {
         var t = new UtilsSwaggerHTML();
 
+        // Asp.Versioning (0017) no lugar do Microsoft.AspNetCore.Mvc.Versioning descontinuado: mesma
+        // versão padrão, rotas /api/v{version:apiVersion} e header de versões suportadas.
         services.AddApiVersioning(options =>
         {
             options.DefaultApiVersion = new ApiVersion(1, 0);
             options.AssumeDefaultVersionWhenUnspecified = true;
-        });
+            options.ReportApiVersions = true;
+        }).AddMvc();
 
         services.AddSwaggerGen(c =>
         {
@@ -48,19 +51,10 @@ public static class ConfigSwagger
                 Description = "API Key Authentication header. Example: \"x-api-key: your-api-key\"",
             });
 
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            // OpenApi 2 (Swashbuckle 10): o requisito referencia o esquema pelo documento.
+            c.AddSecurityRequirement(document => new OpenApiSecurityRequirement
             {
-                {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "XApiKey"
-                        }
-                    },
-                    new string[] {}
-                }
+                [new OpenApiSecuritySchemeReference("XApiKey", document)] = []
             });
 
             c.DocInclusionPredicate((version, desc) =>
@@ -83,20 +77,11 @@ public static class ConfigSwagger
 
         });
 
-        services.AddApiVersioning(options =>
-        {
-            options.ReportApiVersions = true;
-            options.AssumeDefaultVersionWhenUnspecified = true;
-            options.DefaultApiVersion = new ApiVersion(1, 0);
-        });
-
         return services;
     }
 
     public static IApplicationBuilder UseSwaggerConfig(this IApplicationBuilder app, string projectName)
     {
-        app.UseApiVersioning();
-        
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
