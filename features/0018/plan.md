@@ -14,3 +14,13 @@
 - **F1 — Robôs no front**: `robots.txt` negando tudo + `X-Robots-Tag: noindex`; nginx com o IP real do cliente (último item do `X-Forwarded-For`, que o Google acrescenta) e `deny` para as faixas **EC2 da AWS em us-west-2**, geradas no build a partir do `ip-ranges.json` oficial. O bloqueio devolve 403 (a requisição ainda chega ao Cloud Run; economiza egress). Cloud Armor barraria antes, mas custa ~US$ 18/mês.
 - **T1 — Testes locais**: imagem com R2R sobe e responde; `--migrate` migra um banco vazio e sai; API sobe sem migrar; nginx bloqueia uma faixa simulada e libera o resto; `robots.txt`.
 - **Q1 — Deploy e medição**: comparar os cold starts (métrica `startup_latencies`) antes e depois.
+
+## Status (2026-09-27)
+| Fase | Status | Notas |
+|---|---|---|
+| B1 ReadyToRun | ✅ | O restore também precisa de `-p:PublishReadyToRun=true` (senão NETSDK1094: sem o crossgen do RID). Imagens +34 MB. |
+| B2 Migrações no pipeline | ✅ | `--migrate` nas duas APIs; job `<serviço>-migrate` no `deploy.yml` antes do deploy. **Achado**: com exceção não tratada o processo .NET ficou vivo (estado R) em vez de sair → o modo `--migrate` captura, loga como crítico e faz `Environment.Exit(1)` (sai em 1 s com o banco fora do ar). Banco vazio: auth e API migram e saem 0 (4 schemas + papéis). |
+| I1 Limpeza do AR | ✅ (a aplicar) | Terraform nos dois repos: KEEP 5 mais recentes + DELETE o resto. Planos: só isso + o ajuste cosmético do `scaling`. |
+| F1 Robôs | ✅ | 164 faixas EC2 us-west-2 no build; os **20/20** IPs de robô vistos nos logs estão cobertos. Teste local do nginx: robô 403 (página e assets), usuário 200, header forjado não burla (vale o último IP), `robots.txt` + `X-Robots-Tag`. **Validar em produção** que o Cloud Run acrescenta o IP real no fim do `X-Forwarded-For`. |
+| T1 Startup | ✅ | Local (banco na mesma máquina): 1ª resposta **1,58–2,11 s → 0,86–0,99 s** (~45%). Em produção, a checagem de migração falava com o banco remoto via TLS; o ganho deve ser maior. |
+| Q1 Deploy + medição | ⬜ | |

@@ -96,12 +96,23 @@ builder.Services.AddDbContext<AuthenticationContext>(x => x.UseNpgsql(
 
 
 var app = builder.Build();
-if (!app.Environment.IsDevelopment())
+// Migrações fora do startup (0018): o pipeline roda esta mesma imagem com "--migrate" (Cloud Run
+// Job) antes de publicar a revisão; se falhar, o deploy não acontece. Subindo normalmente, a API
+// não migra (cold start menor). Localmente: dotnet run -- --migrate.
+if (args.Contains("--migrate"))
 {
-    // Migrations dos 3 contexts, protegidas por advisory lock do PostgreSQL para não
-    // haver corrida entre instâncias. Falha aqui é FATAL de propósito: a app não sobe e o
-    // Cloud Run mantém a revisão anterior servindo em vez de publicar um schema quebrado.
-    await app.MigratePostgresWithLockAsync();
+    // Migrations dos 3 contexts, protegidas por advisory lock do PostgreSQL. Falha => exit 1 na
+    // hora (o pipeline para). Não depende da exceção "não tratada": no teste o processo ficou vivo.
+    try
+    {
+        await app.MigratePostgresWithLockAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogCritical(ex, "Falha ao aplicar as migrations.");
+        Environment.Exit(1);
+    }
+    return;
 }
 
 

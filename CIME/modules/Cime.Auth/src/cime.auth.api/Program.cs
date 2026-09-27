@@ -148,8 +148,14 @@ app.UseCors("CorsPolicy");
 
 app.MapControllers();
 
-if (!app.Environment.IsDevelopment())
+// Migrações fora do startup (0018): o pipeline roda esta mesma imagem com "--migrate" (Cloud Run
+// Job) antes de publicar a revisão; se falhar, o deploy não acontece. Subindo normalmente, a auth
+// não migra (cold start menor). Localmente: dotnet run -- --migrate.
+if (args.Contains("--migrate"))
 {
+    // Falha => exit 1 na hora (o pipeline para); não depende da exceção "não tratada".
+    try
+    {
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<DefaultContext>();
@@ -159,6 +165,13 @@ if (!app.Environment.IsDevelopment())
         await MigrationService.ApplyMigrationsAsync(dbContext, logger,
             () => AuthSeeder.SeedAsync(scope.ServiceProvider, logger));
     }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogCritical(ex, "Falha ao aplicar as migrations/seed.");
+        Environment.Exit(1);
+    }
+    return;
 }
 
 app.Run();

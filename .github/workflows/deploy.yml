@@ -25,9 +25,11 @@ jobs:
           - name: pullrequest
             service: cime-pullrequest
             dockerfile: CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Dockerfile
+            secrets: cime-pullrequest-secrets
           - name: auth
             service: cime-auth
             dockerfile: CIME/modules/Cime.Auth/src/cime.auth.api/Dockerfile
+            secrets: cime-auth-secrets
 
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +53,26 @@ jobs:
           docker build -f "${{ matrix.dockerfile }}" -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${GITHUB_SHA}"
           docker push "${IMAGE}:latest"
+
+      # Migrações fora do startup (0018): a mesma imagem roda "--migrate" num Cloud Run Job, com a
+      # conta de runtime e o secret JSON do serviço montado como no serviço. Falhou → o job sai com
+      # erro, o passo falha e o deploy abaixo não acontece (a revisão atual segue servindo).
+      - name: Migrações (Cloud Run Job)
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${{ matrix.name }}:${GITHUB_SHA}"
+          JOB="${{ matrix.service }}-migrate"
+          gcloud run jobs deploy "${JOB}" \
+            --image "${IMAGE}" \
+            --region "${GCP_REGION}" \
+            --project "${GCP_PROJECT_ID}" \
+            --service-account "cime-run-runtime@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-secrets "/secrets/appsettings.secrets.json=${{ matrix.secrets }}:latest" \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" \
+            --args="--migrate" \
+            --tasks 1 --max-retries 0 --task-timeout 600s \
+            --cpu 1 --memory 512Mi \
+            --quiet
+          gcloud run jobs execute "${JOB}" --region "${GCP_REGION}" --project "${GCP_PROJECT_ID}" --wait --quiet
 
       - name: Deploy no Cloud Run
         run: |

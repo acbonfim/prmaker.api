@@ -5,11 +5,17 @@
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
+# Arquitetura do alvo, preenchida pelo BuildKit (amd64 no CI/Cloud Run; arm64 num Mac).
+ARG TARGETARCH
 WORKDIR /src
 COPY . .
-RUN dotnet restore "CIME/modules/Solvace.PullRequests/src/solvace.prform.api/solvace.prform.api.csproj"
-RUN dotnet publish "CIME/modules/Solvace.PullRequests/src/solvace.prform.api/solvace.prform.api.csproj" \
-    -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+# ReadyToRun (0018): código pré-compilado para o RID do alvo → menos JIT e cold start menor.
+# O restore também precisa do PublishReadyToRun (baixa o compilador crossgen do RID).
+RUN RID=linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64) && \
+    dotnet restore "CIME/modules/Solvace.PullRequests/src/solvace.prform.api/solvace.prform.api.csproj" -r $RID -p:PublishReadyToRun=true && \
+    dotnet publish "CIME/modules/Solvace.PullRequests/src/solvace.prform.api/solvace.prform.api.csproj" \
+      -c $BUILD_CONFIGURATION -r $RID --self-contained false --no-restore \
+      -p:PublishReadyToRun=true -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
