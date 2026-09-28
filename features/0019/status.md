@@ -5,17 +5,17 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| F1 | Manifest, ícones e metas do `index.html` | 1 | — | ✅ concluída | Claude | front `5df5c12` |
+| F1 | Manifest, ícones e metas do `index.html` | 1 | — | ✅ concluída | Claude | front `5df5c12`, `b4d59b8` |
 | F2 | `@angular/service-worker` + `ngsw-config.json` (só o shell, sem dados da API) | 1 | — | ✅ concluída | Claude | front `5df5c12` |
 | F4 | nginx: SW/`ngsw.json` sem cache, manifest, ícones | 1 | — | ✅ concluída | Claude | front `5df5c12` |
 | F3 | `PwaService`: aviso "Nova versão — Atualizar" | 2 | F2 | ✅ concluída | Claude | front `5df5c12` |
 | T1 | Teste local em container (instalação, cabeçalhos, atualização A→B, API/tempo real) | 3 | F1–F4 | ✅ concluída (API/tempo real → Q1) | Claude | — |
-| Q1 | Deploy e teste em produção | 4 | T1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | Deploy e teste em produção | 4 | T1 | 🟨 PRs abertos, aguardando merge | usuário + Claude | front #16, backend #26 |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Notas
-- **F1**: ícones com monograma "PR" branco sobre gradiente azul (`#4f9cf9` → `#1f5fc4`), decidido pelo usuário; gerados com `sharp` a partir de SVG (quadrado arredondado com transparência para `any`; fundo cheio com o texto na zona segura para `maskable` e `apple-touch-icon`). Manifest: `theme_color` `#212730` (cabeçalho), `background_color` `#14181d` (fundo do login). Título da aba passou de "Pull Request Maker" para "PRMake". **O `favicon.ico` atual é o logo do Slack** — não foi trocado (fora do escopo); vale trocar pelo monograma.
+- **F1**: ícones com monograma "PR" branco sobre gradiente azul (`#4f9cf9` → `#1f5fc4`), decidido pelo usuário; gerados com `sharp` a partir de SVG (quadrado arredondado com transparência para `any`; fundo cheio com o texto na zona segura para `maskable` e `apple-touch-icon`). Manifest: `theme_color` `#212730` (cabeçalho), `background_color` `#14181d` (fundo do login). Título da aba passou de "Pull Request Maker" para "PRMake". O `favicon.ico` era o logo do Slack → trocado pelo monograma (ICO com PNG 16/32/48, `b4d59b8`) e com cache de 1 dia no nginx (antes caía na regra de 1 ano `immutable`).
 - **F2**: `@angular/service-worker` fixado em 20.3.7 (o `^20.3.7` puxava um 20.3.x mais novo que o core e dava ERESOLVE); `package.json` com `^20.3.0`, como os demais. `ngsw.json` do build: 5 arquivos no prefetch, 71 chunks e 17 assets lazy, **0 dataGroups**.
 - **F3 — mudança em relação ao Listo**: o aviso é uma faixa própria no `App` (signal no `PwaService`), e não um `MatSnackBar`: o PRMake abre snackbars em vários componentes e o `MatSnackBar` mostra um por vez — qualquer "salvo" derrubaria o aviso de versão nova. Serviço em `src/app/services/pwa.service.ts` (padrão do repo, que não tem `core/`).
 - **T1** (imagem Docker local na porta 8089 + Chrome headless via `puppeteer-core`):
@@ -28,3 +28,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-28 — Planejamento (spec, plano, status); worktrees `feature/0019` no backend e no front.
 - 2026-09-28 — F1–F4 e T1 concluídas (front `5df5c12`). Falta o Q1 (PR/deploy do front e teste em produção).
+- 2026-09-28 — Favicon com o monograma. PRs: front acbonfim/prmakerweb#16, backend acbonfim/prmaker.api#26. Merge pelo usuário (o merge automático foi negado pela permissão do Claude Code).
