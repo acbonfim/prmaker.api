@@ -13,7 +13,8 @@
 - **Animação**: Web Animations API animando `top/left/width/height` do retângulo de origem (onde a timeline está na página) até o retângulo final (centralizado, ~92% da tela, máx. 1200 px de largura) e o inverso ao fechar; `border-radius` e sombra acompanham; fundo escuro com fade. ~320 ms, `cubic-bezier(0.2, 0, 0, 1)`. Anima geometria (e não `scale`) para o texto não distorcer durante o crescimento.
 - **Lugar reservado**: enquanto aberta, o host mantém a altura medida (a página de trás não "pula") e o fechamento volta para o retângulo atual do host (se a página rolou/redimensionou, encolhe para o lugar certo).
 - **Rolagem**: mover o nó zera o `scrollTop` → guarda a distância do fim antes e restaura depois (quem estava lendo o fim continua no fim).
-- **Camadas**: modal com `z-index` 999 (fundo 998), abaixo do overlay do CDK (1000) — tooltips e snackbars continuam por cima.
+- **Camadas**: fundo e modal com `z-index` 1000, inseridos no `<body>` **antes** do `.cdk-overlay-container` (também 1000): cobrem a barra do topo (`page-container`, z 1000, que fica antes no DOM) e deixam tooltips, menus e snackbars por cima. (A 1ª versão usava 998/999 e o T1 mostrou o sino/avatar do topo por cima do modal.)
+- **Fila de transições**: abrir/fechar encadeados numa promise — clicar em fechar (ou Esc/fundo) durante a abertura fecha logo depois que ela termina, em vez de o clique se perder.
 - **Teams**: `teamsImportEnabled = false` no componente esconde o botão e o painel; código mantido.
 - **Destruição**: se o componente for destruído aberto (troca de rota), devolve o elemento ao host e remove o fundo antes.
 
