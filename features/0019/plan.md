@@ -19,9 +19,9 @@
 
 ## 2. Decisões
 - **Só o shell em cache**, nenhum `dataGroups`: API/auth em outro domínio passam direto pela rede (o service worker só intercepta o que está configurado; navegações vão para o `index.html` em cache). SignalR (negotiate POST + WebSocket) não é interceptado. Como nada da API fica no aparelho, o logout não precisa limpar cache.
-- **Aviso**: `MatSnackBar` persistente "Nova versão do PRMake disponível." + **Atualizar** (mesmo texto/padrão do Listo). `checkForUpdate()` ao voltar para a aba **e a cada 30 min** enquanto visível (no PRMake a aba fica aberta o dia inteiro no desktop). `unrecoverable` → snackbar "O PRMake precisa ser recarregado." + **Recarregar**.
+- **Aviso**: faixa própria no `App` "Nova versão do PRMake disponível." + **Atualizar** (texto do Listo). Não usa `MatSnackBar` como lá: o PRMake abre outros snackbars e só cabe um por vez — o aviso seria derrubado. `checkForUpdate()` ao voltar para a aba **e a cada 30 min** enquanto visível (no PRMake a aba fica aberta o dia inteiro no desktop). `unrecoverable` → snackbar "O PRMake precisa ser recarregado." + **Recarregar**.
 - **Zoneless**: `registerWhenStable` depende da estabilidade da aplicação; no zoneless ela vem das `PendingTasks` — com a primeira tela fazendo polling/tempo real o app pode nunca ficar "estável", aí vale o teto de 30 s (comportamento aceito). Confirmar no T1 que o SW registra.
-- **Ícones**: gerar a partir de um símbolo quadrado da marca. Se não houver, monograma "PR" branco sobre a cor primária (azure do tema) — **confirmar com o usuário no F1**. Cores do manifest: `theme_color`/`background_color` = fundo escuro do cabeçalho do app (`--surface-3`, `#212730`), ajustável.
+- **Ícones**: gerar a partir de um símbolo quadrado da marca. Decidido: monograma "PR" branco sobre gradiente azul. Cores do manifest: `theme_color`/`background_color` = fundo escuro do cabeçalho do app (`--surface-3`, `#212730`), ajustável.
 - **nginx**: `location` exatos para os arquivos do SW (`no-cache`) e `manifest.webmanifest` (`application/manifest+json`, 1 h), **antes** da regex de estáticos; ícones em `/icons/` com cache de 1 dia (sem hash no nome). Todos com `X-Robots-Tag` (em nginx, `add_header` num `location` substitui os herdados).
 - **Saída de emergência**: `safety-worker.js` (vem no build do `@angular/service-worker`) copiado sobre `ngsw-worker.js` desregistra o SW nos clientes no próximo acesso — documentar em `deploy/README.md` do front.
 
@@ -35,7 +35,7 @@
 
 - **F1 — Instalável**: `public/manifest.webmanifest` (name/short_name "PRMake", `lang: pt-BR`, `display: standalone`, `start_url`/`scope` `./`, cores); `public/icons/` (72, 96, 128, 144, 152, 192, 384, 512, maskable 192/512, `apple-touch-icon` 180); `index.html`: manifest, `theme-color`, `apple-touch-icon`, `apple-mobile-web-app-capable`/`title`, `lang="pt-BR"`, título "PRMake", `<noscript>`.
 - **F2 — Service worker**: `npm i @angular/service-worker@^20.3` (mesma versão do core); `"serviceWorker": "ngsw-config.json"` na configuração `production` do `angular.json`; `provideServiceWorker(...)` no `app.config.ts` (`enabled: !isDevMode()`, `registerWhenStable:30000`); `ngsw-config.json` com `app` (prefetch), `chunks`, `assets` e `fonts` (lazy), sem `dataGroups`; conferir `navigationUrls` (padrão exclui URLs com extensão e `__`) contra rotas que não podem cair no `index.html`.
-- **F3 — Aviso de atualização**: `src/app/core/pwa/pwa.service.ts` (padrão do Listo + checagem a cada 30 min e `unrecoverable`), iniciado no construtor do `App`. Nunca recarrega sozinho.
+- **F3 — Aviso de atualização**: `src/app/services/pwa.service.ts` (padrão do Listo + checagem a cada 30 min e `unrecoverable`), iniciado no construtor do `App`. Nunca recarrega sozinho.
 - **F4 — nginx**: regras da seção 2 em `docker/nginx.conf`, mantendo robôs/`X-Robots-Tag` da 0018.
 - **T1 — Teste local** (imagem Docker do front, `http://localhost` conta como contexto seguro):
   1. `ngsw.json` gerado; DevTools → Application: manifest sem erros, SW ativo, "Instalar" oferecido; app instalado abre em janela própria.
