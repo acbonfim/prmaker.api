@@ -30,7 +30,8 @@ public partial class ExecutionPlanApplication
 
     /// <summary>
     /// Anexa às etapas de PR (uma por repositório) os PRs do card naquele repositório — abertos pela skill ou
-    /// pela tela — e acompanha o status. Etapa conclui quando os PRs não fechados estão todos mesclados.
+    /// pela tela depois da criação do plano — e acompanha o status. Etapa conclui quando os PRs não fechados
+    /// estão todos mesclados.
     /// Best-effort: sem credencial do GitHub ou com o GitHub fora, não faz nada.
     /// </summary>
     private async Task SyncPullRequestsAsync(Guid planId, CancellationToken cancellationToken)
@@ -91,6 +92,10 @@ public partial class ExecutionPlanApplication
                     var link = same.FirstOrDefault();
                     if (link is null)
                     {
+                        // PR registrado antes do plano é de uma rodada anterior do card (já mesclado ou fechado):
+                        // anexá-lo concluiria a etapa antes dos PRs desta correção.
+                        if (pr.CreatedAt < p.CreatedAt)
+                            continue;
                         link = new ExecutionLink(p.Id, step.Key, pr.Url, $"#{pr.Number} {pr.Repository} → {pr.BaseBranch}", ExecutionLinkKind.PullRequest,
                             false, pr.Number, pr.Repository, pr.BaseBranch, SystemActor.Name, now);
                         _repository.AddLink(link);

@@ -1,7 +1,7 @@
 namespace solvace.executionplans.application.Contracts;
 
 /// <summary>PR do GitHub registrado no card (0024) — status normalizado: open | merged | closed.</summary>
-public record CardPullRequest(string Repository, int? Number, string Url, string BaseBranch, string HeadBranch, string Status, string Title);
+public record CardPullRequest(string Repository, int? Number, string Url, string BaseBranch, string HeadBranch, string Status, string Title, DateTimeOffset CreatedAt);
 
 /// <summary>
 /// PRs do card com o status atual do GitHub (0024). Implementado no host sobre o módulo GitHub
