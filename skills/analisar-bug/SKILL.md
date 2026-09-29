@@ -63,6 +63,7 @@ bash $PLAN step <card> <key> completed                                # terminou
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN control <card>                                             # entre etapas: 0 segue, 10 pausado, 11 parar
 bash $PLAN wait <card>                                                # pausado: espera o "Continuar" da tela
+bash $PLAN watch <card>                                               # EM SEGUNDO PLANO: so falta usuario/merge/chamado — te acorda quando liberar
 bash $PLAN ask <card> - <<< '[{"stepKey":"propor-solucoes","text":"...","options":[...]}]'  # pergunta
 bash $PLAN wait-answers <card>                                        # espera as respostas (tela ou terminal)
 bash $PLAN answer <card> <n> "resposta dada aqui no terminal"         # grava no PRMake (via claude)
@@ -97,6 +98,21 @@ Regras:
   **aguardando** (resposta/chamado/merge — nao mexa) e **perguntas sem resposta**.
 - **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
   (com o texto/arquivos prontos) e **siga com as outras etapas prontas** — o usuario conclui a dele na tela.
+- **Nunca pare so porque falta o usuario — acompanhe em segundo plano.** Sempre que nao houver etapa **pronta**
+  do `executor: claude` e o plano depender de outra pessoa (merge de PR, chamado aberto/resolvido, resposta de
+  pergunta, etapa do usuario como validar em QA, informacao do time de produto, plano pausado), rode
+  `bash $PLAN watch <card>` com a ferramenta Bash e `run_in_background: true`, diga ao usuario o que falta e
+  encerre a sua vez. Nao use `sleep`/laco no primeiro plano. O `watch` faz o heartbeat (a tela nao mostra "sem
+  sinal") e registra no plano que o Claude esta acompanhando; quando ele termina voce e acordado:
+  - **exit 0** — tem trabalho: a saida diz o que (`PRONTO: etapas do claude liberadas: ...`, `RESPOSTAS:` com as
+    respostas, ou `FALHOU: etapa(s) ...`). Rode `control` e continue do passo em que estava (etapa pronta → passo 8;
+    respostas → fim do passo 6 / passo 7; falha → `resume-info` para ler o motivo e passo 8b).
+  - **exit 10** — nada mudou em 6 h: rode o `watch` de novo em segundo plano (sem avisar o usuario de novo).
+  - **exit 11** — plano concluido ou cancelado pela tela: informe o resultado final (passo 9) e pare.
+  Para o `watch` enxergar a dependencia, ela precisa estar **no plano**: algo que depende de uma pessoa vira
+  pergunta (`ask`) ou etapa `executor: user` (ex.: "Confirmar regra com o time de produto", `kind: question`), e
+  as suas etapas seguintes levam `dependsOn` nela. Se a sessao fechar, o acompanhamento para junto —
+  `/analisar-bug <card>` retoma de onde parou.
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
@@ -356,7 +372,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se o usuario responder aqui no chat: grave cada resposta com `answer <card> <n> "..."` (o PRMake mostra
      "pelo Claude") e siga — o comando em segundo plano termina sozinho.
    - Se o usuario disser que respondeu no PRMake (ou voce voltar a sessao depois): rode `answers <card>`.
-   - Exit 10 (1 h sem todas as respostas): avise e pare — o `start` retoma depois.
+   - Exit 10 (1 h sem todas as respostas): troque por `watch <card>` em segundo plano (ele tambem acorda
+     quando as respostas chegam) — veja *Nunca pare so porque falta o usuario*.
    Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
    (fim do plano de **analise**).
 
@@ -412,9 +429,11 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
 - Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
   link na etapa no PRMake") e siga com as outras etapas prontas.
-- Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta e **pare** — o
-  plano segue no PRMake e `/analisar-bug <card>` retoma depois. O plano de correcao **conclui sozinho** quando
-  todas as etapas terminam (PRs mesclados, chamados resolvidos).
+- Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, rode `watch <card>` **em
+  segundo plano** e encerre a sua vez — quando os PRs forem mesclados, o chamado resolvido ou a etapa do usuario
+  concluida, o `watch` te acorda e voce segue com a proxima etapa sem ninguem chamar (ver *Nunca pare so porque
+  falta o usuario*). O plano de correcao **conclui sozinho** quando todas as etapas terminam; ai o `watch` sai
+  com 11 e voce so reporta (passo 9).
 
 ### 8b. A correcao nao resolveu — nova rodada no mesmo plano
 Se o usuario disser que a correcao nao resolveu (ou a validacao falhar), **nao crie outro plano**: acrescente

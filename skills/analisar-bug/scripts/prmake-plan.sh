@@ -23,6 +23,8 @@
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
 #   wait        <card> [segundos=540]                    espera sair da pausa; exit 0 = continuar, 10 = ainda pausado, 11 = parar
+#   watch       <card> [segundos=21600]                  em segundo plano quando so falta o usuario/merge/chamado: exit 0 = algo
+#                                                        para o claude (etapa pronta, respostas, etapa falhou), 10 = nada mudou, 11 = parar
 #   resume-info <card>                                   etapas, checkpoints e arquivos do plano atual
 #   pull        <card>                                   baixa os arquivos do plano para a pasta do card
 #   flush       <card>                                   reenvia a fila local (envios que falharam)
@@ -411,6 +413,51 @@ case "$CMD" in
       sleep "$delay"; waited=$((waited + delay)); [[ $delay -lt 15 ]] && delay=$((delay + 5))
     done
     echo "ainda pausado apos ${MAX}s — rode 'prmake-plan.sh wait $CARD' de novo ou encerre e retome depois com /analisar-bug $CARD"
+    exit 10
+    ;;
+
+  watch)
+    # Para rodar em segundo plano quando so falta o usuario ou terceiros (merge, chamado, resposta, etapa do
+    # usuario, pausa). O heartbeat do control mantem o "sem sinal" apagado e dispara a sincronizacao dos PRs.
+    # Termina quando ha algo para o Claude fazer: exit 0 = etapa do claude pronta, perguntas respondidas ou
+    # etapa que falhou; 10 = nada mudou no tempo maximo (rode de novo); 11 = plano cancelado/concluido.
+    require_plan; flush_quiet; MAX="${1:-21600}"; waited=0; delay=30; STARTQ=""; STARTFAILED=""
+    api GET "/$PLAN"
+    if [[ "$CODE" == "200" ]]; then
+      STARTQ=$(jq '[.questions[]? | select(.status == "open")] | length' "$TMP/resp")
+      STARTFAILED=$(jq -r '[.steps[]? | select(.status == "failed") | .key] | join(",")' "$TMP/resp")
+      WAITING=$(jq -r '[.steps[]? | select(.status == "waiting" or ((.executor == "user" or .kind == "pr") and (.status == "pending" or .status == "running"))) | .title] | join("; ")' "$TMP/resp")
+      [[ -n "$WAITING" ]] || WAITING="usuario"
+      jq -n --arg m "Claude acompanhando em segundo plano — continua sozinho quando liberar: $WAITING" --arg cid "$(new_id)" \
+        '{logs: [{clientId: $cid, kind: "info", message: $m}]}' > "$TMP/body"
+      send_or_queue POST "/$PLAN/logs" "$TMP/body" >/dev/null
+    fi
+    echo "acompanhando o plano do card $CARD (ate ${MAX}s)..."
+    while [[ $waited -lt $MAX ]]; do
+      api POST "/$PLAN/control"
+      if [[ "$CODE" =~ ^2 ]]; then
+        ACTION=$(jq -r '.action' "$TMP/resp")
+        [[ "$ACTION" == "stop" ]] && { echo "stop — plano $(jq -r '.status' "$TMP/resp") por $(jq -r '.statusChangedBy // "?"' "$TMP/resp")"; exit 11; }
+        if [[ "$ACTION" == "continue" ]]; then
+          READY=$(jq -r '[.steps[] | select(.executor == "claude") | .key] as $c
+            | [(.readySteps // [])[] as $k | select(any($c[]; . == $k)) | $k] | join(",")' "$TMP/resp")
+          FAILED=$(jq -r --arg f "$STARTFAILED" '($f | split(",")) as $old
+            | [.steps[] | select(.status == "failed") | .key as $k | select(all($old[]; . != $k)) | $k] | join(",")' "$TMP/resp")
+          OPENQ=$(jq -r '.openQuestions // 0' "$TMP/resp")
+          if [[ -n "$READY" ]]; then
+            echo "PRONTO: etapas do claude liberadas: $READY"
+            W=$(jq -r '(.waitingSteps // []) | join(",")' "$TMP/resp"); [[ -n "$W" ]] && echo "aguardando (nao mexer): $W"
+            exit 0
+          fi
+          if [[ -n "$FAILED" ]]; then echo "FALHOU: etapa(s) $FAILED — veja o motivo no plano (resume-info) e faca uma nova rodada (passo 8b)"; exit 0; fi
+          if [[ "${STARTQ:-0}" -gt 0 && "$OPENQ" -eq 0 ]]; then
+            api GET "/$PLAN"; echo "RESPOSTAS:"; [[ "$CODE" == "200" ]] && print_questions; exit 0
+          fi
+        fi
+      fi
+      sleep "$delay"; waited=$((waited + delay)); [[ $delay -lt 60 ]] && delay=$((delay + 15))
+    done
+    echo "nada liberado apos ${MAX}s — rode 'prmake-plan.sh watch $CARD' de novo em segundo plano"
     exit 10
     ;;
 
