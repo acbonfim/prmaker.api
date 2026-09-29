@@ -1,0 +1,8 @@
+# Feature 0026 — Descrição do PR no layout padrão e salva no card; tratamentos sem código; resumo do card no topo
+
+> Spec: [`spec.md`](./spec.md) · Status: [`status.md`](./status.md)
+
+## Decisões
+- **Skill (analisar-bug)**: `prmake-plan.sh pr-text <card> <repo> <branch>` busca o prompt configurado + repro steps + diff (reusa `gerar-prmake/scripts/prmake-fetch.sh`); o Claude gera no layout padrão (inglês, markdown, RCA entre `<RCA>`); `save-pr-text` salva descrição e root cause **no card do PRMake** (`POST /PullRequest`, o mesmo da gerar-prmake) — ficam prontos no "Abrir PR" — e guarda `pr-descricao-<repo>.md`/`pr-rca-<repo>.md` no plano; `open-pr` usa esse texto como corpo. A etapa final "Gerar PRMake" reaproveita o texto.
+- **Tratamentos sem código**: a pergunta de solução inclui o tipo de tratamento (código, dados via chamado, configuração na tela do sistema, user education); o plano só tem etapas de código/PR se houver código; etapas `configurar-*` e `orientar-cliente` do usuário com o passo a passo/orientação redigidos pelo Claude; "Registrar no card" sem código via `pr-text <card> <repo> -` (o `prmake-fetch.sh` aceita branch `-`: sem commits/diff). Sem código, o plano conclui quando as etapas terminam.
+- **Front**: sai o botão "Descrição" do cartão do topo (a descrição segue no "Abrir PR" e em cada PR). O cartão vira um resumo do card: autor + datas numa linha e etiquetas com tooltip — estado/coluna/raia no DevOps, ambiente do cliente, módulo, produção/release, prioridade · severidade, responsável, horas restantes, PRs (x/y mesclados), plano (fase, progresso, perguntas/aguardando) e resumo não técnico (publicado ou não). Pendências do DevOps seguem na barra de alertas do cabeçalho.

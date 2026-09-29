@@ -49,6 +49,7 @@ Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `
 ### 2. Buscar dados (somente leitura) com o script de fetch
 ```bash
 bash ~/.claude/skills/gerar-prmake/scripts/prmake-fetch.sh <card> <branchCompleta> [repository]
+# card sem codigo (dados, configuracao, user education): branch "-" (sem commits/diff)
 # ex.: bash ~/.claude/skills/gerar-prmake/scripts/prmake-fetch.sh 54969 hotfix/54969
 ```
 O script busca o card no DevOps, os prompts (id=3), os commits da branch e os diffs, e grava em

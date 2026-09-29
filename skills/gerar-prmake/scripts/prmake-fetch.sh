@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Busca (somente leitura) tudo que é preciso para gerar o PR no PRMake.
 # Uso: prmake-fetch.sh <cardNumber> <branchFull> [repository]
-#   <branchFull>  = ex.: hotfix/54969  (usado para listar commits)
+#   <branchFull>  = ex.: hotfix/54969  (usado para listar commits); "-" = sem codigo (sem commits/diff)
 #   [repository]  = default: derivado do git remote origin; fallback edv-solvace
 # Saída: escreve arquivos em $OUTDIR (default /tmp/prmake) e imprime um manifesto.
 set -euo pipefail
@@ -84,10 +84,15 @@ else
 fi
 
 # --- 5) commits ---
+# Branch "-" = tratamento sem codigo (dados, configuracao, user education): sem commits/diff (0026).
+if [[ "$BRANCH" == "-" ]]; then
+  printf '[]' > "$OUTDIR/commits.json"
+else
 BRANCH_ENC="${BRANCH//\//%2F}"
 RESP="$(get "$BASE/GitHub/commits?repository=$REPO&branch=$BRANCH_ENC" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
 check "$CODE" "GET commits"
 printf '%s' "$BODY" > "$OUTDIR/commits.json"
+fi
 
 # seleciona SHAs: commits cujo titulo contem o numero do card;
 # se nenhum, pega do topo ate o primeiro commit de merge.
