@@ -10,7 +10,7 @@
 | F4 | nginx: SW/`ngsw.json` sem cache, manifest, ícones | 1 | — | ✅ concluída | Claude | front `5df5c12` |
 | F3 | `PwaService`: aviso "Nova versão — Atualizar" | 2 | F2 | ✅ concluída | Claude | front `5df5c12` |
 | T1 | Teste local em container (instalação, cabeçalhos, atualização A→B, API/tempo real) | 3 | F1–F4 | ✅ concluída (API/tempo real → Q1) | Claude | — |
-| Q1 | Deploy e teste em produção | 4 | T1 | 🟨 PRs abertos, aguardando merge | usuário + Claude | front #16, backend #26 |
+| Q1 | Deploy e teste em produção | 4 | T1 | 🟨 deploy ok; faltam os testes do usuário | usuário + Claude | front #16 (`28da04e`), backend #26 (`0da2c89`) |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -29,3 +29,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - 2026-09-28 — Planejamento (spec, plano, status); worktrees `feature/0019` no backend e no front.
 - 2026-09-28 — F1–F4 e T1 concluídas (front `5df5c12`). Falta o Q1 (PR/deploy do front e teste em produção).
 - 2026-09-28 — Favicon com o monograma. PRs: front acbonfim/prmakerweb#16, backend acbonfim/prmaker.api#26. Merge pelo usuário (o merge automático foi negado pela permissão do Claude Code).
+- 2026-09-28 — Q1: merges e deploys com sucesso. Produção conferida: cabeçalhos iguais ao teste local; Chrome headless na tela de login → SW ativo e controlando, manifest e instalabilidade sem erros, sem erros no console. Faltam os testes do usuário: instalar (desktop/celular), uso logado com o SW ativo e ver o aviso num próximo deploy.
