@@ -29,7 +29,7 @@ public class ExecutionPlanPullRequestSource(IPullRequestGithubApplication github
             })
             .Where(x => x.status is not null && x.pr.Number is not null)
             .Select(x => new CardPullRequest(x.pr.RepositoryId, x.pr.Number, x.pr.Url, x.pr.TargetBranch,
-                x.pr.BranchPrefix + x.pr.BranchName, x.status!, x.pr.Title))
+                x.pr.BranchPrefix + x.pr.BranchName, x.status!, x.pr.Title, x.pr.CreatedAt))
             .ToList();
     }
 }
