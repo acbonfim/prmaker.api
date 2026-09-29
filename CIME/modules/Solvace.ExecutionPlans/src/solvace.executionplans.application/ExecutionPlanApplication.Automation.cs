@@ -44,7 +44,6 @@ public partial class ExecutionPlanApplication
             .ToList();
         if (prSteps.Count == 0)
             return;
-        LastPullRequestSync[planId] = now;
 
         IReadOnlyList<CardPullRequest> cardPrs;
         try
@@ -53,10 +52,13 @@ public partial class ExecutionPlanApplication
         }
         catch
         {
+            LastPullRequestSync[planId] = now;
             return;
         }
+        // Card ainda sem PR: consulta barata (só o banco) — não espera o intervalo para ver o primeiro PR.
         if (cardPrs.Count == 0)
             return;
+        LastPullRequestSync[planId] = now;
 
         var merged = new List<ExecutionLink>();
         var changed = false;
@@ -173,7 +175,7 @@ public partial class ExecutionPlanApplication
         sb.AppendLine($"🛠️ **Plano de correção criado** — {plan.Title}");
         sb.AppendLine();
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
-            sb.AppendLine($"- {ExecutorLabel(step)} {step.Title}{(step.Repository is null ? "" : $" (`{step.Repository}`)")}");
+            sb.AppendLine($"- {ExecutorLabel(step)} {step.Title}{(step.Repository is null ? "" : $" · {step.Repository}")}");
         return sb.ToString().TrimEnd();
     }
 
