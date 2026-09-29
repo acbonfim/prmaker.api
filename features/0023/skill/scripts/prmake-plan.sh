@@ -169,15 +169,16 @@ flush_outbox() {
 flush_quiet() { [[ -s "$OUTBOX" ]] && flush_outbox; return 0; }
 
 default_steps() {
+  # Titulos/descricoes aparecem na tela do card no PRMake (por isso com acentuacao).
   cat <<'EOF'
 [
- {"key":"identificar-card","title":"Identificar o card","description":"Descobrir o numero do card (branch hotfix/bugfix ou informado) e criar a pasta de artefatos."},
- {"key":"coletar-dados","title":"Ler o card","description":"Buscar titulo, estado, tipo e repro steps do card no PRMake/Azure DevOps."},
- {"key":"investigar-codigo","title":"Investigar o codigo","description":"Localizar telas, endpoints, servicos e queries envolvidos (legado edv-solvace ou revamp) e reconstruir o fluxo ate o erro."},
- {"key":"consultar-ambiente","title":"Consultar dados e ambiente","description":"Quando necessario: Cognito (usuario/ambiente) e SQL Server somente leitura."},
- {"key":"causa-raiz","title":"Levantar a causa raiz","description":"Hipoteses priorizadas e pontos suspeitos (caminho:linha); o que e confirmado vs. hipotese."},
- {"key":"montar-analise","title":"Montar a analise e os scripts","description":"Escrever a analise em markdown e, se houver, os scripts (ex.: SQL de correcao e rollback)."},
- {"key":"publicar","title":"Publicar na timeline","description":"Postar a analise completa na Timeline do card."}
+ {"key":"identificar-card","title":"Identificar o card","description":"Descobrir o número do card (branch hotfix/bugfix ou informado) e criar a pasta de artefatos."},
+ {"key":"coletar-dados","title":"Ler o card","description":"Buscar título, estado, tipo e repro steps do card no PRMake/Azure DevOps."},
+ {"key":"investigar-codigo","title":"Investigar o código","description":"Localizar telas, endpoints, serviços e queries envolvidos (legado edv-solvace ou revamp) e reconstruir o fluxo até o erro."},
+ {"key":"consultar-ambiente","title":"Consultar dados e ambiente","description":"Quando necessário: Cognito (usuário/ambiente) e SQL Server somente leitura."},
+ {"key":"causa-raiz","title":"Levantar a causa raiz","description":"Hipóteses priorizadas e pontos suspeitos (caminho:linha); o que é confirmado e o que é hipótese."},
+ {"key":"montar-analise","title":"Montar a análise e os scripts","description":"Escrever a análise em markdown e, se houver, os scripts (ex.: SQL de correção e rollback)."},
+ {"key":"publicar","title":"Publicar na timeline","description":"Postar a análise completa na Timeline do card."}
 ]
 EOF
 }
@@ -205,7 +206,7 @@ case "$CMD" in
       elif [[ -z "$TITLE" ]]; then TITLE="$a"
       else STEPS_ARG="$a"; fi
     done
-    [[ -n "$TITLE" ]] || TITLE="Analise do bug $CARD"
+    [[ -n "$TITLE" ]] || TITLE="Análise do bug $CARD"
     flush_quiet
     if [[ $FORCE_NEW -eq 0 ]]; then
       api GET "/card/$CARD/current"
