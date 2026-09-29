@@ -44,6 +44,33 @@ public class AzureService : IAzureService
     private PluginConfiguration Config =>
         _config ?? throw new InvalidOperationException("Configuração do Azure DevOps não resolvida");
 
+    public async Task<AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        return FieldNames;
+    }
+
+    private AzureDevOpsFieldNames FieldNames
+    {
+        get
+        {
+            string Field(string key)
+            {
+                var value = Config.GetConfigurationValueOrDefault(key, string.Empty);
+                return string.IsNullOrWhiteSpace(value) ? AzureDevOpsFieldKeys.Defaults[key] : value.Trim();
+            }
+
+            return new AzureDevOpsFieldNames(
+                Field(AzureDevOpsFieldKeys.ResolutionType),
+                Field(AzureDevOpsFieldKeys.GeneralClassification),
+                Field(AzureDevOpsFieldKeys.Classification),
+                Field(AzureDevOpsFieldKeys.RemainingWork),
+                Field(AzureDevOpsFieldKeys.OriginalEstimate),
+                Field(AzureDevOpsFieldKeys.CompletedWork),
+                Field(AzureDevOpsFieldKeys.RootCauseFieldPath).Replace("/fields/", string.Empty).Trim('/'));
+        }
+    }
+
     /// <summary>Cliente com o PAT da configuração efetiva (por requisição, não mais fixo no HttpClient nomeado).</summary>
     private HttpClient CreateClient()
     {
@@ -334,18 +361,14 @@ public class AzureService : IAzureService
 
     private AzureCardAlerts BuildAlerts(Dictionary<string, JsonElement> fields)
     {
-        var rootCausePath = Config.GetConfigurationValue("RootCauseFieldPath");
-        var rootCauseField = string.IsNullOrWhiteSpace(rootCausePath)
-            ? "Custom.RCATechnicalCategorytext"
-            : rootCausePath.Replace("/fields/", string.Empty).Trim('/');
-
+        var names = FieldNames;
         return new AzureCardAlerts
         {
-            MissingRootCause = IsEmpty(fields, rootCauseField),
-            MissingResolutionType = IsEmpty(fields, "Custom.ResolutionType"),
-            MissingGeneralClassification = IsEmpty(fields, "Custom.GeneralClassification"),
-            MissingClassification = IsEmpty(fields, "Custom.Classification"),
-            RemainingNotZero = RemainingNotZero(fields, "Microsoft.VSTS.Scheduling.RemainingWork")
+            MissingRootCause = IsEmpty(fields, names.RootCause),
+            MissingResolutionType = IsEmpty(fields, names.ResolutionType),
+            MissingGeneralClassification = IsEmpty(fields, names.GeneralClassification),
+            MissingClassification = IsEmpty(fields, names.Classification),
+            RemainingNotZero = RemainingNotZero(fields, names.RemainingWork)
         };
     }
 

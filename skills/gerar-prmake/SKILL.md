@@ -26,7 +26,7 @@ EN-US) na **discussion** do card, a partir da branch atualmente em checkout.
   (nível de usuário), senão `.claude/prmake-token.txt` do projeto. Para trocar, edite `~/.claude/prmake-token.txt`
   ou exporte `PRMAKE_TOKEN`. Os scripts já fazem essa resolução automaticamente.
 - **`userId`:** extraído do claim `ExternalId` de dentro do próprio JWT (feito pelo script de publicar).
-- **`repositoryId`** (usado nos endpoints de GitHub — commits, diff e abertura do PR): por padrão é derivado dinamicamente do `git remote origin` do repositório de onde a skill é chamada (nome após a última `/`, sem `.git` — ex.: `revamp-BOS`). Se não houver remote, cai no fallback `edv-solvace`. Passe o argumento `[repository]` explicitamente apenas para sobrescrever.
+- **`repositoryId`** (usado nos endpoints de GitHub — commits, diff e abertura do PR): por padrão é derivado dinamicamente do `git remote origin` do repositório de onde a skill é chamada (nome após a última `/`, sem `.git` — ex.: `revamp-BOS`). Se não houver remote, usa o `DefaultRepository` configurado no PRMake (Skills Configurations). Passe o argumento `[repository]` explicitamente apenas para sobrescrever.
 - **`formId`:** `1` por padrão (env `FORM_ID` para sobrescrever).
 
 ### Azure DevOps — sempre pelo PRMake
@@ -150,8 +150,8 @@ O script:
    do GitHub, não ao registro;
 2. com `OPEN_GITHUB_PR=1`, faz `POST /PullRequest/<card>/github` (`repositoryId`, `branchPrefix`,
    `branchName`=`<card>`, `targetBranch`=`TARGET_BRANCH`, `title`, `description`, `draft`, `userId`): abre o PR
-   `<prefix><card> → TARGET_BRANCH`, registra no card e na timeline. Título padrão `AB#<card> <DESTINO>` (igual
-   à tela; sobrescreva com `PR_TITLE`), `PR_DRAFT=true` abre como rascunho. Se já houver PR aberto para o mesmo
+   `<prefix><card> → TARGET_BRANCH`, registra no card e na timeline. Título padrão pelo `PrTitlePattern` do
+   PRMake (Skills Configurations — hoje `AB#{card} {TARGET}`, igual à tela; sobrescreva com `PR_TITLE`), `PR_DRAFT=true` abre como rascunho. Se já houver PR aberto para o mesmo
    head→base, a API devolve o existente (`alreadyExisted: true`);
 3. havendo RCA, converte-o para HTML5 e faz `POST /Azure/card/<card>/rootcause`;
 4. havendo `COMMENT_FILE`, converte-o para HTML5 e faz `POST /PullRequest/<card>/summary`

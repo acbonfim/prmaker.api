@@ -5,14 +5,14 @@
 #   <branchPrefix> = hotfix/  ou  bugfix/   (com a barra)
 #   <descFile>     = arquivo com a descricao do PR (sem o bloco RCA)
 #   [rcaFile]      = arquivo com o root cause (obrigatorio para Bug; omita/"" para US)
-#   [repository]   = default: derivado do git remote origin; fallback edv-solvace
+#   [repository]   = default: derivado do git remote origin; sem remote, o DefaultRepository do PRMake
 # Env opcional:
 #   COMMENT_FILE   = arquivo Markdown com o resumo nao-tecnico (PT/EN): publicado na discussion e gravado no PRMake
 #   OPEN_GITHUB_PR = 1 para tambem abrir o PR no GitHub (exige TARGET_BRANCH; PR_TITLE e PR_DRAFT opcionais)
 #   PRMAKE_BASE    = URL base da API (default https://api.softhouse.app.br/api/v1)
 set -euo pipefail
 
-# --- resolve repo slug: arg $5 > git remote origin (nome do repo) > edv-solvace
+# --- resolve repo slug: arg $5 > git remote origin (nome do repo) > DefaultRepository do PRMake (Skills Configurations)
 resolve_repo() {
   if [[ -n "${1:-}" ]]; then printf '%s' "$1"; return; fi
   local url slug
@@ -21,7 +21,6 @@ resolve_repo() {
     slug="${url##*/}"; slug="${slug%.git}"
     if [[ -n "$slug" ]]; then printf '%s' "$slug"; return; fi
   fi
-  printf '%s' "edv-solvace"
 }
 
 CARD="${1:?informe o numero do card}"
@@ -45,6 +44,10 @@ resolve_token() {
   echo "ERRO: token nao encontrado (defina PRMAKE_TOKEN ou crie ~/.claude/prmake-token.txt)" >&2; exit 1
 }
 TOKEN="$(resolve_token)"
+if [[ -z "$REPO" ]]; then
+  REPO="$(curl -s --max-time 30 -H "x-api-key: $TOKEN" "$BASE/Skills/config" | jq -r '.settings.DefaultRepository // empty' 2>/dev/null || true)"
+  [[ -n "$REPO" ]] || { echo "ERRO: sem git remote e sem DefaultRepository no PRMake — informe o repositorio" >&2; exit 1; }
+fi
 USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | sed -n 's/.*"ExternalId":"\([^"]*\)".*/\1/p')"
 [[ -n "$USER_ID" ]] || { echo "ERRO: nao consegui extrair ExternalId do token" >&2; exit 1; }
 
@@ -68,7 +71,12 @@ echo "   HTTP $PR_CODE (id: $(jq -r '.id // "?"' /tmp/prmake_pr_resp.json 2>/dev
 # Se ja existir PR aberto para head->base, a API devolve o existente (alreadyExisted=true).
 if [[ "${OPEN_GITHUB_PR:-0}" == "1" ]]; then
   TARGET="${TARGET_BRANCH:?defina TARGET_BRANCH (ex.: qa, master) para abrir o PR no GitHub}"
-  GH_TITLE="${PR_TITLE:-AB#$CARD $(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')}"
+  if [[ -n "${PR_TITLE:-}" ]]; then GH_TITLE="$PR_TITLE"; else
+    # Titulo pelo padrao do PRMake (Skills Configurations → PrTitlePattern: {card}, {TARGET}, {target}).
+    PATTERN="$(curl -s --max-time 30 -H "x-api-key: $TOKEN" "$BASE/Skills/config" | jq -r '.settings.PrTitlePattern // empty' 2>/dev/null || true)"
+    UPPER="$(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')"
+    GH_TITLE="$(printf '%s' "${PATTERN:-{card\} {TARGET\}}" | sed -e "s|{card}|$CARD|g" -e "s|{TARGET}|$UPPER|g" -e "s|{target}|$TARGET|g")"
+  fi
   jq -n --rawfile desc "$DESC_FILE" --arg uid "$USER_ID" --arg repo "$REPO" --arg prefix "$PREFIX" \
      --arg name "$CARD" --arg target "$TARGET" --arg title "$GH_TITLE" --argjson draft "${PR_DRAFT:-false}" \
     '{repositoryId:$repo, branchPrefix:$prefix, branchName:$name, targetBranch:$target,
