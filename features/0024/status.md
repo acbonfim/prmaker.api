@@ -16,7 +16,7 @@
 | F3 | Links/chamados/PRs da etapa, status, ações do usuário (iniciar/concluir/pular) | 2 | B1, B2 | ✅ concluída | Claude | front `85fa31c` |
 | F4 | Tela "Skills" (instalar, versão, download) | 2 | B3 | ✅ concluída | Claude | front `85fa31c` |
 | T1 | Teste ponta a ponta local | 3 | todas | ✅ concluída | Claude | — |
-| Q1 | PRs e deploy (merge pelo usuário) | 4 | T1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | PRs e deploy | 4 | T1 | ✅ concluída | usuário + Claude | api #30, web #20 |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -34,3 +34,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - 2026-09-28 — Decisões Q-a (chamado = link + status manual + histórico) e Q-b (revamp backend só `development`).
 - 2026-09-28 — Decisão Q-c: o instalador coloca o hook `SessionStart` sem perguntar.
 - 2026-09-28 — B1, B2, B3, S1–S3, F1–F4 e T1 concluídas. Falta o Q1 (PRs e deploy — merge pelo usuário) e instalar as skills pela tela depois do deploy.
+- 2026-09-28 — PRs acbonfim/prmaker.api#30 e acbonfim/prmakerweb#20 mesclados (autorizado pelo usuário); deploys ok (backend run 36513753306 com a migração `AddCorrectionPlans`; front run 36514178585). Produção: `GET /Skills` lista as 4 skills; bundle publicado traz a tela Skills e as perguntas.

@@ -78,8 +78,11 @@ Regras:
   `PLANO INDISPONIVEL` (PRMake fora do ar ou sem o recurso), siga normalmente: os comandos do plano viram
   no-op. Se ja existir um plano aberto (analise **ou correcao**), o `start` **retoma** o mais recente e imprime
   as etapas com status, checkpoints, perguntas, links e arquivos: continue da **primeira etapa pronta**, usando
-  o checkpoint; rode `pull` se a pasta do card nao tiver os arquivos. So use `start ... --new` se o usuario
-  pedir uma analise nova do zero.
+  o checkpoint; rode `pull` se a pasta do card nao tiver os arquivos. **Analise ja concluida sem plano de
+  correcao** (inclusive a feita na versao anterior da skill, que parava em `publicar`): o `start` a reabre para
+  o passo 6 (acrescenta `propor-solucoes` se faltar) — **nao refaca a analise**; use a analise publicada
+  (`analises/analise-inicial.md`) para propor as solucoes. So use `start ... --new` se o usuario pedir uma
+  analise nova do zero.
 - **Refine o plano de analise** depois de ler o card (passo 2): ajuste titulos/descricoes ao caso concreto (a
   descricao diz *o que vai ser feito*), remova/cancele (com motivo) o que nao se aplica e acrescente o que
   surgir. Keys: minusculas, numeros, `-`/`_`, estaveis (nunca renomeie uma key).

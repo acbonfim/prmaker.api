@@ -258,6 +258,27 @@ case "$CMD" in
         print_plan
         exit 0
       fi
+      # Analise ja concluida e ainda sem plano de correcao (inclusive a feita na versao anterior da skill,
+      # que parava em "publicar"): continua dela — nao refaz a analise.
+      if [[ "$CODE" == "200" ]] && jq -e '.phase == "analysis" and .status == "completed"' "$TMP/resp" >/dev/null; then
+        PLAN=$(jq -r '.id' "$TMP/resp")
+        save_state "$PLAN" "$PLAN" ""
+        if ! jq -e '[.steps[] | select(.key == "propor-solucoes")] | length > 0' "$TMP/resp" >/dev/null; then
+          default_steps | jq '[.[] | select(.key == "propor-solucoes")]' > "$TMP/new-step.json"
+          jq --slurpfile extra "$TMP/new-step.json" '{steps: ([.steps | sort_by(.order)[] | {key, title}] + $extra[0])}' "$TMP/resp" > "$TMP/body"
+          api PUT "/$PLAN/steps" "$TMP/body"
+          [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao acrescentar a etapa propor-solucoes: $(resp_error)"
+          echo "ANALISE CONCLUIDA NA VERSAO ANTERIOR DA SKILL — acrescentei a etapa propor-solucoes."
+          echo "Continue pelo passo 6 (propor solucoes e perguntar) usando a analise ja publicada: $CARD_DIR/analises/analise-inicial.md"
+          echo "(pasta do card vazia? rode: prmake-plan.sh pull $CARD). Para refazer a analise do zero: start $CARD --new"
+        else
+          echo "ANALISE CONCLUIDA — ainda sem plano de correcao. Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
+          echo "(montar o plano de correcao com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
+        fi
+        api GET "/$PLAN"
+        print_plan
+        exit 0
+      fi
       [[ "$CODE" == "000" ]] && go_offline "PRMake inacessivel"
       [[ "$CODE" =~ ^(404|405)$ ]] && go_offline "API sem o recurso de plano de execucao (HTTP $CODE)"
       [[ "$CODE" =~ ^(401|403)$ ]] && die "HTTP $CODE: token PRMake recusado/expirado (~/.claude/prmake-token.txt ou PRMAKE_TOKEN)"
