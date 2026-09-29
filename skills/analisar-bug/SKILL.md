@@ -385,6 +385,8 @@ commit e no titulo do PR). Antes de criar branches, confira com `git fetch origi
 | **Release/regressao** (`fluxo=release`) | `release-version` **ou** `hotfix-version` — **perguntado** | `hotfix/<card>` | `hotfix/<card> → <base>` (1 PR) |
 | Release/regressao, revamp frontend | `edge` (padrao — **perguntado**) | `hotfix/<card>` | `→ edge` |
 
+Commits so com a mudanca necessaria: **sem comentarios novos no codigo** (ver passo 8).
+
 Comandos (legado, producao):
 ```bash
 git fetch origin
@@ -401,6 +403,11 @@ Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, registre um 
 Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` → faca (com `log`/`sync`/`checkpoint`)
 → `step completed`. Regras:
 - **Mudar codigo so depois da resposta do usuario** (passo 6) e so no escopo do card.
+- **Nao adicione comentarios no codigo.** A correcao deve ser so a mudanca de codigo — sem comentarios
+  explicando o bug, a correcao, o card (`// AB#...`, `// fix: ...`, `// antes era...`), sem blocos comentados
+  e sem remover/alterar comentarios existentes que nao tenham relacao com a mudanca. O porque da correcao vai
+  na mensagem do commit (`AB#<card> <resumo>`), na descricao do PR e no plano/Timeline — nunca no codigo.
+  Excecao rara: so se o proprio arquivo exigir (ex.: doc obrigatoria de API publica) e, mesmo assim, o minimo.
 - Etapa de PR: abra os PRs com `open-pr` (ficam no card, na Timeline e anexados a etapa). **Nunca faca merge,
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
 - Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
