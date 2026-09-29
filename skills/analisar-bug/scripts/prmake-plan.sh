@@ -23,6 +23,9 @@
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
 #   wait        <card> [segundos=540]                    espera sair da pausa; exit 0 = continuar, 10 = ainda pausado, 11 = parar
+#   watch       <card> [segundos=28800]                  VIGIA (rode em segundo plano): termina quando algo muda no PRMake
+#                                                        (etapa/chamado/PR/resposta/pausa/conclusao); exit 0 = mudou,
+#                                                        11 = plano cancelado/concluido, 10 = nada mudou no prazo
 #   resume-info <card>                                   etapas, checkpoints e arquivos do plano atual
 #   pull        <card>                                   baixa os arquivos do plano para a pasta do card
 #   flush       <card>                                   reenvia a fila local (envios que falharam)
@@ -411,6 +414,39 @@ case "$CMD" in
       sleep "$delay"; waited=$((waited + delay)); [[ $delay -lt 15 ]] && delay=$((delay + 5))
     done
     echo "ainda pausado apos ${MAX}s — rode 'prmake-plan.sh wait $CARD' de novo ou encerre e retome depois com /analisar-bug $CARD"
+    exit 10
+    ;;
+
+  watch)
+    # O PRMake nao consegue chamar esta sessao: quem acorda o Claude e este comando, rodando em segundo plano.
+    # Cada consulta ao control tambem sincroniza os PRs com o GitHub. Termina quando o estado muda.
+    require_plan; MAX="${1:-28800}"; waited=0
+    fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), steps:[(.steps // [])[] | [.key, .status]]}' "$TMP/resp"; }
+    api POST "/$PLAN/control"
+    [[ "$CODE" =~ ^2 ]] || { sleep 20; api POST "/$PLAN/control"; }
+    [[ "$CODE" =~ ^2 ]] || die "sem resposta do PRMake (HTTP $CODE) — tente de novo"
+    fingerprint > "$TMP/fp0"; cp "$TMP/resp" "$TMP/ctl0"
+    [[ "$(jq -r '.action' "$TMP/resp")" == "stop" ]] && { echo "PLANO JA TERMINADO ($(jq -r '.status' "$TMP/resp"))"; exit 11; }
+    while [[ $waited -lt $MAX ]]; do
+      # 20 s nos primeiros 10 min (resposta rapida), depois 60 s (espera longa, ex.: merge).
+      if [[ $waited -lt 600 ]]; then delay=20; else delay=60; fi
+      sleep "$delay"; waited=$((waited + delay))
+      api POST "/$PLAN/control"
+      [[ "$CODE" =~ ^2 ]] || continue
+      fingerprint > "$TMP/fp1"
+      cmp -s "$TMP/fp0" "$TMP/fp1" && continue
+      echo "MUDOU NO PRMAKE (plano $(jq -r '.status' "$TMP/resp")):"
+      jq -r --slurpfile old "$TMP/ctl0" '
+        ($old[0].steps // [] | map({(.key): .status}) | add // {}) as $before
+        | (if $old[0].status != .status then "  plano: \($old[0].status) -> \(.status)" + (if .statusReason then " (\(.statusReason))" else "" end) + (if .statusChangedBy then " por \(.statusChangedBy)" else "" end) else empty end),
+          ((.steps // [])[] | select($before[.key] != .status) | "  etapa \(.key): \($before[.key] // "nova") -> \(.status)" + (if .executor == "user" then " (etapa do usuario)" else "" end)),
+          (if ($old[0].openQuestions // 0) != (.openQuestions // 0) then "  perguntas sem resposta: \($old[0].openQuestions // 0) -> \(.openQuestions // 0)" else empty end),
+          (if ((.readySteps // []) | length) > 0 then "  prontas para comecar: \(.readySteps | join(","))" else empty end),
+          (if ((.waitingSteps // []) | length) > 0 then "  aguardando: \(.waitingSteps | join(","))" else empty end)' "$TMP/resp"
+      [[ "$(jq -r '.action' "$TMP/resp")" == "stop" ]] && exit 11
+      exit 0
+    done
+    echo "nada mudou em ${MAX}s — rode 'prmake-plan.sh watch $CARD' de novo para continuar vigiando"
     exit 10
     ;;
 
