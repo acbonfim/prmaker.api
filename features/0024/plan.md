@@ -27,10 +27,10 @@
 - Skill: `ask` (publica as perguntas e as mostra no terminal), `wait-answers` (bloqueia até responder — pela tela ou pelo terminal); resposta dada no terminal → `answer` grava no PRMake (`via=claude`) para as duas pontas ficarem iguais.
 
 ### 2.4 Links e chamados (Freshservice)
-- `ExecutionLink`: etapa, `Kind` (`ticket` | `pr` | `doc` | `other`, detectado pela URL), `Url`, `Title`, `ExternalId` (número do chamado/PR), `ExternalStatus`, `StatusCheckedAt`, `BlocksStep`, quem adicionou. Tela: "Links" em cada etapa (adicionar/remover, abrir, status).
-- **Chamado de script**: etapa `kind=ticket`, `executor=user` — a skill prepara o texto e o `.sql` do chamado (arquivos do plano, copiáveis); o usuário abre no Freshservice e cola o link (e o **número**). Com `BlocksStep`, a etapa fica `waiting` até o chamado ser resolvido/fechado → aí conclui sozinha (log + Timeline). As outras etapas seguem.
-- **Status do chamado** — ⚠️ decisão em aberto (Q-a): proposta = integração pessoal **Freshservice** (domínio + API key do próprio usuário, em "Minhas integrações"); o PRMake consulta `GET /api/v2/tickets/{número}` com a chave de quem colou o link. Sem chave cadastrada: o link fica guardado e o usuário marca "Chamado concluído" na tela. O link público continua salvo para consulta humana.
-- Consulta: ao abrir o plano e a cada `control` da skill, com cache de 5 min por link (Cloud Run não tem processo em segundo plano confiável) + botão "Atualizar status".
+- `ExecutionLink`: etapa, `Kind` (`ticket` | `pr` | `doc` | `other`, detectado pela URL), `Url`, `Title`, `Status`, quem adicionou/quando, quem mudou o status/quando, `BlocksStep`. Tela: "Links" em cada etapa (adicionar, abrir em nova aba, status).
+- **Chamados (decidido)**: o PRMake **só guarda o link** (hiperlink para o chamado — o status é consultado no próprio Freshservice). O usuário marca o chamado **manualmente**: `aberto` → `resolvido` ou `fechado`. Sem integração com a API do Freshservice.
+  - **Histórico na etapa**: resolvido/fechado não apaga nada; o usuário pode **abrir outro chamado** na mesma etapa (ex.: o script voltou com erro) — a etapa lista todos, do mais novo ao mais antigo, com quem/quando de cada mudança.
+  - **Chamado de script**: etapa `kind=ticket`, `executor=user` — a skill prepara o texto e o `.sql` do chamado (arquivos do plano, copiáveis); o usuário abre no Freshservice e cola o link. Com `BlocksStep`, a etapa fica `waiting` enquanto houver chamado **aberto**; quando o último chamado é marcado **resolvido**, a etapa conclui (log + Timeline). **Fechado** sem resolver mantém a etapa aguardando um novo chamado (ou o usuário conclui/cancela a etapa). As outras etapas seguem.
 
 ### 2.5 PRs por repositório e conclusão pelo merge
 - Plano de correção: **uma etapa `pr` por repositório** (req. 5), com os PRs dela como links `kind=pr` (ex.: `edv-solvace` → `development` ✓ mesclado, `qa` ⏳ aberto). A etapa conclui quando **todos os seus PRs estão mesclados**.
@@ -42,9 +42,10 @@
 Regras na `SKILL.md` (e um `branch-plan.sh` que só **lê** o git e imprime o plano de branches/PRs, para a skill e o usuário conferirem):
 | Caso (pela área do card e pelo repositório) | Base | Branches | PRs |
 |---|---|---|---|
-| Legado `edv-solvace` ou revamp backend, **produção** (`...\Product Development Team`) | `master` | `hotfix/<card>` (correção) → `hotfix/<card>-dev` (de `development` + cherry-pick) → `hotfix/<card>-qa` (de `qa` + cherry-pick) | `-dev → development`, `-qa → qa` (**2 PRs**) |
+| Legado `edv-solvace`, **produção** (`...\Product Development Team`) | `master` | `hotfix/<card>` (correção) → `hotfix/<card>-dev` (de `development` + cherry-pick) → `hotfix/<card>-qa` (de `qa` + cherry-pick) | `-dev → development`, `-qa → qa` (**2 PRs**) |
+| Revamp **backend** (`revamp-*`), produção | `master` | `hotfix/<card>` → `hotfix/<card>-dev` (de `development` + cherry-pick) — **sem `qa`** | `-dev → development` (1 PR) |
 | **Release/regressão** (`...\Release Management`) | `release-version` **ou** `hotfix-version` — **sempre perguntar** | `hotfix/<card>` | `hotfix/<card> → <base>` (1 PR) |
-| Revamp frontend `edv-solvace-apps`, produção | `master` | como o legado | `development`, `qa` |
+| Revamp frontend `edv-solvace-apps`, produção | `master` | como o legado (`-dev` e `-qa`) | `development`, `qa` |
 | Revamp frontend `edv-solvace-apps`, release/regressão | `edge` (padrão; perguntar) | `hotfix/<card>` | `→ edge` |
 - Commit e título do PR: `AB#<card> <resumo>`; branch **sem** `AB#` (`hotfix/<card>`). A skill confere com `git ls-remote` que as branches base existem e **pergunta** quando a área não bate com nenhum caso ou a base de release não está clara.
 
@@ -67,11 +68,11 @@ O backend escreve na Timeline nos marcos do plano (vale para ações feitas pela
 | Onda | Fases |
 |---|---|
 | 1 | B1 (modelo + API: fases, dono, tipo, dependências, `waiting`, perguntas, links, ações do usuário) · B3 (skills no repo + endpoints + instalador) |
-| 2 | B2 (automação: PRs mesclados → etapa/plano; Freshservice; Timeline nos marcos) · S1 (`prmake-plan.sh`: `ask`/`wait-answers`/`answer`/`link`/`correction`, `control` estendido) · S2 (`SKILL.md` da analisar-bug: propor soluções, plano de correção, fluxo de branches, nunca merge, Timeline) · S3 (`self-update`, hook, `setup`) · F1 (abas Análise/Correção, dono/tipo/dependência/aguardando) · F2 (perguntas) · F3 (links, chamados, PRs da etapa, ações do usuário) · F4 (tela Skills) |
-| 3 | T1 (ponta a ponta local: análise → perguntas respondidas na tela e no terminal → plano de correção → PRs em repo de teste → chamado bloqueando uma etapa com outra avançando → merges simulados → conclusão; instalação/atualização da skill numa HOME temporária) |
+| 2 | B2 (automação: PRs mesclados → etapa/plano; chamados manuais → etapa; Timeline nos marcos) · S1 (`prmake-plan.sh`: `ask`/`wait-answers`/`answer`/`link`/`correction`, `control` estendido) · S2 (`SKILL.md` da analisar-bug: propor soluções, plano de correção, fluxo de branches, nunca merge, Timeline) · S3 (`self-update`, hook, `setup`) · F1 (abas Análise/Correção, dono/tipo/dependência/aguardando) · F2 (perguntas) · F3 (links, chamados, PRs da etapa, ações do usuário) · F4 (tela Skills) |
+| 3 | T1 (ponta a ponta local: análise → perguntas respondidas na tela e no terminal → plano de correção → PRs em repo de teste → chamado bloqueando uma etapa com outra avançando, chamado fechado → novo chamado na mesma etapa → merges simulados → conclusão; instalação/atualização da skill numa HOME temporária) |
 | 4 | Q1 (PRs e deploy — o merge é do usuário) |
 
-## 4. Em aberto (confirmar antes da B2/F3)
-- **Q-a Freshservice**: integração pessoal com API key (proposta) × chave única da empresa (plugin admin) × sem consulta (só link + marcar concluído). Em qualquer caso o usuário informa o **número** do chamado junto com o link público.
-- **Q-b** Revamp backend (`revamp-*`): mesmo fluxo do legado (`master` → `development` + `qa`)? Algum módulo com branches diferentes?
-- **Q-c** Hook `SessionStart` de atualização: instalar por padrão ou só quando o usuário aceitar no instalador (proposta: perguntar)?
+## 4. Decisões do usuário (2026-09-28) e em aberto
+- **Q-a Freshservice** ✅ só o link (hiperlink) + status manual (aberto/resolvido/fechado) + vários chamados por etapa com histórico — ver 2.4.
+- **Q-b Revamp backend** ✅ mesmo fluxo do legado, **só `development`** (sem `qa`) — ver 2.6.
+- **Q-c Hook `SessionStart`** — em aberto; proposta: o instalador pergunta ("Instalar a atualização automática? [S/n]", padrão sim); sem o hook, a skill se atualiza no passo 0 de cada uso.
