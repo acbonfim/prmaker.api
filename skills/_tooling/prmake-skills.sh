@@ -128,6 +128,33 @@ ensure_hook() {
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
 }
 
+# Permissão do Claude Code para o fechamento pelo PRMake (`prmake-plan.sh devops ...`: root cause, resumo,
+# classificação, mover o card). Adicionada uma única vez (marcador em $TOOL_DIR): se o usuário remover a regra,
+# não volta. PRMAKE_SKIP_PERMISSIONS=1 não mexe nas permissões.
+PERMISSIONS_MARK="$TOOL_DIR/.permissions-devops-v1"
+ensure_permissions() {
+  [[ "${PRMAKE_SKIP_PERMISSIONS:-0}" == "1" || -f "$PERMISSIONS_MARK" ]] && return 0
+  [[ -d "$SKILLS_DIR/analisar-bug" ]] || return 0
+  mkdir -p "$(dirname "$SETTINGS")"
+  [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    warn "$SETTINGS não é um JSON válido — não liberei a permissão do fechamento"
+    return 0
+  fi
+  local script="analisar-bug/scripts/prmake-plan.sh devops:*" rules
+  if [[ "$SKILLS_DIR" == "$HOME/.claude/skills" ]]; then
+    rules="$(jq -n --arg a "Bash(bash ~/.claude/skills/$script)" --arg b "Bash(bash \$HOME/.claude/skills/$script)" \
+      --arg c "Bash(bash $SKILLS_DIR/$script)" '[$a, $b, $c]')"
+  else
+    rules="$(jq -n --arg c "Bash(bash $SKILLS_DIR/$script)" '[$c]')"
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  jq --argjson r "$rules" '.permissions.allow = (((.permissions.allow // []) + $r) | unique)' \
+    "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS" || return 0
+  : > "$PERMISSIONS_MARK"
+  say "   permissão do fechamento pelo PRMake (prmake-plan.sh devops) liberada em $SETTINGS"
+}
+
 # A própria ferramenta também se atualiza (vale a partir da próxima execução).
 self_update() {
   local published; published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json")"
@@ -179,6 +206,7 @@ case "$cmd" in
       install_one "$name" "$v" install && say "✔ $name ($v)"
     done
     ensure_hook
+    ensure_permissions
     self_update
     say "Pronto. As skills estão em $SKILLS_DIR e se atualizam sozinhas a cada sessão do Claude Code."
     ;;
@@ -197,6 +225,7 @@ case "$cmd" in
       [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && continue
       install_one "$name" "$v" update && [[ "$(local_version "$name")" == "$v" ]] && updated+=("$name ${cur:-novo} → $v")
     done
+    ensure_permissions
     self_update
     if [[ ${#updated[@]} -gt 0 ]]; then
       # No hook SessionStart esta linha vai para o contexto do Claude: ele sabe que deve reler a SKILL.md.
