@@ -19,6 +19,10 @@
 #   wait-answers <card> [segundos=540]                   espera as respostas; exit 0 = respondidas, 10 = ainda nao, 11 = parar
 #   answer      <card> <n|id> [texto|STDIN]              grava a resposta dada no terminal (via claude)
 #   link        <card> <key> <url> [titulo] [--blocks] [--kind ticket|pr|doc|other]
+#   pr-text     <card> <repo> <branch>                   prompt configurado (layout padrao do PRMake) + diff da branch
+#                                                        em $CARD_DIR/pr/<repo>/ (via gerar-prmake/prmake-fetch.sh)
+#   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
+#                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
@@ -564,6 +568,46 @@ case "$CMD" in
     jq -n --arg u "$URL" --arg t "$TITLE" --arg k "$KIND" --argjson b "$BLOCKS" \
       '{url:$u, blocksStep:$b} + (if $t != "" then {title:$t} else {} end) + (if $k != "" then {kind:$k} else {} end)' > "$TMP/body"
     send_or_queue POST "/$PLAN/steps/$KEY/links" "$TMP/body" && echo "OK link na etapa $KEY"
+    ;;
+
+  pr-text)
+    # Mesmo caminho da gerar-prmake: prompt configurado (PromptBug/PromptUS), repro steps, commits e diff da branch.
+    REPO="${1:?repositorio}"; BRANCH="${2:?branch com a correcao (ex.: hotfix/$CARD)}"
+    FETCH="$HOME/.claude/skills/gerar-prmake/scripts/prmake-fetch.sh"
+    [[ -f "$FETCH" ]] || die "skill gerar-prmake nao instalada ($FETCH) — instale pela tela Skills do PRMake"
+    OUT="$CARD_DIR/pr/$REPO"; mkdir -p "$OUT"
+    OUTDIR="$OUT" PRMAKE_TOKEN="$TOKEN" bash "$FETCH" "$CARD" "$BRANCH" "$REPO" || die "prmake-fetch falhou"
+    echo ""
+    echo "PROXIMO: siga $OUT/prompt.txt (troque {cardNumber}, {description} = $OUT/description.txt e"
+    echo "{githubCommitDiff} = $OUT/diff.txt) exatamente como a gerar-prmake: ingles, markdown, titulos em negrito;"
+    echo "Bug com o RCA entre <RCA> e </RCA>. Escreva $OUT/pr_generated.md e separe:"
+    echo "  awk '/<RCA>/{f=1;next} /<\/RCA>/{f=0} f' $OUT/pr_generated.md > $OUT/rca.md"
+    echo "  awk 'BEGIN{s=1} /<RCA>/{s=0} s==1{print} /<\/RCA>/{s=1}' $OUT/pr_generated.md | sed '/<\/RCA>/d' > $OUT/desc.md"
+    echo "Depois: prmake-plan.sh save-pr-text $CARD $OUT/desc.md $OUT/rca.md <key-da-etapa> e open-pr ... $OUT/desc.md"
+    ;;
+
+  save-pr-text)
+    require_plan; DESC_FILE="${1:?arquivo da descricao}"; RCA_FILE="${2:-}"; KEY="${3:-}"
+    [[ -s "$DESC_FILE" ]] || die "descricao vazia: $DESC_FILE"
+    USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | sed -n 's/.*"ExternalId":"\([^"]*\)".*/\1/p')"
+    [[ -n "$USER_ID" ]] || die "nao consegui extrair o ExternalId do token"
+    RCA=""; [[ -n "$RCA_FILE" && -f "$RCA_FILE" ]] && RCA="$(cat "$RCA_FILE")"
+    jq -n --rawfile desc "$DESC_FILE" --arg rca "$RCA" --arg uid "$USER_ID" --arg card "$CARD" --argjson form "${FORM_ID:-1}" \
+      '{description:$desc, cardNumber:$card, userId:$uid, formId:$form, rootCause:$rca}' > "$TMP/reg.json"
+    CODE="$(curl -s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest" \
+      -H "x-api-key: $TOKEN" -H 'content-type: application/json' --data-binary "@$TMP/reg.json" 2>/dev/null)"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao salvar a descricao no card: $(resp_error)"
+    echo "OK descricao$( [[ -n "$RCA" ]] && echo ' e root cause') salvos no card $CARD (aparecem no 'Abrir PR' do PRMake)"
+    # Guarda tambem no plano (aba Analises), com o repositorio no nome (pr/<repo>/desc.md -> pr-descricao-<repo>.md).
+    SUFFIX="$(basename "$(cd "$(dirname "$DESC_FILE")" && pwd)")"; [[ "$SUFFIX" == "pr" || "$SUFFIX" == "." ]] && SUFFIX="$CARD"
+    mkdir -p "$CARD_DIR/analises"
+    cp "$DESC_FILE" "$CARD_DIR/analises/pr-descricao-$SUFFIX.md"
+    upload_or_queue "$CARD_DIR/analises/pr-descricao-$SUFFIX.md" analysis "$KEY" "Descricao do PR (layout padrao) — $SUFFIX"
+    if [[ -n "$RCA" ]]; then
+      cp "$RCA_FILE" "$CARD_DIR/analises/pr-rca-$SUFFIX.md"
+      upload_or_queue "$CARD_DIR/analises/pr-rca-$SUFFIX.md" analysis "$KEY" "Root cause (RCA) — $SUFFIX"
+    fi
+    exit 0
     ;;
 
   open-pr)
