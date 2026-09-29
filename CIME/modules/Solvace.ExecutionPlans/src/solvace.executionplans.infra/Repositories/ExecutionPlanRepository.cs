@@ -1,0 +1,128 @@
+using Microsoft.EntityFrameworkCore;
+using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Responses;
+using solvace.executionplans.infra.Contexts;
+
+namespace solvace.executionplans.infra.Repositories;
+
+public class ExecutionPlanRepository : IExecutionPlanRepository
+{
+    private readonly ExecutionPlanContext _context;
+
+    public ExecutionPlanRepository(ExecutionPlanContext context)
+    {
+        _context = context;
+    }
+
+    public void AddPlan(ExecutionPlan plan) => _context.Plans.Add(plan);
+
+    public Task<ExecutionPlan?> GetPlanWithStepsAsync(Guid id, CancellationToken cancellationToken) =>
+        _context.Plans
+            .Include(p => p.Steps)
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+    public async Task<List<ExecutionPlanSummaryResponse>> GetSummariesByCardAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var rows = await _context.Plans
+            .AsNoTracking()
+            .Where(p => p.CardNumber == cardNumber)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => new
+            {
+                Plan = p,
+                Total = p.Steps.Count,
+                Completed = p.Steps.Count(s => s.Status == ExecutionStatus.Completed)
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => r.Plan.FillSummary(new ExecutionPlanSummaryResponse(), r.Total, r.Completed)).ToList();
+    }
+
+    public Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
+        _context.Plans
+            .AsNoTracking()
+            .Where(p => p.CardNumber == cardNumber)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<long> GetLastLogIdAsync(Guid planId, CancellationToken cancellationToken) =>
+        await _context.Logs
+            .Where(l => l.PlanId == planId)
+            .MaxAsync(l => (long?)l.Id, cancellationToken) ?? 0;
+
+    public async Task<HashSet<string>> GetExistingClientIdsAsync(Guid planId, IReadOnlyCollection<string> clientIds, CancellationToken cancellationToken)
+    {
+        var existing = await _context.Logs
+            .AsNoTracking()
+            .Where(l => l.PlanId == planId && l.ClientId != null && clientIds.Contains(l.ClientId))
+            .Select(l => l.ClientId!)
+            .ToListAsync(cancellationToken);
+        return existing.ToHashSet();
+    }
+
+    public void AddLogs(IEnumerable<ExecutionLog> logs) => _context.Logs.AddRange(logs);
+
+    public Task<List<ExecutionLog>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken)
+    {
+        var query = _context.Logs.AsNoTracking().Where(l => l.PlanId == planId && l.Id > afterId);
+        if (stepKey is not null)
+            query = query.Where(l => l.StepKey == stepKey);
+        return query.OrderBy(l => l.Id).Take(limit).ToListAsync(cancellationToken);
+    }
+
+    public Task<List<ExecutionArtifact>> GetArtifactsAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.Artifacts
+            .AsNoTracking()
+            .Where(a => a.PlanId == planId)
+            .OrderBy(a => a.Kind).ThenBy(a => a.Name)
+            .ToListAsync(cancellationToken);
+
+    public Task<ExecutionArtifact?> GetArtifactAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken) =>
+        _context.Artifacts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.PlanId == planId && a.Id == artifactId, cancellationToken);
+
+    public Task<ExecutionArtifact?> FindArtifactAsync(Guid planId, string kind, string name, CancellationToken cancellationToken) =>
+        _context.Artifacts
+            .Include(a => a.Content)
+            .FirstOrDefaultAsync(a => a.PlanId == planId && a.Kind == kind && a.Name == name, cancellationToken);
+
+    public Task<byte[]?> GetArtifactContentAsync(Guid artifactId, CancellationToken cancellationToken) =>
+        _context.ArtifactContents
+            .AsNoTracking()
+            .Where(c => c.ArtifactId == artifactId)
+            .Select(c => c.Data)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<long> GetArtifactsSizeAsync(Guid planId, Guid? excludingArtifactId, CancellationToken cancellationToken) =>
+        await _context.Artifacts
+            .Where(a => a.PlanId == planId && (excludingArtifactId == null || a.Id != excludingArtifactId))
+            .SumAsync(a => (long?)a.Size, cancellationToken) ?? 0;
+
+    public void AddArtifact(ExecutionArtifact artifact) => _context.Artifacts.Add(artifact);
+
+    public async Task RemoveArtifactAsync(Guid artifactId, CancellationToken cancellationToken)
+    {
+        var artifact = await _context.Artifacts
+            .Include(a => a.Content)
+            .FirstOrDefaultAsync(a => a.Id == artifactId, cancellationToken);
+        if (artifact is not null)
+            _context.Artifacts.Remove(artifact);
+    }
+
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException e)
+        {
+            throw new ExecutionPlanConcurrencyException(e);
+        }
+    }
+
+    public void ClearTracking() => _context.ChangeTracker.Clear();
+}

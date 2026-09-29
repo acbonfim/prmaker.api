@@ -13,7 +13,7 @@
 ## 2. Decisões
 ### 2.1 Banco: PostgreSQL (mesmo database, schema novo `execution`)
 - Já é o banco de tudo (sem infra nem custo novo), transacional (plano, etapas, logs e arquivos consistentes entre si), entra no backup e nas migrações que já existem. Redis/Mongo exigiriam serviço novo, custo e backup próprio sem ganho real no volume esperado (dezenas de planos/dia).
-- **Arquivos em `bytea`**, numa tabela separada do metadado (listar não carrega conteúdo). Limites: **10 MB por arquivo**, **100 MB por plano**. Se um dia o volume crescer, só o conteúdo migra para o Cloud Storage (a API não muda).
+- **Arquivos em `bytea`**, numa tabela separada do metadado (listar não carrega conteúdo). Limites: **10 MB por arquivo**, **50 MB por plano** (o `.zip` é montado em memória no Cloud Run). Se um dia o volume crescer, só o conteúdo migra para o Cloud Storage (a API não muda).
 
 ### 2.2 Modelo (módulo `Solvace.ExecutionPlans`, `ExecutionPlanContext`)
 - **ExecutionPlan**: `Id` (Guid), `CardNumber`, `Kind` (`analisar-bug`), `Title`, `Summary`, `Status`, `StatusReason`, `StatusChangedBy`, `CreatedBy/CreatedByUserId`, `CreatedAt`, `StartedAt`, `FinishedAt`, `LastActivityAt` (heartbeat da skill), `UpdatedAt`.
