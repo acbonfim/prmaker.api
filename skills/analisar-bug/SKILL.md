@@ -90,7 +90,9 @@ Regras:
   consulta — frases curtas, markdown ok; `finding` para achados, `decision` para escolhas, `warning`/`error`
   para problemas) → salve os arquivos na pasta do card e rode `sync <card> <key>` → `checkpoint` → `step completed`.
 - **Entre etapas (e antes de qualquer coisa demorada):** `control`. Exit **10** = pausado pelo usuario: rode
-  `wait` (repita enquanto devolver 10, ou avise e pare). Exit **11** = cancelado/concluido pela tela: pare e
+  `wait <card> 3600` **em segundo plano** (Bash com `run_in_background: true`), avise que ficou pausado e encerre a
+  sua vez — quando o usuario clicar *Continuar* no PRMake o comando termina e te acorda (exit 0 = continue;
+  11 = cancelado: pare). Exit **11** = cancelado/concluido pela tela: pare e
   nao envie mais nada. O `control` tambem lista: etapas **canceladas** (pule), **prontas** (pode comecar),
   **aguardando** (resposta/chamado/merge — nao mexa) e **perguntas sem resposta**.
 - **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
@@ -345,9 +347,17 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se ha script de dados: vai por **chamado** (o usuario abre no Freshservice) ou nao e necessario.
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
    Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal.
-3. `wait-answers <card>` — responde quem chegar primeiro: pela tela (PRMake) ou aqui (grave com
-   `answer <card> <n> "..."`). Exit 10 = ainda sem resposta: rode de novo ou avise e pare (o `start` retoma
-   depois). Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
+3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
+   - Rode `bash $PLAN wait-answers <card> 3600` **em segundo plano** (ferramenta Bash com
+     `run_in_background: true`) e so entao mostre as perguntas no terminal e encerre a sua vez esperando o chat.
+     Voce **nao ve** respostas dadas no PRMake enquanto esta parado esperando o chat — e o comando em segundo
+     plano que as detecta: quando todas forem respondidas pela tela ele termina e voce e acordado com as
+     respostas na saida.
+   - Se o usuario responder aqui no chat: grave cada resposta com `answer <card> <n> "..."` (o PRMake mostra
+     "pelo Claude") e siga — o comando em segundo plano termina sozinho.
+   - Se o usuario disser que respondeu no PRMake (ou voce voltar a sessao depois): rode `answers <card>`.
+   - Exit 10 (1 h sem todas as respostas): avise e pare — o `start` retoma depois.
+   Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
    (fim do plano de **analise**).
 
 ### 7. Montar o plano de correcao
