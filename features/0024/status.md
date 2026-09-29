@@ -10,7 +10,7 @@
 | B2 | Automação: PR mesclado → etapa/plano concluído; chamado resolvido → etapa concluída; registros na Timeline | 2 | B1 | ⬜ pendente | Claude | — |
 | S1 | `prmake-plan.sh`: `ask`/`wait-answers`/`answer`/`link`/`correction`, `control` estendido | 2 | B1 | ⬜ pendente | Claude | — |
 | S2 | `SKILL.md` analisar-bug: propor soluções, perguntas, plano de correção, fluxo de branches, nunca merge | 2 | S1 | ⬜ pendente | Claude | — |
-| S3 | Atualização automática das skills (`self-update`, hook `SessionStart`, `setup`) | 2 | B3, Q-c | ⬜ pendente | Claude | — |
+| S3 | Atualização automática das skills (`self-update`, hook `SessionStart`, `setup`) | 2 | B3 | ⬜ pendente | Claude | — |
 | F1 | Abas Análise/Correção; dono, tipo, dependências e "aguardando" nas etapas | 2 | B1 | ⬜ pendente | Claude | — |
 | F2 | Perguntas (faixa de destaque, opções, texto livre, tempo real) | 2 | B1 | ⬜ pendente | Claude | — |
 | F3 | Links/chamados/PRs da etapa, status, ações do usuário (iniciar/concluir/pular) | 2 | B1, B2 | ⬜ pendente | Claude | — |
@@ -21,9 +21,10 @@
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Notas
-- Decidido: chamados só com link + status manual e histórico por etapa (Q-a); revamp backend só `development` (Q-b). Em aberto: Q-c (hook de atualização) — ver `plan.md` §4.
+- Decidido: chamados só com link + status manual e histórico por etapa (Q-a); revamp backend só `development` (Q-b). Hook de atualização instalado automaticamente (Q-c) — ver `plan.md` §4.
 - Regra do usuário: **o Claude só abre PRs, nunca faz merge** (o plano conclui quando os PRs são mesclados por outra pessoa).
 
 ## Log
 - 2026-09-28 — Planejamento (spec, plano, status); worktree `feature/0024` no backend. O link público do Freshservice redireciona para o login (testado) — status só via API com o número do chamado.
 - 2026-09-28 — Decisões Q-a (chamado = link + status manual + histórico) e Q-b (revamp backend só `development`).
+- 2026-09-28 — Decisão Q-c: o instalador coloca o hook `SessionStart` sem perguntar.

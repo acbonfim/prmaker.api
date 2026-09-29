@@ -60,7 +60,7 @@ O backend escreve na Timeline nos marcos do plano (vale para ações feitas pela
   - `GET api/v1/Skills` — lista com versão (hash do conteúdo + data do commit);
   - `GET api/v1/Skills/{nome}/package` — `.zip` da skill (sem `.venv`);
   - `GET api/v1/Skills/install.sh` — instalador.
-- **Instalação (um comando, copiado da tela "Skills" do PRMake)**: `curl -fsSL -H "x-api-key: <sua api-key>" https://api.softhouse.app.br/api/v1/Skills/install.sh | bash` → baixa as skills para `~/.claude/skills/`, cria `~/.claude/prmake-token.txt` se não existir, roda o `setup` de cada uma (ex.: `.venv` da `analisar-bug`) e **pergunta** se instala o hook de atualização.
+- **Instalação (um comando, copiado da tela "Skills" do PRMake)**: `curl -fsSL -H "x-api-key: <sua api-key>" https://api.softhouse.app.br/api/v1/Skills/install.sh | bash` → baixa as skills para `~/.claude/skills/`, cria `~/.claude/prmake-token.txt` se não existir, roda o `setup` de cada uma (ex.: `.venv` da `analisar-bug`) e **instala o hook de atualização** (sem perguntar).
 - **Atualização automática**, em duas camadas: (1) hook `SessionStart` em `~/.claude/settings.json` que roda `prmake-skills update --quiet` a cada sessão do Claude Code (só baixa se a versão mudou); (2) cada skill roda `self-update` no passo 0 — atualizou → relê a `SKILL.md`. Arquivo local alterado à mão (hash ≠ manifesto) → **não sobrescreve**, só avisa (`--force` para substituir).
 - Tela "Skills" no PRMake (menu do usuário): lista, versão instalada × publicada (quando informada pelo `update`), comando de instalação com a api-key do usuário (a mesma do "Minha API key"), download do `.zip`.
 
@@ -75,4 +75,4 @@ O backend escreve na Timeline nos marcos do plano (vale para ações feitas pela
 ## 4. Decisões do usuário (2026-09-28) e em aberto
 - **Q-a Freshservice** ✅ só o link (hiperlink) + status manual (aberto/resolvido/fechado) + vários chamados por etapa com histórico — ver 2.4.
 - **Q-b Revamp backend** ✅ mesmo fluxo do legado, **só `development`** (sem `qa`) — ver 2.6.
-- **Q-c Hook `SessionStart`** — em aberto; proposta: o instalador pergunta ("Instalar a atualização automática? [S/n]", padrão sim); sem o hook, a skill se atualiza no passo 0 de cada uso.
+- **Q-c Hook `SessionStart`** ✅ o instalador **instala o hook automaticamente**, sem perguntar (idempotente: não duplica se já existir); a skill também confere a versão no passo 0.
