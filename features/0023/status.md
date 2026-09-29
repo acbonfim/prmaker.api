@@ -5,7 +5,7 @@
 
 | Fase | Descrição | Onda | Depende de | Status | Responsável | Commits |
 |---|---|---|---|---|---|---|
-| B1 | Módulo `Solvace.ExecutionPlans` (schema `execution`), API, tempo real, migração | 1 | — | ✅ concluída | Claude | ver log |
+| B1 | Módulo `Solvace.ExecutionPlans` (schema `execution`), API, tempo real, migração | 1 | — | ✅ concluída | Claude | `b4a5d9b` |
 | S1 | Skill: `prmake-plan.sh` (fila local, retentativas, pausa) + `SKILL.md` | 1 | — | ⬜ pendente | Claude | — |
 | F1 | Serviço + `app-execution-plan` (etapas animadas, detalhes, status, ações, tela cheia) | 2 | B1 | ⬜ pendente | Claude | — |
 | F2 | Visualizador de arquivos (SQL, markdown, JSON, imagem; copiar, baixar, zip) | 2 | B1 | ⬜ pendente | Claude | — |
@@ -20,3 +20,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
 ## Log
 - 2026-09-28 — Planejamento (spec, plano, status); worktrees `feature/0023` no backend e no front.
+- 2026-09-28 — B1 concluída (`b4a5d9b`).
