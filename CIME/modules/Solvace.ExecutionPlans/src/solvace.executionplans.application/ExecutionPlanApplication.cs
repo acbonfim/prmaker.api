@@ -273,6 +273,20 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             if (!p.Steps.Any(s => s.Key == key))
                 throw new DomainException($"Etapa não encontrada: '{key}'.");
 
+            // PR já anexado à etapa (ex.: a sincronização do PRMake chegou antes de quem abriu o PR): não duplica.
+            if (request.PullRequestNumber is { } prNumber && !string.IsNullOrWhiteSpace(request.Repository))
+            {
+                var existing = (await _repository.GetLinksAsync(p.Id, cancellationToken)).FirstOrDefault(l =>
+                    l.StepKey == key && l.Kind == ExecutionLinkKind.PullRequest && l.PullRequestNumber == prNumber
+                    && SameRepository(l.Repository ?? "", request.Repository!));
+                if (existing is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(request.Title)) existing.SetTitle(request.Title);
+                    link = existing;
+                    return;
+                }
+            }
+
             link = new ExecutionLink(p.Id, key, request.Url, request.Title, request.Kind, request.BlocksStep,
                 request.PullRequestNumber, request.Repository, request.TargetBranch, actor.Name, now);
             _repository.AddLink(link);

@@ -416,6 +416,16 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   plano segue no PRMake e `/analisar-bug <card>` retoma depois. O plano de correcao **conclui sozinho** quando
   todas as etapas terminam (PRs mesclados, chamados resolvidos).
 
+### 8b. A correcao nao resolveu — nova rodada no mesmo plano
+Se o usuario disser que a correcao nao resolveu (ou a validacao falhar), **nao crie outro plano**: acrescente
+etapas ao **mesmo plano de correcao** (`use <card> correction` e `steps` com as etapas atuais **mais** as novas —
+keys novas, ex.: `ajustar-edv-solvace-2`, `pr-edv-solvace-2` com `dependsOn` na de ajuste, e a validacao de novo).
+Ao marcar a primeira etapa nova como `running`, o plano volta a "em andamento". Corrija nas mesmas branches do
+fluxo (`hotfix/<card>`, `-dev`, `-qa` — novos commits `AB#<card> ...` e cherry-pick) e abra os PRs novos com
+`open-pr`: eles entram na etapa de PR nova (os PRs antigos continuam na etapa anterior) e o plano so conclui de
+novo quando os PRs novos forem mesclados. Todo PR aberto pelo PRMake tambem aparece no card (painel de PRs e
+Timeline).
+
 ### 9. Reportar
 Informe ao usuario: card, tipo, titulo, a causa raiz provavel, a solucao escolhida, os PRs abertos (links),
 o que ficou com ele (chamados, validacoes) e o que falta — e que tudo esta nos planos do card no PRMake. Em

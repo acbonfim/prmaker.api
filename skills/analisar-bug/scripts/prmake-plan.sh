@@ -550,7 +550,9 @@ case "$CMD" in
     echo "PR #$NUMBER aberto: $REPO $BRANCH -> $TARGET  $URL$(jq -e '.alreadyExisted' "$TMP/resp" >/dev/null && echo '  (ja existia)')"
     # Anexa ja a etapa de PR desse repositorio (a sincronizacao do PRMake faria em ate 1 min).
     api GET "/$PLAN"
-    STEP=$(jq -r --arg r "$REPO" '[.steps[] | select(.kind == "pr" and ((.repository // "") | ascii_downcase) == ($r | ascii_downcase))][0].key // empty' "$TMP/resp")
+    # Etapa de PR desse repositorio ainda aberta (ex.: pr-edv-solvace-2 de uma nova rodada); senao, a primeira.
+    STEP=$(jq -r --arg r "$REPO" '[.steps[] | select(.kind == "pr" and ((.repository // "") | ascii_downcase) == ($r | ascii_downcase))]
+      | ((map(select(.status != "completed" and .status != "cancelled")) + .)[0].key) // empty' "$TMP/resp")
     if [[ -n "$STEP" && -n "$NUMBER" ]]; then
       jq -n --arg u "$URL" --arg t "#$NUMBER $REPO -> $TARGET" --argjson n "$NUMBER" --arg r "$REPO" --arg tb "$TARGET" \
         '{url:$u, title:$t, kind:"pr", pullRequestNumber:$n, repository:$r, targetBranch:$tb}' > "$TMP/body"
