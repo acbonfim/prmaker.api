@@ -17,6 +17,7 @@ public class ExecutionPlanContext : DbContext
     public DbSet<ExecutionArtifactContent> ArtifactContents { get; set; }
     public DbSet<ExecutionQuestion> Questions { get; set; }
     public DbSet<ExecutionLink> Links { get; set; }
+    public DbSet<ExecutionNote> Notes { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -110,6 +111,24 @@ public class ExecutionPlanContext : DbContext
             entity.HasOne(e => e.Content).WithOne().HasForeignKey<ExecutionArtifactContent>(c => c.ArtifactId).OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => new { e.PlanId, e.Kind, e.Name }).IsUnique();
+            entity.HasIndex(e => e.NoteId);
+        });
+
+        modelBuilder.Entity<ExecutionNote>(entity =>
+        {
+            entity.ToTable("ExecutionNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.StepKey).HasMaxLength(ExecutionStep.MaxKeyLength);
+            entity.Property(e => e.Text).IsRequired().HasColumnType("text");
+            entity.Property(e => e.AuthorName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DeletedBy).HasMaxLength(200);
+            entity.Ignore(e => e.IsDeleted);
+
+            entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.CardNumber, e.Number });
+            entity.HasIndex(e => e.PlanId);
         });
 
         modelBuilder.Entity<ExecutionQuestion>(entity =>

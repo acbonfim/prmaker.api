@@ -40,6 +40,17 @@ public interface IExecutionPlanRepository
     Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken);
     Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken);
 
+    // Comentários e numeração por card (0031)
+    void AddNote(ExecutionNote note);
+    Task<ExecutionNote?> GetNoteAsync(Guid planId, Guid noteId, CancellationToken cancellationToken);
+    /// <summary>Comentários não removidos do card (todas as fases), pelo número.</summary>
+    Task<List<ExecutionNote>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<List<ExecutionArtifact>> GetNoteAttachmentsAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken);
+    Task<int> GetMaxNoteNumberAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<int> GetMaxArtifactNumberAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Maior número e última mudança dos comentários do usuário no card (para o vigia da skill).</summary>
+    Task<(int LastNumber, DateTimeOffset? ChangedAt)> GetUserNotesStateAsync(string cardNumber, CancellationToken cancellationToken);
+
     /// <summary>Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 

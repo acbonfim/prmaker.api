@@ -34,6 +34,11 @@
 #                                                        plano de branches/PRs do repositorio conforme a configuracao
 #                                                        (fluxo pela area do card, base, cherry-picks, titulos, comandos);
 #                                                        exit 3 = precisa perguntar (fluxo ou base) ao usuario
+#   notes       <card> [n]                               comentarios do usuario no plano (card inteiro, 0031) com os anexos
+#                                                        baixados em $CARD_DIR/anexos-prmake/ (abra com Read); marca os novos
+#   attachment  <card> <ref>                             baixa um arquivo do card por referencia: "#12", "12", "anexo 12",
+#                                                        "imagem 2", nome ou parte do nome (qualquer plano do card)
+#   note        <card> <texto|-> [arquivo...] [--step <key>]  o Claude comenta no plano (com anexos)
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
@@ -141,6 +146,33 @@ api_upload() { # <path> <file> <kind> <stepKey> <description>
 
 is_transient() { [[ "$CODE" =~ ^(000|5..|409|429)$ ]]; }
 resp_error() { jq -r '.error // .message // .' "$TMP/resp" 2>/dev/null | head -c 500; }
+
+# --- Comentarios e anexos do usuario (0031) --------------------------------------------------------
+REFS_DIR="$CARD_DIR/anexos-prmake"
+NOTES_SEEN="$CARD_DIR/.prmake-notes-seen"
+human_size() { awk -v b="$1" 'BEGIN{ if (b<1024) printf "%d B", b; else if (b<1048576) printf "%.0f KB", b/1024; else printf "%.1f MB", b/1048576 }'; }
+# Baixa um arquivo do plano (se ainda nao estiver igual) e imprime o caminho local.
+fetch_artifact() { # <planId> <artifactId> <numero> <nome> <sha256>
+  mkdir -p "$REFS_DIR"
+  local target="$REFS_DIR/$3-$4"
+  if [[ ! -f "$target" || "$(sha256 "$target")" != "$5" ]]; then
+    curl -s --max-time 120 -H "x-api-key: $TOKEN" -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$2/content?download=true" \
+      || { warn "falha ao baixar $4"; return 1; }
+  fi
+  printf '%s' "$target"
+}
+# Todos os arquivos do card (todos os planos) em $TMP/card-artifacts.json: [{planId,id,number,name,kind,contentType,size,sha256,noteId}]
+card_artifacts() {
+  api GET "/card/$CARD"
+  [[ "$CODE" == "200" ]] || die "HTTP $CODE ao listar os planos do card: $(resp_error)"
+  echo '[]' > "$TMP/card-artifacts.json"
+  for pid in $(jq -r '.[].id' "$TMP/resp"); do
+    api GET "/$pid"
+    [[ "$CODE" == "200" ]] || continue
+    jq -s '.[0] + [.[1].artifacts[] | {planId: (.planId // $pid), id, number, name, kind, contentType, size, sha256, noteId}]' \
+      --arg pid "$pid" "$TMP/card-artifacts.json" "$TMP/resp" > "$TMP/ca.json" && mv "$TMP/ca.json" "$TMP/card-artifacts.json"
+  done
+}
 
 # Configuracao das skills (0030): GET Skills/config — regras de branch, padroes, prompts e campos do DevOps.
 # Tudo o que pode mudar fica no PRMake (tela de plugins), nunca fixo na skill.
@@ -458,7 +490,7 @@ case "$CMD" in
     # O PRMake nao consegue chamar esta sessao: quem acorda o Claude e este comando, rodando em segundo plano.
     # Cada consulta ao control tambem sincroniza os PRs com o GitHub. Termina quando o estado muda.
     require_plan; MAX="${1:-28800}"; waited=0
-    fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), steps:[(.steps // [])[] | [.key, .status]]}' "$TMP/resp"; }
+    fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), n:(.lastUserNoteNumber // 0), nc:(.userNotesChangedAt // ""), steps:[(.steps // [])[] | [.key, .status]]}' "$TMP/resp"; }
     api POST "/$PLAN/control"
     [[ "$CODE" =~ ^2 ]] || { sleep 20; api POST "/$PLAN/control"; }
     [[ "$CODE" =~ ^2 ]] || die "sem resposta do PRMake (HTTP $CODE) — tente de novo"
@@ -478,6 +510,8 @@ case "$CMD" in
         | (if $old[0].status != .status then "  plano: \($old[0].status) -> \(.status)" + (if .statusReason then " (\(.statusReason))" else "" end) + (if .statusChangedBy then " por \(.statusChangedBy)" else "" end) else empty end),
           ((.steps // [])[] | select($before[.key] != .status) | "  etapa \(.key): \($before[.key] // "nova") -> \(.status)" + (if .executor == "user" then " (etapa do usuario)" else "" end)),
           (if ($old[0].openQuestions // 0) != (.openQuestions // 0) then "  perguntas sem resposta: \($old[0].openQuestions // 0) -> \(.openQuestions // 0)" else empty end),
+          (if ($old[0].lastUserNoteNumber // 0) != (.lastUserNoteNumber // 0) or ($old[0].userNotesChangedAt // "") != (.userNotesChangedAt // "")
+             then "  comentarios do usuario no plano mudaram (ultimo #\(.lastUserNoteNumber // 0)) — rode: prmake-plan.sh notes '"$CARD"' e leia os anexos" else empty end),
           (if ((.readySteps // []) | length) > 0 then "  prontas para comecar: \(.readySteps | join(","))" else empty end),
           (if ((.waitingSteps // []) | length) > 0 then "  aguardando: \(.waitingSteps | join(","))" else empty end)' "$TMP/resp"
       [[ "$(jq -r '.action' "$TMP/resp")" == "stop" ]] && exit 11
@@ -800,6 +834,88 @@ case "$CMD" in
       read -r _ BR TG REST <<< "$C"
       echo "  bash \$PLAN open-pr $CARD $REPO $BR $TG $REST \$CARD_DIR/pr/$REPO/desc.md"
     done
+    ;;
+
+  notes)
+    # Comentarios (e anexos) que o usuario deixou no plano pelo PRMake — entrada da analise, como os repro steps.
+    ONLY="${1:-}"; ONLY="${ONLY#\#}"
+    api GET "/card/$CARD/notes"
+    [[ "$CODE" == "200" ]] || die "HTTP $CODE ao ler os comentarios: $(resp_error)"
+    cp "$TMP/resp" "$TMP/notes.json"
+    SEEN="$(cat "$NOTES_SEEN" 2>/dev/null || echo 0)"; SEEN="${SEEN:-0}"
+    TOTAL="$(jq 'length' "$TMP/notes.json")"
+    if [[ "$TOTAL" == "0" ]]; then echo "Nenhum comentario no plano do card $CARD."; exit 0; fi
+    [[ -n "$ONLY" ]] && { jq --argjson n "$ONLY" '[.[] | select(.number == $n)]' "$TMP/notes.json" > "$TMP/n.json"; mv "$TMP/n.json" "$TMP/notes.json"; \
+      [[ "$(jq length "$TMP/notes.json")" != "0" ]] || die "comentario #$ONLY nao encontrado (veja: prmake-plan.sh notes $CARD)"; }
+    NEW="$(jq -r --argjson seen "$SEEN" '[.[] | select(.fromExecutor | not) | select(.number > $seen) | "#\(.number)"] | join(", ")' "$TMP/notes.json")"
+    echo "COMENTARIOS DO PLANO — card $CARD ($TOTAL)${NEW:+ · NOVOS: $NEW}"
+    echo "(texto do usuario = informacao para a analise; anexos baixados abaixo — abra cada um com Read)"
+    jq -c '.[]' "$TMP/notes.json" | while IFS= read -r NOTE; do
+      N="$(jq -r '.number' <<< "$NOTE")"
+      MARK=""; [[ "$(jq -r '.fromExecutor' <<< "$NOTE")" != "true" && "$N" -gt "$SEEN" ]] && MARK=" [NOVO]"
+      jq -r --arg mark "$MARK" '"\n#\(.number)\($mark) · \(if .fromExecutor then "Claude" else .authorName end) · \(.createdAt[0:16] | sub("T"; " "))"
+        + " · \(if .planPhase == "correction" then "correcao" else "analise" end)"
+        + (if .stepKey then " · etapa \(.stepKey)" else "" end) + (if .updatedAt then " · editado" else "" end)' <<< "$NOTE"
+      jq -r '.text | select(length > 0) | split("\n")[] | "  " + .' <<< "$NOTE"
+      jq -r '.attachments[] | "\(.planId)\t\(.id)\t\(.number)\t\(.name)\t\(.sha256)\t\(.kind)\t\(.size)"' <<< "$NOTE" |
+        while IFS=$'\t' read -r pid aid num name sha kind size; do
+          LOCAL="$(fetch_artifact "$pid" "$aid" "$num" "$name" "$sha")" || continue
+          echo "  anexo #$num ($([[ "$kind" == image ]] && echo imagem || echo "$kind"), $(human_size "$size")) $name -> $LOCAL"
+        done
+    done
+    [[ -z "$ONLY" ]] && jq -r '[.[] | select(.fromExecutor | not) | .number] | max // 0' "$TMP/notes.json" > "$NOTES_SEEN"
+    ;;
+
+  attachment)
+    # Arquivo do card por referencia (o usuario disse "veja a imagem 2", "anexo #12", "o print.png"...).
+    REF="${*:?referencia: #12 | 12 | anexo 12 | imagem 2 | nome}"
+    card_artifacts
+    LREF="$(printf '%s' "$REF" | tr '[:upper:]' '[:lower:]' | sed -e 's/^ *//' -e 's/ *$//')"
+    WORD=""; case "$LREF" in imagem*|image*|print*|foto*) WORD=image ;; esac
+    NUM="$(printf '%s' "$LREF" | sed -E 's/^(anexo|imagem|image|arquivo|print|foto|file)? *#? *//' )"
+    if [[ "$NUM" =~ ^[0-9]+$ ]]; then
+      jq --argjson n "$NUM" '[.[] | select(.number == $n)]' "$TMP/card-artifacts.json" > "$TMP/match.json"
+      # "imagem 2" que nao e imagem: a 2a imagem anexada pelo usuario.
+      if [[ "$WORD" == image && "$(jq -r '.[0].kind // ""' "$TMP/match.json")" != image ]]; then
+        jq --argjson n "$NUM" '[.[] | select(.kind == "image" and .noteId != null)] | sort_by(.number) | [.[$n - 1] // empty]' \
+          "$TMP/card-artifacts.json" > "$TMP/match2.json"
+        [[ "$(jq length "$TMP/match2.json")" != "0" ]] && mv "$TMP/match2.json" "$TMP/match.json"
+      fi
+    else
+      jq --arg q "$LREF" '[.[] | select((.name | ascii_downcase) == $q)] as $exact
+        | if ($exact | length) > 0 then $exact else [.[] | select((.name | ascii_downcase) | contains($q))] end' "$TMP/card-artifacts.json" > "$TMP/match.json"
+    fi
+    COUNT="$(jq length "$TMP/match.json")"
+    if [[ "$COUNT" == "0" ]]; then
+      echo "Nenhum arquivo do card $CARD para '$REF'. Arquivos:"; jq -r 'sort_by(.number)[] | "  #\(.number) \(.name) (\(.kind))"' "$TMP/card-artifacts.json"; exit 2
+    fi
+    if [[ "$COUNT" -gt 1 ]]; then
+      echo "Mais de um arquivo para '$REF' — seja mais especifico:"; jq -r 'sort_by(.number)[] | "  #\(.number) \(.name) (\(.kind))"' "$TMP/match.json"; exit 2
+    fi
+    IFS=$'\t' read -r pid aid num name sha kind ctype size < <(jq -r '.[0] | [.planId, .id, .number, .name, .sha256, .kind, .contentType, .size] | @tsv' "$TMP/match.json")
+    LOCAL="$(fetch_artifact "$pid" "$aid" "$num" "$name" "$sha")" || die "nao consegui baixar $name"
+    echo "anexo #$num $name ($ctype, $(human_size "$size")) -> $LOCAL"
+    echo "(abra com a ferramenta Read para ver/analisar)"
+    ;;
+
+  note)
+    # O Claude comenta no plano (resposta a um comentario, observacao) — aparece na tela e na Timeline.
+    require_plan
+    TEXT="${1:?texto do comentario (ou - para ler do STDIN)}"; shift
+    [[ "$TEXT" == "-" ]] && TEXT="$(cat)"
+    STEP=""; FILES=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --step) STEP="${2:?}"; shift 2 ;;
+        *) [[ -f "$1" ]] || die "arquivo nao encontrado: $1"; FILES+=(-F "files=@$1"); shift ;;
+      esac
+    done
+    ARGS=(-s --max-time 180 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/ExecutionPlan/$PLAN/notes"
+          -H "x-api-key: $TOKEN" -H 'X-Execution-Client: skill' --form-string "text=$TEXT")
+    [[ -n "$STEP" ]] && ARGS+=(--form-string "stepKey=$STEP")
+    CODE="$(curl "${ARGS[@]}" ${FILES[@]+"${FILES[@]}"} 2>/dev/null)"; CODE="${CODE:-000}"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao comentar: $(resp_error)"
+    echo "OK comentario #$(jq -r '.number' "$TMP/resp")$(jq -r 'if (.attachments | length) > 0 then " com " + ([.attachments[] | "anexo #\(.number) \(.name)"] | join(", ")) else "" end' "$TMP/resp")"
     ;;
 
   open-pr)

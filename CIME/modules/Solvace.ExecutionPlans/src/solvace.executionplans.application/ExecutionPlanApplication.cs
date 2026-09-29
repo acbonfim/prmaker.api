@@ -134,6 +134,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         var openQuestions = (await _repository.GetQuestionsAsync(plan.Id, cancellationToken))
             .Count(q => q.Status == ExecutionQuestionStatus.Open);
+        var (lastUserNote, userNotesChangedAt) = await _repository.GetUserNotesStateAsync(plan.CardNumber, cancellationToken);
 
         // Sem evento de tempo real: o heartbeat é frequente e a tela calcula "sem sinal" sozinha.
         return new ExecutionControlResponse
@@ -142,6 +143,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             WaitingSteps = plan.Steps.Where(s => s.Status == ExecutionStatus.Waiting).OrderBy(s => s.Order).Select(s => s.Key).ToList(),
             Steps = plan.Steps.OrderBy(s => s.Order).Select(s => new ExecutionControlStep(s.Key, s.Status, s.Executor)).ToList(),
             OpenQuestions = openQuestions,
+            LastUserNoteNumber = lastUserNote,
+            UserNotesChangedAt = userNotesChangedAt,
             PlanId = plan.Id,
             Status = plan.Status,
             StatusReason = plan.StatusReason,
@@ -427,7 +430,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             if (otherFiles + upload.Data.LongLength > ExecutionArtifact.MaxPlanBytes)
                 throw new DomainException($"Os arquivos deste plano passariam do limite de {ExecutionArtifact.MaxPlanBytes / (1024 * 1024)} MB.");
 
-            artifact ??= new ExecutionArtifact(p.Id, name, kind, actor.Name, now);
+            artifact ??= new ExecutionArtifact(p.Id, name, kind, actor.Name, now,
+                await _repository.GetMaxArtifactNumberAsync(p.CardNumber, cancellationToken) + 1);
             artifact.SetContent(upload.Data, upload.ContentType, upload.StepKey, upload.Description, now, isNew);
             if (isNew)
                 _repository.AddArtifact(artifact);
@@ -537,7 +541,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         var lastLogId = await _repository.GetLastLogIdAsync(plan.Id, cancellationToken);
         var questions = await _repository.GetQuestionsAsync(plan.Id, cancellationToken);
         var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
-        return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow, questions, links);
+        var notes = await GetNotesByCardAsync(plan.CardNumber, cancellationToken);
+        return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow, questions, links, notes);
     }
 
     /// <summary>
