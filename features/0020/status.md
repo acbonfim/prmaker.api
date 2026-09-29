@@ -8,7 +8,7 @@
 | F1 | "Importar do Teams" escondido (flag) + botão de tela cheia | 1 | — | ✅ concluída | Claude | front `c5f7b9a` |
 | F2 | Tela cheia com animação de crescer/encolher | 1 | — | ✅ concluída | Claude | front `c5f7b9a` |
 | T1 | Teste no navegador | 2 | F1, F2 | ✅ concluída | Claude | — |
-| Q1 | PR e deploy | 3 | T1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | PR e deploy | 3 | T1 | ✅ concluída | usuário + Claude | front #17 (`131bfc4`), backend #27 (`239693c`) |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -26,3 +26,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-28 — Planejamento (spec, plano, status); worktrees `feature/0020` no backend e no front.
 - 2026-09-28 — F1, F2 e T1 concluídas (front `c5f7b9a`). Falta o Q1 (PRs e deploy).
+- 2026-09-28 — Q1: PRs mergeados e deploys (front e API) com sucesso; código da tela cheia confirmado no bundle de produção.
