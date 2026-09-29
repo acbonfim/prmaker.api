@@ -34,6 +34,9 @@ public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
     public List<ExecutionQuestionResponse> Questions { get; set; } = [];
     public List<ExecutionLinkResponse> Links { get; set; } = [];
 
+    /// <summary>Comentários do card inteiro (análise e correção), com os anexos (0031).</summary>
+    public List<ExecutionNoteResponse> Notes { get; set; } = [];
+
     /// <summary>Id do último registro de andamento (cursor para buscar só os novos).</summary>
     public long LastLogId { get; set; }
 
@@ -109,6 +112,11 @@ public class ExecutionLogResponse
 public class ExecutionArtifactResponse
 {
     public Guid Id { get; set; }
+    public Guid PlanId { get; set; }
+    /// <summary>Número por card (<c>anexo #n</c>, 0031).</summary>
+    public int Number { get; set; }
+    /// <summary>Comentário a que pertence (0031); null = arquivo da skill.</summary>
+    public Guid? NoteId { get; set; }
     public string? StepKey { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
@@ -147,6 +155,30 @@ public class ExecutionControlResponse
 
     /// <summary>Perguntas ainda sem resposta (0024).</summary>
     public int OpenQuestions { get; set; }
+
+    /// <summary>Maior número de comentário do usuário no card (0031) — o vigia acorda quando muda.</summary>
+    public int LastUserNoteNumber { get; set; }
+
+    /// <summary>Última mudança (novo, editado, removido) em comentário do usuário no card (0031).</summary>
+    public DateTimeOffset? UserNotesChangedAt { get; set; }
+}
+
+/// <summary>Comentário do plano (0031), com os anexos.</summary>
+public class ExecutionNoteResponse
+{
+    public Guid Id { get; set; }
+    public Guid PlanId { get; set; }
+    /// <summary>Fase do plano onde foi feito: analysis | correction.</summary>
+    public string PlanPhase { get; set; } = ExecutionPhase.Analysis;
+    public int Number { get; set; }
+    public string? StepKey { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public Guid? AuthorUserId { get; set; }
+    public string AuthorName { get; set; } = string.Empty;
+    public bool FromExecutor { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public List<ExecutionArtifactResponse> Attachments { get; set; } = [];
 }
 
 public record ExecutionControlStep(string Key, string Status, string Executor);
@@ -154,7 +186,7 @@ public record ExecutionControlStep(string Key, string Status, string Executor);
 public static class ExecutionPlanMappings
 {
     public static ExecutionPlanResponse ToResponse(this ExecutionPlan plan, IEnumerable<ExecutionArtifact> artifacts, long lastLogId, DateTimeOffset now,
-        IEnumerable<ExecutionQuestion>? questions = null, IEnumerable<ExecutionLink>? links = null)
+        IEnumerable<ExecutionQuestion>? questions = null, IEnumerable<ExecutionLink>? links = null, List<ExecutionNoteResponse>? notes = null)
     {
         var response = new ExecutionPlanResponse
         {
@@ -164,7 +196,8 @@ public static class ExecutionPlanMappings
             Questions = (questions ?? []).OrderBy(q => q.CreatedAt).ThenBy(q => q.Order).Select(q => q.ToResponse()).ToList(),
             Links = (links ?? []).OrderByDescending(l => l.CreatedAt).Select(l => l.ToResponse()).ToList(),
             LastLogId = lastLogId,
-            ServerTime = now
+            ServerTime = now,
+            Notes = notes ?? []
         };
         plan.FillSummary(response, plan.Steps.Count, plan.Steps.Count(s => s.Status == ExecutionStatus.Completed));
         return response;
@@ -261,6 +294,9 @@ public static class ExecutionPlanMappings
     public static ExecutionArtifactResponse ToResponse(this ExecutionArtifact artifact) => new()
     {
         Id = artifact.Id,
+        PlanId = artifact.PlanId,
+        Number = artifact.Number,
+        NoteId = artifact.NoteId,
         StepKey = artifact.StepKey,
         Name = artifact.Name,
         Kind = artifact.Kind,
@@ -271,5 +307,21 @@ public static class ExecutionPlanMappings
         CreatedBy = artifact.CreatedBy,
         CreatedAt = artifact.CreatedAt,
         UpdatedAt = artifact.UpdatedAt
+    };
+
+    public static ExecutionNoteResponse ToResponse(this ExecutionNote note, string planPhase, IEnumerable<ExecutionArtifact> attachments) => new()
+    {
+        Id = note.Id,
+        PlanId = note.PlanId,
+        PlanPhase = planPhase,
+        Number = note.Number,
+        StepKey = note.StepKey,
+        Text = note.Text,
+        AuthorUserId = note.AuthorUserId,
+        AuthorName = note.AuthorName,
+        FromExecutor = note.FromExecutor,
+        CreatedAt = note.CreatedAt,
+        UpdatedAt = note.UpdatedAt,
+        Attachments = attachments.OrderBy(a => a.Number).Select(a => a.ToResponse()).ToList()
     };
 }

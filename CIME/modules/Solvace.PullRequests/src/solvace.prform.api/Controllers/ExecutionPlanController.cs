@@ -25,6 +25,8 @@ public class ExecutionPlanController : ControllerBase
     public const string ExecutorHeader = "X-Execution-Client";
 
     private const long MaxUploadRequestBytes = ExecutionArtifact.MaxFileBytes + 1024 * 1024;
+    /// <summary>Comentário com vários anexos (0031): até o limite do plano.</summary>
+    private const long MaxNoteRequestBytes = ExecutionArtifact.MaxPlanBytes + 1024 * 1024;
 
     private static readonly FileExtensionContentTypeProvider ContentTypes = CreateContentTypes();
 
@@ -186,6 +188,44 @@ public class ExecutionPlanController : ControllerBase
         RunPlain(async () =>
         {
             await _application.DeleteArtifactAsync(id, artifactId, ct);
+            return NoContent();
+        });
+
+    // ── 0031: comentários com anexos ──────────────────────────────────────────────────────────────
+
+    /// <summary>Comentários do card (análise e correção), com os anexos — a skill lê daqui.</summary>
+    [HttpGet("card/{cardNumber}/notes")]
+    public Task<ActionResult<List<ExecutionNoteResponse>>> GetNotes([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionNoteResponse>>(async () => Ok(await _application.GetNotesByCardAsync(cardNumber, ct)));
+
+    /// <summary>Novo comentário (multipart: text, stepKey, files — vários). Anexos nunca substituem outros arquivos.</summary>
+    [HttpPost("{id:guid}/notes")]
+    [RequestSizeLimit(MaxNoteRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxNoteRequestBytes)]
+    public Task<ActionResult<ExecutionNoteResponse>> AddNote([FromRoute] Guid id, [FromForm] string? text, [FromForm] string? stepKey,
+        [FromForm] List<IFormFile>? files, CancellationToken ct) =>
+        Run<ExecutionNoteResponse>(async () =>
+        {
+            var uploads = new List<ExecutionArtifactUpload>();
+            foreach (var file in files ?? [])
+            {
+                if (file.Length == 0) continue;
+                using var buffer = new MemoryStream((int)Math.Min(file.Length, ExecutionArtifact.MaxFileBytes + 1));
+                await file.CopyToAsync(buffer, ct);
+                uploads.Add(new ExecutionArtifactUpload(file.FileName, null, stepKey, null, ResolveContentType(file.FileName, file.ContentType), buffer.ToArray()));
+            }
+            return Ok(await _application.AddNoteAsync(id, text, stepKey, uploads, await GetActorAsync(ct, executor: IsExecutorRequest()), ct));
+        });
+
+    [HttpPatch("{id:guid}/notes/{noteId:guid}")]
+    public Task<ActionResult<ExecutionNoteResponse>> EditNote([FromRoute] Guid id, [FromRoute] Guid noteId, [FromBody] EditExecutionNoteRequest request, CancellationToken ct) =>
+        Run<ExecutionNoteResponse>(async () => Ok(await _application.EditNoteAsync(id, noteId, request.Text, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpDelete("{id:guid}/notes/{noteId:guid}")]
+    public Task<ActionResult> DeleteNote([FromRoute] Guid id, [FromRoute] Guid noteId, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteNoteAsync(id, noteId, await GetActorAsync(ct, executor: IsExecutorRequest()), ct);
             return NoContent();
         });
 

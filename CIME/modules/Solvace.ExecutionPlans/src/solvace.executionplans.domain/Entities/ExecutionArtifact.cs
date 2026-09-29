@@ -27,6 +27,13 @@ public class ExecutionArtifact
     public long Size { get; private set; }
     public string Sha256 { get; private set; } = string.Empty;
     public string? Description { get; private set; }
+
+    /// <summary>Número por card (<c>anexo #n</c>, 0031): o mesmo nas abas Análise e Correção, para ser citado.</summary>
+    public int Number { get; private set; }
+
+    /// <summary>Comentário do plano a que o arquivo foi anexado (0031); null = arquivo da skill.</summary>
+    public Guid? NoteId { get; private set; }
+
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }
@@ -35,7 +42,7 @@ public class ExecutionArtifact
 
     protected ExecutionArtifact() { }
 
-    public ExecutionArtifact(Guid planId, string name, string? kind, string createdBy, DateTimeOffset now)
+    public ExecutionArtifact(Guid planId, string name, string? kind, string createdBy, DateTimeOffset now, int number = 0, Guid? noteId = null)
     {
         Id = Guid.NewGuid();
         PlanId = planId;
@@ -43,6 +50,23 @@ public class ExecutionArtifact
         Kind = NormalizeKind(kind, Name);
         CreatedBy = createdBy;
         CreatedAt = now;
+        Number = number;
+        NoteId = noteId;
+    }
+
+    /// <summary>Nome livre no plano: <c>foto.png</c> já usado vira <c>foto (2).png</c> (anexo de comentário nunca substitui outro).</summary>
+    public static string UniqueName(string name, Func<string, bool> taken)
+    {
+        if (!taken(name)) return name;
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var ext = Path.GetExtension(name);
+        for (var i = 2; ; i++)
+        {
+            var candidate = $"{stem} ({i}){ext}";
+            if (candidate.Length > MaxNameLength)
+                candidate = $"{stem[..Math.Max(1, stem.Length - (candidate.Length - MaxNameLength))]} ({i}){ext}";
+            if (!taken(candidate)) return candidate;
+        }
     }
 
     /// <summary>Só o nome do arquivo (sem pastas), sem caracteres inválidos.</summary>

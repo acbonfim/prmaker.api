@@ -1,6 +1,6 @@
 ---
 name: analisar-bug
-description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado, le os repro steps, investiga o codigo em busca da causa raiz provavel, e registra tudo na timeline. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card" ou similar.
+description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado, le os repro steps, investiga o codigo em busca da causa raiz provavel, e registra tudo na timeline. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
 ---
 
 # analisar-bug
@@ -70,6 +70,9 @@ bash $PLAN answer <card> <n> "resposta dada aqui no terminal"         # grava no
 bash $PLAN correction <card> "Correcao do bug <card>: <solucao>" - <<< '[...etapas...]'  # plano de correcao
 bash $PLAN use <card> analysis|correction                             # em qual plano os comandos agem
 bash $PLAN link <card> <key> <url> "titulo" [--blocks]                # anexa link (chamado/doc) a etapa
+bash $PLAN notes <card> [n]                                           # comentarios do usuario no plano + anexos baixados
+bash $PLAN attachment <card> "<ref>"                                  # baixa um arquivo citado ("imagem 2", "#12", nome)
+bash $PLAN note <card> "texto" [arquivos...] [--step key]             # voce comenta no plano (resposta/observacao)
 bash $PLAN settings <card>                                            # configuracao das skills no PRMake
 bash $PLAN branches <card> <repo> [--flow f] [--base b]               # branches/PRs/titulos do repo (da configuracao)
 bash $PLAN pr-text <card> <repo> <branch-correcao>                    # prompt configurado + diff (layout padrao)
@@ -112,6 +115,26 @@ Regras:
   para escrever nada. Se ainda restar espera, rode o vigia de novo. Exit 11 = plano concluido/cancelado: faca o
   relatorio final (passo 9) e pare. O usuario nao precisa clicar em nada nem avisar no chat.
   (Se a sessao for fechada, o vigia morre junto — `/analisar-bug <card>` retoma depois.)
+- **Comentarios e anexos do usuario (PRMake)** — o usuario pode escrever comentarios no plano e anexar imagens
+  (arrastando, colando com Ctrl+V ou pelo icone de anexo) e arquivos (logs, planilhas, PDFs). Cada comentario e
+  cada arquivo tem um **numero por card** (`comentario #3`, `anexo #12`), o mesmo nas abas Analise e Correcao.
+  **Isso e entrada da analise, com o mesmo peso dos repro steps**:
+  - Rode `notes <card>` logo depois do `start` (antes de investigar), sempre que o vigia (`watch`) ou o
+    `wait-answers`/`control` avisar que os comentarios mudaram, e antes de propor solucoes ou montar o plano de
+    correcao. Ele imprime os comentarios (marca os **novos**) e **baixa os anexos** para
+    `$CARD_DIR/anexos-prmake/`, mostrando o caminho local de cada um.
+  - **Abra cada anexo novo com a ferramenta Read** (imagens aparecem para voce; PDF com `pages`; logs/CSV/JSON
+    como texto) e considere o que ele mostra: tela com erro, dados, passo a passo, configuracao. Registre com
+    `log <card> <key> finding "Considerado o anexo #12 (print da tela X): ..."` e cite comentarios/anexos na
+    analise e nas decisoes.
+  - **Referencias**: quando o usuario — aqui no terminal, numa resposta dada no PRMake ou num comentario — disser
+    "veja a imagem 2", "olha o anexo #12", "o print.png", "comentario 3", resolva antes de responder:
+    `attachment <card> "imagem 2"` / `attachment <card> "#12"` / `attachment <card> print.png` (baixa e mostra o
+    caminho) ou `notes <card> 3`, e **abra o arquivo com Read**. Nunca diga que nao consegue ver um anexo do
+    PRMake sem tentar esses comandos. Ambiguo (o comando lista candidatos) → pergunte qual.
+  - Se o comentario pedir algo (ex.: "considere tambem o ambiente X"), trate como instrucao do usuario; se mudar
+    o plano, ajuste as etapas. Pode responder no proprio plano com `note <card> "..."` (aparece na tela e na
+    Timeline) — util quando o usuario comentou pela tela e nao esta no terminal.
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
@@ -243,7 +266,8 @@ o `BranchFlowByArea` do PRMake; `perguntar` quando nenhuma regra casa — usado 
 o problema relatado.
 
 Plano: etapa `coletar-dados` (running → `log` com um resumo curto do relato → completed). Copie o
-`description.txt` para `$CARD_DIR/dados/` e rode `sync`. **Agora refine as etapas** (`steps`) com o que
+`description.txt` para `$CARD_DIR/dados/` e rode `sync`. Rode tambem `notes <card>` e abra os anexos: comentarios,
+prints e arquivos do usuario completam o relato. **Agora refine as etapas** (`steps`) com o que
 voce vai fazer neste caso concreto.
 
 ### 3. Investigar o codigo (a analise em si)
@@ -460,6 +484,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se o usuario responder aqui no chat: grave cada resposta com `answer <card> <n> "..."` (o PRMake mostra
      "pelo Claude") e siga — o comando em segundo plano termina sozinho.
    - Se o usuario disser que respondeu no PRMake (ou voce voltar a sessao depois): rode `answers <card>`.
+   - Resposta que cita anexo/comentario ("ver imagem 2", "como no print") → `attachment`/`notes` e abra antes de
+     seguir. Rode `notes <card>` ao receber as respostas: o usuario pode ter anexado algo junto.
    - Exit 10 (1 h sem todas as respostas): avise e pare — o `start` retoma depois.
    Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
    (fim do plano de **analise**).

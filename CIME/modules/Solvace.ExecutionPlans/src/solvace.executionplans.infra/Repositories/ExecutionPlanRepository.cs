@@ -130,6 +130,45 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
     public Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken) =>
         _context.Links.FirstOrDefaultAsync(l => l.PlanId == planId && l.Id == linkId, cancellationToken);
 
+    // Comentários e numeração por card (0031)
+
+    public void AddNote(ExecutionNote note) => _context.Notes.Add(note);
+
+    public Task<ExecutionNote?> GetNoteAsync(Guid planId, Guid noteId, CancellationToken cancellationToken) =>
+        _context.Notes.FirstOrDefaultAsync(n => n.PlanId == planId && n.Id == noteId && n.DeletedAt == null, cancellationToken);
+
+    public Task<List<ExecutionNote>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken) =>
+        _context.Notes.AsNoTracking()
+            .Where(n => n.CardNumber == cardNumber && n.DeletedAt == null)
+            .OrderBy(n => n.Number).ThenBy(n => n.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+    public Task<List<ExecutionArtifact>> GetNoteAttachmentsAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken) =>
+        noteIds.Count == 0
+            ? Task.FromResult(new List<ExecutionArtifact>())
+            : _context.Artifacts.AsNoTracking().Where(a => a.NoteId != null && noteIds.Contains(a.NoteId.Value)).ToListAsync(cancellationToken);
+
+    public async Task<int> GetMaxNoteNumberAsync(string cardNumber, CancellationToken cancellationToken) =>
+        await _context.Notes.Where(n => n.CardNumber == cardNumber).MaxAsync(n => (int?)n.Number, cancellationToken) ?? 0;
+
+    public async Task<int> GetMaxArtifactNumberAsync(string cardNumber, CancellationToken cancellationToken) =>
+        await (from a in _context.Artifacts
+               join p in _context.Plans on a.PlanId equals p.Id
+               where p.CardNumber == cardNumber
+               select (int?)a.Number).MaxAsync(cancellationToken) ?? 0;
+
+    public async Task<(int LastNumber, DateTimeOffset? ChangedAt)> GetUserNotesStateAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var notes = await _context.Notes.AsNoTracking()
+            .Where(n => n.CardNumber == cardNumber && !n.FromExecutor)
+            .Select(n => new { n.Number, n.CreatedAt, n.UpdatedAt, n.DeletedAt })
+            .ToListAsync(cancellationToken);
+        if (notes.Count == 0) return (0, null);
+        var last = notes.Where(n => n.DeletedAt == null).Select(n => n.Number).DefaultIfEmpty(0).Max();
+        var changed = notes.Select(n => new[] { n.CreatedAt, n.UpdatedAt ?? n.CreatedAt, n.DeletedAt ?? n.CreatedAt }.Max()).Max();
+        return (last, changed);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

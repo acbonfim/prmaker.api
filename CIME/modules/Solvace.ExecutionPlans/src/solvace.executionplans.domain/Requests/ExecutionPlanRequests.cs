@@ -138,3 +138,9 @@ public class ExecutionStepActionRequest
 {
     public string? Reason { get; set; }
 }
+
+/// <summary>Editar o texto de um comentário (0031).</summary>
+public class EditExecutionNoteRequest
+{
+    public string? Text { get; set; }
+}
