@@ -4,11 +4,11 @@
 
 | Fase | Descrição | Onda | Status | Commits |
 |---|---|---|---|---|
-| B1 | Sincronização de PRs do plano a cada leitura (proteção de 8 s) | 1 | ✅ concluída | ver log |
-| F1 | Vigia silencioso de PRs na tela do card; plano reage ao evento de PR | 1 | ✅ concluída | ver log |
-| S1 | `prmake-plan.sh watch` + SKILL.md (vigia em segundo plano, continua sozinha) | 1 | ✅ concluída | ver log |
+| B1 | Sincronização de PRs do plano a cada leitura (proteção de 8 s) | 1 | ✅ concluída | `b4db7ea` |
+| F1 | Vigia silencioso de PRs na tela do card; plano reage ao evento de PR | 1 | ✅ concluída | front `7166c32` |
+| S1 | `prmake-plan.sh watch` + SKILL.md (vigia em segundo plano, continua sozinha) | 1 | ✅ concluída | `b4db7ea` |
 | T1 | Teste local | 2 | ✅ concluída | — |
-| Q1 | PRs e deploy | 2 | ⬜ pendente | — |
+| Q1 | PRs e deploy | 2 | ✅ concluída | api #36, web #22 |
 
 ## Notas
 - **T1** — API local (Postgres 18 em docker) + skill do repositório + Chrome headless:
@@ -18,3 +18,4 @@
 
 ## Log
 - 2026-09-29 — Diagnóstico, plano e implementação (B1, F1, S1) e T1.
+- 2026-09-29 — PRs acbonfim/prmaker.api#36 e acbonfim/prmakerweb#22 mesclados; deploys ok; skill analisar-bug publicada (`a26c36d61f4c`).
