@@ -38,6 +38,8 @@ builder.Services.AddScoped<solvace.timeline.application.Contracts.IUserRepositor
 // Plano de execução (0024): PRs do card e marcos na Timeline, sobre os módulos GitHub e Timeline.
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionPullRequestSource, ExecutionPlanPullRequestSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionTimelineWriter, ExecutionPlanTimelineWriter>();
+// Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
+builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();

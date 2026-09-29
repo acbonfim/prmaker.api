@@ -15,3 +15,5 @@ deploy/
 **/node_modules/
 **/appsettings.Development.json
 *.md
+# Skills do Claude Code (0024) entram na imagem com as SKILL.md.
+!skills/**

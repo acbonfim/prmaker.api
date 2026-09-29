@@ -1,0 +1,3 @@
+{
+  "requires": ["curl", "jq", "python3"]
+}
