@@ -23,6 +23,13 @@
 #                                                        em $CARD_DIR/pr/<repo>/ (via gerar-prmake/prmake-fetch.sh)
 #   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
+#   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
+#                 rootcause <rca.md> · summary <resumo-pt-en.md> · classify <tipo> · zero-remaining ·
+#                 ready-for-qa · test-in-production · initial-estimate
+#                 tipos do classify (valores reais dos cards): code-fix, code-data-fix, script-defect,
+#                 script-user-action, script-environment, configuration, configuration-change-request,
+#                 user-education, user-education-change-request, change-request, not-mapped-requirement,
+#                 cannot-reproduce, no-user-feedback, duplicated
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
@@ -608,6 +615,58 @@ case "$CMD" in
       upload_or_queue "$CARD_DIR/analises/pr-rca-$SUFFIX.md" analysis "$KEY" "Root cause (RCA) — $SUFFIX"
     fi
     exit 0
+    ;;
+
+  devops)
+    # Fechamento do card (0027): mesmos endpoints das "Acoes DevOps" do PRMake; a classificacao usa o
+    # azure-fields.sh da gerar-prmake (so leitura/uso — a gerar-prmake nao muda).
+    ACTION="${1:?acao: rootcause|summary|classify|zero-remaining|ready-for-qa|test-in-production|initial-estimate}"
+    MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
+    to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
+    prmake_post() { # <caminho> [corpo.json]
+      local args=(-s --max-time 90 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/$1" -H "x-api-key: $TOKEN")
+      [[ -n "${2:-}" ]] && args+=(-H 'content-type: application/json' --data-binary "@$2")
+      CODE="$(curl "${args[@]}" 2>/dev/null)"; CODE="${CODE:-000}"
+    }
+    case "$ACTION" in
+      rootcause)
+        F="${2:?arquivo .md do root cause}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
+        prmake_post "Azure/card/$CARD/rootcause" "$TMP/body" ;;
+      summary)
+        F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        jq -n --rawfile s "$F" --arg html "$(to_html "$F")" '{summary:$s, html:$html}' > "$TMP/body"
+        prmake_post "PullRequest/$CARD/summary" "$TMP/body" ;;
+      classify)
+        KIND="${2:?tipo (ver o cabecalho do script)}"
+        case "$KIND" in
+          code-fix)                        RT="Code Fix";               GC="Code";            CL="Code Required - Code Defect" ;;
+          code-data-fix)                   RT="Code Fix";               GC="Code";            CL="Code Required - Data Fix / Request - Caused by Defect" ;;
+          script-defect)                   RT="Configuration (Script)"; GC="Code";            CL="Code Required - Data Fix / Request - Caused by Defect" ;;
+          script-user-action)              RT="Configuration (Script)"; GC="No Code";         CL="Code Required - Data Fix / Request - Caused by User Action" ;;
+          script-environment)              RT="Configuration (Script)"; GC="No Code";         CL="No Code Required - Environment / Platform" ;;
+          configuration)                   RT="Configuration";          GC="No Code";         CL="No Code Required - Environment / Platform" ;;
+          configuration-change-request)    RT="Configuration";          GC="No Code";         CL="No Code Required - Not a Defect - Change Request / Missed Requirement" ;;
+          user-education)                  RT="User Education";         GC="No Code";         CL="No Code Required - Not a Defect - Training" ;;
+          user-education-change-request)   RT="User Education";         GC="No Code";         CL="No Code Required - Not a Defect - Change Request / Missed Requirement" ;;
+          change-request)                  RT="Change Request";         GC="No Code";         CL="No Code Required - Not a Defect - Change Request / Missed Requirement" ;;
+          not-mapped-requirement)          RT="Not Mapped Requirement"; GC="No Code";         CL="No Code Required - Not a Defect - Change Request / Missed Requirement" ;;
+          cannot-reproduce)                RT="Cannot reproduce";       GC="No Code";         CL="No Code Required - Environment / Platform" ;;
+          no-user-feedback)                RT="Cannot reproduce";       GC="No user feedback"; CL="No user feedback - Pending information" ;;
+          duplicated)                      RT="Duplicated";             GC="Duplicated";      CL="Ticket duplicated" ;;
+          *) die "tipo desconhecido: $KIND" ;;
+        esac
+        FIELDS="$HOME/.claude/skills/gerar-prmake/scripts/azure-fields.sh"
+        [[ -f "$FIELDS" ]] || die "skill gerar-prmake nao instalada ($FIELDS)"
+        RESOLUTION_TYPE="$RT" GENERAL_CLASSIFICATION="$GC" CLASSIFICATION="$CL" bash "$FIELDS" "$CARD" || die "falha ao classificar o card"
+        echo "OK classificado: $RT | $GC | $CL"
+        exit 0 ;;
+      zero-remaining|ready-for-qa|test-in-production|initial-estimate)
+        prmake_post "Azure/card/$CARD/actions/$ACTION" ;;
+      *) die "acao desconhecida: $ACTION" ;;
+    esac
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em $ACTION: $(resp_error)"
+    echo "OK $ACTION no card $CARD"
     ;;
 
   open-pr)

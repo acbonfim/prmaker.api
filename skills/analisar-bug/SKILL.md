@@ -118,6 +118,35 @@ Etapas padrao da analise (o `start` cria se voce nao passar outras): `identifica
 `investigar-codigo`, `consultar-ambiente` (opcional — cancele com motivo se nao precisar), `causa-raiz`,
 `montar-analise`, `publicar`, `propor-solucoes`.
 
+## Catalogo de tratamentos (aprendido dos cards reais)
+
+Estudo de 300 bugs resolvidos (ultimos 120 dias, 2026-09) e das timelines do PRMake: **58% foram resolvidos sem
+codigo**. Cada card e um caso: use o catalogo para **reconhecer o(s) padrao(oes)** e montar **etapas proprias
+do caso** — nunca uma lista fixa, e combine padroes quando for o caso (ex.: codigo + correcao de dados; script +
+orientacao ao cliente).
+
+| Padrao | ~% | Sinais tipicos | Diagnostico | Etapas tipicas (adapte) | `devops classify` |
+|---|---|---|---|---|---|
+| **A. Defeito de codigo** | 32 | reproduz em qa/sandbox; comportamento contradiz a regra; erro identificavel no codigo | codigo (legado/revamp), reproducao | `corrigir-<repo>` → validar (build/local) → `pr-<repo>` (com `pr-text`/`save-pr-text`) → `validar-qa` (usuario) → fechamento | `code-fix` (ou `code-data-fix` se tambem corrigiu dados causados pelo defeito) |
+| **B. Correcao de dados (script via chamado)** | 11 | registro excluido/estado inconsistente, preferencia ausente, flag/menu errado, `LAST_SITE_ID`/site/area errados | SQL **somente leitura** (`sql-query.sh`) | `montar-script` (voce: `scripts/01_*.sql` + `99_rollback_*.sql` + texto do chamado) → `chamado-script` (usuario, link com `--blocks`) → `validar-dados` (voce, SQL somente leitura depois do script) → fechamento | `script-defect` (causa foi defeito) · `script-user-action` (causa foi acao do usuario) · `script-environment` |
+| **C. Acesso / Cognito / SSO** | (parte de B, D, E) | loop de login, usuario desabilitado/deslogado no Cognito, SSO trocou o e-mail, usuario nativo + federado duplicados, usuario sem planta/area | `cognito-query.sh` + SQL | ajuste no Cognito ou no cadastro → **etapa do usuario** (voce nao escreve no Cognito) com o passo a passo; se precisar de banco → padrao B; confirmar o login | conforme o que foi feito: `script-*`, `configuration` ou `user-education` |
+| **D. Configuracao / ambiente / plataforma** | 11 | parametro de ambiente, WAF/instancia, habilitar modulo, criar usuarios de treino, configuracao de tela | codigo + ambiente + dados | `configurar-<o que>` (usuario ou time de infra — voce redige o passo a passo exato em `analises/configuracao.md`) → validar → fechamento | `configuration` (ou `configuration-change-request`) |
+| **E. User education (nao e defeito)** | 28 | funciona conforme a regra de negocio; filtro/uso incorreto; expectativa diferente do produto | provar pelo codigo/dados que o comportamento e o esperado | `orientar-cliente` (usuario; voce redige a orientacao PT/EN em `analises/orientacao-cliente.md`, sem jargao) → fechamento | `user-education` (ou `user-education-change-request`) |
+| **F. Change request / requisito nao mapeado** | 5 | pedido de algo que o produto nao faz | confirmar que nao e defeito | redigir a justificativa e o encaminhamento (usuario) → fechamento | `change-request` · `not-mapped-requirement` |
+| **G. Nao reproduz / sem retorno** | 10 | sem evidencia do erro; instabilidade passada; cliente nao responde | tentativas em qa/sandbox, logs, dados | registrar as tentativas (voce) → `pedir-informacoes` ao cliente (usuario) → fechamento | `cannot-reproduce` · `no-user-feedback` |
+| **H. Duplicado** | 3 | mesmo problema de outro card | buscar o card original | vincular/avisar (usuario) → fechamento | `duplicated` |
+
+**Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (mesmos endpoints
+das "Acoes DevOps" do PRMake):
+1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
+2. classificacao: `bash $PLAN devops <card> classify <tipo>` (tabela acima — valores exatos usados pelo time);
+3. resumo nao tecnico PT/EN na discussion: `bash $PLAN devops <card> summary resumo.md` (formato `**PT**` `---` texto
+   `**EN**` `---` texto; sem codigo, nao diga que houve correcao de codigo);
+4. `bash $PLAN devops <card> zero-remaining` e, **se o usuario confirmou**, `devops <card> test-in-production`
+   (ou `ready-for-qa`).
+Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
+RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
+
 ## Fluxo
 
 ### 0. Manter a skill atualizada
@@ -327,6 +356,9 @@ no proprio script). Evidencias/saidas de consulta vao em `$CARD_DIR/dados/`.
 **Pontos suspeitos**
 <lista de arquivos/metodos a investigar/corrigir — `caminho:linha`>
 
+**Padrao de tratamento provavel** *(catalogo: A codigo · B dados/script · C acesso/Cognito · D configuracao · E user education · F change request · G nao reproduz · H duplicado)*
+<padrao(oes) e por que; o que isso implica (ex.: sem PR; chamado de script; orientar o cliente)>
+
 **Proximos passos / a confirmar**
 <o que falta validar e a correcao proposta PARA O CASO DO CARD (usuario/registro/fluxo relatado)>
 
@@ -355,9 +387,12 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
 2. **Pergunte** (`ask`) tudo o que decide o plano — a etapa fica *aguardando* e o PRMake mostra as perguntas
    em destaque. Sempre que se aplicar:
    - Qual solucao seguir (opcoes das solucoes, com a recomendada).
-   - **Tipo de tratamento** (pode ser mais de um): alteracao de **codigo**; correcao de **dados** (script via
-     chamado); **configuracao** feita na tela do sistema; **user education** (orientar o cliente, sem mudar
-     nada). Nem todo card tem codigo — nao presuma PR.
+   - **Padrao(oes) do caso** (catalogo acima) — proponha o que a analise indica, com a evidencia, e deixe o
+     usuario confirmar/ajustar: codigo (A), dados via script/chamado (B), acesso/Cognito (C), configuracao/
+     ambiente (D), user education (E), change request (F), nao reproduz/sem retorno (G), duplicado (H). Pode ser
+     mais de um. Nem todo card tem codigo — nao presuma PR.
+   - **Fechamento**: ao final, pode mover o card para *Test in production* (ou *Ready for QA*)? E a
+     classificacao sugerida (`classify <tipo>`) esta certa?
    - **Fluxo de branches** quando o `fluxo` do card for `perguntar`, e **sempre** a branch base em release
      (`release-version` ou `hotfix-version`? outra?) e no revamp frontend em release/regressao (`edge`?).
    - Se ha script de dados: vai por **chamado** (o usuario abre no Freshservice) ou nao e necessario.
@@ -377,8 +412,10 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    (fim do plano de **analise**).
 
 ### 7. Montar o plano de correcao
-Monte as etapas **a partir da solucao escolhida e do tipo de tratamento** (nao ha lista fixa; so tem etapas
-de codigo/PR se houver codigo) e crie com `correction` — ele vira o
+Monte as etapas **a partir do(s) padrao(oes) confirmados e das especificidades deste card** — o catalogo da
+as etapas tipicas, voce adapta (nomes, descricoes com o que exatamente sera feito neste card, quem executa,
+dependencias) e **sempre termina com o fechamento** (`fechar-card`, executor claude, com os comandos `devops`).
+So tem etapas de codigo/PR se houver codigo. Crie com `correction` — ele vira o
 plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `executor` (`claude` ou `user`),
 `kind` e, quando for o caso, `repository` e `dependsOn`:
 
