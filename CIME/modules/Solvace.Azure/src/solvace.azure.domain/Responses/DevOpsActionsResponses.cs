@@ -42,6 +42,19 @@ public class DevOpsInitialEstimateConfig
     public decimal? CompletedWork { get; set; }
 }
 
+/// <summary>Opção de classificação do card (feature 0028).</summary>
+public class DevOpsClassificationPreset
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string ResolutionType { get; set; } = string.Empty;
+    public string GeneralClassification { get; set; } = string.Empty;
+    public string Classification { get; set; } = string.Empty;
+
+    /// <summary>Padrão de tratamento da skill analisar-bug (A–H) a que a opção costuma corresponder.</summary>
+    public string? Pattern { get; set; }
+}
+
 /// <summary>Resultado de uma ação no card.</summary>
 public class DevOpsActionResponse
 {

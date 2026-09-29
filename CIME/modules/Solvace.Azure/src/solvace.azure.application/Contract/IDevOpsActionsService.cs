@@ -18,6 +18,12 @@ public interface IDevOpsActionsService
     Task<DevOpsActionResponse> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 
+    /// <summary>Opções de classificação (padrão ou as do "AI Configurations") — feature 0028.</summary>
+    Task<IReadOnlyList<DevOpsClassificationPreset>> GetClassificationPresetsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Grava Resolution Type · General Classification · Classification no card (feature 0028).</summary>
+    Task<DevOpsActionResponse> ClassifyAsync(string cardNumber, ClassifyCardRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Grava o resumo não técnico no registro do card e, com Publish, publica na discussion (cria ou
     /// atualiza o mesmo comentário). Sem registro salvo: DomainException.

@@ -8,7 +8,6 @@
 #   [repository]   = default: derivado do git remote origin; fallback edv-solvace
 # Env opcional:
 #   COMMENT_FILE   = arquivo Markdown com o resumo nao-tecnico (PT/EN): publicado na discussion e gravado no PRMake
-#   LEGACY_COMMENT = 1 para postar o resumo direto no DevOps (azure-comment.sh), sem gravar no PRMake
 #   OPEN_GITHUB_PR = 1 para tambem abrir o PR no GitHub (exige TARGET_BRANCH; PR_TITLE e PR_DRAFT opcionais)
 #   PRMAKE_BASE    = URL base da API (default https://api.softhouse.app.br/api/v1)
 set -euo pipefail
@@ -103,12 +102,9 @@ fi
 # --- resumo nao-tecnico (PT/EN) na discussion do card (se fornecido) ---
 # Feature 0011 do CIME: POST /PullRequest/<card>/summary publica na discussion (cria o comentario ou
 # ATUALIZA o mesmo ja publicado) e grava o resumo no PRMake (fica visivel/editavel na tela do card).
-# LEGACY_COMMENT=1 volta ao comportamento antigo (azure-comment.sh direto no DevOps, sem gravar no PRMake).
+# Toda gravacao passa pelo PRMake (0028) — nada direto no Azure.
 if [[ -n "${COMMENT_FILE:-}" && -f "$COMMENT_FILE" ]]; then
-  if [[ "${LEGACY_COMMENT:-0}" == "1" ]]; then
-    echo ">> LEGACY_COMMENT=1 - postando resumo direto na discussion do card $CARD"
-    bash "$(dirname "$0")/azure-comment.sh" "$CARD" "$COMMENT_FILE"
-  else
+  if true; then
     SUMMARY_HTML="$(python3 "$(dirname "$0")/md2html.py" "$COMMENT_FILE")"
     jq -n --rawfile summary "$COMMENT_FILE" --arg html "$SUMMARY_HTML" '{summary:$summary, html:$html}' > /tmp/prmake_summary_body.json
     echo ">> POST $BASE/PullRequest/$CARD/summary (resumo nao-tecnico PT/EN)"
@@ -116,19 +112,13 @@ if [[ -n "${COMMENT_FILE:-}" && -f "$COMMENT_FILE" ]]; then
       -H 'accept: application/json' -H 'content-type: application/json' -H "x-api-key: $TOKEN" \
       --data @/tmp/prmake_summary_body.json)
     echo "   HTTP $SM_CODE (commentId: $(jq -r '.summaryCommentId // "?"' /tmp/prmake_summary_resp.json 2>/dev/null))"
-    if [[ "$SM_CODE" == "404" ]]; then
-      # API ainda sem a feature 0011 (rota inexistente): posta direto no DevOps como antes.
-      echo "   rota /summary indisponivel nesta API - postando direto na discussion (azure-comment.sh)"
-      bash "$(dirname "$0")/azure-comment.sh" "$CARD" "$COMMENT_FILE"
-    else
-      [[ "$SM_CODE" =~ ^2 ]] || { echo "ERRO ao publicar o resumo:"; cat /tmp/prmake_summary_resp.json; echo; exit 1; }
-    fi
+    [[ "$SM_CODE" =~ ^2 ]] || { echo "ERRO ao publicar o resumo:"; cat /tmp/prmake_summary_resp.json; echo; exit 1; }
   fi
 else
   echo ">> sem COMMENT_FILE - resumo na discussion pulado"
 fi
 
-# --- campos custom de classificacao no card do DevOps ---
+# --- classificacao do card (pelo PRMake: POST /Azure/card/<card>/actions/classify) ---
 # Sempre preenchidos (Resolution Type / General Classification / Classification).
 # Sobrescreva por env RESOLUTION_TYPE / GENERAL_CLASSIFICATION / CLASSIFICATION,
 # ou defina SKIP_FIELDS=1 para pular esta etapa.

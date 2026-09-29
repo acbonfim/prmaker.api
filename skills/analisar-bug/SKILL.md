@@ -136,10 +136,18 @@ orientacao ao cliente).
 | **G. Nao reproduz / sem retorno** | 10 | sem evidencia do erro; instabilidade passada; cliente nao responde | tentativas em qa/sandbox, logs, dados | registrar as tentativas (voce) → `pedir-informacoes` ao cliente (usuario) → fechamento | `cannot-reproduce` · `no-user-feedback` |
 | **H. Duplicado** | 3 | mesmo problema de outro card | buscar o card original | vincular/avisar (usuario) → fechamento | `duplicated` |
 
-**Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (mesmos endpoints
+**Quem grava e o PRMake — sempre.** Voce le o card (pelo PRMake), investiga e **gera os textos** (analise, root
+cause, resumo nao tecnico PT/EN, descricao do PR, passo a passo, orientacao ao cliente), mas **nada e gravado
+direto no Azure DevOps**: toda gravacao (root cause, resumo na discussion, classificacao, estimativa, Remaining,
+mudanca de estado, registro do card, PRs, timeline) vai pelos endpoints do PRMake — ele usa a integracao do
+Azure/GitHub que o usuario configurou, registra na Timeline e guarda as configuracoes por usuario. Se faltar um
+endpoint para algo que precisa gravar, **pare e avise** (nao contorne com PAT/API direta).
+
+**Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake):
 1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
-2. classificacao: `bash $PLAN devops <card> classify <tipo>` (tabela acima — valores exatos usados pelo time);
+2. classificacao: `bash $PLAN devops <card> classify <opcao>` — as opcoes vem do PRMake
+   (`devops <card> classifications`; a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las);
 3. resumo nao tecnico PT/EN na discussion: `bash $PLAN devops <card> summary resumo.md` (formato `**PT**` `---` texto
    `**EN**` `---` texto; sem codigo, nao diga que houve correcao de codigo);
 4. `bash $PLAN devops <card> zero-remaining` e, **se o usuario confirmou**, `devops <card> test-in-production`
