@@ -143,15 +143,27 @@ mudanca de estado, registro do card, PRs, timeline) vai pelos endpoints do PRMak
 Azure/GitHub que o usuario configurou, registra na Timeline e guarda as configuracoes por usuario. Se faltar um
 endpoint para algo que precisa gravar, **pare e avise** (nao contorne com PAT/API direta).
 
+**Configuracao vem do PRMake — nada presumido.** Estados e areas de destino (Test in production, Ready for QA),
+a area exigida, o comentario, a estimativa inicial, o prompt do resumo nao tecnico e as opcoes de classificacao
+sao os que o usuario/admin configurou no PRMake. Leia com `bash $PLAN devops <card> config` e
+`devops <card> classifications` antes de perguntar sobre o fechamento ou de gravar, e use os nomes exatamente
+como vierem (nunca escreva "Test in production"/"Ready for QA" de memoria). O que o card tem hoje (estado,
+area, tipo) vem do card lido pelo PRMake (`bug-fetch.sh` → `state`/`area`).
+
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
-das "Acoes DevOps" do PRMake):
+das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
 1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
-2. classificacao: `bash $PLAN devops <card> classify <opcao>` — as opcoes vem do PRMake
-   (`devops <card> classifications`; a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las);
-3. resumo nao tecnico PT/EN na discussion: `bash $PLAN devops <card> summary resumo.md` (formato `**PT**` `---` texto
-   `**EN**` `---` texto; sem codigo, nao diga que houve correcao de codigo);
-4. `bash $PLAN devops <card> zero-remaining` e, **se o usuario confirmou**, `devops <card> test-in-production`
-   (ou `ready-for-qa`).
+2. classificacao: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
+   `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e
+   grave com `bash $PLAN devops <card> classify <opcao>`;
+3. resumo nao tecnico PT/EN na discussion: se o `config` trouxe `summary-prompt`, **siga esse prompt** (arquivo
+   `analises/summary-prompt.txt` da pasta do card; mesmos placeholders da `gerar-prmake`) mantendo o formato
+   `**PT**` `---` texto `**EN**` `---` texto; senao use esse formato direto. Sem codigo, nao diga que houve
+   correcao de codigo. Grave com `bash $PLAN devops <card> summary resumo.md`;
+4. `bash $PLAN devops <card> zero-remaining` e, **se o usuario confirmou**, a mudanca de estado configurada:
+   `devops <card> test-in-production` (so se o `config` a mostrar configurada e o card estiver na area exigida —
+   senao o PRMake devolve 409) ou `devops <card> ready-for-qa`. Acao "NAO configurado" no `config` → nao ofereca;
+   avise que o admin pode configura-la no PRMake (AI Configurations).
 Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
 RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
 
@@ -399,8 +411,9 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
      usuario confirmar/ajustar: codigo (A), dados via script/chamado (B), acesso/Cognito (C), configuracao/
      ambiente (D), user education (E), change request (F), nao reproduz/sem retorno (G), duplicado (H). Pode ser
      mais de um. Nem todo card tem codigo — nao presuma PR.
-   - **Fechamento**: ao final, pode mover o card para *Test in production* (ou *Ready for QA*)? E a
-     classificacao sugerida (`classify <tipo>`) esta certa?
+   - **Fechamento**: com o `devops <card> config` em maos, pode mover o card ao final (cite o estado e a area
+     exatamente como configurados, so as acoes configuradas e aplicaveis a area atual do card)? E a
+     classificacao sugerida (uma das opcoes de `devops <card> classifications`, com o motivo) esta certa?
    - **Fluxo de branches** quando o `fluxo` do card for `perguntar`, e **sempre** a branch base em release
      (`release-version` ou `hotfix-version`? outra?) e no revamp frontend em release/regressao (`edge`?).
    - Se ha script de dados: vai por **chamado** (o usuario abre no Freshservice) ou nao e necessario.
