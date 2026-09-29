@@ -44,12 +44,15 @@ WIT="$(jq -r '.fields["System.WorkItemType"] // ""' "$OUTDIR/card.json")"
 TITLE="$(jq -r '.fields["System.Title"] // ""' "$OUTDIR/card.json")"
 STATE="$(jq -r '.fields["System.State"] // ""' "$OUTDIR/card.json")"
 AREA="$(jq -r '.fields["System.AreaPath"] // ""' "$OUTDIR/card.json")"
-# Fluxo de branches pela area (0024): producao (Product Development Team) x release/regressao (Release Management).
-case "$AREA" in
-  *"Release Management"*) FLOW=release ;;
-  *"Product Development Team"*) FLOW=producao ;;
-  *) FLOW=perguntar ;;
-esac
+# Fluxo de branches pela area do card, conforme o PRMake (Skills Configurations → BranchFlowByArea, 0030).
+FLOW=""
+RESP="$(get "$BASE/Skills/config" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
+if [[ "$CODE" == "200" ]]; then
+  printf '%s' "$BODY" > "$OUTDIR/skills-config.json"
+  FLOW="$(jq -r --arg a "$AREA" '[.settings.BranchFlowByArea // [] | .[] | . as $r
+    | select($a != "" and (($a | ascii_downcase) | contains($r.areaContains | ascii_downcase))) | $r.flow][0] // empty' "$OUTDIR/skills-config.json")"
+fi
+FLOW="${FLOW:-perguntar}"
 
 # description = ReproSteps (Bug) ou System.Description (US), sem HTML
 if [[ "$WIT" == "Bug" ]]; then

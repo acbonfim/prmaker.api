@@ -2,11 +2,11 @@
 # Busca (somente leitura) tudo que é preciso para gerar o PR no PRMake.
 # Uso: prmake-fetch.sh <cardNumber> <branchFull> [repository]
 #   <branchFull>  = ex.: hotfix/54969  (usado para listar commits)
-#   [repository]  = default: derivado do git remote origin; fallback edv-solvace
+#   [repository]  = default: derivado do git remote origin; sem remote, o DefaultRepository do PRMake
 # Saída: escreve arquivos em $OUTDIR (default /tmp/prmake) e imprime um manifesto.
 set -euo pipefail
 
-# --- resolve repo slug: arg $3 > git remote origin (nome do repo) > edv-solvace
+# --- resolve repo slug: arg $3 > git remote origin (nome do repo) > DefaultRepository do PRMake (Skills Configurations)
 resolve_repo() {
   if [[ -n "${1:-}" ]]; then printf '%s' "$1"; return; fi
   local url slug
@@ -15,7 +15,6 @@ resolve_repo() {
     slug="${url##*/}"; slug="${slug%.git}"
     if [[ -n "$slug" ]]; then printf '%s' "$slug"; return; fi
   fi
-  printf '%s' "edv-solvace"
 }
 
 CARD="${1:?informe o numero do card}"
@@ -42,6 +41,10 @@ resolve_token() {
   exit 1
 }
 TOKEN="$(resolve_token)"
+if [[ -z "$REPO" ]]; then
+  REPO="$(curl -s --max-time 30 -H "x-api-key: $TOKEN" "$BASE/Skills/config" | jq -r '.settings.DefaultRepository // empty' 2>/dev/null || true)"
+  [[ -n "$REPO" ]] || { echo "ERRO: sem git remote e sem DefaultRepository no PRMake — informe o repositorio" >&2; exit 1; }
+fi
 AUTH=(-H "accept: application/json" -H "x-api-key: $TOKEN")
 
 get() { curl -s --max-time 60 -w '\n%{http_code}' "$@"; }
@@ -56,10 +59,15 @@ printf '%s' "$BODY" > "$OUTDIR/card.json"
 WIT="$(jq -r '.fields["System.WorkItemType"]' "$OUTDIR/card.json")"
 TITLE="$(jq -r '.fields["System.Title"] // ""' "$OUTDIR/card.json")"
 
-# --- 3) prompts (id=3) ---
-RESP="$(get "$BASE/PluginConfiguration/get-all-by-id?id=3" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
-check "$CODE" "GET prompts"
-printf '%s' "$BODY" > "$OUTDIR/prompts.json"
+# --- 3) prompts: configuracao efetiva do usuario (GET /Skills/config, 0030); sem ela, o plugin id=3 ---
+RESP="$(get "$BASE/Skills/config" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
+if [[ "$CODE" == "200" ]] && printf '%s' "$BODY" | jq -e '.prompts.bug // .prompts.userStory' >/dev/null 2>&1; then
+  printf '%s' "$BODY" | jq '{configurations: {PromptBug: (.prompts.bug // ""), PromptUS: (.prompts.userStory // ""), BugSummaryPrompt: (.prompts.summary // "")}}' > "$OUTDIR/prompts.json"
+else
+  RESP="$(get "$BASE/PluginConfiguration/get-all-by-id?id=3" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
+  check "$CODE" "GET prompts"
+  printf '%s' "$BODY" > "$OUTDIR/prompts.json"
+fi
 
 # escolhe prompt e description conforme o tipo do card
 if [[ "$WIT" == "Bug" ]]; then
@@ -75,17 +83,10 @@ else
   IS_BUG=0
 fi
 
-# prompt do resumo nao-tecnico (feature 0011 do CIME: AI Configurations -> BugSummaryPrompt), o efetivo do
-# usuario (GET /Azure/actions/config, o mesmo da tela); sem resposta, o global do plugin.
+# prompt do resumo nao-tecnico (AI Configurations -> BugSummaryPrompt, efetivo do usuario — veio no passo 3).
 # Vazio (US ou plugin sem o campo) = a skill usa as regras do passo 4b do SKILL.md.
 if [[ "$IS_BUG" == "1" ]]; then
-  RESP="$(get "$BASE/Azure/actions/config" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
-  if [[ "$CODE" == "200" ]] && printf '%s' "$BODY" | jq -e '.available' >/dev/null 2>&1; then
-    printf '%s' "$BODY" > "$OUTDIR/actions_config.json"
-    jq -r '.bug.summaryPrompt // ""' "$OUTDIR/actions_config.json" > "$OUTDIR/summary_prompt.txt"
-  else
-    jq -r '.configurations.BugSummaryPrompt // ""' "$OUTDIR/prompts.json" > "$OUTDIR/summary_prompt.txt"
-  fi
+  jq -r '.configurations.BugSummaryPrompt // ""' "$OUTDIR/prompts.json" > "$OUTDIR/summary_prompt.txt"
 else
   : > "$OUTDIR/summary_prompt.txt"
 fi

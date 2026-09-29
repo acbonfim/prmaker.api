@@ -26,16 +26,10 @@ public class DevOpsActionsService : IDevOpsActionsService
     private const string FieldAreaPath = "System.AreaPath";
     private const string FieldState = "System.State";
     private const string FieldHistory = "System.History";
-    private const string FieldOriginalEstimate = "Microsoft.VSTS.Scheduling.OriginalEstimate";
-    private const string FieldRemainingWork = "Microsoft.VSTS.Scheduling.RemainingWork";
-    private const string FieldCompletedWork = "Microsoft.VSTS.Scheduling.CompletedWork";
-    private const string FieldResolutionType = "Custom.ResolutionType";
-    private const string FieldGeneralClassification = "Custom.GeneralClassification";
-    private const string FieldClassification = "Custom.Classification";
 
     /// <summary>
     /// Opções padrão de classificação — as combinações usadas pelo time em 300 bugs resolvidos (estudo da 0027).
-    /// O "AI Configurations" (BugClassificationPresets) pode substituí-las por usuário/global.
+    /// Reserva: o valor efetivo é o do "AI Configurations" (BugClassificationPresets, semeado pela migração da 0030).
     /// </summary>
     private static readonly IReadOnlyList<DevOpsClassificationPreset> DefaultClassificationPresets =
     [
@@ -159,14 +153,15 @@ public class DevOpsActionsService : IDevOpsActionsService
             throw DevOpsActionException.Conflict("Preencha os valores da estimativa inicial em Minhas integrações → AI Configurations");
 
         var card = await LoadBugAsync(cardNumber, cancellationToken);
-        if (GetNumber(card, FieldOriginalEstimate) is { } current && current != 0m)
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        if (GetNumber(card, names.OriginalEstimate) is { } current && current != 0m)
             throw DevOpsActionException.Conflict($"O card já tem Original Estimate ({current.ToString(CultureInfo.InvariantCulture)})");
 
         var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object>
         {
-            [FieldOriginalEstimate] = estimate.OriginalEstimate!.Value,
-            [FieldRemainingWork] = estimate.RemainingWork!.Value,
-            [FieldCompletedWork] = estimate.CompletedWork!.Value
+            [names.OriginalEstimate] = estimate.OriginalEstimate!.Value,
+            [names.RemainingWork] = estimate.RemainingWork!.Value,
+            [names.CompletedWork] = estimate.CompletedWork!.Value
         }, cancellationToken);
 
         return new DevOpsActionResponse
@@ -180,11 +175,12 @@ public class DevOpsActionsService : IDevOpsActionsService
     public async Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
         var card = await LoadBugAsync(cardNumber, cancellationToken);
-        var remaining = GetNumber(card, FieldRemainingWork);
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        var remaining = GetNumber(card, names.RemainingWork);
         if (remaining is null or 0m)
             throw DevOpsActionException.Conflict("O Remaining Work do card já está zerado");
 
-        var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object> { [FieldRemainingWork] = 0 }, cancellationToken);
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object> { [names.RemainingWork] = 0 }, cancellationToken);
         return new DevOpsActionResponse { Rev = rev, Message = $"Remaining Work zerado (era {Format(remaining)})" };
     }
 
@@ -204,9 +200,9 @@ public class DevOpsActionsService : IDevOpsActionsService
                     return valid;
             }
         }
-        catch (Exception e) when (e is InvalidOperationException or System.Text.Json.JsonException)
+        catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException or System.Text.Json.JsonException)
         {
-            // Plugin ausente ou JSON inválido: usa as opções padrão.
+            // Plugin ausente, não configurado pelo usuário ou JSON inválido: usa as opções padrão.
         }
         return DefaultClassificationPresets;
     }
@@ -227,11 +223,12 @@ public class DevOpsActionsService : IDevOpsActionsService
             throw new DevOpsActionException(400, "Informe o preset ou os três valores: resolutionType, generalClassification e classification");
 
         await LoadBugAsync(cardNumber, cancellationToken);
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
         var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object>
         {
-            [FieldResolutionType] = resolution,
-            [FieldGeneralClassification] = general,
-            [FieldClassification] = classification
+            [names.ResolutionType] = resolution,
+            [names.GeneralClassification] = general,
+            [names.Classification] = classification
         }, cancellationToken);
         return new DevOpsActionResponse { Rev = rev, Message = $"Classificação do card: {resolution} · {general} · {classification}" };
     }

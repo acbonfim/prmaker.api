@@ -28,6 +28,12 @@
 #                 zero-remaining · ready-for-qa · test-in-production · initial-estimate
 #                 (tudo gravado pelo PRMake; estados, areas, estimativa, prompt do resumo e opcoes de
 #                 classificacao vem da configuracao do usuario no PRMake — `config`/`classifications`)
+#   settings    <card>                                   configuracao das skills no PRMake (Skills Configurations +
+#                                                        prompts + campos do DevOps): salva em $CARD_DIR/.prmake-settings.json
+#   branches    <card> <repo> [--flow producao|release] [--base <branch>]
+#                                                        plano de branches/PRs do repositorio conforme a configuracao
+#                                                        (fluxo pela area do card, base, cherry-picks, titulos, comandos);
+#                                                        exit 3 = precisa perguntar (fluxo ou base) ao usuario
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
@@ -135,6 +141,28 @@ api_upload() { # <path> <file> <kind> <stepKey> <description>
 
 is_transient() { [[ "$CODE" =~ ^(000|5..|409|429)$ ]]; }
 resp_error() { jq -r '.error // .message // .' "$TMP/resp" 2>/dev/null | head -c 500; }
+
+# Configuracao das skills (0030): GET Skills/config — regras de branch, padroes, prompts e campos do DevOps.
+# Tudo o que pode mudar fica no PRMake (tela de plugins), nunca fixo na skill.
+SETTINGS="$CARD_DIR/.prmake-settings.json"
+load_settings() {
+  local code
+  code="$(curl -s --max-time 30 -o "$TMP/settings" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Skills/config" 2>/dev/null)"
+  if [[ "$code" =~ ^2 ]] && jq -e '.available' "$TMP/settings" >/dev/null 2>&1; then
+    cp "$TMP/settings" "$SETTINGS"
+  elif [[ -s "$SETTINGS" ]]; then
+    warn "PRMake indisponivel (HTTP ${code:-000}): usando a ultima configuracao salva ($SETTINGS)"
+  else
+    die "configuracao das skills indisponivel (HTTP ${code:-000}; plugin 'Skills Configurations' ausente?) — avise o usuario"
+  fi
+}
+setting() { jq -r --arg k "$1" '.settings[$k] // empty | if type == "string" then . else tojson end' "$SETTINGS"; }
+# Preenche {card}, {summary}, {target}, {TARGET} num padrao.
+fill_pattern() { # <padrao> [target] [summary]
+  local t="${2:-}" up
+  up="$(printf '%s' "$t" | tr '[:lower:]' '[:upper:]')"
+  printf '%s' "$1" | sed -e "s|{card}|$CARD|g" -e "s|{TARGET}|$up|g" -e "s|{target}|$t|g" -e "s|{summary}|${3:-<resumo>}|g"
+}
 
 # Envio que nao pode se perder: se falhar por rede/servidor, vai para a fila local.
 send_or_queue() { # <METHOD> <path> <json-body-file>
@@ -677,11 +705,101 @@ case "$CMD" in
     echo "OK $ACTION no card $CARD"
     ;;
 
+  settings)
+    load_settings
+    jq -r '"Skills Configurations (" + (if .available then "ok" else "indisponivel" end) + "):",
+      (.settings | to_entries[] | "  \(.key) = " + (if (.value | type) == "string" then .value else (.value | tojson) end)),
+      "Prompts: bug=" + (if .prompts.bug then "sim" else "nao" end) + " · userStory=" + (if .prompts.userStory then "sim" else "nao" end)
+        + " · resumo=" + (if .prompts.summary then "sim" else "nao" end),
+      "Campos do DevOps: " + (if .fields then (.fields | to_entries | map("\(.key)=\(.value)") | join(" · ")) else "indisponivel (integracao do Azure?)" end)' "$SETTINGS"
+    echo "salvo em $SETTINGS"
+    ;;
+
+  branches)
+    REPO="${1:?repositorio (ex.: edv-solvace, revamp-BOS)}"; shift
+    FLOW=""; BASE_BRANCH=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --flow) FLOW="${2:?}"; shift 2 ;;
+        --base) BASE_BRANCH="${2:?}"; shift 2 ;;
+        *) die "argumento desconhecido: $1" ;;
+      esac
+    done
+    load_settings
+    NAME_PATTERN="$(setting BranchNamePattern)"; NAME_PATTERN="${NAME_PATTERN:-hotfix/{card\}}"
+    COMMIT_PATTERN="$(setting CommitMessagePattern)"; TITLE_PATTERN="$(setting PrTitlePattern)"
+    [[ -n "$(setting BranchStrategy)" ]] || die "BranchStrategy nao configurado no PRMake (Skills Configurations) — avise o usuario"
+    # Fluxo: --flow > area do card (BranchFlowByArea) > perguntar.
+    if [[ -z "$FLOW" ]]; then
+      CODE="$(curl -s --max-time 60 -o "$TMP/card" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/card/$CARD" 2>/dev/null)"
+      AREA="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.AreaPath"] // ""' "$TMP/card" || true)"
+      FLOW="$(jq -r --arg a "$AREA" '[.settings.BranchFlowByArea // [] | .[] | . as $r | select($a != "" and (($a | ascii_downcase) | contains($r.areaContains | ascii_downcase))) | $r.flow][0] // empty' "$SETTINGS")"
+    fi
+    # Tipo do repositorio: primeira regra de BranchStrategy.repositories que casa (glob, sem diferenciar maiusculas).
+    KIND=""; LREPO="$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')"
+    while IFS=$'\t' read -r PAT K; do
+      [[ -z "$PAT" ]] && continue
+      LPAT="$(printf '%s' "$PAT" | tr '[:upper:]' '[:lower:]')"
+      # shellcheck disable=SC2053
+      if [[ "$LREPO" == $LPAT ]]; then KIND="$K"; break; fi
+    done < <(jq -r '.settings.BranchStrategy.repositories // [] | .[] | "\(.match)\t\(.kind)"' "$SETTINGS")
+    [[ -n "$KIND" ]] || die "repositorio '$REPO' sem regra em BranchStrategy.repositories — pergunte ao usuario e peca para o admin configurar"
+    FIX="$(fill_pattern "$NAME_PATTERN")"
+    if [[ -z "$FLOW" ]]; then
+      echo "repositorio=$REPO tipo=$KIND fluxo=PERGUNTAR (area '${AREA:-?}' sem regra em BranchFlowByArea)"
+      echo "opcoes: $(jq -r '.settings.BranchStrategy.flows // {} | keys | join(", ")' "$SETTINGS") — rode de novo com --flow <fluxo>"
+      exit 3
+    fi
+    jq -e --arg f "$FLOW" --arg k "$KIND" '.settings.BranchStrategy.flows[$f][$k]' "$SETTINGS" > "$TMP/rule" 2>/dev/null \
+      || die "sem regra para fluxo '$FLOW' + tipo '$KIND' em BranchStrategy.flows — pergunte ao usuario"
+    RULE_BASE="$(jq -r '.base // empty' "$TMP/rule")"; OPTIONS="$(jq -r '.baseOptions // [] | join(", ")' "$TMP/rule")"
+    ASK="$(jq -r '.askBase // false' "$TMP/rule")"
+    if [[ -z "$BASE_BRANCH" ]]; then
+      if [[ "$ASK" == "true" || -z "$RULE_BASE" ]]; then
+        echo "repositorio=$REPO tipo=$KIND fluxo=$FLOW"
+        echo "base=PERGUNTAR (opcoes: ${OPTIONS:-$RULE_BASE}) — rode de novo com --base <branch>"
+        exit 3
+      fi
+      BASE_BRANCH="$RULE_BASE"
+    fi
+    echo "repositorio=$REPO tipo=$KIND fluxo=$FLOW base=$BASE_BRANCH"
+    echo "branch-correcao=$FIX"
+    [[ -n "$COMMIT_PATTERN" ]] && echo "commit=\"$(fill_pattern "$COMMIT_PATTERN")\""
+    echo "prs:"
+    PUSH="$FIX"; CMDS=()
+    while IFS='|' read -r SUFFIX FROM TARGET; do
+      TARGET="${TARGET//\{base\}/$BASE_BRANCH}"; FROM="${FROM//\{base\}/$BASE_BRANCH}"
+      BR="$FIX$SUFFIX"
+      TITLE="$(fill_pattern "${TITLE_PATTERN:-{card\} {TARGET\}}" "$TARGET")"
+      if [[ -n "$SUFFIX" && -n "$FROM" ]]; then
+        echo "  $BR (de origin/$FROM + cherry-pick da correcao) -> $TARGET  titulo \"$TITLE\""
+        CMDS+=("git checkout -b $BR origin/$FROM && git cherry-pick <sha(s)>"); PUSH="$PUSH $BR"
+      else
+        echo "  $BR -> $TARGET  titulo \"$TITLE\""
+      fi
+      CMDS+=("#open-pr $BR $TARGET \"$TITLE\"")
+    done < <(jq -r '.prs // [] | .[] | "\(.suffix // "")|\(.from // "")|\(.target)"' "$TMP/rule")
+    echo "comandos:"
+    echo "  git fetch origin"
+    echo "  git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+    for C in "${CMDS[@]}"; do [[ "$C" == \#open-pr* ]] || echo "  $C"; done
+    echo "  git push -u origin $PUSH"
+    for C in "${CMDS[@]}"; do
+      [[ "$C" == \#open-pr* ]] || continue
+      read -r _ BR TG REST <<< "$C"
+      echo "  bash \$PLAN open-pr $CARD $REPO $BR $TG $REST \$CARD_DIR/pr/$REPO/desc.md"
+    done
+    ;;
+
   open-pr)
     # Abre o PR pelo PRMake (o mesmo endpoint da tela/gerar-prmake): fica registrado no card, na Timeline e
     # e acompanhado pela etapa de PR do repositorio (conclui quando for mesclado — por outra pessoa).
     require_plan; REPO="${1:?repositorio}"; BRANCH="${2:?branch (ex.: hotfix/74517-dev)}"; TARGET="${3:?branch de destino}"
-    TITLE="${4:-AB#$CARD $(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')}"; DESC_FILE="${5:-}"
+    if [[ -n "${4:-}" ]]; then TITLE="$4"; else
+      load_settings; TITLE="$(fill_pattern "$(setting PrTitlePattern)" "$TARGET")"
+      [[ -n "$TITLE" ]] || TITLE="$CARD $(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')"
+    fi
+    DESC_FILE="${5:-}"
     [[ "$BRANCH" == */* ]] || die "informe a branch completa (ex.: hotfix/$CARD-dev)"
     PREFIX="${BRANCH%%/*}/"; NAME="${BRANCH#*/}"
     USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | sed -n 's/.*"ExternalId":"\([^"]*\)".*/\1/p')"

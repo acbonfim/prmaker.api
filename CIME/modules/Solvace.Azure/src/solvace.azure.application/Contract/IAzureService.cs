@@ -23,4 +23,7 @@ public interface IAzureService
     /// Comentário apagado no DevOps (404 ao atualizar) = cria outro.
     /// </summary>
     Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default);
+
+    /// <summary>Nomes dos campos do work item conforme o "AzureDevOps Configurations" (feature 0030).</summary>
+    Task<solvace.azure.domain.Options.AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default);
 }

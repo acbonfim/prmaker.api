@@ -70,9 +70,11 @@ bash $PLAN answer <card> <n> "resposta dada aqui no terminal"         # grava no
 bash $PLAN correction <card> "Correcao do bug <card>: <solucao>" - <<< '[...etapas...]'  # plano de correcao
 bash $PLAN use <card> analysis|correction                             # em qual plano os comandos agem
 bash $PLAN link <card> <key> <url> "titulo" [--blocks]                # anexa link (chamado/doc) a etapa
-bash $PLAN pr-text <card> <repo> hotfix/<card>                        # prompt configurado + diff (layout padrao)
+bash $PLAN settings <card>                                            # configuracao das skills no PRMake
+bash $PLAN branches <card> <repo> [--flow f] [--base b]               # branches/PRs/titulos do repo (da configuracao)
+bash $PLAN pr-text <card> <repo> <branch-correcao>                    # prompt configurado + diff (layout padrao)
 bash $PLAN save-pr-text <card> desc.md rca.md <key>                   # salva descricao/RCA no card do PRMake
-bash $PLAN open-pr <card> <repo> hotfix/<card>-dev development "AB#<card> DEV" desc.md   # abre PR (nunca merge)
+bash $PLAN open-pr <card> <repo> <branch> <destino> "<titulo>" desc.md   # abre PR (nunca merge) — linha pronta no `branches`
 bash $PLAN status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"   # fim do plano ativo
 ```
 
@@ -143,12 +145,21 @@ mudanca de estado, registro do card, PRs, timeline) vai pelos endpoints do PRMak
 Azure/GitHub que o usuario configurou, registra na Timeline e guarda as configuracoes por usuario. Se faltar um
 endpoint para algo que precisa gravar, **pare e avise** (nao contorne com PAT/API direta).
 
-**Configuracao vem do PRMake — nada presumido.** Estados e areas de destino (Test in production, Ready for QA),
-a area exigida, o comentario, a estimativa inicial, o prompt do resumo nao tecnico e as opcoes de classificacao
-sao os que o usuario/admin configurou no PRMake. Leia com `bash $PLAN devops <card> config` e
-`devops <card> classifications` antes de perguntar sobre o fechamento ou de gravar, e use os nomes exatamente
-como vierem (nunca escreva "Test in production"/"Ready for QA" de memoria). O que o card tem hoje (estado,
-area, tipo) vem do card lido pelo PRMake (`bug-fetch.sh` → `state`/`area`).
+**Configuracao vem do PRMake — nada presumido.** Tudo o que pode mudar fica configurado no PRMake (tela de
+plugins) e muda sem atualizar a skill:
+- **Skills Configurations** (`bash $PLAN settings <card>`): fluxo de branches pela area do card
+  (`BranchFlowByArea`), estrategia por tipo de repositorio e fluxo (`BranchStrategy`: base, branches derivadas,
+  cherry-picks, destinos dos PRs), nome da branch (`BranchNamePattern`), mensagem de commit
+  (`CommitMessagePattern`), titulo do PR (`PrTitlePattern`), repositorio padrao e o sistema de chamados
+  (`TicketSystem`). O `branches <card> <repo>` ja aplica tudo isso e imprime os comandos prontos.
+- **Acoes DevOps** (`bash $PLAN devops <card> config` e `devops <card> classifications`): estados e areas de
+  destino, area exigida, comentario, estimativa inicial, prompt do resumo nao tecnico e opcoes de classificacao.
+- **Campos do DevOps** (nomes dos campos de classificacao, Remaining, estimativa, root cause) e prompts do PR:
+  usados pelo PRMake ao gravar; aparecem no `settings`.
+Leia antes de perguntar ou de gravar e use os valores exatamente como vierem (nunca escreva de memoria nomes de
+estado, area, branch ou titulo). Faltou uma regra (ex.: repositorio sem tipo, fluxo sem regra) → **pergunte ao
+usuario** e sugira que o admin configure no PRMake. O que o card tem hoje (estado, area, tipo) vem do card lido
+pelo PRMake (`bug-fetch.sh` → `state`/`area`).
 
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
@@ -209,8 +220,8 @@ O script grava em `/tmp/bug-analysis/`:
 - `description.txt` — `ReproSteps` (se for **Bug**) ou `System.Description` (US), ja sem HTML;
 - `card.json` — dados brutos do card (titulo, estado, tipo) para conferencia.
 
-O manifesto informa `title`, `state`, `workItemType`, `isBug`, `area` e `fluxo` (`producao`, `release` ou
-`perguntar` — usado no fluxo de branches do passo 7). Leia `description.txt` para entender
+O manifesto informa `title`, `state`, `workItemType`, `isBug`, `area` e `fluxo` (calculado pela area do card com
+o `BranchFlowByArea` do PRMake; `perguntar` quando nenhuma regra casa — usado no fluxo de branches do passo 7). Leia `description.txt` para entender
 o problema relatado.
 
 Plano: etapa `coletar-dados` (running → `log` com um resumo curto do relato → completed). Copie o
@@ -414,9 +425,11 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - **Fechamento**: com o `devops <card> config` em maos, pode mover o card ao final (cite o estado e a area
      exatamente como configurados, so as acoes configuradas e aplicaveis a area atual do card)? E a
      classificacao sugerida (uma das opcoes de `devops <card> classifications`, com o motivo) esta certa?
-   - **Fluxo de branches** quando o `fluxo` do card for `perguntar`, e **sempre** a branch base em release
-     (`release-version` ou `hotfix-version`? outra?) e no revamp frontend em release/regressao (`edge`?).
-   - Se ha script de dados: vai por **chamado** (o usuario abre no Freshservice) ou nao e necessario.
+   - **Fluxo de branches**: rode `branches <card> <repo>` para cada repositorio; se ele sair com exit 3, pergunte
+     o que ele pedir (o fluxo, quando a area nao tem regra, ou a branch base, quando a regra manda perguntar —
+     com as opcoes que ele listar).
+   - Se ha script de dados: vai por **chamado** (o usuario abre no sistema de chamados configurado — `TicketSystem`
+     do `settings`) ou nao e necessario.
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
    Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
@@ -445,7 +458,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Corrigir o codigo — **uma por repositorio** (`corrigir-<repo>`) | `code` | claude | branches e commits do fluxo abaixo |
 | Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao |
 | **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
-| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`); o usuario abre no Freshservice e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
+| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`); o usuario abre no sistema de chamados (`TicketSystem`) e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | User education (`orientar-cliente`) | `task` | **user** | voce redige a orientacao ao cliente (o que aconteceu, o que fazer, por que nao e bug) em `analises/orientacao-cliente.md` (PT/EN se o card for em ingles); o usuario envia e conclui |
 | Validar com o cliente/ambiente | `validation` | user | depois da configuracao/orientacao/script, quando fizer sentido |
@@ -467,32 +480,20 @@ dados → so a etapa de chamado). O plano pode ter apenas, por exemplo:
 Nesses casos o seu trabalho e redigir o passo a passo / a orientacao (e salvar com `sync`), deixar o vigia rodando
 e acompanhar: o plano **conclui quando as etapas terminam**, sem PR.
 
-**Fluxo de branches** (branch sempre `hotfix/<card>` — **sem** `AB#`; `AB#<card> <resumo>` vai na mensagem do
-commit e no titulo do PR). Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin
-<base>` que as bases existem; se nao existirem ou o caso nao estiver claro, **pergunte**.
-
-| Caso (area do card / repositorio) | Base da correcao | Branches | PRs (via `open-pr`) |
-|---|---|---|---|
-| **Producao** (`fluxo=producao`), legado `edv-solvace` | `master` | `hotfix/<card>` (correcao) → `hotfix/<card>-dev` (de `development` + `cherry-pick`) → `hotfix/<card>-qa` (de `qa` + `cherry-pick`) | `hotfix/<card>-dev → development` e `hotfix/<card>-qa → qa` (**2 PRs**) |
-| Producao, **revamp backend** (`revamp-*`) | `master` | `hotfix/<card>` → `hotfix/<card>-dev` (de `development` + `cherry-pick`) — **sem qa** | `→ development` (1 PR) |
-| Producao, **revamp frontend** (`edv-solvace-apps`) | `master` | como o legado (`-dev` e `-qa`) | `→ development` e `→ qa` |
-| **Release/regressao** (`fluxo=release`) | `release-version` **ou** `hotfix-version` — **perguntado** | `hotfix/<card>` | `hotfix/<card> → <base>` (1 PR) |
-| Release/regressao, revamp frontend | `edge` (padrao — **perguntado**) | `hotfix/<card>` | `→ edge` |
-
-Commits so com a mudanca necessaria: **sem comentarios novos no codigo** (ver passo 8).
-
-Comandos (legado, producao):
+**Fluxo de branches — sempre pelo `branches`** (regras no PRMake, `Skills Configurations`):
 ```bash
-git fetch origin
-git checkout -b hotfix/<card> origin/master          # corrige aqui; commit: "AB#<card> <resumo>"
-git checkout -b hotfix/<card>-dev origin/development && git cherry-pick <sha(s)>
-git checkout -b hotfix/<card>-qa  origin/qa          && git cherry-pick <sha(s)>
-git push -u origin hotfix/<card> hotfix/<card>-dev hotfix/<card>-qa
-bash $PLAN pr-text <card> edv-solvace hotfix/<card>      # prompt configurado + diff → gere desc.md/rca.md (passo 8)
-bash $PLAN save-pr-text <card> $CARD_DIR/pr/edv-solvace/desc.md $CARD_DIR/pr/edv-solvace/rca.md pr-edv-solvace
-bash $PLAN open-pr <card> edv-solvace hotfix/<card>-dev development "AB#<card> DEV" $CARD_DIR/pr/edv-solvace/desc.md
-bash $PLAN open-pr <card> edv-solvace hotfix/<card>-qa  qa          "AB#<card> QA"  $CARD_DIR/pr/edv-solvace/desc.md
+bash $PLAN branches <card> <repo>                       # usa o fluxo pela area do card
+bash $PLAN branches <card> <repo> --flow <f> --base <b> # quando ele pedir (exit 3) ou o usuario escolher
 ```
+Ele imprime o tipo do repositorio, o fluxo, a base, a branch de correcao, a mensagem de commit, os PRs (branch
+derivada, de onde sai + cherry-pick, destino, titulo) e os **comandos prontos** (`git checkout`, `cherry-pick`,
+`push` e as linhas de `open-pr`). Siga exatamente o que ele imprimir; o nome da branch nunca leva o prefixo do
+commit/titulo. Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin <base>` que
+as bases existem; se nao existirem ou o caso nao estiver claro, **pergunte**. Commits so com a mudanca
+necessaria: **sem comentarios novos no codigo** (ver passo 8).
+
+Depois do `push`: `pr-text` na branch de correcao → gere `desc.md`/`rca.md` (passo 8) → `save-pr-text` → as
+linhas de `open-pr` que o `branches` imprimiu (com o `desc.md` do repositorio).
 Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, registre um `log warning` e mencione no PR.
 
 ### 8. Executar o plano de correcao
@@ -502,10 +503,10 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
 - **Nao adicione comentarios no codigo.** A correcao deve ser so a mudanca de codigo — sem comentarios
   explicando o bug, a correcao, o card (`// AB#...`, `// fix: ...`, `// antes era...`), sem blocos comentados
   e sem remover/alterar comentarios existentes que nao tenham relacao com a mudanca. O porque da correcao vai
-  na mensagem do commit (`AB#<card> <resumo>`), na descricao do PR e no plano/Timeline — nunca no codigo.
+  na mensagem do commit (`CommitMessagePattern`), na descricao do PR e no plano/Timeline — nunca no codigo.
   Excecao rara: so se o proprio arquivo exigir (ex.: doc obrigatoria de API publica) e, mesmo assim, o minimo.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
-  1. `bash $PLAN pr-text <card> <repo> hotfix/<card>` (branch com a correcao, ja no GitHub): baixa o **prompt
+  1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.
   2. Gere `pr_generated.md` seguindo o prompt **exatamente como a `gerar-prmake`** (ingles, markdown, titulos em
      negrito; Bug com o RCA entre `<RCA>`/`</RCA>`; foco so no caso do card) e separe `desc.md`/`rca.md` com os
@@ -514,8 +515,8 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
      descricao e o root cause **no card do PRMake** (ficam prontos no "Abrir PR" para quem quiser abrir um PR por
      fora) e guarda os arquivos no plano. Com mais de um repositorio, o card fica com a descricao do ultimo
      salvo — gere a do repositorio principal por ultimo (ou uma que cubra todos).
-  4. Abra os PRs com essa descricao: `open-pr <card> <repo> hotfix/<card>-dev development "AB#<card> DEV"
-     $CARD_DIR/pr/<repo>/desc.md` (idem `-qa`). Titulo `AB#<card> <DESTINO>`, como a tela do PRMake.
+  4. Abra os PRs com essa descricao: as linhas de `open-pr` que o `branches` imprimiu (branch, destino e titulo
+     conforme a configuracao) com `$CARD_DIR/pr/<repo>/desc.md`. Sem titulo, o `open-pr` usa o `PrTitlePattern`.
 - Etapa de PR: os PRs abertos com `open-pr` ficam no card, na Timeline e anexados a etapa. **Nunca faca merge,
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
 - Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
@@ -531,7 +532,7 @@ Se o usuario disser que a correcao nao resolveu (ou a validacao falhar), **nao c
 etapas ao **mesmo plano de correcao** (`use <card> correction` e `steps` com as etapas atuais **mais** as novas —
 keys novas, ex.: `ajustar-edv-solvace-2`, `pr-edv-solvace-2` com `dependsOn` na de ajuste, e a validacao de novo).
 Ao marcar a primeira etapa nova como `running`, o plano volta a "em andamento". Corrija nas mesmas branches do
-fluxo (`hotfix/<card>`, `-dev`, `-qa` — novos commits `AB#<card> ...` e cherry-pick) e abra os PRs novos com
+fluxo (as do `branches` — novos commits no padrao configurado e cherry-pick) e abra os PRs novos com
 `open-pr`: eles entram na etapa de PR nova (os PRs antigos continuam na etapa anterior) e o plano so conclui de
 novo quando os PRs novos forem mesclados. Todo PR aberto pelo PRMake tambem aparece no card (painel de PRs e
 Timeline).
