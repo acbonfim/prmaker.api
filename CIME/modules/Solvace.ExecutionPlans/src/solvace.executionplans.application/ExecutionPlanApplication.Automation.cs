@@ -71,8 +71,20 @@ public partial class ExecutionPlanApplication
             {
                 foreach (var pr in cardPrs.Where(pr => pr.Number is not null && SameRepository(pr.Repository, step.Repository!)))
                 {
-                    var link = links.FirstOrDefault(l => l.Kind == ExecutionLinkKind.PullRequest
-                                                         && l.PullRequestNumber == pr.Number && SameRepository(l.Repository ?? "", pr.Repository));
+                    var same = links.Where(l => l.Kind == ExecutionLinkKind.PullRequest
+                                                && l.PullRequestNumber == pr.Number && SameRepository(l.Repository ?? "", pr.Repository))
+                        .OrderBy(l => l.CreatedBy == SystemActor.Name ? 1 : 0).ThenBy(l => l.CreatedAt)
+                        .ToList();
+                    // Duplicata do mesmo PR (anexado ao mesmo tempo pela sincronização e por quem abriu): fica um só,
+                    // de preferência o de quem abriu; a cópia "aberta" não pode segurar a etapa para sempre.
+                    foreach (var duplicate in same.Skip(1))
+                    {
+                        _repository.RemoveLink(duplicate);
+                        links.Remove(duplicate);
+                        changed = true;
+                    }
+
+                    var link = same.FirstOrDefault();
                     if (link is null)
                     {
                         link = new ExecutionLink(p.Id, step.Key, pr.Url, $"#{pr.Number} {pr.Repository} → {pr.BaseBranch}", ExecutionLinkKind.PullRequest,
