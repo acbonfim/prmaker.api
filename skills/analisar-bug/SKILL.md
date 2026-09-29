@@ -63,6 +63,7 @@ bash $PLAN step <card> <key> completed                                # terminou
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN control <card>                                             # entre etapas: 0 segue, 10 pausado, 11 parar
 bash $PLAN wait <card>                                                # pausado: espera o "Continuar" da tela
+bash $PLAN watch <card>                                               # VIGIA em segundo plano: acorda voce quando algo muda no PRMake
 bash $PLAN ask <card> - <<< '[{"stepKey":"propor-solucoes","text":"...","options":[...]}]'  # pergunta
 bash $PLAN wait-answers <card>                                        # espera as respostas (tela ou terminal)
 bash $PLAN answer <card> <n> "resposta dada aqui no terminal"         # grava no PRMake (via claude)
@@ -97,6 +98,16 @@ Regras:
   **aguardando** (resposta/chamado/merge — nao mexa) e **perguntas sem resposta**.
 - **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
   (com o texto/arquivos prontos) e **siga com as outras etapas prontas** — o usuario conclui a dele na tela.
+- **Nunca fique parado esperando o PRMake sem o vigia.** O PRMake nao consegue chamar esta sessao; quem te
+  acorda e um comando rodando em segundo plano. Sempre que a sua vez for terminar com algo pendente de fora
+  (etapa do usuario, chamado, PR aguardando merge, perguntas, plano pausado), rode
+  `bash $PLAN watch <card>` **em segundo plano** (Bash com `run_in_background: true`) e so entao encerre a vez
+  dizendo o que esta aguardando. Quando o vigia terminar, a saida diz o que mudou (etapa concluida pelo
+  usuario, chamado resolvido, PR mesclado → etapa de PR concluida, respostas, pausa/continuar, plano
+  concluido/cancelado): rode `control` e **continue sozinho** com a proxima etapa pronta — sem pedir ao usuario
+  para escrever nada. Se ainda restar espera, rode o vigia de novo. Exit 11 = plano concluido/cancelado: faca o
+  relatorio final (passo 9) e pare. O usuario nao precisa clicar em nada nem avisar no chat.
+  (Se a sessao for fechada, o vigia morre junto — `/analisar-bug <card>` retoma depois.)
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
@@ -412,9 +423,11 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
 - Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
   link na etapa no PRMake") e siga com as outras etapas prontas.
-- Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta e **pare** — o
-  plano segue no PRMake e `/analisar-bug <card>` retoma depois. O plano de correcao **conclui sozinho** quando
-  todas as etapas terminam (PRs mesclados, chamados resolvidos).
+- Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
+  (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
+  O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
+  quando todas as etapas terminam (PRs mesclados, chamados resolvidos) — ai o vigia termina com exit 11 e voce
+  faz o relatorio final.
 
 ### 8b. A correcao nao resolveu — nova rodada no mesmo plano
 Se o usuario disser que a correcao nao resolveu (ou a validacao falhar), **nao crie outro plano**: acrescente

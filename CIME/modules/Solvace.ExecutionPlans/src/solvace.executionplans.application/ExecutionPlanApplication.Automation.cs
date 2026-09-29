@@ -14,8 +14,12 @@ public partial class ExecutionPlanApplication
     /// <summary>Autor das mudanças automáticas (sincronização do GitHub).</summary>
     private static readonly ExecutionActor SystemActor = new(null, "PRMake", false);
 
-    /// <summary>Intervalo mínimo entre sincronizações de PRs do mesmo plano (a do GitHub já tem cache de 60 s).</summary>
-    private static readonly TimeSpan PullRequestSyncInterval = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// Só contra rajadas (tela + skill + evento de tempo real no mesmo instante). O GitHub não é consultado a
+    /// cada sincronização: o módulo de PRs tem cache de 1 min por PR e lê do banco os já mesclados/fechados —
+    /// então um status gravado por outra tela (ou pelo vigia) aparece no plano na próxima leitura (0025).
+    /// </summary>
+    private static readonly TimeSpan PullRequestSyncInterval = TimeSpan.FromSeconds(8);
     private static readonly ConcurrentDictionary<Guid, DateTimeOffset> LastPullRequestSync = new();
 
     private record StepSnapshot(string Status, string? Reason);
