@@ -1,0 +1,132 @@
+using System.Text.RegularExpressions;
+
+namespace solvace.executionplans.domain.Entities;
+
+/// <summary>
+/// Uma etapa do plano de execução. Identificada pela <see cref="Key"/> (slug estável definido pela
+/// skill), o que torna os envios idempotentes: reenviar a mesma etapa atualiza em vez de duplicar.
+/// </summary>
+public partial class ExecutionStep
+{
+    public const int MaxKeyLength = 80;
+    public const int MaxTitleLength = 200;
+    public const int MaxTextLength = 20_000;
+    public const int MaxActivityLength = 500;
+    public const int MaxReasonLength = 1_000;
+
+    public Guid Id { get; private set; }
+    public Guid PlanId { get; private set; }
+    public string Key { get; private set; } = string.Empty;
+    public int Order { get; internal set; }
+    public string Title { get; private set; } = string.Empty;
+
+    /// <summary>O que a etapa vai fazer (markdown).</summary>
+    public string? Description { get; private set; }
+
+    public string Status { get; private set; } = ExecutionStatus.Pending;
+
+    /// <summary>Motivo do status (obrigatório em cancelada; mostrado no tooltip).</summary>
+    public string? StatusReason { get; private set; }
+    public string? StatusChangedBy { get; private set; }
+
+    /// <summary>O que a skill está fazendo agora nesta etapa (uma linha, atualizada ao vivo).</summary>
+    public string? Activity { get; private set; }
+
+    /// <summary>Onde parou — o que a skill precisa saber para retomar esta etapa.</summary>
+    public string? Checkpoint { get; private set; }
+
+    public DateTimeOffset? StartedAt { get; private set; }
+    public DateTimeOffset? FinishedAt { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    protected ExecutionStep() { }
+
+    internal ExecutionStep(Guid planId, string key, int order, string title, string? description, DateTimeOffset now)
+    {
+        Id = Guid.NewGuid();
+        PlanId = planId;
+        Key = NormalizeKey(key);
+        Order = order;
+        SetTitle(title);
+        SetDescription(description);
+        UpdatedAt = now;
+    }
+
+    public static string NormalizeKey(string? key)
+    {
+        var normalized = (key ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0)
+            throw new DomainException("A chave da etapa é obrigatória.");
+        if (normalized.Length > MaxKeyLength || !KeyPattern().IsMatch(normalized))
+            throw new DomainException($"Chave de etapa inválida: '{key}'. Use letras minúsculas, números, '-' ou '_' (até {MaxKeyLength}).");
+        return normalized;
+    }
+
+    internal void SetTitle(string? title)
+    {
+        var trimmed = (title ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            throw new DomainException("O título da etapa é obrigatório.");
+        Title = Truncate(trimmed, MaxTitleLength);
+    }
+
+    internal void SetDescription(string? description)
+    {
+        var trimmed = description?.Trim();
+        if (trimmed is { Length: > MaxTextLength })
+            throw new DomainException($"A descrição da etapa pode ter no máximo {MaxTextLength} caracteres.");
+        Description = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
+    internal void SetActivity(string? activity)
+    {
+        var line = activity?.Trim();
+        Activity = string.IsNullOrEmpty(line) ? null : Truncate(line, MaxActivityLength);
+    }
+
+    internal void SetCheckpoint(string? checkpoint)
+    {
+        var trimmed = checkpoint?.Trim();
+        if (trimmed is { Length: > MaxTextLength })
+            throw new DomainException($"O checkpoint pode ter no máximo {MaxTextLength} caracteres.");
+        Checkpoint = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
+    internal void ChangeStatus(string status, string? reason, string actor, DateTimeOffset now)
+    {
+        if (!ExecutionStatus.StepStatuses.Contains(status))
+            throw new DomainException($"Status de etapa inválido: '{status}'.");
+
+        var trimmedReason = reason?.Trim();
+        if (status == ExecutionStatus.Cancelled && string.IsNullOrEmpty(trimmedReason))
+            throw new DomainException("Informe o motivo do cancelamento da etapa.");
+
+        if (status == ExecutionStatus.Running)
+        {
+            StartedAt ??= now;
+            FinishedAt = null;
+        }
+        else if (ExecutionStatus.IsStepFinished(status))
+        {
+            FinishedAt = now;
+            // Terminou: a "atividade atual" deixa de fazer sentido (o histórico fica nos logs).
+            Activity = null;
+        }
+        else
+        {
+            FinishedAt = null;
+        }
+
+        Status = status;
+        StatusReason = string.IsNullOrEmpty(trimmedReason) ? null : Truncate(trimmedReason, MaxReasonLength);
+        StatusChangedBy = actor;
+        UpdatedAt = now;
+    }
+
+    internal void Touch(DateTimeOffset now) => UpdatedAt = now;
+
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9_-]*$")]
+    private static partial Regex KeyPattern();
+}

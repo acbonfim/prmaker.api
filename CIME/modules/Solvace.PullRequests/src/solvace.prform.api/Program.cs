@@ -19,6 +19,7 @@ using solvace.prform.application.Contracts;
 using solvace.vacations.application.Contracts;
 using solvace.vacations.infra.Extensions;
 using solvace.timeline.infra.Extensions;
+using solvace.executionplans.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -68,12 +69,13 @@ builder.Services
     .AddAzureModule(builder.Configuration)
     .AddAIModule(builder.Configuration)
     .AddVacationModule(builder.Configuration)
-    .AddTimelineModule(builder.Configuration);
+    .AddTimelineModule(builder.Configuration)
+    .AddExecutionPlanModule(builder.Configuration);
 
 
 
 
-// PostgreSQL (feature 0015): os 3 contextos do host (prform, vacations, timeline), cada um no seu
+// PostgreSQL (feature 0015): os contextos do host (prform, vacations, timeline, execution — 0023), cada um no seu
 // schema. Chave nova de propósito: a versão anterior (MySQL) lia "DefaultConnection", que continua
 // existindo para o rollback.
 var connString = builder.Configuration.GetConnectionString("PrformDatabase");

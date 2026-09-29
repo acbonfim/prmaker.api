@@ -97,6 +97,16 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Cime.Auth", "Cime.Auth", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cime.auth.api", "CIME\modules\Cime.Auth\src\cime.auth.api\cime.auth.api.csproj", "{A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5E}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solvace.ExecutionPlans", "Solvace.ExecutionPlans", "{5A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C60}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{6B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D70}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.executionplans.domain", "CIME\modules\Solvace.ExecutionPlans\src\solvace.executionplans.domain\solvace.executionplans.domain.csproj", "{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.executionplans.application", "CIME\modules\Solvace.ExecutionPlans\src\solvace.executionplans.application\solvace.executionplans.application.csproj", "{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.executionplans.infra", "CIME\modules\Solvace.ExecutionPlans\src\solvace.executionplans.infra\solvace.executionplans.infra.csproj", "{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -222,6 +232,18 @@ Global
 		{4D5E6F7A-8B9C-0D1E-2F3A-4B5C6D7E8F90}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4D5E6F7A-8B9C-0D1E-2F3A-4B5C6D7E8F90}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4D5E6F7A-8B9C-0D1E-2F3A-4B5C6D7E8F90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4030C68B-5873-4429-B142-3E6CE5C152A4} = {A3D55361-3A4F-408C-827C-9C6A18ED7053}
@@ -270,5 +292,10 @@ Global
 		{2B3C4D5E-6F7A-8B9C-0D1E-2F3A4B5C6D7E} = {1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D}
 		{3C4D5E6F-7A8B-9C0D-1E2F-3A4B5C6D7E8F} = {1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D}
 		{4D5E6F7A-8B9C-0D1E-2F3A-4B5C6D7E8F90} = {1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D}
+		{5A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C60} = {4030C68B-5873-4429-B142-3E6CE5C152A4}
+		{6B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D70} = {5A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C60}
+		{7C3D4E5F-6A7B-8C9D-0E1F-2A3B4C5D6E80} = {6B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D70}
+		{8D4E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F90} = {6B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D70}
+		{9E5F6A7B-8C9D-0E1F-2A3B-4C5D6E7F8AA0} = {6B2C3D4E-5F6A-7B8C-9D0E-1F2A3B4C5D70}
 	EndGlobalSection
 EndGlobal

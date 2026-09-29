@@ -1,0 +1,217 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
+using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Requests;
+using solvace.executionplans.domain.Responses;
+
+namespace solvace.prform.Controllers;
+
+/// <summary>
+/// Plano de execução das skills (feature 0023): a skill (Claude Code, com a api-key do usuário) cria o
+/// plano, manda o andamento em pedaços e os arquivos; a tela do card acompanha em tempo real e pode
+/// pausar, continuar ou cancelar.
+/// </summary>
+[ApiController]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
+public class ExecutionPlanController : ControllerBase
+{
+    /// <summary>Header que a skill manda para se identificar como executora (heartbeat, "retomar").</summary>
+    public const string ExecutorHeader = "X-Execution-Client";
+
+    private const long MaxUploadRequestBytes = ExecutionArtifact.MaxFileBytes + 1024 * 1024;
+
+    private static readonly FileExtensionContentTypeProvider ContentTypes = CreateContentTypes();
+
+    private readonly IExecutionPlanApplication _application;
+    private readonly solvace.timeline.application.Contracts.IUserRepository _users;
+
+    public ExecutionPlanController(
+        IExecutionPlanApplication application,
+        solvace.timeline.application.Contracts.IUserRepository users)
+    {
+        _application = application;
+        _users = users;
+    }
+
+    /// <summary>Cria o plano de um card (a skill chama no início da análise).</summary>
+    [HttpPost]
+    public Task<ActionResult<ExecutionPlanResponse>> Create([FromBody] CreateExecutionPlanRequest request, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.CreateAsync(request, await GetActorAsync(ct, executor: true), ct)));
+
+    /// <summary>Planos do card, do mais recente para o mais antigo (histórico).</summary>
+    [HttpGet("card/{cardNumber}")]
+    public Task<ActionResult<List<ExecutionPlanSummaryResponse>>> GetByCard([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionPlanSummaryResponse>>(async () => Ok(await _application.GetByCardAsync(cardNumber, ct)));
+
+    /// <summary>Plano mais recente do card, completo (204 quando o card não tem plano).</summary>
+    [HttpGet("card/{cardNumber}/current")]
+    public Task<ActionResult<ExecutionPlanResponse>> GetCurrent([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () =>
+        {
+            var plan = await _application.GetCurrentAsync(cardNumber, ct);
+            return plan is null ? NoContent() : Ok(plan);
+        });
+
+    [HttpGet("{id:guid}")]
+    public Task<ActionResult<ExecutionPlanResponse>> Get([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.GetAsync(id, ct)));
+
+    /// <summary>Define/refina as etapas (upsert pela chave, na ordem enviada).</summary>
+    [HttpPut("{id:guid}/steps")]
+    public Task<ActionResult<ExecutionPlanResponse>> UpsertSteps([FromRoute] Guid id, [FromBody] UpsertExecutionStepsRequest request, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.UpsertStepsAsync(id, request, await GetActorAsync(ct, executor: true), ct)));
+
+    /// <summary>Atualiza uma etapa (status, atividade atual, checkpoint...). Etapa nova é criada no fim.</summary>
+    [HttpPatch("{id:guid}/steps/{key}")]
+    public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () => Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct)));
+
+    /// <summary>O usuário cancela (pula) uma etapa que ainda não terminou; a skill pula na próxima checagem.</summary>
+    [HttpPost("{id:guid}/steps/{key}/cancel")]
+    public Task<ActionResult<ExecutionStepResponse>> CancelStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] CancelExecutionStepRequest request, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () => Ok(await _application.CancelStepAsync(id, key, request.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Pausar/continuar/cancelar (tela) ou retomar/concluir/falhar (skill, com o header de executora).</summary>
+    [HttpPost("{id:guid}/status")]
+    public Task<ActionResult<ExecutionPlanResponse>> ChangeStatus([FromRoute] Guid id, [FromBody] ChangeExecutionPlanStatusRequest request, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.ChangeStatusAsync(id, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Heartbeat da skill: devolve se ela segue (continue), espera (wait) ou para (stop).</summary>
+    [HttpPost("{id:guid}/control")]
+    public Task<ActionResult<ExecutionControlResponse>> Control([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionControlResponse>(async () => Ok(await _application.ControlAsync(id, ct)));
+
+    /// <summary>Lote de pedaços de andamento (o mesmo clientId não duplica).</summary>
+    [HttpPost("{id:guid}/logs")]
+    public Task<ActionResult<object>> AppendLogs([FromRoute] Guid id, [FromBody] AppendExecutionLogsRequest request, CancellationToken ct) =>
+        Run<object>(async () => Ok(new { appended = await _application.AppendLogsAsync(id, request, ct) }));
+
+    [HttpGet("{id:guid}/logs")]
+    public Task<ActionResult<List<ExecutionLogResponse>>> GetLogs([FromRoute] Guid id, [FromQuery] long afterId = 0,
+        [FromQuery] string? stepKey = null, [FromQuery] int limit = 500, CancellationToken ct = default) =>
+        Run<List<ExecutionLogResponse>>(async () => Ok(await _application.GetLogsAsync(id, afterId, stepKey, limit, ct)));
+
+    /// <summary>Envia um arquivo (multipart: file, kind, stepKey, description, name). Mesmo tipo+nome substitui.</summary>
+    [HttpPost("{id:guid}/artifacts")]
+    [RequestSizeLimit(MaxUploadRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadRequestBytes)]
+    public Task<ActionResult<ExecutionArtifactResponse>> UploadArtifact([FromRoute] Guid id, IFormFile? file,
+        [FromForm] string? kind, [FromForm] string? stepKey, [FromForm] string? description, [FromForm] string? name,
+        CancellationToken ct) =>
+        Run<ExecutionArtifactResponse>(async () =>
+        {
+            if (file is null || file.Length == 0)
+                return BadRequest(new { error = "Envie o arquivo no campo 'file'." });
+
+            var fileName = string.IsNullOrWhiteSpace(name) ? file.FileName : name;
+            using var buffer = new MemoryStream((int)Math.Min(file.Length, ExecutionArtifact.MaxFileBytes + 1));
+            await file.CopyToAsync(buffer, ct);
+
+            var upload = new ExecutionArtifactUpload(fileName, kind, stepKey, description, ResolveContentType(fileName, file.ContentType), buffer.ToArray());
+            return Ok(await _application.UploadArtifactAsync(id, upload, await GetActorAsync(ct, executor: IsExecutorRequest()), ct));
+        });
+
+    /// <summary>Conteúdo de um arquivo; <c>download=true</c> baixa com o nome original.</summary>
+    [HttpGet("{id:guid}/artifacts/{artifactId:guid}/content")]
+    public Task<ActionResult> GetArtifactContent([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromQuery] bool download = false, CancellationToken ct = default) =>
+        RunPlain(async () =>
+        {
+            var file = await _application.GetArtifactFileAsync(id, artifactId, ct);
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            if (download)
+                return File(file.Data, file.Artifact.ContentType, file.Artifact.Name);
+            Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(file.Artifact.Name)}";
+            return File(file.Data, file.Artifact.ContentType);
+        });
+
+    /// <summary>Todos os arquivos do plano num .zip (uma pasta por tipo).</summary>
+    [HttpGet("{id:guid}/artifacts/zip")]
+    public Task<ActionResult> DownloadZip([FromRoute] Guid id, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var (fileName, data) = await _application.BuildZipAsync(id, ct);
+            return File(data, "application/zip", fileName);
+        });
+
+    [HttpDelete("{id:guid}/artifacts/{artifactId:guid}")]
+    public Task<ActionResult> DeleteArtifact([FromRoute] Guid id, [FromRoute] Guid artifactId, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteArtifactAsync(id, artifactId, ct);
+            return NoContent();
+        });
+
+    private bool IsExecutorRequest() =>
+        string.Equals(Request.Headers[ExecutorHeader].ToString(), "skill", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<ExecutionActor> GetActorAsync(CancellationToken ct, bool executor)
+    {
+        var claim = User.FindFirst("ExternalId")?.Value;
+        Guid? userId = !string.IsNullOrEmpty(claim) && Guid.TryParse(claim, out var id) ? id : null;
+
+        string? name = null;
+        if (userId.HasValue)
+            name = await _users.GetFullNameAsync(userId.Value, ct);
+        name ??= User.FindFirst(ClaimTypes.Name)?.Value;
+
+        return new ExecutionActor(userId, string.IsNullOrWhiteSpace(name) ? "Usuário" : name.Trim(), executor);
+    }
+
+    private static string ResolveContentType(string fileName, string? declared)
+    {
+        if (ContentTypes.TryGetContentType(fileName, out var byExtension))
+            return byExtension;
+        return string.IsNullOrWhiteSpace(declared) ? "application/octet-stream" : declared;
+    }
+
+    private static FileExtensionContentTypeProvider CreateContentTypes()
+    {
+        var provider = new FileExtensionContentTypeProvider();
+        // Texto legível no visualizador (e baixado com a extensão original).
+        foreach (var ext in new[] { ".sql", ".sh", ".bash", ".py", ".ps1", ".cs", ".ts", ".log", ".tsv", ".yaml", ".yml" })
+            provider.Mappings[ext] = "text/plain; charset=utf-8";
+        provider.Mappings[".md"] = "text/markdown; charset=utf-8";
+        provider.Mappings[".txt"] = "text/plain; charset=utf-8";
+        provider.Mappings[".csv"] = "text/csv; charset=utf-8";
+        provider.Mappings[".json"] = "application/json; charset=utf-8";
+        return provider;
+    }
+
+    private async Task<ActionResult<T>> Run<T>(Func<Task<ActionResult>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception e) when (Map(e) is { } result)
+        {
+            return result;
+        }
+    }
+
+    private async Task<ActionResult> RunPlain(Func<Task<ActionResult>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception e) when (Map(e) is { } result)
+        {
+            return result;
+        }
+    }
+
+    private ActionResult? Map(Exception e) => e switch
+    {
+        DomainException => BadRequest(new { error = e.Message }),
+        ExecutionPlanNotFoundException => NotFound(new { error = e.Message }),
+        ExecutionPlanConcurrencyException => Conflict(new { error = "O plano foi alterado ao mesmo tempo por outra ação. Tente de novo." }),
+        _ => null
+    };
+}

@@ -1,5 +1,6 @@
 using Cime.BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
+using solvace.executionplans.infra.Contexts;
 using solvace.prform.Infra.Contexts;
 using solvace.timeline.infra.Contexts;
 using solvace.vacations.infra.Contexts;
@@ -8,7 +9,7 @@ namespace solvace.prform.api.Startup;
 
 /// <summary>
 /// Aplica as migrations dos contexts do host de forma segura para múltiplas instâncias.
-/// Os contexts (Default, Vacation, Timeline) ficam no mesmo database PostgreSQL, cada um no seu
+/// Os contexts (Default, Vacation, Timeline, ExecutionPlan) ficam no mesmo database PostgreSQL, cada um no seu
 /// schema (feature 0015); um único advisory lock (chave própria, diferente da auth) garante que
 /// apenas UMA instância migra por vez. Falha é fatal: se as migrations não aplicarem, o app não
 /// sobe e o Cloud Run mantém a revisão anterior.
@@ -40,6 +41,7 @@ public static class StartupMigrator
                 await MigrateAsync<DefaultContext>(sp, logger);
                 await MigrateAsync<VacationContext>(sp, logger);
                 await MigrateAsync<TimelineContext>(sp, logger);
+                await MigrateAsync<ExecutionPlanContext>(sp, logger);
             });
         }
         finally
