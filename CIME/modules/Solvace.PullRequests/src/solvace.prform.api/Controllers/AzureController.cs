@@ -76,6 +76,19 @@ public class AzureController : ControllerBase
     public Task<ActionResult<DevOpsActionResponse>> SetInitialEstimate(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.SetInitialEstimateAsync(id, cancellationToken), cancellationToken);
 
+    /// <summary>Opções de classificação (padrão ou as do "AI Configurations" do usuário) — feature 0028.</summary>
+    [HttpGet("actions/classifications")]
+    public async Task<ActionResult<IReadOnlyList<DevOpsClassificationPreset>>> GetClassifications(CancellationToken cancellationToken) =>
+        Ok(await _actionsService.GetClassificationPresetsAsync(cancellationToken));
+
+    /// <summary>
+    /// Classifica o card (Resolution Type · General Classification · Classification) pela integração do Azure do
+    /// usuário e registra na Timeline — body { preset } ou os três valores (feature 0028).
+    /// </summary>
+    [HttpPost("card/{id}/actions/classify")]
+    public Task<ActionResult<DevOpsActionResponse>> Classify(string id, [FromBody] ClassifyCardRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
+        RunActionAsync(id, timeline, () => _actionsService.ClassifyAsync(id, request, cancellationToken), cancellationToken);
+
     /// <summary>Zera o Remaining Work do card.</summary>
     [HttpPost("card/{id}/actions/zero-remaining")]
     public Task<ActionResult<DevOpsActionResponse>> ZeroRemaining(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>

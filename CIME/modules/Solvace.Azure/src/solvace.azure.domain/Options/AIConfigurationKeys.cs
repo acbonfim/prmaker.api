@@ -17,4 +17,10 @@ public static class AIConfigurationKeys
     public const string BugInitialOriginalEstimate = "BugInitialOriginalEstimate";
     public const string BugInitialRemainingWork = "BugInitialRemainingWork";
     public const string BugInitialCompletedWork = "BugInitialCompletedWork";
+
+    /// <summary>
+    /// Opções de classificação do card (JSON: [{key,label,resolutionType,generalClassification,classification,pattern}]).
+    /// Vazio = as opções padrão, tiradas das resoluções reais (feature 0028).
+    /// </summary>
+    public const string BugClassificationPresets = "BugClassificationPresets";
 }

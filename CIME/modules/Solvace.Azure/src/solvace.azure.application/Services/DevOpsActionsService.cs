@@ -29,6 +29,34 @@ public class DevOpsActionsService : IDevOpsActionsService
     private const string FieldOriginalEstimate = "Microsoft.VSTS.Scheduling.OriginalEstimate";
     private const string FieldRemainingWork = "Microsoft.VSTS.Scheduling.RemainingWork";
     private const string FieldCompletedWork = "Microsoft.VSTS.Scheduling.CompletedWork";
+    private const string FieldResolutionType = "Custom.ResolutionType";
+    private const string FieldGeneralClassification = "Custom.GeneralClassification";
+    private const string FieldClassification = "Custom.Classification";
+
+    /// <summary>
+    /// Opções padrão de classificação — as combinações usadas pelo time em 300 bugs resolvidos (estudo da 0027).
+    /// O "AI Configurations" (BugClassificationPresets) pode substituí-las por usuário/global.
+    /// </summary>
+    private static readonly IReadOnlyList<DevOpsClassificationPreset> DefaultClassificationPresets =
+    [
+        Preset("code-fix", "Correção de código", "Code Fix", "Code", "Code Required - Code Defect", "A"),
+        Preset("code-data-fix", "Código + correção de dados causada pelo defeito", "Code Fix", "Code", "Code Required - Data Fix / Request - Caused by Defect", "A+B"),
+        Preset("script-defect", "Script de dados (causa: defeito)", "Configuration (Script)", "Code", "Code Required - Data Fix / Request - Caused by Defect", "B"),
+        Preset("script-user-action", "Script de dados (causa: ação do usuário)", "Configuration (Script)", "No Code", "Code Required - Data Fix / Request - Caused by User Action", "B"),
+        Preset("script-environment", "Script de ambiente/plataforma", "Configuration (Script)", "No Code", "No Code Required - Environment / Platform", "B/C"),
+        Preset("configuration", "Configuração de ambiente/plataforma", "Configuration", "No Code", "No Code Required - Environment / Platform", "C/D"),
+        Preset("configuration-change-request", "Configuração a pedido (change request)", "Configuration", "No Code", "No Code Required - Not a Defect - Change Request / Missed Requirement", "D"),
+        Preset("user-education", "Orientação ao cliente (não é defeito)", "User Education", "No Code", "No Code Required - Not a Defect - Training", "E"),
+        Preset("user-education-change-request", "Orientação + pedido de mudança", "User Education", "No Code", "No Code Required - Not a Defect - Change Request / Missed Requirement", "E/F"),
+        Preset("change-request", "Change request", "Change Request", "No Code", "No Code Required - Not a Defect - Change Request / Missed Requirement", "F"),
+        Preset("not-mapped-requirement", "Requisito não mapeado", "Not Mapped Requirement", "No Code", "No Code Required - Not a Defect - Change Request / Missed Requirement", "F"),
+        Preset("cannot-reproduce", "Não reproduz", "Cannot reproduce", "No Code", "No Code Required - Environment / Platform", "G"),
+        Preset("no-user-feedback", "Sem retorno do cliente", "Cannot reproduce", "No user feedback", "No user feedback - Pending information", "G"),
+        Preset("duplicated", "Duplicado", "Duplicated", "Duplicated", "Ticket duplicated", "H")
+    ];
+
+    private static DevOpsClassificationPreset Preset(string key, string label, string resolutionType, string general, string classification, string pattern) =>
+        new() { Key = key, Label = label, ResolutionType = resolutionType, GeneralClassification = general, Classification = classification, Pattern = pattern };
 
     private readonly IAzureService _azureService;
     private readonly IPluginConfigurationResolver _configurationResolver;
@@ -158,6 +186,54 @@ public class DevOpsActionsService : IDevOpsActionsService
 
         var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object> { [FieldRemainingWork] = 0 }, cancellationToken);
         return new DevOpsActionResponse { Rev = rev, Message = $"Remaining Work zerado (era {Format(remaining)})" };
+    }
+
+    public async Task<IReadOnlyList<DevOpsClassificationPreset>> GetClassificationPresetsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var config = await _configurationResolver.GetEffectiveConfigurationAsync(AIConfigurationKeys.PluginName, cancellationToken);
+            var json = config.GetConfigurationValueOrDefault(AIConfigurationKeys.BugClassificationPresets, string.Empty);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var custom = System.Text.Json.JsonSerializer.Deserialize<List<DevOpsClassificationPreset>>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var valid = custom?.Where(p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.ResolutionType)
+                                               && !string.IsNullOrWhiteSpace(p.GeneralClassification) && !string.IsNullOrWhiteSpace(p.Classification)).ToList();
+                if (valid is { Count: > 0 })
+                    return valid;
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.Text.Json.JsonException)
+        {
+            // Plugin ausente ou JSON inválido: usa as opções padrão.
+        }
+        return DefaultClassificationPresets;
+    }
+
+    public async Task<DevOpsActionResponse> ClassifyAsync(string cardNumber, ClassifyCardRequest request, CancellationToken cancellationToken = default)
+    {
+        string? resolution = request.ResolutionType?.Trim(), general = request.GeneralClassification?.Trim(), classification = request.Classification?.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Preset))
+        {
+            var presets = await GetClassificationPresetsAsync(cancellationToken);
+            var preset = presets.FirstOrDefault(p => string.Equals(p.Key, request.Preset.Trim(), StringComparison.OrdinalIgnoreCase))
+                         ?? throw new DevOpsActionException(400, $"Classificação desconhecida: '{request.Preset}'. Opções: {string.Join(", ", presets.Select(p => p.Key))}");
+            resolution = preset.ResolutionType;
+            general = preset.GeneralClassification;
+            classification = preset.Classification;
+        }
+        if (string.IsNullOrWhiteSpace(resolution) || string.IsNullOrWhiteSpace(general) || string.IsNullOrWhiteSpace(classification))
+            throw new DevOpsActionException(400, "Informe o preset ou os três valores: resolutionType, generalClassification e classification");
+
+        await LoadBugAsync(cardNumber, cancellationToken);
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object>
+        {
+            [FieldResolutionType] = resolution,
+            [FieldGeneralClassification] = general,
+            [FieldClassification] = classification
+        }, cancellationToken);
+        return new DevOpsActionResponse { Rev = rev, Message = $"Classificação do card: {resolution} · {general} · {classification}" };
     }
 
     public async Task<PullRequestRegisterResponse> SaveSummaryAsync(string cardNumber, SaveSummaryRequest request, CancellationToken cancellationToken = default)
