@@ -2,7 +2,7 @@
 
 | Fase | Descrição | Status | Commits |
 |---|---|---|---|
-| S1 | Skill: `pr-text`/`save-pr-text`, PR no layout padrão salvo no card; tratamentos sem código; `prmake-fetch.sh` com branch `-` | ✅ concluída | ver log |
+| S1 | Skill analisar-bug: `pr-text`/`save-pr-text`, PR no layout padrão salvo no card; tratamentos sem código (plano sem código/PR) | ✅ concluída | ver log |
 | F1 | Front: sem botão Descrição; cartão do topo com o resumo do card | ✅ concluída | ver log |
 | T1 | Teste local | ✅ concluída | — |
 | Q1 | PRs e deploy | ⬜ pendente | — |

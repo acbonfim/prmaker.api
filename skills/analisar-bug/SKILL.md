@@ -391,11 +391,23 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | User education (`orientar-cliente`) | `task` | **user** | voce redige a orientacao ao cliente (o que aconteceu, o que fazer, por que nao e bug) em `analises/orientacao-cliente.md` (PT/EN se o card for em ingles); o usuario envia e conclui |
 | Validar com o cliente/ambiente | `validation` | user | depois da configuracao/orientacao/script, quando fizer sentido |
-| Registrar no card (RCA, resumo, campos) — **sem codigo** | `task` | claude | `pr-text <card> <repo> -` (branch `-` = sem diff) + `save-pr-text` com o texto no layout padrao descrevendo o tratamento (dados/configuracao/orientacao); depois `gerar-prmake` sem PR para RCA no DevOps, resumo e campos — sem dizer que houve correcao de codigo |
 | Gerar PRMake (RCA no DevOps, resumo, campos) — **com codigo** | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA ja gerados e salvos na etapa de PR (nao gere de novo) |
 
-Sem codigo, o plano nao tem etapas de PR e **conclui quando as etapas terminam** (script resolvido, configuracao
-e orientacao concluidas pelo usuario, registro no card feito).
+**Tratamento sem codigo** (o plano e dinamico — monte so o que o caso pede): quando a solucao e user education,
+configuracao direto na tela do sistema ou algo do tipo, **nao crie nem sugira** etapas de correcao de codigo,
+branches, PRs, "Gerar PRMake", chamados ou scripts — a menos que o caso realmente precise (ex.: so um script de
+dados → so a etapa de chamado). O plano pode ter apenas, por exemplo:
+
+```json
+[{"key":"configurar-permissao","title":"Ajustar a permissao do perfil no sistema","kind":"task","executor":"user",
+  "description":"Passo a passo em analises/configuracao.md"},
+ {"key":"orientar-cliente","title":"Orientar o cliente (user education)","kind":"task","executor":"user",
+  "description":"Texto pronto em analises/orientacao-cliente.md","dependsOn":["configurar-permissao"]},
+ {"key":"validar-cliente","title":"Confirmar com o cliente","kind":"validation","executor":"user","dependsOn":["orientar-cliente"]}]
+```
+
+Nesses casos o seu trabalho e redigir o passo a passo / a orientacao (e salvar com `sync`), deixar o vigia rodando
+e acompanhar: o plano **conclui quando as etapas terminam**, sem PR.
 
 **Fluxo de branches** (branch sempre `hotfix/<card>` — **sem** `AB#`; `AB#<card> <resumo>` vai na mensagem do
 commit e no titulo do PR). Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin
