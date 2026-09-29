@@ -37,10 +37,25 @@ public class ExecutionPlan
 
     public List<ExecutionStep> Steps { get; private set; } = [];
 
+    /// <summary>analysis | correction (0024).</summary>
+    public string Phase { get; private set; } = ExecutionPhase.Analysis;
+
+    /// <summary>Plano de análise que originou este plano de correção (0024).</summary>
+    public Guid? ParentPlanId { get; private set; }
+
     protected ExecutionPlan() { }
 
-    public ExecutionPlan(string cardNumber, string kind, string title, string? summary, Guid? userId, string userName, DateTimeOffset now)
+    public ExecutionPlan(string cardNumber, string kind, string title, string? summary, Guid? userId, string userName, DateTimeOffset now,
+        string? phase = null, Guid? parentPlanId = null)
     {
+        var normalizedPhase = string.IsNullOrWhiteSpace(phase) ? ExecutionPhase.Analysis : phase.Trim().ToLowerInvariant();
+        if (!ExecutionPhase.All.Contains(normalizedPhase))
+            throw new DomainException($"Fase inválida: '{phase}' (use analysis ou correction).");
+        if (normalizedPhase == ExecutionPhase.Correction && parentPlanId is null)
+            throw new DomainException("O plano de correção precisa do plano de análise de origem (parentPlanId).");
+        Phase = normalizedPhase;
+        ParentPlanId = normalizedPhase == ExecutionPhase.Correction ? parentPlanId : null;
+
         if (string.IsNullOrWhiteSpace(cardNumber))
             throw new DomainException("O número do card é obrigatório.");
         if (string.IsNullOrWhiteSpace(userName))
@@ -106,7 +121,8 @@ public class ExecutionPlan
             var step = FindStep(key);
             if (step is null)
             {
-                Steps.Add(new ExecutionStep(Id, key, order, def.Title, def.Description, now));
+                step = new ExecutionStep(Id, key, order, def.Title, def.Description, now);
+                Steps.Add(step);
             }
             else
             {
@@ -116,6 +132,7 @@ public class ExecutionPlan
                     step.SetDescription(def.Description);
                 step.Touch(now);
             }
+            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn);
         }
 
         foreach (var orphan in Steps.Where(s => !seen.Contains(s.Key)).OrderBy(s => s.Order).ToList())
@@ -193,6 +210,98 @@ public class ExecutionPlan
             step.SetActivity(firstLine);
     }
 
+    /// <summary>O usuário começa uma etapa pela tela (típico das etapas executor=user) — 0024.</summary>
+    public ExecutionStep StartStepByUser(string key, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (ExecutionStatus.IsStepFinished(step.Status))
+            throw new DomainException("Esta etapa já terminou.");
+        step.ChangeStatus(ExecutionStatus.Running, null, actor, now);
+        if (Status is ExecutionStatus.Pending or ExecutionStatus.Failed)
+            SetPlanStatus(ExecutionStatus.Running, null, actor, now);
+        Touch(now, fromExecutor: false);
+        return step;
+    }
+
+    /// <summary>O usuário conclui uma etapa pela tela (ex.: abriu o chamado, validou em QA) — 0024.</summary>
+    public ExecutionStep CompleteStepByUser(string key, string? reason, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (step.Status == ExecutionStatus.Completed)
+            throw new DomainException("Esta etapa já foi concluída.");
+        step.ChangeStatus(ExecutionStatus.Completed, string.IsNullOrWhiteSpace(reason) ? null : reason, actor, now);
+        Touch(now, fromExecutor: false);
+        return step;
+    }
+
+    /// <summary>Etapa passa a aguardar algo externo (resposta, chamado, merge); o plano segue — 0024.</summary>
+    public ExecutionStep SetStepWaiting(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (ExecutionStatus.IsStepFinished(step.Status))
+            return step;
+        step.ChangeStatus(ExecutionStatus.Waiting, reason, actor, now);
+        if (Status is ExecutionStatus.Pending or ExecutionStatus.Failed)
+            SetPlanStatus(ExecutionStatus.Running, null, actor, now);
+        Touch(now, fromExecutor);
+        return step;
+    }
+
+    /// <summary>O que a etapa esperava chegou (ex.: todas as perguntas respondidas): volta a "em andamento".</summary>
+    public ExecutionStep? ResumeStepFromWait(string key, string actor, DateTimeOffset now, bool fromExecutor)
+    {
+        var step = FindStep(ExecutionStep.NormalizeKey(key));
+        if (step is null || step.Status != ExecutionStatus.Waiting)
+            return null;
+        step.ChangeStatus(ExecutionStatus.Running, null, actor, now);
+        Touch(now, fromExecutor);
+        return step;
+    }
+
+    /// <summary>
+    /// Recalcula a etapa pelos chamados que a bloqueiam (0024): algum aberto → aguardando; o mais recente
+    /// resolvido → concluída; só fechados sem resolução → aguardando um novo chamado.
+    /// </summary>
+    public ExecutionStep? ApplyTicketState(string key, IReadOnlyCollection<ExecutionLink> blockingTickets, string actor, DateTimeOffset now, bool fromExecutor)
+    {
+        var step = FindStep(ExecutionStep.NormalizeKey(key));
+        if (step is null || Status == ExecutionStatus.Cancelled || blockingTickets.Count == 0)
+            return null;
+        if (step.Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled)
+            return null;
+
+        var open = blockingTickets.Where(t => t.Status == ExecutionLinkStatus.Open).ToList();
+        if (open.Count > 0)
+        {
+            var label = open.Count == 1 ? $"o chamado {open[0].DisplayName}" : $"{open.Count} chamados";
+            return SetStepWaiting(key, $"Aguardando {label}", actor, now, fromExecutor);
+        }
+
+        var latest = blockingTickets.OrderByDescending(t => t.CreatedAt).First();
+        if (latest.Status == ExecutionLinkStatus.Resolved)
+        {
+            step.ChangeStatus(ExecutionStatus.Completed, $"Chamado {latest.DisplayName} resolvido", actor, now);
+            Touch(now, fromExecutor);
+            return step;
+        }
+
+        return SetStepWaiting(key, $"Chamado {latest.DisplayName} fechado sem resolução — abra outro chamado ou conclua a etapa", actor, now, fromExecutor);
+    }
+
+    /// <summary>Etapas prontas para começar: pendentes com todas as dependências terminadas.</summary>
+    public IEnumerable<ExecutionStep> ReadySteps() =>
+        Steps.Where(s => s.Status == ExecutionStatus.Pending && s.DependsOn.All(d =>
+        {
+            var dep = FindStep(d);
+            return dep is null || dep.Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled;
+        })).OrderBy(s => s.Order);
+
+    private ExecutionStep RequireStep(string key) =>
+        FindStep(ExecutionStep.NormalizeKey(key)) ?? throw new DomainException("Etapa não encontrada.");
+
     /// <summary>O usuário cancela (pula) uma etapa que ainda não terminou.</summary>
     public ExecutionStep CancelStep(string key, string reason, string actor, DateTimeOffset now)
     {
@@ -244,12 +353,12 @@ public class ExecutionPlan
             case ExecutionStatus.Completed:
                 foreach (var step in Steps.Where(s => s.Status == ExecutionStatus.Running))
                     step.ChangeStatus(ExecutionStatus.Completed, null, actor, now);
-                foreach (var step in Steps.Where(s => s.Status == ExecutionStatus.Pending))
+                foreach (var step in Steps.Where(s => s.Status is ExecutionStatus.Pending or ExecutionStatus.Waiting))
                     step.ChangeStatus(ExecutionStatus.Cancelled, "Não executada", actor, now);
                 break;
 
             case ExecutionStatus.Failed:
-                foreach (var step in Steps.Where(s => s.Status == ExecutionStatus.Running))
+                foreach (var step in Steps.Where(s => s.Status is ExecutionStatus.Running or ExecutionStatus.Waiting))
                     step.ChangeStatus(ExecutionStatus.Failed, reason, actor, now);
                 break;
         }

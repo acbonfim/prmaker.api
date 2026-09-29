@@ -20,5 +20,7 @@ public static class ExecutionPlanRealTimeEvents
         public const string Log = "log";
         public const string Status = "status";
         public const string Artifact = "artifact";
+        public const string Question = "question";
+        public const string Link = "link";
     }
 }

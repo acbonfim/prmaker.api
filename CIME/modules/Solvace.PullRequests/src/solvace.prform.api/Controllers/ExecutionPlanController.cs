@@ -77,6 +77,48 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<ExecutionStepResponse>> CancelStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] CancelExecutionStepRequest request, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () => Ok(await _application.CancelStepAsync(id, key, request.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
+    /// <summary>O usuário começa uma etapa pela tela (típico das etapas executor=user) — 0024.</summary>
+    [HttpPost("{id:guid}/steps/{key}/start")]
+    public Task<ActionResult<ExecutionStepResponse>> StartStep([FromRoute] Guid id, [FromRoute] string key, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () => Ok(await _application.StartStepAsync(id, key, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>O usuário conclui uma etapa pela tela (ex.: abriu o chamado, validou em QA) — 0024.</summary>
+    [HttpPost("{id:guid}/steps/{key}/complete")]
+    public Task<ActionResult<ExecutionStepResponse>> CompleteStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] ExecutionStepActionRequest? request, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () => Ok(await _application.CompleteStepAsync(id, key, request?.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>A skill pergunta; a etapa ligada fica "aguardando" até responderem (tela ou terminal) — 0024.</summary>
+    [HttpPost("{id:guid}/questions")]
+    public Task<ActionResult<List<ExecutionQuestionResponse>>> Ask([FromRoute] Guid id, [FromBody] AskExecutionQuestionsRequest request, CancellationToken ct) =>
+        Run<List<ExecutionQuestionResponse>>(async () => Ok(await _application.AskAsync(id, request, await GetActorAsync(ct, executor: true), ct)));
+
+    /// <summary>Resposta pela tela (via prmake) ou pela skill com o header de executora (via claude).</summary>
+    [HttpPost("{id:guid}/questions/{questionId:guid}/answer")]
+    public Task<ActionResult<ExecutionQuestionResponse>> Answer([FromRoute] Guid id, [FromRoute] Guid questionId, [FromBody] AnswerExecutionQuestionRequest request, CancellationToken ct) =>
+        Run<ExecutionQuestionResponse>(async () => Ok(await _application.AnswerAsync(id, questionId, request.Answer, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpPost("{id:guid}/questions/{questionId:guid}/cancel")]
+    public Task<ActionResult<ExecutionQuestionResponse>> CancelQuestion([FromRoute] Guid id, [FromRoute] Guid questionId, CancellationToken ct) =>
+        Run<ExecutionQuestionResponse>(async () => Ok(await _application.CancelQuestionAsync(id, questionId, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Anexa um link à etapa (chamado, PR, documento). Chamado com blocksStep deixa a etapa aguardando — 0024.</summary>
+    [HttpPost("{id:guid}/steps/{key}/links")]
+    public Task<ActionResult<ExecutionLinkResponse>> AddLink([FromRoute] Guid id, [FromRoute] string key, [FromBody] AddExecutionLinkRequest request, CancellationToken ct) =>
+        Run<ExecutionLinkResponse>(async () => Ok(await _application.AddLinkAsync(id, key, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Chamado: o usuário marca aberto/resolvido/fechado (o PRMake não lê o Freshservice).</summary>
+    [HttpPatch("{id:guid}/links/{linkId:guid}")]
+    public Task<ActionResult<ExecutionLinkResponse>> UpdateLink([FromRoute] Guid id, [FromRoute] Guid linkId, [FromBody] UpdateExecutionLinkRequest request, CancellationToken ct) =>
+        Run<ExecutionLinkResponse>(async () => Ok(await _application.UpdateLinkAsync(id, linkId, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpDelete("{id:guid}/links/{linkId:guid}")]
+    public Task<ActionResult> DeleteLink([FromRoute] Guid id, [FromRoute] Guid linkId, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteLinkAsync(id, linkId, await GetActorAsync(ct, executor: IsExecutorRequest()), ct);
+            return NoContent();
+        });
+
     /// <summary>Pausar/continuar/cancelar (tela) ou retomar/concluir/falhar (skill, com o header de executora).</summary>
     [HttpPost("{id:guid}/status")]
     public Task<ActionResult<ExecutionPlanResponse>> ChangeStatus([FromRoute] Guid id, [FromBody] ChangeExecutionPlanStatusRequest request, CancellationToken ct) =>

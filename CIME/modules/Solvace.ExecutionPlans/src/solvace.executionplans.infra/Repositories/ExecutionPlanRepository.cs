@@ -112,6 +112,24 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
             _context.Artifacts.Remove(artifact);
     }
 
+    public void AddQuestions(IEnumerable<ExecutionQuestion> questions) => _context.Questions.AddRange(questions);
+
+    public Task<List<ExecutionQuestion>> GetQuestionsAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.Questions.Where(q => q.PlanId == planId).OrderBy(q => q.CreatedAt).ThenBy(q => q.Order).ToListAsync(cancellationToken);
+
+    public Task<ExecutionQuestion?> GetQuestionAsync(Guid planId, Guid questionId, CancellationToken cancellationToken) =>
+        _context.Questions.FirstOrDefaultAsync(q => q.PlanId == planId && q.Id == questionId, cancellationToken);
+
+    public void AddLink(ExecutionLink link) => _context.Links.Add(link);
+
+    public void RemoveLink(ExecutionLink link) => _context.Links.Remove(link);
+
+    public Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.Links.Where(l => l.PlanId == planId).OrderByDescending(l => l.CreatedAt).ToListAsync(cancellationToken);
+
+    public Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken) =>
+        _context.Links.FirstOrDefaultAsync(l => l.PlanId == planId && l.Id == linkId, cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

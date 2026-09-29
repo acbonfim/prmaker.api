@@ -39,6 +39,18 @@ public partial class ExecutionStep
     public DateTimeOffset? FinishedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>Quem executa: claude | user (0024).</summary>
+    public string Executor { get; private set; } = ExecutionExecutor.Claude;
+
+    /// <summary>task | code | pr | ticket | question | validation (0024).</summary>
+    public string Kind { get; private set; } = ExecutionStepKind.Task;
+
+    /// <summary>Repositório (etapas de código/PR — uma etapa por repositório).</summary>
+    public string? Repository { get; private set; }
+
+    /// <summary>Keys das etapas que precisam terminar antes desta.</summary>
+    public List<string> DependsOn { get; private set; } = [];
+
     protected ExecutionStep() { }
 
     internal ExecutionStep(Guid planId, string key, int order, string title, string? description, DateTimeOffset now)
@@ -78,6 +90,37 @@ public partial class ExecutionStep
         Description = string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
+    /// <summary>Dono, tipo, repositório e dependências (0024). Null = mantém o atual.</summary>
+    internal void SetShape(string? executor, string? kind, string? repository, IEnumerable<string>? dependsOn)
+    {
+        if (executor is not null)
+        {
+            var e = executor.Trim().ToLowerInvariant();
+            if (!ExecutionExecutor.All.Contains(e))
+                throw new DomainException($"Executor inválido: '{executor}' (use claude ou user).");
+            Executor = e;
+        }
+        if (kind is not null)
+        {
+            var k = kind.Trim().ToLowerInvariant();
+            if (!ExecutionStepKind.All.Contains(k))
+                throw new DomainException($"Tipo de etapa inválido: '{kind}'.");
+            Kind = k;
+        }
+        if (repository is not null)
+        {
+            var r = repository.Trim();
+            Repository = r.Length == 0 ? null : r.Length <= 200 ? r : r[..200];
+        }
+        if (dependsOn is not null)
+        {
+            var deps = dependsOn.Select(NormalizeKey).Distinct().ToList();
+            if (deps.Contains(Key))
+                throw new DomainException($"A etapa '{Key}' não pode depender dela mesma.");
+            DependsOn = deps;
+        }
+    }
+
     internal void SetActivity(string? activity)
     {
         var line = activity?.Trim();
@@ -101,7 +144,7 @@ public partial class ExecutionStep
         if (status == ExecutionStatus.Cancelled && string.IsNullOrEmpty(trimmedReason))
             throw new DomainException("Informe o motivo do cancelamento da etapa.");
 
-        if (status == ExecutionStatus.Running)
+        if (status is ExecutionStatus.Running or ExecutionStatus.Waiting)
         {
             StartedAt ??= now;
             FinishedAt = null;

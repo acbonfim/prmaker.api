@@ -28,7 +28,19 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionPlanResponse> CreateAsync(CreateExecutionPlanRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var plan = new ExecutionPlan(request.CardNumber, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now);
+        if (request.ParentPlanId is { } parentId)
+        {
+            // Plano de correção: nasce de um plano de análise do mesmo card.
+            var parent = await _repository.GetPlanWithStepsAsync(parentId, cancellationToken)
+                         ?? throw new DomainException("Plano de análise de origem não encontrado.");
+            if (!string.Equals(parent.CardNumber, request.CardNumber?.Trim(), StringComparison.Ordinal))
+                throw new DomainException("O plano de origem é de outro card.");
+            if (parent.Phase != ExecutionPhase.Analysis)
+                throw new DomainException("O plano de origem precisa ser um plano de análise.");
+            _repository.ClearTracking();
+        }
+        var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
+            request.Phase, request.ParentPlanId);
         if (request.Steps.Count > 0)
             plan.UpsertSteps(request.Steps, now);
 
@@ -111,9 +123,16 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
             _ => "continue"
         };
 
+        var openQuestions = (await _repository.GetQuestionsAsync(plan.Id, cancellationToken))
+            .Count(q => q.Status == ExecutionQuestionStatus.Open);
+
         // Sem evento de tempo real: o heartbeat é frequente e a tela calcula "sem sinal" sozinha.
         return new ExecutionControlResponse
         {
+            ReadySteps = plan.ReadySteps().Select(s => s.Key).ToList(),
+            WaitingSteps = plan.Steps.Where(s => s.Status == ExecutionStatus.Waiting).OrderBy(s => s.Order).Select(s => s.Key).ToList(),
+            Steps = plan.Steps.OrderBy(s => s.Order).Select(s => new ExecutionControlStep(s.Key, s.Status, s.Executor)).ToList(),
+            OpenQuestions = openQuestions,
             PlanId = plan.Id,
             Status = plan.Status,
             StatusReason = plan.StatusReason,
@@ -125,6 +144,192 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
                 .Select(s => s.Key)
                 .ToList()
         };
+    }
+
+    // ── 0024: ações do usuário ────────────────────────────────────────────────────────────────────
+
+    public async Task<ExecutionStepResponse> StartStepAsync(Guid planId, string stepKey, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionStep? step = null;
+        var plan = await MutateAsync(planId, p => { step = p.StartStepByUser(stepKey, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        return step.ToResponse();
+    }
+
+    public async Task<ExecutionStepResponse> CompleteStepAsync(Guid planId, string stepKey, string? reason, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionStep? step = null;
+        var plan = await MutateAsync(planId, p =>
+        {
+            var why = string.IsNullOrWhiteSpace(reason) ? $"Concluída por {actor.Name}" : $"{reason.Trim()} — {actor.Name}";
+            step = p.CompleteStepByUser(stepKey, why, actor.Name, DateTimeOffset.UtcNow);
+        }, cancellationToken);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        return step.ToResponse();
+    }
+
+    // ── 0024: perguntas ───────────────────────────────────────────────────────────────────────────
+
+    public async Task<List<ExecutionQuestionResponse>> AskAsync(Guid planId, AskExecutionQuestionsRequest request, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (request.Questions.Count == 0)
+            throw new DomainException("Informe ao menos uma pergunta.");
+        if (request.Questions.Count > 20)
+            throw new DomainException("No máximo 20 perguntas por vez.");
+
+        List<ExecutionQuestion> created = [];
+        var plan = await MutateAsync(planId, async p =>
+        {
+            EnsureAcceptsChanges(p);
+            var now = DateTimeOffset.UtcNow;
+            var existing = await _repository.GetQuestionsAsync(p.Id, cancellationToken);
+            var order = existing.Count;
+            created = request.Questions
+                .Select(q => new ExecutionQuestion(p.Id, q.StepKey, ++order, q.Text, q.Options, q.AllowFreeText, actor.Name, now))
+                .ToList();
+            foreach (var key in created.Where(q => q.StepKey is not null).Select(q => q.StepKey!).Distinct())
+            {
+                if (!p.Steps.Any(s => s.Key == key))
+                    throw new DomainException($"Etapa não encontrada: '{key}'.");
+                var open = existing.Count(q => q.StepKey == key && q.Status == ExecutionQuestionStatus.Open) + created.Count(q => q.StepKey == key);
+                p.SetStepWaiting(key, open == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {open} respostas do usuário", actor.Name, now, actor.IsExecutor);
+            }
+            _repository.AddQuestions(created);
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, created.FirstOrDefault()?.StepKey, cancellationToken);
+        return created.Select(q => q.ToResponse()).ToList();
+    }
+
+    public async Task<ExecutionQuestionResponse> AnswerAsync(Guid planId, Guid questionId, string answer, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionQuestion? question = null;
+        var plan = await MutateAsync(planId, async p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            question = await _repository.GetQuestionAsync(p.Id, questionId, cancellationToken)
+                       ?? throw new ExecutionPlanNotFoundException("Pergunta não encontrada.");
+            question.AnswerWith(answer, actor.Name, actor.IsExecutor, now);
+            await ResumeIfNoOpenQuestionsAsync(p, question.StepKey, questionId, actor, now, cancellationToken);
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
+        return question.ToResponse();
+    }
+
+    public async Task<ExecutionQuestionResponse> CancelQuestionAsync(Guid planId, Guid questionId, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionQuestion? question = null;
+        var plan = await MutateAsync(planId, async p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            question = await _repository.GetQuestionAsync(p.Id, questionId, cancellationToken)
+                       ?? throw new ExecutionPlanNotFoundException("Pergunta não encontrada.");
+            question.Cancel();
+            await ResumeIfNoOpenQuestionsAsync(p, question.StepKey, questionId, actor, now, cancellationToken);
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
+        return question.ToResponse();
+    }
+
+    /// <summary>Última pergunta da etapa respondida/cancelada: a etapa sai de "aguardando".</summary>
+    private async Task ResumeIfNoOpenQuestionsAsync(ExecutionPlan plan, string? stepKey, Guid justChanged, ExecutionActor actor, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (stepKey is null) return;
+        var questions = await _repository.GetQuestionsAsync(plan.Id, cancellationToken);
+        var stillOpen = questions.Count(q => q.StepKey == stepKey && q.Id != justChanged && q.Status == ExecutionQuestionStatus.Open);
+        if (stillOpen == 0)
+            plan.ResumeStepFromWait(stepKey, actor.Name, now, actor.IsExecutor);
+        else if (plan.Steps.Any(s => s.Key == stepKey && s.Status == ExecutionStatus.Waiting))
+            plan.SetStepWaiting(stepKey, stillOpen == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {stillOpen} respostas do usuário",
+                actor.Name, now, actor.IsExecutor);
+    }
+
+    // ── 0024: links (chamados, PRs, documentos) ───────────────────────────────────────────────────
+
+    public async Task<ExecutionLinkResponse> AddLinkAsync(Guid planId, string stepKey, AddExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionLink? link = null;
+        var plan = await MutateAsync(planId, async p =>
+        {
+            EnsureAcceptsChanges(p);
+            var now = DateTimeOffset.UtcNow;
+            var key = ExecutionStep.NormalizeKey(stepKey);
+            if (!p.Steps.Any(s => s.Key == key))
+                throw new DomainException($"Etapa não encontrada: '{key}'.");
+
+            link = new ExecutionLink(p.Id, key, request.Url, request.Title, request.Kind, request.BlocksStep,
+                request.PullRequestNumber, request.Repository, request.TargetBranch, actor.Name, now);
+            _repository.AddLink(link);
+
+            if (link.BlocksStep)
+            {
+                var blocking = (await _repository.GetLinksAsync(p.Id, cancellationToken))
+                    .Where(l => l.StepKey == key && l.BlocksStep).Append(link).ToList();
+                p.ApplyTicketState(key, blocking, actor.Name, now, actor.IsExecutor);
+            }
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, link!.StepKey, cancellationToken);
+        return link.ToResponse();
+    }
+
+    public async Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionLink? link = null;
+        var plan = await MutateAsync(planId, async p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            link = await _repository.GetLinkAsync(p.Id, linkId, cancellationToken)
+                   ?? throw new ExecutionPlanNotFoundException("Link não encontrado.");
+            if (request.Title is not null)
+                link.SetTitle(request.Title);
+            if (!string.IsNullOrWhiteSpace(request.Status) && link.ChangeStatus(request.Status, actor.Name, now) && link.BlocksStep)
+            {
+                var blocking = (await _repository.GetLinksAsync(p.Id, cancellationToken))
+                    .Where(l => l.StepKey == link.StepKey && l.BlocksStep).ToList();
+                p.ApplyTicketState(link.StepKey, blocking, actor.Name, now, actor.IsExecutor);
+            }
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, link!.StepKey, cancellationToken);
+        return link.ToResponse();
+    }
+
+    public async Task DeleteLinkAsync(Guid planId, Guid linkId, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        string? key = null;
+        var plan = await MutateAsync(planId, async p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var link = await _repository.GetLinkAsync(p.Id, linkId, cancellationToken)
+                       ?? throw new ExecutionPlanNotFoundException("Link não encontrado.");
+            key = link.StepKey;
+            _repository.RemoveLink(link);
+            if (link.BlocksStep)
+            {
+                var remaining = (await _repository.GetLinksAsync(p.Id, cancellationToken))
+                    .Where(l => l.StepKey == key && l.BlocksStep && l.Id != linkId).ToList();
+                // Sem chamado nenhum: a etapa deixa de esperar (volta a andar).
+                if (remaining.Count == 0) p.ResumeStepFromWait(key, actor.Name, now, actor.IsExecutor);
+                else p.ApplyTicketState(key, remaining, actor.Name, now, actor.IsExecutor);
+            }
+            p.Touch(now, actor.IsExecutor);
+        }, cancellationToken);
+
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, key, cancellationToken);
+    }
+
+    private static void EnsureAcceptsChanges(ExecutionPlan plan)
+    {
+        if (plan.Status == ExecutionStatus.Cancelled)
+            throw new DomainException("O plano foi cancelado.");
     }
 
     public async Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken)
@@ -292,7 +497,9 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
     {
         var artifacts = await _repository.GetArtifactsAsync(plan.Id, cancellationToken);
         var lastLogId = await _repository.GetLastLogIdAsync(plan.Id, cancellationToken);
-        return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow);
+        var questions = await _repository.GetQuestionsAsync(plan.Id, cancellationToken);
+        var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
+        return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow, questions, links);
     }
 
     /// <summary>
