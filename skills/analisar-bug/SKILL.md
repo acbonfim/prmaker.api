@@ -182,11 +182,15 @@ move o card com a integracao do Azure do usuario e registra na Timeline. A respo
 fechamento (passo 6, ou a pergunta que voce fizer no fim) **e a autorizacao**: assim que ela chegar (pela tela ou
 pelo chat), rode o comando da acao escolhida — sem perguntar de novo e **sem pedir ao usuario para mover o card na
 tela do DevOps/PRMake**. "Nao mover agora" → nao chame e registre no plano.
+- O instalador das skills libera no Claude Code a regra
+  `Bash(bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops:*)`. Para ela valer, rode os comandos
+  `devops` com esse caminho literal e **cada um num comando proprio** (sem `PLAN=...;`, sem `&&`/`;`), ex.:
+  `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> ready-for-qa`.
 - Se o Claude Code barrar o comando (permissao/auto mode), explique que ele e o endpoint do PRMake (nao uma
   escrita direta no DevOps), peca para o usuario autorizar e rode de novo. Nao ofereca mover na mao como saida.
 - `HTTP 502/503` com `TF10216`/"Azure DevOps services are currently unavailable" = DevOps fora do ar: o script ja
   tenta de novo por alguns minutos; se ainda falhar, rode de novo **em segundo plano** (Bash com
-  `run_in_background: true`), ex.: `for i in 1 2 3 4 5 6; do sleep 120; bash $PLAN devops <card> <acao> && exit 0; done; exit 1`,
+  `run_in_background: true`), ex.: `for i in 1 2 3 4 5 6; do sleep 120; bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> <acao> && exit 0; done; exit 1`,
   registre um `log warning` e conclua o fechamento quando ele terminar com sucesso.
 - `HTTP 409` = o card nao esta na area exigida pela acao: diga qual e a area e ofereca as outras acoes configuradas.
 Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
