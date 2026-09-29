@@ -5,6 +5,10 @@ description: Registra uma entrada na Timeline de um card no PRMake (POST /api/v1
 
 # prmake-timeline
 
+> **Atualização:** instalada e atualizada pelo PRMake (tela *Skills*). Antes de usar, rode
+> `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet prmake-timeline 2>/dev/null || true` — se imprimir
+> "Skills do PRMake atualizadas", releia esta SKILL.md. A fonte fica no repositório do PRMake (`skills/prmake-timeline`).
+
 Escreve uma entrada na **Timeline** de um card no PRMake
 (`POST https://api.softhouse.app.br/api/v1/Timeline`), autenticando via header `x-api-key` com a
 api-key do usuario. Serve para ir registrando o **contexto do que esta sendo analisado, testado ou

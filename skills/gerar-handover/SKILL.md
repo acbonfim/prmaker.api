@@ -5,6 +5,10 @@ description: Gera e salva a Passagem de Conhecimento (handover) de um card no PR
 
 # gerar-handover
 
+> **Atualização:** instalada e atualizada pelo PRMake (tela *Skills*). Antes de usar, rode
+> `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet gerar-handover 2>/dev/null || true` — se imprimir
+> "Skills do PRMake atualizadas", releia esta SKILL.md. A fonte fica no repositório do PRMake (`skills/gerar-handover`).
+
 Faz, pelo Claude Code, o mesmo que o botão **Handover** da tela do PRMake (`handover-dialog.component.ts`):
 lê o layout do formulário configurado, cruza os dados do card e salva o formulário preenchido
 (markdown) em `POST /Handover`. **Você (Claude) é o gerador**: não chame `AI/generate`.

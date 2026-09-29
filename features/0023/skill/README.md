@@ -1,5 +1,7 @@
 # Skill analisar-bug — cópia versionada (feature 0023)
 
+> **Desde a 0024 a fonte é [`skills/analisar-bug`](../../../skills/analisar-bug)** (publicada pelo PRMake em `GET /api/v1/Skills`). Esta pasta ficou só como histórico da 0023.
+
 A skill vive fora dos repositórios, em `~/.claude/skills/analisar-bug/` (nível do usuário). Esta pasta guarda
 a versão da 0023 para revisão e histórico:
 
