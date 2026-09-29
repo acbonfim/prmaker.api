@@ -11,7 +11,7 @@
 | F2 | Barra de ações com transbordo "⋯" | 2 | F1 | ✅ concluída | Claude | front `f09623c` |
 | F4 | Tempo real no front (tela do card, handover, home) | 2 | B1 | ✅ concluída | Claude | front `f09623c` |
 | T1 | Build + teste visual com a API simulada | 3 | B1–F4 | ✅ concluída | Claude | — |
-| Q1 | Merge na master e deploy | 4 | T1 | 🟨 em andamento | Claude | — |
+| Q1 | Merge na master e deploy | 4 | T1 | 🟨 merge feito, deploy pelo push | Claude | backend e front: push `feature/0021` → `master` |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -24,3 +24,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 ## Log
 - 2026-09-28 — Planejamento (spec, plano, status); worktrees `feature/0021` no backend e no front.
 - 2026-09-28 — B1, F1–F4 e T1 concluídas (backend `0fd28b6`, front `f09623c`). Q1: merge direto na master (pedido do usuário) e deploy pelo push.
+- 2026-09-28 — `master` (0020 e 0022) incorporada na `feature/0021` sem conflitos; builds e T1 repetidos ok. Merge (fast-forward) e push para a `master` nos dois repos.
