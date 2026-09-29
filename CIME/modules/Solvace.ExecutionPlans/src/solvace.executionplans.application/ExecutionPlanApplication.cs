@@ -8,7 +8,7 @@ using solvace.executionplans.domain.Responses;
 
 namespace solvace.executionplans.application;
 
-public class ExecutionPlanApplication : IExecutionPlanApplication
+public partial class ExecutionPlanApplication : IExecutionPlanApplication
 {
     /// <summary>Máximo de pedaços por lote (a fila local da skill reenvia em lotes).</summary>
     public const int MaxLogsPerRequest = 200;
@@ -18,11 +18,16 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
 
     private readonly IExecutionPlanRepository _repository;
     private readonly IRealTimeNotifier _realTimeNotifier;
+    private readonly IExecutionPullRequestSource _pullRequests;
+    private readonly IExecutionTimelineWriter _timeline;
 
-    public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier)
+    public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
+        IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline)
     {
         _repository = repository;
         _realTimeNotifier = realTimeNotifier;
+        _pullRequests = pullRequests;
+        _timeline = timeline;
     }
 
     public async Task<ExecutionPlanResponse> CreateAsync(CreateExecutionPlanRequest request, ExecutionActor actor, CancellationToken cancellationToken)
@@ -48,6 +53,8 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         await _repository.SaveChangesAsync(cancellationToken);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
+        if (plan.Phase == ExecutionPhase.Correction)
+            await WriteTimelineAsync(plan, CorrectionPlanCreatedText(plan), actor, cancellationToken);
         return plan.ToResponse([], 0, now);
     }
 
@@ -62,6 +69,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionPlanResponse> GetAsync(Guid planId, CancellationToken cancellationToken)
     {
+        await SyncPullRequestsAsync(planId, cancellationToken);
         var plan = await LoadAsync(planId, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
@@ -71,7 +79,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         if (request.Steps.Count == 0)
             throw new DomainException("Informe ao menos uma etapa.");
 
-        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow), cancellationToken);
+        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow), cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, null, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
@@ -83,7 +91,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         {
             step = p.UpdateStep(stepKey, request.Status, request.Reason, request.Activity, request.Checkpoint,
                 request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
         return step.ToResponse();
@@ -96,7 +104,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         {
             var why = string.IsNullOrWhiteSpace(reason) ? $"Cancelada por {actor.Name}" : $"{reason.Trim()} — {actor.Name}";
             step = p.CancelStep(stepKey, why, actor.Name, DateTimeOffset.UtcNow);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
         return step.ToResponse();
@@ -106,7 +114,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
     {
         var plan = await MutateAsync(planId, p =>
             p.ChangeStatus(request.Status, request.Reason, request.Summary, actor.Name, actor.IsExecutor, DateTimeOffset.UtcNow),
-            cancellationToken);
+            cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
@@ -114,6 +122,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken)
     {
+        await SyncPullRequestsAsync(planId, cancellationToken);
         var plan = await MutateAsync(planId, p => p.Touch(DateTimeOffset.UtcNow, fromExecutor: true), cancellationToken);
 
         var action = plan.Status switch
@@ -151,7 +160,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionStepResponse> StartStepAsync(Guid planId, string stepKey, ExecutionActor actor, CancellationToken cancellationToken)
     {
         ExecutionStep? step = null;
-        var plan = await MutateAsync(planId, p => { step = p.StartStepByUser(stepKey, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken);
+        var plan = await MutateAsync(planId, p => { step = p.StartStepByUser(stepKey, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
         return step.ToResponse();
     }
@@ -163,7 +172,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         {
             var why = string.IsNullOrWhiteSpace(reason) ? $"Concluída por {actor.Name}" : $"{reason.Trim()} — {actor.Name}";
             step = p.CompleteStepByUser(stepKey, why, actor.Name, DateTimeOffset.UtcNow);
-        }, cancellationToken);
+        }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
         return step.ToResponse();
     }
@@ -196,9 +205,10 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
             }
             _repository.AddQuestions(created);
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, created.FirstOrDefault()?.StepKey, cancellationToken);
+        await WriteTimelineAsync(plan, QuestionsAskedText(plan, created), actor, cancellationToken);
         return created.Select(q => q.ToResponse()).ToList();
     }
 
@@ -213,9 +223,10 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
             question.AnswerWith(answer, actor.Name, actor.IsExecutor, now);
             await ResumeIfNoOpenQuestionsAsync(p, question.StepKey, questionId, actor, now, cancellationToken);
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
+        await WriteTimelineAsync(plan, AnswerText(question), actor, cancellationToken);
         return question.ToResponse();
     }
 
@@ -230,7 +241,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
             question.Cancel();
             await ResumeIfNoOpenQuestionsAsync(p, question.StepKey, questionId, actor, now, cancellationToken);
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
         return question.ToResponse();
@@ -273,7 +284,9 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
                 p.ApplyTicketState(key, blocking, actor.Name, now, actor.IsExecutor);
             }
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor, () => link!.Kind == ExecutionLinkKind.Ticket
+            ? $"🎫 **Chamado anexado** à etapa *{link.StepKey}*: [{link.DisplayName}]({link.Url})"
+            : null);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, link!.StepKey, cancellationToken);
         return link.ToResponse();
@@ -282,6 +295,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
         ExecutionLink? link = null;
+        var statusChanged = false;
         var plan = await MutateAsync(planId, async p =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -289,14 +303,17 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
                    ?? throw new ExecutionPlanNotFoundException("Link não encontrado.");
             if (request.Title is not null)
                 link.SetTitle(request.Title);
-            if (!string.IsNullOrWhiteSpace(request.Status) && link.ChangeStatus(request.Status, actor.Name, now) && link.BlocksStep)
+            statusChanged = !string.IsNullOrWhiteSpace(request.Status) && link.ChangeStatus(request.Status, actor.Name, now);
+            if (statusChanged && link.BlocksStep)
             {
                 var blocking = (await _repository.GetLinksAsync(p.Id, cancellationToken))
                     .Where(l => l.StepKey == link.StepKey && l.BlocksStep).ToList();
                 p.ApplyTicketState(link.StepKey, blocking, actor.Name, now, actor.IsExecutor);
             }
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor, () => statusChanged && link!.Kind == ExecutionLinkKind.Ticket
+            ? $"🎫 Chamado [{link.DisplayName}]({link.Url}) marcado como **{TicketStatusLabel(link.Status)}** por {actor.Name}"
+            : null);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, link!.StepKey, cancellationToken);
         return link.ToResponse();
@@ -321,7 +338,7 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
                 else p.ApplyTicketState(key, remaining, actor.Name, now, actor.IsExecutor);
             }
             p.Touch(now, actor.IsExecutor);
-        }, cancellationToken);
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, key, cancellationToken);
     }
@@ -466,22 +483,29 @@ public class ExecutionPlanApplication : IExecutionPlanApplication
         await _repository.GetPlanWithStepsAsync(planId, cancellationToken)
         ?? throw new ExecutionPlanNotFoundException("Plano de execução não encontrado.");
 
-    private Task<ExecutionPlan> MutateAsync(Guid planId, Action<ExecutionPlan> mutate, CancellationToken cancellationToken) =>
-        MutateAsync(planId, p => { mutate(p); return Task.CompletedTask; }, cancellationToken);
+    private Task<ExecutionPlan> MutateAsync(Guid planId, Action<ExecutionPlan> mutate, CancellationToken cancellationToken, ExecutionActor? actor = null) =>
+        MutateAsync(planId, p => { mutate(p); return Task.CompletedTask; }, cancellationToken, actor);
+
+    /// <param name="headline">Linha que abre o registro de marcos na Timeline (ex.: "Chamado anexado"), antes das mudanças que ela causou.</param>
 
     /// <summary>
     /// Carrega, altera e salva o plano. Se outra requisição gravou no meio (a skill mandando andamento
     /// enquanto o usuário pausa, por exemplo), relê e reaplica — ninguém perde a própria alteração.
+    /// Depois de salvar, registra na Timeline os marcos que a alteração causou (0024).
     /// </summary>
-    private async Task<ExecutionPlan> MutateAsync(Guid planId, Func<ExecutionPlan, Task> mutate, CancellationToken cancellationToken)
+    private async Task<ExecutionPlan> MutateAsync(Guid planId, Func<ExecutionPlan, Task> mutate, CancellationToken cancellationToken, ExecutionActor? actor = null,
+        Func<string?>? headline = null)
     {
         for (var attempt = 1; ; attempt++)
         {
             var plan = await LoadAsync(planId, cancellationToken);
+            var before = Snapshot(plan);
             await mutate(plan);
+            plan.TryAutoComplete(actor?.Name ?? SystemActor.Name, DateTimeOffset.UtcNow);
             try
             {
                 await _repository.SaveChangesAsync(cancellationToken);
+                await WriteMilestonesAsync(before, plan, actor ?? SystemActor, headline?.Invoke(), cancellationToken);
                 return plan;
             }
             catch (ExecutionPlanConcurrencyException) when (attempt < ConcurrencyRetries)

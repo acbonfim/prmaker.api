@@ -291,6 +291,32 @@ public class ExecutionPlan
         return SetStepWaiting(key, $"Chamado {latest.DisplayName} fechado sem resolução — abra outro chamado ou conclua a etapa", actor, now, fromExecutor);
     }
 
+    /// <summary>Conclui uma etapa por uma regra automática (ex.: PRs mesclados) — 0024.</summary>
+    public ExecutionStep? CompleteStep(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
+    {
+        var step = FindStep(ExecutionStep.NormalizeKey(key));
+        if (step is null || ExecutionStatus.IsStepFinished(step.Status) || Status == ExecutionStatus.Cancelled)
+            return null;
+        step.ChangeStatus(ExecutionStatus.Completed, reason, actor, now);
+        Touch(now, fromExecutor);
+        return step;
+    }
+
+    /// <summary>
+    /// Plano de correção com todas as etapas terminadas (e ao menos uma concluída) → concluído (0024).
+    /// Com etapas de PR, elas só concluem com os PRs mesclados — daí "concluído = PRs mesclados".
+    /// </summary>
+    public bool TryAutoComplete(string actor, DateTimeOffset now)
+    {
+        if (Phase != ExecutionPhase.Correction || IsFinished || Status == ExecutionStatus.Failed || Steps.Count == 0)
+            return false;
+        if (!Steps.All(s => s.Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled) || !Steps.Any(s => s.Status == ExecutionStatus.Completed))
+            return false;
+        SetPlanStatus(ExecutionStatus.Completed, "Todas as etapas concluídas", actor, now);
+        Touch(now, fromExecutor: false);
+        return true;
+    }
+
     /// <summary>Etapas prontas para começar: pendentes com todas as dependências terminadas.</summary>
     public IEnumerable<ExecutionStep> ReadySteps() =>
         Steps.Where(s => s.Status == ExecutionStatus.Pending && s.DependsOn.All(d =>
