@@ -1,4 +1,5 @@
 using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Requests;
 
 namespace solvace.executionplans.domain.Responses;
 
@@ -19,6 +20,10 @@ public class ExecutionPlanSummaryResponse
     public DateTimeOffset? LastActivityAt { get; set; }
     public int StepsTotal { get; set; }
     public int StepsCompleted { get; set; }
+
+    /// <summary>analysis | correction (0024).</summary>
+    public string Phase { get; set; } = ExecutionPhase.Analysis;
+    public Guid? ParentPlanId { get; set; }
 }
 
 public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
@@ -26,6 +31,8 @@ public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
     public string? Summary { get; set; }
     public List<ExecutionStepResponse> Steps { get; set; } = [];
     public List<ExecutionArtifactResponse> Artifacts { get; set; } = [];
+    public List<ExecutionQuestionResponse> Questions { get; set; } = [];
+    public List<ExecutionLinkResponse> Links { get; set; } = [];
 
     /// <summary>Id do último registro de andamento (cursor para buscar só os novos).</summary>
     public long LastLogId { get; set; }
@@ -49,6 +56,45 @@ public class ExecutionStepResponse
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public string Executor { get; set; } = ExecutionExecutor.Claude;
+    public string Kind { get; set; } = ExecutionStepKind.Task;
+    public string? Repository { get; set; }
+    public List<string> DependsOn { get; set; } = [];
+}
+
+public class ExecutionQuestionResponse
+{
+    public Guid Id { get; set; }
+    public string? StepKey { get; set; }
+    public int Order { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public List<ExecutionQuestionOption> Options { get; set; } = [];
+    public bool AllowFreeText { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Answer { get; set; }
+    public string? AnsweredBy { get; set; }
+    public string? AnsweredVia { get; set; }
+    public DateTimeOffset? AnsweredAt { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public class ExecutionLinkResponse
+{
+    public Guid Id { get; set; }
+    public string StepKey { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? Status { get; set; }
+    public bool BlocksStep { get; set; }
+    public int? PullRequestNumber { get; set; }
+    public string? Repository { get; set; }
+    public string? TargetBranch { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public string? StatusChangedBy { get; set; }
+    public DateTimeOffset? StatusChangedAt { get; set; }
 }
 
 public class ExecutionLogResponse
@@ -89,17 +135,34 @@ public class ExecutionControlResponse
 
     /// <summary>Etapas canceladas (pelo usuário ou pelo cancelamento do plano) — a skill pula.</summary>
     public List<string> CancelledSteps { get; set; } = [];
+
+    /// <summary>Pendentes com as dependências terminadas — a skill escolhe a próxima daqui (0024).</summary>
+    public List<string> ReadySteps { get; set; } = [];
+
+    /// <summary>Aguardando algo externo (resposta, chamado, merge) — a skill não mexe nelas (0024).</summary>
+    public List<string> WaitingSteps { get; set; } = [];
+
+    /// <summary>Todas as etapas, compacto (key, status, executor) — a skill vê o que o usuário concluiu na tela (0024).</summary>
+    public List<ExecutionControlStep> Steps { get; set; } = [];
+
+    /// <summary>Perguntas ainda sem resposta (0024).</summary>
+    public int OpenQuestions { get; set; }
 }
+
+public record ExecutionControlStep(string Key, string Status, string Executor);
 
 public static class ExecutionPlanMappings
 {
-    public static ExecutionPlanResponse ToResponse(this ExecutionPlan plan, IEnumerable<ExecutionArtifact> artifacts, long lastLogId, DateTimeOffset now)
+    public static ExecutionPlanResponse ToResponse(this ExecutionPlan plan, IEnumerable<ExecutionArtifact> artifacts, long lastLogId, DateTimeOffset now,
+        IEnumerable<ExecutionQuestion>? questions = null, IEnumerable<ExecutionLink>? links = null)
     {
         var response = new ExecutionPlanResponse
         {
             Summary = plan.Summary,
             Steps = plan.Steps.OrderBy(s => s.Order).Select(s => s.ToResponse()).ToList(),
             Artifacts = artifacts.OrderBy(a => a.Kind).ThenBy(a => a.Name).Select(a => a.ToResponse()).ToList(),
+            Questions = (questions ?? []).OrderBy(q => q.CreatedAt).ThenBy(q => q.Order).Select(q => q.ToResponse()).ToList(),
+            Links = (links ?? []).OrderByDescending(l => l.CreatedAt).Select(l => l.ToResponse()).ToList(),
             LastLogId = lastLogId,
             ServerTime = now
         };
@@ -125,6 +188,8 @@ public static class ExecutionPlanMappings
         target.LastActivityAt = plan.LastActivityAt;
         target.StepsTotal = stepsTotal;
         target.StepsCompleted = stepsCompleted;
+        target.Phase = plan.Phase;
+        target.ParentPlanId = plan.ParentPlanId;
         return target;
     }
 
@@ -142,7 +207,46 @@ public static class ExecutionPlanMappings
         Checkpoint = step.Checkpoint,
         StartedAt = step.StartedAt,
         FinishedAt = step.FinishedAt,
-        UpdatedAt = step.UpdatedAt
+        UpdatedAt = step.UpdatedAt,
+        Executor = step.Executor,
+        Kind = step.Kind,
+        Repository = step.Repository,
+        DependsOn = step.DependsOn.ToList()
+    };
+
+    public static ExecutionQuestionResponse ToResponse(this ExecutionQuestion q) => new()
+    {
+        Id = q.Id,
+        StepKey = q.StepKey,
+        Order = q.Order,
+        Text = q.Text,
+        Options = q.Options.ToList(),
+        AllowFreeText = q.AllowFreeText,
+        Status = q.Status,
+        Answer = q.Answer,
+        AnsweredBy = q.AnsweredBy,
+        AnsweredVia = q.AnsweredVia,
+        AnsweredAt = q.AnsweredAt,
+        CreatedBy = q.CreatedBy,
+        CreatedAt = q.CreatedAt
+    };
+
+    public static ExecutionLinkResponse ToResponse(this ExecutionLink l) => new()
+    {
+        Id = l.Id,
+        StepKey = l.StepKey,
+        Kind = l.Kind,
+        Url = l.Url,
+        Title = l.Title,
+        Status = l.Status,
+        BlocksStep = l.BlocksStep,
+        PullRequestNumber = l.PullRequestNumber,
+        Repository = l.Repository,
+        TargetBranch = l.TargetBranch,
+        CreatedBy = l.CreatedBy,
+        CreatedAt = l.CreatedAt,
+        StatusChangedBy = l.StatusChangedBy,
+        StatusChangedAt = l.StatusChangedAt
     };
 
     public static ExecutionLogResponse ToResponse(this ExecutionLog log) => new()

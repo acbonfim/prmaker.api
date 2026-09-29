@@ -31,6 +31,15 @@ public interface IExecutionPlanRepository
     void AddArtifact(ExecutionArtifact artifact);
     Task RemoveArtifactAsync(Guid artifactId, CancellationToken cancellationToken);
 
+    // Perguntas e links (0024)
+    void AddQuestions(IEnumerable<ExecutionQuestion> questions);
+    Task<List<ExecutionQuestion>> GetQuestionsAsync(Guid planId, CancellationToken cancellationToken);
+    Task<ExecutionQuestion?> GetQuestionAsync(Guid planId, Guid questionId, CancellationToken cancellationToken);
+    void AddLink(ExecutionLink link);
+    void RemoveLink(ExecutionLink link);
+    Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken);
+    Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken);
+
     /// <summary>Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 

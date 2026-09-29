@@ -11,7 +11,7 @@
 | F2 | Visualizador de arquivos (SQL, markdown, JSON, imagem; copiar, baixar, zip) | 2 | B1 | ✅ concluída | Claude | front `16b350a` |
 | F3 | Seção entre PRs e Linha do tempo (layout responsivo) | 2 | F1 | ✅ concluída | Claude | front `16b350a` |
 | T1 | Teste ponta a ponta local (Postgres do docker, API, skill, navegador) | 3 | B1, S1, F1–F3 | ✅ concluída | Claude | — |
-| Q1 | PRs e deploy | 4 | T1 | ⬜ pendente | usuário + Claude | — |
+| Q1 | PRs e deploy | 4 | T1 | ✅ concluída | usuário + Claude | api #29, web #19 |
 
 Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 
@@ -46,3 +46,4 @@ Legenda: ⬜ pendente · 🟨 em andamento · ✅ concluída · ⛔ bloqueada
 - 2026-09-28 — B1 concluída (`b4a5d9b`).
 - 2026-09-28 — S1 concluída (`1bfb2f1`).
 - 2026-09-28 — F1–F3 (front `16b350a`) e T1 concluídas; títulos padrão das etapas com acentuação.
+- 2026-09-28 — Merge da `master` (0021) nas duas branches (conflito só de contexto no CSS da tela do card; teste no navegador repetido depois do merge). PRs acbonfim/prmaker.api#29 e acbonfim/prmakerweb#19 mesclados; deploys ok (backend run 36506598396 com a migração `InitialExecutionPlans`; front run 36507037055). Produção: `GET ExecutionPlan/card/<card>/current` → 204 e o bundle publicado traz a seção do plano.
