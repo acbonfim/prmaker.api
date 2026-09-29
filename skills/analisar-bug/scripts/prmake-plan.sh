@@ -654,11 +654,22 @@ case "$CMD" in
       [[ -n "${2:-}" ]] && args+=(-H 'content-type: application/json' --data-binary "@$2")
       CODE="$(curl "${args[@]}" 2>/dev/null)"; CODE="${CODE:-000}"
     }
+    # DevOps fora do ar (PRMake devolve 502/503, ex.: TF10216): tenta de novo por ~3 min. So nas acoes idempotentes
+    # (campo sobrescrito ou transicao de estado); o summary cria comentario e nao repete.
+    prmake_post_retry() { # <caminho> [corpo.json]
+      local attempt
+      for attempt in 1 2 3 4; do
+        prmake_post "$@"
+        [[ "$CODE" =~ ^(502|503)$ ]] || return 0
+        [[ $attempt -lt 4 ]] && { echo "   DevOps indisponivel (HTTP $CODE) — nova tentativa em $((attempt * 30))s" >&2; sleep $((attempt * 30)); }
+      done
+      return 0
+    }
     case "$ACTION" in
       rootcause)
         F="${2:?arquivo .md do root cause}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
-        prmake_post "Azure/card/$CARD/rootcause" "$TMP/body" ;;
+        prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body" ;;
       summary)
         F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         jq -n --rawfile s "$F" --arg html "$(to_html "$F")" '{summary:$s, html:$html}' > "$TMP/body"
@@ -667,7 +678,7 @@ case "$CMD" in
         # Opcoes vem do PRMake (GET Azure/actions/classifications); quem grava no DevOps e o PRMake.
         KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications)}"
         jq -n --arg p "$KIND" '{preset:$p}' > "$TMP/body"
-        prmake_post "Azure/card/$CARD/actions/classify" "$TMP/body"
+        prmake_post_retry "Azure/card/$CARD/actions/classify" "$TMP/body"
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao classificar: $(resp_error)"
         echo "OK $(jq -r '.message // "classificado"' "$TMP/resp")"
         exit 0 ;;
@@ -698,7 +709,7 @@ case "$CMD" in
         jq -r '.[] | "\(.key)\t[\(.pattern // "-")] \(.label) — \(.resolutionType) | \(.generalClassification) | \(.classification)"' "$TMP/resp"
         exit 0 ;;
       zero-remaining|ready-for-qa|test-in-production|initial-estimate)
-        prmake_post "Azure/card/$CARD/actions/$ACTION" ;;
+        prmake_post_retry "Azure/card/$CARD/actions/$ACTION" ;;
       *) die "acao desconhecida: $ACTION" ;;
     esac
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em $ACTION: $(resp_error)"
