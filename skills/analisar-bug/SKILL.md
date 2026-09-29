@@ -1,18 +1,21 @@
 ---
 name: analisar-bug
-description: Faz uma analise inicial (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, e publica a analise completa na Timeline do card no PRMake. Registra um plano de execucao no PRMake e manda o andamento e os arquivos em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado, le os repro steps, investiga o codigo em busca da causa raiz provavel, e registra tudo na timeline. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card" ou similar.
+description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado, le os repro steps, investiga o codigo em busca da causa raiz provavel, e registra tudo na timeline. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card" ou similar.
 ---
 
 # analisar-bug
 
-Faz a **analise inicial de um bug** (triagem tecnica) e **publica essa analise na Timeline do card**
-no PRMake. Serve para, logo ao pegar um card, entender o problema pelos repro steps, investigar o
-codigo do repositorio, levantar a causa raiz provavel e os pontos suspeitos, e deixar tudo registrado
-no card para consulta futura.
+Leva um bug **da analise a correcao**, em duas fases, cada uma com o seu plano de execucao no PRMake:
+1. **Analise** — entende o problema pelos repro steps, investiga o codigo, levanta a causa raiz provavel,
+   publica a analise na Timeline e **propoe solucoes perguntando ao usuario**.
+2. **Correcao** — com as respostas, monta o **plano de correcao** (nao fixo: codigo, PRs por repositorio,
+   chamados de script, validacoes; cada etapa feita por voce ou pelo usuario) e executa a sua parte.
+   **Voce so abre PRs — nunca faz merge.** O plano termina quando os PRs forem mesclados (o PRMake detecta).
 
-> **Esta skill vive no nivel do usuario** (`~/.claude/skills/analisar-bug`), portanto esta disponivel
-> em qualquer projeto/repositorio da maquina. Reusa o mesmo token do `gerar-prmake` / `prmake-timeline`
-> (`~/.claude/prmake-token.txt` ou env `PRMAKE_TOKEN`).
+> **Instalada pelo PRMake** (tela *Skills*) em `~/.claude/skills/analisar-bug` e **atualizada sozinha** (hook
+> `SessionStart` + passo 0). A fonte fica no repositorio do PRMake (`skills/analisar-bug`) — nao edite a copia
+> instalada (a atualizacao nao sobrescreve arquivos editados a mao e avisa). Reusa o token do `gerar-prmake` /
+> `prmake-timeline` (`~/.claude/prmake-token.txt` ou env `PRMAKE_TOKEN`).
 
 ## Configuracao e token
 
@@ -41,8 +44,10 @@ no card para consulta futura.
 
 ## Plano de execucao no PRMake (obrigatorio em todo o fluxo)
 
-Quem acompanha o card no PRMake ve, ao vivo, o plano (etapas), o que voce esta fazendo e os arquivos.
-Por isso: **nada fica so na memoria/na maquina** — tudo o que voce produz vai para o plano em pedacos.
+Quem acompanha o card no PRMake ve, ao vivo, os planos (etapas), o que voce esta fazendo, as perguntas e os
+arquivos. Por isso: **nada fica so na memoria/na maquina** — tudo o que voce produz vai para o plano em pedacos.
+O PRMake tambem escreve sozinho na Timeline os marcos (perguntas, respostas, plano de correcao, etapas, chamados,
+PRs mesclados, conclusao) — **nao duplique** esses registros com a `prmake-timeline`.
 
 ```bash
 PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh
@@ -58,41 +63,51 @@ bash $PLAN step <card> <key> completed                                # terminou
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN control <card>                                             # entre etapas: 0 segue, 10 pausado, 11 parar
 bash $PLAN wait <card>                                                # pausado: espera o "Continuar" da tela
-bash $PLAN status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"   # fim (resumo = analise)
+bash $PLAN ask <card> - <<< '[{"stepKey":"propor-solucoes","text":"...","options":[...]}]'  # pergunta
+bash $PLAN wait-answers <card>                                        # espera as respostas (tela ou terminal)
+bash $PLAN answer <card> <n> "resposta dada aqui no terminal"         # grava no PRMake (via claude)
+bash $PLAN correction <card> "Correcao do bug <card>: <solucao>" - <<< '[...etapas...]'  # plano de correcao
+bash $PLAN use <card> analysis|correction                             # em qual plano os comandos agem
+bash $PLAN link <card> <key> <url> "titulo" [--blocks]                # anexa link (chamado/doc) a etapa
+bash $PLAN open-pr <card> <repo> hotfix/<card>-dev development "AB#<card> DEV" pr.md   # abre PR (nunca merge)
+bash $PLAN status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"   # fim do plano ativo
 ```
 
 Regras:
 - **Comece por ele.** Assim que souber o numero do card (passo 1), rode `start`. Se ele responder
-  `PLANO INDISPONIVEL` (PRMake fora do ar ou sem o recurso), siga a analise normalmente: os comandos do plano
-  viram no-op, e a analise vai para a timeline como antes. Se ja existir um plano
-  aberto (pendente, em andamento, pausado ou com falha), o `start` **retoma** esse plano e imprime as etapas
-  com status, checkpoints e arquivos: continue da **primeira etapa nao concluida**, usando o checkpoint, e
-  rode `pull` se a pasta do card nao tiver os arquivos (outra maquina/sessao). So use `start ... --new` se o
-  usuario pedir uma analise nova do zero.
-- **Refine o plano** depois de ler o card (passo 2): ajuste titulos/descricoes das etapas ao caso concreto
-  (a descricao diz *o que vai ser feito*), remova as que nao se aplicam (ou marque `cancelled` com motivo) e
-  acrescente as que surgirem — ex.: se o usuario pedir a **correcao**, inclua etapas como `corrigir-codigo`,
-  `validar-correcao`, `gerar-pr`. Keys: minusculas, numeros, `-`/`_`, estaveis (nunca renomeie uma key).
+  `PLANO INDISPONIVEL` (PRMake fora do ar ou sem o recurso), siga normalmente: os comandos do plano viram
+  no-op. Se ja existir um plano aberto (analise **ou correcao**), o `start` **retoma** o mais recente e imprime
+  as etapas com status, checkpoints, perguntas, links e arquivos: continue da **primeira etapa pronta**, usando
+  o checkpoint; rode `pull` se a pasta do card nao tiver os arquivos. So use `start ... --new` se o usuario
+  pedir uma analise nova do zero.
+- **Refine o plano de analise** depois de ler o card (passo 2): ajuste titulos/descricoes ao caso concreto (a
+  descricao diz *o que vai ser feito*), remova/cancele (com motivo) o que nao se aplica e acrescente o que
+  surgir. Keys: minusculas, numeros, `-`/`_`, estaveis (nunca renomeie uma key).
 - **Em cada etapa:** `step running` → `log` a cada acao relevante (arquivo lido, hipotese, achado, decisao,
-  consulta feita — frases curtas, markdown ok; `finding` para achados, `decision` para escolhas, `warning`/
-  `error` para problemas) → salve os arquivos na pasta do card e rode `sync <card> <key>` → `checkpoint`
-  (o suficiente para outra sessao continuar) → `step completed`.
-- **Entre etapas (e antes de qualquer coisa demorada):** `control`. Exit **10** = o usuario pausou: rode
-  `wait` (bloqueia ate ~9 min; repita enquanto devolver 10, ou avise o usuario que ficou pausado e pare).
-  Exit **11** = cancelado/concluido pela tela: pare, diga ao usuario e nao envie mais nada. Etapas listadas
-  em "etapas canceladas (pular)" foram canceladas pelo usuario: **pule-as**.
-- **Falha de rede** nao interrompe a skill: o script guarda o envio numa fila local e reenvia na proxima
-  chamada (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
-- **Fim:** `status completed` com o resumo (a analise). Em erro que impede continuar: `status failed "motivo"`
-  (retomavel depois com `start`).
-- PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline (sem dados pessoais
-  desnecessarios; evidencias de consulta resumidas).
+  consulta — frases curtas, markdown ok; `finding` para achados, `decision` para escolhas, `warning`/`error`
+  para problemas) → salve os arquivos na pasta do card e rode `sync <card> <key>` → `checkpoint` → `step completed`.
+- **Entre etapas (e antes de qualquer coisa demorada):** `control`. Exit **10** = pausado pelo usuario: rode
+  `wait` (repita enquanto devolver 10, ou avise e pare). Exit **11** = cancelado/concluido pela tela: pare e
+  nao envie mais nada. O `control` tambem lista: etapas **canceladas** (pule), **prontas** (pode comecar),
+  **aguardando** (resposta/chamado/merge — nao mexa) e **perguntas sem resposta**.
+- **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
+  (com o texto/arquivos prontos) e **siga com as outras etapas prontas** — o usuario conclui a dele na tela.
+- **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
+  (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
+- PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
 
-Etapas padrao (o `start` cria estas se voce nao passar outras): `identificar-card`, `coletar-dados`,
+Etapas padrao da analise (o `start` cria se voce nao passar outras): `identificar-card`, `coletar-dados`,
 `investigar-codigo`, `consultar-ambiente` (opcional — cancele com motivo se nao precisar), `causa-raiz`,
-`montar-analise`, `publicar`.
+`montar-analise`, `publicar`, `propor-solucoes`.
 
 ## Fluxo
+
+### 0. Manter a skill atualizada
+```bash
+bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true
+```
+Se imprimir "Skills do PRMake atualizadas", **releia esta SKILL.md** antes de continuar (a versao mudou).
+Sem o arquivo (skill instalada a mao), ignore.
 
 ### 1. Identificar o card
 Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `bugfix/<numero>`:
@@ -127,7 +142,8 @@ O script grava em `/tmp/bug-analysis/`:
 - `description.txt` — `ReproSteps` (se for **Bug**) ou `System.Description` (US), ja sem HTML;
 - `card.json` — dados brutos do card (titulo, estado, tipo) para conferencia.
 
-O manifesto informa `title`, `state`, `workItemType` e `isBug`. Leia `description.txt` para entender
+O manifesto informa `title`, `state`, `workItemType`, `isBug`, `area` e `fluxo` (`producao`, `release` ou
+`perguntar` — usado no fluxo de branches do passo 7). Leia `description.txt` para entender
 o problema relatado.
 
 Plano: etapa `coletar-dados` (running → `log` com um resumo curto do relato → completed). Copie o
@@ -310,21 +326,85 @@ bash ~/.claude/skills/prmake-timeline/scripts/prmake-timeline.sh <card> < "$CARD
 
 O script imprime o HTTP code e a resposta; `OK` (HTTP 2xx) significa que a entrada foi gravada.
 
-Plano: etapa `publicar` (running → completed) e, por fim, conclua o plano com o resumo:
-```bash
-bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"
-```
+Plano: etapa `publicar` (running → completed). O plano de analise **ainda nao termina** — segue para
+`propor-solucoes` (passo 6), que o conclui depois das respostas.
 
-### 6. Reportar
-Informe ao usuario: card, tipo (Bug/US), titulo, que o plano de execucao esta no card no PRMake, um resumo curto da causa raiz provavel e dos pontos
-suspeitos, e que a analise foi publicada na timeline. Em caso de HTTP 401/403, avise que o token
-PRMake expirou (`~/.claude/prmake-token.txt` ou `PRMAKE_TOKEN`).
+### 6. Propor solucoes e perguntar (etapa `propor-solucoes`)
+Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** e **decida com o usuario**.
+1. `step propor-solucoes running`. Escreva `$CARD_DIR/analises/solucoes.md`: 1 a 3 opcoes, cada uma com o que
+   muda (repositorios/arquivos), riscos, se precisa de script de dados (chamado) e o esforco; marque a
+   recomendada. `sync <card> propor-solucoes` e `log ... decision` com o resumo.
+2. **Pergunte** (`ask`) tudo o que decide o plano — a etapa fica *aguardando* e o PRMake mostra as perguntas
+   em destaque. Sempre que se aplicar:
+   - Qual solucao seguir (opcoes das solucoes, com a recomendada).
+   - **Fluxo de branches** quando o `fluxo` do card for `perguntar`, e **sempre** a branch base em release
+     (`release-version` ou `hotfix-version`? outra?) e no revamp frontend em release/regressao (`edge`?).
+   - Se ha script de dados: vai por **chamado** (o usuario abre no Freshservice) ou nao e necessario.
+   - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
+   Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal.
+3. `wait-answers <card>` — responde quem chegar primeiro: pela tela (PRMake) ou aqui (grave com
+   `answer <card> <n> "..."`). Exit 10 = ainda sem resposta: rode de novo ou avise e pare (o `start` retoma
+   depois). Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
+   (fim do plano de **analise**).
+
+### 7. Montar o plano de correcao
+Monte as etapas **a partir da solucao escolhida** (nao ha lista fixa) e crie com `correction` — ele vira o
+plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `executor` (`claude` ou `user`),
+`kind` e, quando for o caso, `repository` e `dependsOn`:
+
+| Etapa | kind | executor | Observacao |
+|---|---|---|---|
+| Corrigir o codigo — **uma por repositorio** (`corrigir-<repo>`) | `code` | claude | branches e commits do fluxo abaixo |
+| Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao |
+| **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
+| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`); o usuario abre no Freshservice e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
+| Gerar PRMake (descricao, RCA, resumo) | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado) — os PRs ja saem pelo `open-pr` |
+
+**Fluxo de branches** (branch sempre `hotfix/<card>` — **sem** `AB#`; `AB#<card> <resumo>` vai na mensagem do
+commit e no titulo do PR). Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin
+<base>` que as bases existem; se nao existirem ou o caso nao estiver claro, **pergunte**.
+
+| Caso (area do card / repositorio) | Base da correcao | Branches | PRs (via `open-pr`) |
+|---|---|---|---|
+| **Producao** (`fluxo=producao`), legado `edv-solvace` | `master` | `hotfix/<card>` (correcao) → `hotfix/<card>-dev` (de `development` + `cherry-pick`) → `hotfix/<card>-qa` (de `qa` + `cherry-pick`) | `hotfix/<card>-dev → development` e `hotfix/<card>-qa → qa` (**2 PRs**) |
+| Producao, **revamp backend** (`revamp-*`) | `master` | `hotfix/<card>` → `hotfix/<card>-dev` (de `development` + `cherry-pick`) — **sem qa** | `→ development` (1 PR) |
+| Producao, **revamp frontend** (`edv-solvace-apps`) | `master` | como o legado (`-dev` e `-qa`) | `→ development` e `→ qa` |
+| **Release/regressao** (`fluxo=release`) | `release-version` **ou** `hotfix-version` — **perguntado** | `hotfix/<card>` | `hotfix/<card> → <base>` (1 PR) |
+| Release/regressao, revamp frontend | `edge` (padrao — **perguntado**) | `hotfix/<card>` | `→ edge` |
+
+Comandos (legado, producao):
+```bash
+git fetch origin
+git checkout -b hotfix/<card> origin/master          # corrige aqui; commit: "AB#<card> <resumo>"
+git checkout -b hotfix/<card>-dev origin/development && git cherry-pick <sha(s)>
+git checkout -b hotfix/<card>-qa  origin/qa          && git cherry-pick <sha(s)>
+git push -u origin hotfix/<card> hotfix/<card>-dev hotfix/<card>-qa
+bash $PLAN open-pr <card> edv-solvace hotfix/<card>-dev development "AB#<card> DEV" pr.md
+bash $PLAN open-pr <card> edv-solvace hotfix/<card>-qa  qa          "AB#<card> QA"  pr.md
+```
+Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, registre um `log warning` e mencione no PR.
+
+### 8. Executar o plano de correcao
+Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` → faca (com `log`/`sync`/`checkpoint`)
+→ `step completed`. Regras:
+- **Mudar codigo so depois da resposta do usuario** (passo 6) e so no escopo do card.
+- Etapa de PR: abra os PRs com `open-pr` (ficam no card, na Timeline e anexados a etapa). **Nunca faca merge,
+  nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
+- Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
+  link na etapa no PRMake") e siga com as outras etapas prontas.
+- Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta e **pare** — o
+  plano segue no PRMake e `/analisar-bug <card>` retoma depois. O plano de correcao **conclui sozinho** quando
+  todas as etapas terminam (PRs mesclados, chamados resolvidos).
+
+### 9. Reportar
+Informe ao usuario: card, tipo, titulo, a causa raiz provavel, a solucao escolhida, os PRs abertos (links),
+o que ficou com ele (chamados, validacoes) e o que falta — e que tudo esta nos planos do card no PRMake. Em
+HTTP 401/403, avise que o token PRMake expirou (`~/.claude/prmake-token.txt` ou `PRMAKE_TOKEN`).
 
 ## Notas
 
-- A analise e **somente leitura** no codigo — esta skill nao altera arquivos nem cria PR. Se o usuario
-  pedir para seguir com a **correcao** na mesma sessao, acrescente as etapas de correcao ao mesmo plano
-  (`steps`) e continue mandando o andamento — o plano volta para "em andamento" sozinho. Para gerar
+- A **analise** (passos 1–6) e **somente leitura** no codigo. A **correcao** (passos 7–8) so comeca depois das
+  respostas do usuario, e **nunca** inclui merge: voce abre os PRs pelo PRMake e para. Para gerar
   o PR/RCA depois da correcao, use a skill `gerar-prmake`.
 - Se, durante a investigacao, voce quiser registrar marcos intermediarios (hipotese levantada, causa
   encontrada), pode postar entradas curtas adicionais na timeline com `prmake-timeline` antes da analise

@@ -43,6 +43,13 @@ printf '%s' "$BODY" > "$OUTDIR/card.json"
 WIT="$(jq -r '.fields["System.WorkItemType"] // ""' "$OUTDIR/card.json")"
 TITLE="$(jq -r '.fields["System.Title"] // ""' "$OUTDIR/card.json")"
 STATE="$(jq -r '.fields["System.State"] // ""' "$OUTDIR/card.json")"
+AREA="$(jq -r '.fields["System.AreaPath"] // ""' "$OUTDIR/card.json")"
+# Fluxo de branches pela area (0024): producao (Product Development Team) x release/regressao (Release Management).
+case "$AREA" in
+  *"Release Management"*) FLOW=release ;;
+  *"Product Development Team"*) FLOW=producao ;;
+  *) FLOW=perguntar ;;
+esac
 
 # description = ReproSteps (Bug) ou System.Description (US), sem HTML
 if [[ "$WIT" == "Bug" ]]; then
@@ -61,6 +68,8 @@ card=$CARD
 workItemType=$WIT
 isBug=$IS_BUG
 state=$STATE
+area=$AREA
+fluxo=$FLOW
 title=$TITLE
 outdir=$OUTDIR
 arquivos:
