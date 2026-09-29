@@ -75,10 +75,17 @@ else
   IS_BUG=0
 fi
 
-# prompt do resumo nao-tecnico (feature 0011 do CIME: AI Configurations -> BugSummaryPrompt).
+# prompt do resumo nao-tecnico (feature 0011 do CIME: AI Configurations -> BugSummaryPrompt), o efetivo do
+# usuario (GET /Azure/actions/config, o mesmo da tela); sem resposta, o global do plugin.
 # Vazio (US ou plugin sem o campo) = a skill usa as regras do passo 4b do SKILL.md.
 if [[ "$IS_BUG" == "1" ]]; then
-  jq -r '.configurations.BugSummaryPrompt // ""' "$OUTDIR/prompts.json" > "$OUTDIR/summary_prompt.txt"
+  RESP="$(get "$BASE/Azure/actions/config" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
+  if [[ "$CODE" == "200" ]] && printf '%s' "$BODY" | jq -e '.available' >/dev/null 2>&1; then
+    printf '%s' "$BODY" > "$OUTDIR/actions_config.json"
+    jq -r '.bug.summaryPrompt // ""' "$OUTDIR/actions_config.json" > "$OUTDIR/summary_prompt.txt"
+  else
+    jq -r '.configurations.BugSummaryPrompt // ""' "$OUTDIR/prompts.json" > "$OUTDIR/summary_prompt.txt"
+  fi
 else
   : > "$OUTDIR/summary_prompt.txt"
 fi

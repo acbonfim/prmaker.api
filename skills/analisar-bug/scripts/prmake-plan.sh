@@ -24,9 +24,10 @@
 #   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
-#                 rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
+#                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
 #                 zero-remaining · ready-for-qa · test-in-production · initial-estimate
-#                 (tudo gravado pelo PRMake; as opcoes de classificacao vem do PRMake)
+#                 (tudo gravado pelo PRMake; estados, areas, estimativa, prompt do resumo e opcoes de
+#                 classificacao vem da configuracao do usuario no PRMake — `config`/`classifications`)
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
@@ -617,7 +618,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: rootcause|summary|classify|zero-remaining|ready-for-qa|test-in-production|initial-estimate}"
+    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|ready-for-qa|test-in-production|initial-estimate}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -641,6 +642,27 @@ case "$CMD" in
         prmake_post "Azure/card/$CARD/actions/classify" "$TMP/body"
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao classificar: $(resp_error)"
         echo "OK $(jq -r '.message // "classificado"' "$TMP/resp")"
+        exit 0 ;;
+      config)
+        # Configuracao efetiva do usuario (AI Configurations, com os campos pessoais): destinos das acoes,
+        # area exigida, estimativa inicial e o prompt do resumo nao tecnico. Nada de nomes presumidos.
+        CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/actions/config" 2>/dev/null)"
+        [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao ler a configuracao: $(resp_error)"
+        jq -e '.available' "$TMP/resp" >/dev/null || die "Acoes DevOps indisponiveis (plugin 'AI Configurations' ausente) — avise o usuario"
+        mkdir -p "$CARD_DIR/analises"
+        jq -r '.bug.summaryPrompt // ""' "$TMP/resp" > "$CARD_DIR/analises/summary-prompt.txt"
+        jq -r --arg sp "$CARD_DIR/analises/summary-prompt.txt" '.bug as $b |
+          "test-in-production: " + (if ($b.testInProduction.area // "") != "" and ($b.testInProduction.state // "") != ""
+              then "move para \"\($b.testInProduction.state)\" na area \"\($b.testInProduction.area)\""
+                + (if ($b.testInProduction.requiredArea // "") != "" then " (so se o card estiver na area \"\($b.testInProduction.requiredArea)\")" else "" end)
+                + (if ($b.testInProduction.comment // "") != "" then "; comentario: \"\($b.testInProduction.comment)\"" else "" end)
+              else "NAO configurado" end),
+          "ready-for-qa: " + (if ($b.readyForQa.state // "") != "" then "move para \"\($b.readyForQa.state)\"" else "NAO configurado" end),
+          "initial-estimate: " + (if $b.initialEstimate.configured
+              then "Original \($b.initialEstimate.originalEstimate) · Remaining \($b.initialEstimate.remainingWork) · Completed \($b.initialEstimate.completedWork)"
+              else "NAO configurado" end),
+          "zero-remaining: zera o Remaining Work",
+          "summary-prompt: " + (if ($b.summaryPrompt // "") != "" then $sp else "(nao configurado — use o formato padrao PT/EN)" end)' "$TMP/resp"
         exit 0 ;;
       classifications)
         CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/actions/classifications" 2>/dev/null)"

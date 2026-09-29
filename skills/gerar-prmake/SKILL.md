@@ -52,8 +52,9 @@ O script busca o card no DevOps, os prompts (id=3), os commits da branch e os di
 - `prompt.txt` — `PromptBug` (se o card for **Bug**) ou `PromptUS` (caso contrário);
 - `description.txt` — `ReproSteps` (Bug) ou `System.Description` (US), já sem HTML;
 - `diff.txt` — diff concatenado dos commits do card (`githubCommitDiff`);
-- `summary_prompt.txt` — prompt do resumo não-técnico definido pelo admin (`BugSummaryPrompt` do plugin
-  AI Configurations, feature 0011 do CIME). Vazio para US ou se o plugin ainda não tiver o campo;
+- `summary_prompt.txt` — prompt do resumo não-técnico **como configurado para o usuário** no PRMake
+  (`GET /Azure/actions/config` → `BugSummaryPrompt` do AI Configurations, o mesmo da tela). Vazio para US ou se
+  não houver o campo;
 - `card.json`, `commits.json` — dados brutos para conferência.
 
 O manifesto impresso informa `isBug=1|0` e quantos commits foram selecionados. Se `isBug=0`, não
