@@ -175,6 +175,20 @@ das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
    `devops <card> test-in-production` (so se o `config` a mostrar configurada e o card estiver na area exigida —
    senao o PRMake devolve 409) ou `devops <card> ready-for-qa`. Acao "NAO configurado" no `config` → nao ofereca;
    avise que o admin pode configura-la no PRMake (AI Configurations).
+
+**Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e
+`devops <card> test-in-production` chamam o endpoint do PRMake `POST Azure/card/<card>/actions/<acao>`; o PRMake
+move o card com a integracao do Azure do usuario e registra na Timeline. A resposta do usuario a pergunta de
+fechamento (passo 6, ou a pergunta que voce fizer no fim) **e a autorizacao**: assim que ela chegar (pela tela ou
+pelo chat), rode o comando da acao escolhida — sem perguntar de novo e **sem pedir ao usuario para mover o card na
+tela do DevOps/PRMake**. "Nao mover agora" → nao chame e registre no plano.
+- Se o Claude Code barrar o comando (permissao/auto mode), explique que ele e o endpoint do PRMake (nao uma
+  escrita direta no DevOps), peca para o usuario autorizar e rode de novo. Nao ofereca mover na mao como saida.
+- `HTTP 502/503` com `TF10216`/"Azure DevOps services are currently unavailable" = DevOps fora do ar: o script ja
+  tenta de novo por alguns minutos; se ainda falhar, rode de novo **em segundo plano** (Bash com
+  `run_in_background: true`), ex.: `for i in 1 2 3 4 5 6; do sleep 120; bash $PLAN devops <card> <acao> && exit 0; done; exit 1`,
+  registre um `log warning` e conclua o fechamento quando ele terminar com sucesso.
+- `HTTP 409` = o card nao esta na area exigida pela acao: diga qual e a area e ofereca as outras acoes configuradas.
 Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
 RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
 
@@ -423,7 +437,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
      ambiente (D), user education (E), change request (F), nao reproduz/sem retorno (G), duplicado (H). Pode ser
      mais de um. Nem todo card tem codigo — nao presuma PR.
    - **Fechamento**: com o `devops <card> config` em maos, pode mover o card ao final (cite o estado e a area
-     exatamente como configurados, so as acoes configuradas e aplicaveis a area atual do card)? E a
+     exatamente como configurados, so as acoes configuradas e aplicaveis a area atual do card, mais "Nao mover")?
+     A resposta autoriza voce a mover pelo PRMake no `fechar-card` (ver **Mover o card e sempre pelo PRMake**). E a
      classificacao sugerida (uma das opcoes de `devops <card> classifications`, com o motivo) esta certa?
    - **Fluxo de branches**: rode `branches <card> <repo>` para cada repositorio; se ele sair com exit 3, pergunte
      o que ele pedir (o fluxo, quando a area nao tem regra, ou a branch base, quando a regra manda perguntar —
