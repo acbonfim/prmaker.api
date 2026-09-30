@@ -1,0 +1,114 @@
+{
+ "name": "Revamp infra — Building Blocks",
+ "kind": "infra",
+ "order": 109,
+ "repository": "https://github.com/electradv/revamp-BuildingBlocks",
+ "repoDir": "kb-mirror/revamp-BuildingBlocks",
+ "summary": "Repositório de bibliotecas reutilizáveis (BuildingBlocks) do estate Revamp. 155 projetos (net10.0, net7.0, net8.0, net8.0;net10.0, netstandard2.1, netstandard2.1;net8.0;net10.0), 0 controllers/0 rotas, 0 casos de uso, 0 Lambdas; tabelas TB_WCM_USER, TB_WCM_USER_PREFERENCE, TB_WCM_SITE, TB_WCM_USER_PICTURE, TB_WCM_USER_AREA.",
+ "keywords": [
+  "buildingblocks",
+  "revamp-BuildingBlocks",
+  "TB_WCM_USER",
+  "TB_WCM_USER_PREFERENCE",
+  "TB_WCM_SITE",
+  "TB_WCM_USER_PICTURE"
+ ],
+ "relations": [
+  {
+   "target": "revamp-assessment",
+   "kind": "database",
+   "detail": "usa tabelas TB_AST_* (ex.: TB_AST_INSPECTION_ITEM)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentTotalQuestionsByMonthQuery.cs:55"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.LegacyData/Queries/ActionPlanQueries.cs:46"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "database",
+   "detail": "usa tabelas TB_CHK_* (ex.: TB_CHK_INSPECTION_ITEM)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:20"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "database",
+   "detail": "usa tabelas TB_CLN_* (ex.: TB_CLN_INSPECTION)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineTotalTasksByWeekQuery.cs:53"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Kaizen/Queries/KaizenTotalSuggestedByHourQuery.cs:53"
+  },
+  {
+   "target": "revamp-cil",
+   "kind": "database",
+   "detail": "usa tabelas TB_LIL_* (ex.: TB_LIL_NINSPECTION)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalTasksByWeekQuery.cs:51"
+  },
+  {
+   "target": "revamp-workpermit",
+   "kind": "database",
+   "detail": "usa tabelas TB_WRK_* (ex.: TB_WRK_WORK_PERMIT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.WorkPermit/Queries/WorkPermitTotalReleasedByWeekQuery.cs:52"
+  },
+  {
+   "target": "revamp-project",
+   "kind": "database",
+   "detail": "usa tabelas TB_PJT_* (ex.: TB_PJT_PROJECT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Project/Queries/ProjectListQuery.cs:59"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "database",
+   "detail": "usa tabelas TB_GED_* (ex.: TB_GED_DOCUMENT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Documentation/Queries/DocumentationTotalCreatedByDayQuery.cs:45"
+  },
+  {
+   "target": "revamp-moc",
+   "kind": "database",
+   "detail": "usa tabelas TB_MOC_* (ex.: TB_MOC_MOC)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ModificationControl/Queries/ModificationControlListQuery.cs:68"
+  },
+  {
+   "target": "revamp-nonconformity",
+   "kind": "database",
+   "detail": "usa tabelas TB_NCF_* (ex.: TB_NCF_NONCONFORMITY)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.NonConformity/Queries/NonConformityTotalReportedByHourQuery.cs:53"
+  },
+  {
+   "target": "revamp-complaint",
+   "kind": "database",
+   "detail": "usa tabelas TB_CMP_* (ex.: TB_CMP_COMPLAINT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Complaints/Queries/ComplaintsListQuery.cs:14"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Incidents/Queries/IncidentsTotalReportedByWeekQuery.cs:53"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FINISHED_PRODUCT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineListQuery.cs:15"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetUserInfoGlobalQuery/GetUserInfoGlobalQuery_Avatar.cs:37"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET_ACTIONPLAN)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.DigitalObeyaQueries/ObeyaWidgetType.cs:6"
+  }
+ ]
+}

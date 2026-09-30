@@ -1,0 +1,33 @@
+{
+ "name": "Revamp — Administration",
+ "kind": "revamp",
+ "order": 102,
+ "repository": "https://github.com/electradv/revamp-Administration",
+ "repoDir": "kb-mirror/revamp-Administration",
+ "summary": "Módulo de administração do estate Revamp, responsável pelo gerenciamento de dados corporativos, globais e locais via SQL Server, além de Aurora PostgreSQL. 9 projetos (net8.0), 9 controllers/34 rotas, 40 casos de uso, 0 Lambdas; tabelas TB_WCM_MENU, TB_WCM_GLOBAL_PARAMETER, TB_WCM_SITE_PARAMETER, TB_WCM_ROLE, TB_WCM_SITE_PARAMETER_VALUE.",
+ "keywords": [
+  "administration",
+  "revamp-Administration",
+  "Parameter",
+  "AccessLog",
+  "Attachment",
+  "FloatingMenu",
+  "MenuGroup",
+  "ClientFuncionality",
+  "SatisfactionSurvey",
+  "Modules",
+  "TB_WCM_MENU",
+  "TB_WCM_GLOBAL_PARAMETER",
+  "TB_WCM_SITE_PARAMETER",
+  "TB_WCM_ROLE",
+  "AddSatisfactionSurveyAnswer"
+ ],
+ "relations": [
+  {
+   "target": "revamp-survey",
+   "kind": "database",
+   "detail": "usa tabelas TB_SURVEY_* (ex.: TB_SURVEY_USER_RESPONSE)",
+   "evidence": "revamp-Administration/Solvace.Administration/src/Solvace.Administration.Infra.Data.Local.SqlServer/Queries/GetSurveyResponsesLocalQuery.cs:30"
+  }
+ ]
+}

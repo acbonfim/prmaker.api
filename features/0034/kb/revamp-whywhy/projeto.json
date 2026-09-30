@@ -1,0 +1,38 @@
+{
+ "name": "Revamp — Why Why",
+ "kind": "revamp",
+ "order": 151,
+ "repository": "https://github.com/electradv/revamp-WhyWhy",
+ "repoDir": "kb-mirror/revamp-WhyWhy",
+ "summary": "WhyWhy implementa a análise dos 5 Porquês (5 Whys) para identificação de causa raiz via questionamento iterativo. 12 projetos (net8.0), 2 controllers/7 rotas, 3 casos de uso, 3 Lambdas; tabelas Category, Diagram, User, TB_WCM_USER, TB_WCM_USER_PICTURE.",
+ "keywords": [
+  "whywhy",
+  "revamp-WhyWhy",
+  "Diagrams",
+  "Categories",
+  "Category",
+  "Diagram",
+  "User",
+  "TB_WCM_USER"
+ ],
+ "relations": [
+  {
+   "target": "revamp-rca",
+   "kind": "event",
+   "detail": "consome o tópico RCA (fila WHYWHY_RCA_EVENT_CREATED)",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Lambda.WhyWhy.Schema.RCA/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila WHYWHY_USER_EVENT_CREATED)",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Lambda.WhyWhy.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Solvace.WhyWhy.Application/Service/SendRootCauseAsPostService.cs:78"
+  }
+ ]
+}

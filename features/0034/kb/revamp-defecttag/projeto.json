@@ -1,0 +1,51 @@
+{
+ "name": "Revamp — Defect Tag",
+ "kind": "revamp",
+ "order": 120,
+ "repository": "https://github.com/electradv/revamp-DefectTag",
+ "repoDir": "kb-mirror/revamp-DefectTag",
+ "summary": "Módulo responsável pelo gerenciamento de tags de defeitos no estate Revamp. 13 projetos (net8.0), 13 controllers/85 rotas, 52 casos de uso, 4 Lambdas; tabelas TB_WCM_MENU, Attachment, Category, CategoryType, ChecklistAnswer.",
+ "keywords": [
+  "defecttag",
+  "revamp-DefectTag",
+  "Counters",
+  "Audits",
+  "Category",
+  "ChecklistVersions",
+  "DefectTag",
+  "Kanban",
+  "Analytics",
+  "AuditsType",
+  "TB_WCM_MENU",
+  "Attachment",
+  "CategoryType",
+  "AuditsCategory",
+  "AuditsChecklist"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila DFT_USER_EVENT_CREATED)",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/DFT.User.EventCreated/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_TYPE_<amb>",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Application.Abstractions/Queries/Entities/Type.cs:20"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Application/Shared/DefectTagNotificationHelper.cs:31"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO)",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Infra.Data.Global.SqlServer/Migrations/20260702120000_sync_reference_data.cs:274"
+  }
+ ]
+}

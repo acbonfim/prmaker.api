@@ -1,0 +1,69 @@
+{
+ "name": "Revamp — Comment",
+ "kind": "revamp",
+ "order": 113,
+ "repository": "https://github.com/electradv/revamp-Comment",
+ "repoDir": "kb-mirror/revamp-Comment",
+ "summary": "Modulo responsavel pelo gerenciamento de comentarios no estate Revamp. 9 projetos (net8.0), 7 controllers/23 rotas, 10 casos de uso, 1 Lambdas; tabelas CommentConfigType, Comment, CommentAttachment, CommentMentionHashtag, CommentMentionTeam.",
+ "keywords": [
+  "comment",
+  "revamp-Comment",
+  "Comment",
+  "Translate",
+  "CommentByReferenceIds",
+  "CommentByReferenceUId",
+  "CommentByReferenceId",
+  "CommentByReferenceUIds",
+  "CommentAnswer",
+  "CommentConfigType",
+  "CommentAttachment",
+  "CommentMentionHashtag",
+  "GetCommentCounters",
+  "GetComments",
+  "GetMentionSuggestion"
+ ],
+ "relations": [
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_MENTION_WORKER_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:20"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_HEADER_WORKER_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/Services/MessageBrokerService.cs:43"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_INTERACTION_UPDATED_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/Services/MessageBrokerService.cs:94"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/UseCases/SendNotification/RedirectConfigurationsServiceByConfigType.cs:25"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/.default (TeamsConfig:Scope)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:azure-ad",
+   "kind": "external",
+   "detail": "Azure AD / Entra ID: https://login.microsoftonline.com/{0}/oauth2/v2.0/token (TeamsConfig:LoginEndpoint)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/v1.0/users/{0}/teamwork/sendactivitynotification (TeamsConfig:SendNotificationEndpoint)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  }
+ ]
+}

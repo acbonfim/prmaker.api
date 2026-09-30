@@ -1,0 +1,23 @@
+{
+ "name": "Revamp — Documentation",
+ "kind": "revamp",
+ "order": 122,
+ "repository": "https://github.com/electradv/revamp-Documentation",
+ "repoDir": "kb-mirror/revamp-Documentation",
+ "summary": "6 projetos (net8.0), 4 controllers/5 rotas, 2 casos de uso, 0 Lambdas; tabelas TB_SITES, TB_GED_DOCUMENT, TB_GED_DOCUMENT_APPROVAL, TB_GED_APPROVER, TB_GED_CATEGORY_LEVEL_APPROVAL.",
+ "keywords": [
+  "documentation",
+  "revamp-Documentation",
+  "Document",
+  "APIsDocumentation",
+  "Counter",
+  "Legacy",
+  "TB_SITES",
+  "TB_GED_DOCUMENT",
+  "TB_GED_DOCUMENT_APPROVAL",
+  "TB_GED_APPROVER",
+  "Events",
+  "SimpleSearch"
+ ],
+ "relations": []
+}

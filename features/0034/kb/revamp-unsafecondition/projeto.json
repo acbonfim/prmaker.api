@@ -1,0 +1,45 @@
+{
+ "name": "Revamp — Unsafe Condition",
+ "kind": "revamp",
+ "order": 147,
+ "repository": "https://github.com/electradv/revamp-UnsafeCondition",
+ "repoDir": "kb-mirror/revamp-UnsafeCondition",
+ "summary": "Módulo responsável pelo gerenciamento de condições inseguras (UNC) no estate Solvace Revamp. 13 projetos (net8.0), 5 controllers/31 rotas, 25 casos de uso, 4 Lambdas; tabelas TB_WCM_MENU, TB_WCM_MENU_ROLE, TB_WCM_SITE_PARAMETER, TB_WCM_SITE_PARAMETER_VALUE, TB_WCM_SITE.",
+ "keywords": [
+  "unsafecondition",
+  "revamp-UnsafeCondition",
+  "UnsafeCondition",
+  "Category",
+  "ChecklistVersions",
+  "Analytics",
+  "ScoreCards",
+  "TB_WCM_MENU",
+  "TB_WCM_MENU_ROLE",
+  "TB_WCM_SITE_PARAMETER",
+  "TB_WCM_SITE_PARAMETER_VALUE",
+  "CreateUnsafeConditionCommand",
+  "DeleteUnsafeCondition",
+  "SaveCmmsAnalysisDecisions",
+  "UpdateEquipmentTagCoordinates"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila UNC_USER_EVENT_CREATED)",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Lambda.UNC.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Solvace.UnsafeCondition.Application/Shared/UnsafeConditionNotificationHelper.cs:31"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO_FOTO)",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Solvace.UnsafeCondition.Infra.Data.Global.SqlServer/Queries/EquipmentPhotoQuery.cs:26"
+  }
+ ]
+}

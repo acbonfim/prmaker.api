@@ -1,0 +1,33 @@
+{
+ "name": "Revamp — Training",
+ "kind": "revamp",
+ "order": 146,
+ "repository": "https://github.com/electradv/revamp-Training",
+ "repoDir": "kb-mirror/revamp-Training",
+ "summary": "8 projetos (net8.0), 5 controllers/5 rotas, 6 casos de uso, 0 Lambdas; tabelas TB_TRN_PRIORITY, TB_TRN_STUDENT_TRAINING, TB_CAF_FUNCIONARIO_FUNCAO, TB_TRN_FUNCTION_SKILL, TB_TRN_TRAINING.",
+ "keywords": [
+  "training",
+  "revamp-Training",
+  "Faq",
+  "Counter",
+  "Qualifications",
+  "ScoreCards",
+  "Process",
+  "TB_TRN_PRIORITY",
+  "TB_TRN_STUDENT_TRAINING",
+  "TB_CAF_FUNCIONARIO_FUNCAO",
+  "TB_TRN_FUNCTION_SKILL",
+  "Builder",
+  "GetCommonQuestions",
+  "GetProcesses",
+  "GetTrainingApprovalsCounter"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_FUNCAO)",
+   "evidence": "revamp-Training/Solvace.Training/src/Solvace.Training.Infra.Data.Global.SqlServer/Queries/GetKpiTrainingQualificationGlobalQuery.cs:194"
+  }
+ ]
+}

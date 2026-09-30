@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — CIL",
+ "kind": "revamp",
+ "order": 110,
+ "repository": "https://github.com/electradv/revamp-CIL",
+ "repoDir": "kb-mirror/revamp-CIL",
+ "summary": "CIL (Cleaning, Inspection & Lubrication) é o módulo responsável por gerenciar rotinas CIL, layouts físicos, equipamentos, empreiteiros, fornecedores, equipes e usuários. 6 projetos (net8.0), 4 controllers/10 rotas, 9 casos de uso, 0 Lambdas; tabelas TB_LIL_CHECKLIST, TB_SITE, TB_LIL_CHECKLIST_OWNER, TB_LIL_CHECKLIST_AREA_OWNER, TB_LIL_CHECKLIST_TEAM_OWNER.",
+ "keywords": [
+  "cil",
+  "revamp-CIL",
+  "Counters",
+  "Cil",
+  "Analytics",
+  "Legacy",
+  "TB_LIL_CHECKLIST",
+  "TB_SITE",
+  "TB_LIL_CHECKLIST_OWNER",
+  "TB_LIL_CHECKLIST_AREA_OWNER",
+  "Events",
+  "GetCilCounters",
+  "GetCilStatusAnalytics",
+  "GetCilStatusAnalyticsByTypeDetail",
+  "GetStatusSubordinatesAnalytics"
+ ],
+ "relations": []
+}

@@ -1,0 +1,22 @@
+{
+ "name": "Revamp — Complaint",
+ "kind": "revamp",
+ "order": 116,
+ "repository": "https://github.com/electradv/revamp-Complaint",
+ "repoDir": "kb-mirror/revamp-Complaint",
+ "summary": "7 projetos (net8.0), 2 controllers/3 rotas, 4 casos de uso, 0 Lambdas; tabelas TB_CMP_COMPLAINT, TB_WCM_USER_ROLE, TB_CMP_STATUS.",
+ "keywords": [
+  "complaint",
+  "revamp-Complaint",
+  "Counter",
+  "ScoreCards",
+  "TB_CMP_COMPLAINT",
+  "TB_WCM_USER_ROLE",
+  "TB_CMP_STATUS",
+  "Builder",
+  "GetComplaintApprovalsCounter",
+  "GetKpiComplaintReported",
+  "GetKpiComplaintReportedItem"
+ ],
+ "relations": []
+}

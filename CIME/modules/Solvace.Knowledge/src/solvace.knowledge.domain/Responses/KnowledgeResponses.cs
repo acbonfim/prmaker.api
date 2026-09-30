@@ -77,6 +77,44 @@ public class ArchitectureProjectResponse
     public DateTimeOffset UpdatedAt { get; set; }
     public string UpdatedBy { get; set; } = string.Empty;
     public List<ArchitectureSectionSummaryResponse> Sections { get; set; } = [];
+    /// <summary>Do que este projeto depende (0034).</summary>
+    public List<solvace.knowledge.domain.Entities.ArchitectureRelation> Relations { get; set; } = [];
+    /// <summary>Quem depende deste projeto (calculado das relações dos outros).</summary>
+    public List<ArchitectureIncomingRelation> UsedBy { get; set; } = [];
+}
+
+public class ArchitectureIncomingRelation
+{
+    public string Source { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+    public string? Evidence { get; set; }
+}
+
+/// <summary>Grafo do ecossistema (0034): projetos, serviços externos e as dependências entre eles.</summary>
+public class ArchitectureGraphResponse
+{
+    public List<ArchitectureGraphNode> Nodes { get; set; } = [];
+    public List<ArchitectureGraphEdge> Edges { get; set; } = [];
+}
+
+public class ArchitectureGraphNode
+{
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    /// <summary>Tipo do projeto ou "external".</summary>
+    public string Kind { get; set; } = string.Empty;
+    public bool Mapped { get; set; }
+}
+
+public class ArchitectureGraphEdge
+{
+    public string Source { get; set; } = string.Empty;
+    public string Target { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    /// <summary>Quantas relações desse tipo entre os dois (agrupadas numa aresta).</summary>
+    public int Count { get; set; }
+    public List<string> Details { get; set; } = [];
 }
 
 public class ArchitectureSectionVersionResponse

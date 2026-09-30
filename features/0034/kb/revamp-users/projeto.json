@@ -1,0 +1,33 @@
+{
+ "name": "Revamp — Users",
+ "kind": "revamp",
+ "order": 148,
+ "repository": "https://github.com/electradv/revamp-Users",
+ "repoDir": "kb-mirror/revamp-Users",
+ "summary": "Módulo central de gerenciamento de usuários do estate Revamp, responsável pelo ciclo de vida de usuários, papéis, times, layout físico (UnityDepartArea, PhysicalLayout) e integração com identidade via AWS Cognito. 17 projetos (net8.0), 32 controllers/115 rotas, 90 casos de uso, 2 Lambdas; tabelas TB_WCM_USER, TB_WCM_USER_PREFERENCE, TB_WCM_SITE, TB_WCM_USER_AREA, TB_WCM_USER_PICTURE.",
+ "keywords": [
+  "users",
+  "revamp-Users",
+  "UserCard",
+  "UserArea",
+  "UserSuplier",
+  "AuditsGuest",
+  "AuditsTransfer",
+  "UserContracted",
+  "AuditsLeader",
+  "UserSso",
+  "TB_WCM_USER",
+  "TB_WCM_USER_PREFERENCE",
+  "TB_WCM_SITE",
+  "TB_WCM_USER_AREA",
+  "Audits"
+ ],
+ "relations": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Users/Solvace.Users/src/Solvace.Users.Application/Commands/CreateNotification/CreateNotificationCommandHandler.cs:55"
+  }
+ ]
+}

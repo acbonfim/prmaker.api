@@ -1,0 +1,39 @@
+{
+ "name": "Revamp — Authentication",
+ "kind": "revamp",
+ "order": 106,
+ "repository": "https://github.com/electradv/revamp-Authentication",
+ "repoDir": "kb-mirror/revamp-Authentication",
+ "summary": "Serviço de autenticação do estate Revamp, responsável por autenticação de usuários via AWS Cognito, segurança JWT, gerenciamento de sessão, geração de newsletters em PDF, e acesso a múltiplos bancos de dados SQL Server (Global, Corporate e Local) com suporte a 13 projetos (net8.0), 13 controllers/38 rotas, 35 casos de uso, 0 Lambdas; tabelas TB_WCM_VERSION_LANGUAGE, TB_WCM_VERSION, TB_WCM_SITE, TB_WCM_VERSION_USER, TB_WCM_VERSION_TASK_LANGUAGE.",
+ "keywords": [
+  "authentication",
+  "revamp-Authentication",
+  "Parameter",
+  "Newsletter",
+  "Languages",
+  "AccessLog",
+  "Environment",
+  "McpOAuth",
+  "Site",
+  "Cookie",
+  "TB_WCM_VERSION_LANGUAGE",
+  "TB_WCM_VERSION",
+  "TB_WCM_SITE",
+  "TB_WCM_VERSION_USER",
+  "EnvironmentInfo"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_CARGO)",
+   "evidence": "revamp-Authentication/Solvace.Authentication/src/Solvace.Authentication.Infra.Data.Local.SqlServer/Queries/GetLastEmployeePositionInfoByUserIdLocalQuery.cs:29"
+  },
+  {
+   "target": "ext:cognito",
+   "kind": "external",
+   "detail": "AWS Cognito: https://cognito-idp. (código)",
+   "evidence": "revamp-Authentication/Solvace.Authentication/src/Solvace.Authentication.Application/Services/Mcp/CognitoOAuthClient.cs:112"
+  }
+ ]
+}

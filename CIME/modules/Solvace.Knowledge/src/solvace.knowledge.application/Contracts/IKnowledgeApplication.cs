@@ -15,6 +15,7 @@ public interface IArchitectureApplication
 {
     Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken);
     Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken);
+    Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken);
     Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken);
     Task<ArchitectureProjectResponse> UpsertProjectAsync(string key, UpsertArchitectureProjectRequest request, string actor, CancellationToken cancellationToken);
     Task DeleteProjectAsync(string key, string actor, CancellationToken cancellationToken);
