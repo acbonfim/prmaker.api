@@ -16,7 +16,7 @@
 | S2 | Geração da base (semente claude-global + projetos por prioridade) | ✅ 1ª carga pronta em `kb/` — publicar após o deploy |
 | S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, saídas) | ✅ concluída |
 | S4 | prmake-card / resume; vigia opcional | ✅ concluída |
-| Q1 | Medição antes/depois, teste local, PRs | ⬜ pendente |
+| Q1 | Medição antes/depois, teste local, PRs | 🔄 PRs abertos (#47 back, #28 front) — medição após o deploy |
 
 ## Log
 - 2026-09-30: análise e plano (`plan.md`). Worktrees `prform.api-0033` e `prform-app-0033` na branch `feature/0033`.
