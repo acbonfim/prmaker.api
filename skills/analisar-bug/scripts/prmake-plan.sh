@@ -49,6 +49,13 @@
 #   resume-info <card>                                   etapas, checkpoints e arquivos do plano atual
 #   pull        <card>                                   baixa os arquivos do plano para a pasta do card
 #   flush       <card>                                   reenvia a fila local (envios que falharam)
+#   contexto    <card> [titulo]                          CONTEXTO INICIAL NUM COMANDO (0033): card + repro steps, plano
+#                                                        criado/retomado, comentarios/anexos novos, sync do KC e da Base
+#                                                        Solvace e os trechos/artigos relacionados ao card
+#   usage       <card>                                   custo desta sessao do Claude no plano (tokens/turnos do transcript)
+#                                                        — enviado sozinho ao mudar o status do plano
+# Sessao (0033): com CLAUDE_CODE_SESSION_ID no ambiente, o plano guarda a sessao/maquina/pasta — o PRMake e o
+# prmake-card.sh retomam exatamente esta conversa (claude --resume) sem copiar comando.
 #
 # Etapas (JSON): [{"key":"investigar-codigo","title":"Investigar o codigo","description":"...",
 #                  "executor":"claude|user","kind":"task|code|pr|ticket|question|validation",
@@ -106,6 +113,52 @@ require_plan() {
     exit 0
   fi
   PLAN="$(plan_id)"; [[ -n "$PLAN" ]] || die "nenhum plano para o card $CARD (rode: prmake-plan.sh start $CARD)"
+  register_session
+}
+
+# Sessao do Claude Code no plano (0033): 1 chamada por (plano, sessao); guarda desde quando a sessao trabalha
+# neste plano (o custo conta so dai em diante — a mesma sessao pode ter atendido outro card antes).
+SESSION_HOST="$(hostname -s 2>/dev/null || hostname)"
+register_session() {
+  local sid="${CLAUDE_CODE_SESSION_ID:-}" mark
+  [[ -n "$sid" && -n "${PLAN:-}" ]] || return 0
+  mark="$CARD_DIR/.session-$PLAN"
+  [[ -f "$mark" && "$(cut -d'|' -f1 "$mark")" == "$sid" ]] && return 0
+  jq -n --arg s "$sid" --arg h "$SESSION_HOST" --arg c "$PWD" '{sessionId:$s, host:$h, cwd:$c}' > "$TMP/session.json"
+  local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/session" \
+    -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/session.json" 2>/dev/null)"
+  [[ "$code" =~ ^2 ]] && printf '%s|%s' "$sid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$mark"
+  return 0
+}
+
+# Custo da sessao neste plano (0033): soma o usage das respostas do transcript (sem repetir a mesma mensagem).
+send_usage() { # [--quiet]
+  local sid="${CLAUDE_CODE_SESSION_ID:-}" mark="$CARD_DIR/.session-${PLAN:-x}" since transcript
+  [[ -n "$sid" ]] || { [[ "${1:-}" == "--quiet" ]] || echo "(fora de uma sessao do Claude Code — sem custo para enviar)"; return 0; }
+  since="$( [[ -f "$mark" ]] && cut -d'|' -f2 "$mark")"
+  transcript="$(find "$HOME/.claude/projects" -maxdepth 2 -name "$sid.jsonl" 2>/dev/null | head -1)"
+  [[ -n "$transcript" ]] || { [[ "${1:-}" == "--quiet" ]] || echo "(transcript da sessao nao encontrado)"; return 0; }
+  python3 - "$transcript" "${since:-}" "$sid" "$SESSION_HOST" > "$TMP/usage.json" <<'PY' || return 0
+import json, sys
+path, since, sid, host = sys.argv[1:5]
+seen = {}; model = None
+for line in open(path, encoding="utf-8"):
+    try: d = json.loads(line)
+    except Exception: continue
+    if d.get("type") != "assistant" or (since and (d.get("timestamp") or "") < since): continue
+    m = d.get("message") or {}
+    u = m.get("usage")
+    if not isinstance(u, dict): continue
+    seen[m.get("id") or d.get("uuid")] = u
+    model = m.get("model") or model
+tot = lambda k: sum(int(u.get(k) or 0) for u in seen.values())
+print(json.dumps({"sessionId": sid, "host": host, "turns": len(seen), "inputTokens": tot("input_tokens"),
+                  "outputTokens": tot("output_tokens"), "cacheReadTokens": tot("cache_read_input_tokens"),
+                  "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model}))
+PY
+  local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/usage" \
+    -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/usage.json" 2>/dev/null)"
+  [[ "${1:-}" == "--quiet" ]] || jq -r --arg c "$code" '"custo desta sessao no plano: \(.turns) turnos · saida \(.outputTokens) · cache lido \(.cacheReadTokens) · cache escrito \(.cacheWriteTokens) (HTTP \($c))"' "$TMP/usage.json"
 }
 go_offline() { # <motivo>
   jq -n --arg card "$CARD" --arg why "$1" '{planId:null, card:$card, offline:true, reason:$why}' > "$STATE"
@@ -325,6 +378,7 @@ case "$CMD" in
           jq -n '{status:"running", reason:"Retomado pela skill"}' > "$TMP/body"
           api POST "/$PLAN/status" "$TMP/body"
         fi
+        register_session
         api GET "/$PLAN"
         echo "RETOMADO — continue da primeira etapa nao concluida, usando o checkpoint:"
         print_plan
@@ -347,6 +401,7 @@ case "$CMD" in
           echo "ANALISE CONCLUIDA — ainda sem plano de correcao. Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
           echo "(montar o plano de correcao com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
         fi
+        register_session
         api GET "/$PLAN"
         print_plan
         exit 0
@@ -367,6 +422,7 @@ case "$CMD" in
     PLAN=$(jq -r '.id' "$TMP/resp")
     save_state "$PLAN" "$PLAN" ""
     rm -f "$OUTBOX"
+    register_session
     echo "NOVO PLANO criado:"
     print_plan
     ;;
@@ -451,6 +507,55 @@ case "$CMD" in
       jq -n --arg s "$ST" --arg r "$REASON" '{status:$s} + (if $r != "" then {reason:$r} else {} end)' > "$TMP/body"
     fi
     send_or_queue POST "/$PLAN/status" "$TMP/body" && echo "OK plano -> $ST"
+    send_usage --quiet
+    ;;
+
+  usage)
+    require_plan; send_usage
+    ;;
+
+  contexto)
+    # 0033: tudo o que a analise precisa no inicio, num turno so (economiza tokens).
+    SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"; SK="$HOME/.claude/skills/base-solvace/scripts"
+    CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
+    echo "=== CARD $CARD (pasta: $CARD_DIR)"
+    MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
+    grep -E "^(workItemType|state|area|fluxo|title)=" <<<"$MANIFEST_OUT"
+    CTITLE="$(sed -n 's/^title=//p' <<<"$MANIFEST_OUT")"; CAREA="$(sed -n 's/^area=//p' <<<"$MANIFEST_OUT")"
+    DESC="$CARD_DIR/dados/description.txt"
+    if [[ -s "$DESC" ]]; then
+      echo "--- repro steps/descricao ($(wc -c < "$DESC" | tr -d ' ') bytes; inteiro em $DESC)"
+      head -c 4000 "$DESC"; [[ $(wc -c < "$DESC") -gt 4000 ]] && echo "…(cortado — leia o arquivo se precisar)"; echo
+    fi
+    echo; echo "=== PLANO"
+    bash "$SELF" start "$CARD" "${1:-Analise do bug $CARD${CTITLE:+: ${CTITLE:0:120}}}" 2>&1
+    echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
+    bash "$SELF" notes "$CARD" 2>&1
+    echo
+    if [[ -f "$SK/kb.sh" ]]; then
+      bash "$SK/kc.sh" sync --quiet 2>/dev/null || true
+      bash "$SK/kb.sh" sync --quiet 2>/dev/null || true
+      KBDIR="$(bash "$SK/kb.sh" path)"
+      echo "=== BASE SOLVACE (trechos do indice ligados ao card — abra a secao com: kb.sh show <projeto> <secao>)"
+      python3 - "$KBDIR/INDEX.md" "$CTITLE $CAREA" <<'PY' 2>/dev/null || echo "(indice indisponivel)"
+import re, sys, unicodedata
+def norm(t): return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+stop = set("para com sem uma uns umas dos das nos nas pelo pela que nao when with from that this have into user usuario erro error bug card solvace product improvement development team".split())
+words = [w for w in re.findall(r"[a-z0-9]{4,}", norm(sys.argv[2])) if w not in stop]
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = [b for b in re.split(r"
+(?=### )", text) if b.startswith("### ")]
+scored = sorted(((sum(norm(b).count(w) for w in words), b) for b in blocks), key=lambda x: -x[0])
+hits = [b for s, b in scored if s > 0][:2]
+print("
+
+".join(b[:1500] for b in hits) if hits else "(nenhum projeto da base casou com o titulo/area — veja: kb.sh index)")
+PY
+      echo; echo "=== KNOWLEDGE CENTER (regras de negocio relacionadas — kc.sh article <n> para o texto inteiro)"
+      bash "$SK/kc.sh" search "${CTITLE:-$CARD}" --limit 3 2>/dev/null || echo "(KC indisponivel)"
+    else
+      echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
+    fi
     ;;
 
   control)
@@ -561,6 +666,7 @@ case "$CMD" in
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao criar o plano de correcao: $(resp_error)"
     CORR=$(jq -r '.id' "$TMP/resp")
     save_state "$CORR" "$ANALYSIS" "$CORR"
+    PLAN="$CORR"; register_session
     echo "PLANO DE CORRECAO criado (agora e o plano ativo):"
     print_plan
     ;;

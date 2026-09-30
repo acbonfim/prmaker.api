@@ -15,7 +15,8 @@
 #   revamp-repos.sh where <modulo>
 #       imprime o caminho do modulo revamp (aceita 'BOS' ou 'revamp-BOS').
 #   revamp-repos.sh grep <padrao> [escopo]
-#       busca <padrao> no codigo. escopo: all (default) | revamp | legacy | <modulo>.
+#       busca <padrao> no codigo. escopo: all (default) | revamp | legacy | <modulo>. Saida limitada
+#       (3 por arquivo, 80 linhas; env GREP_PER_FILE/GREP_MAX).
 #
 # Env: REVAMP_DIR, EDV_SOLVACE_DIR
 set -euo pipefail
@@ -54,7 +55,7 @@ resolve_module() {
 do_grep() {
   local pat="$1" dir="$2" label="$3"
   [[ -d "$dir" ]] || return 0
-  grep -rIn  --binary-files=without-match \
+  grep -rIn -m "${GREP_PER_FILE:-3}" --binary-files=without-match \
     --include='*.cs' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
     --include='*.sql' --include='*.json' --include='*.cshtml' --include='*.razor' \
     --include='*.asp' --include='*.aspx' --include='*.vb' --include='*.config' --include='*.xml' \
@@ -81,6 +82,8 @@ case "$CMD" in
     ;;
   grep)
     PAT="${1:?informe o padrao}"; SCOPE="${2:-all}"
+    # Saida limitada (0033): ate GREP_PER_FILE ocorrencias por arquivo, linhas cortadas e GREP_MAX linhas no total.
+    exec > >(awk -v max="${GREP_MAX:-80}" 'NR<=max {print substr($0,1,220)} END {if (NR>max) print "…(" NR-max " linhas omitidas — refine o padrao ou o escopo; GREP_MAX/GREP_PER_FILE aumentam)"}')
     case "$SCOPE" in
       all)     do_grep "$PAT" "$EDV_SOLVACE_DIR" "legacy"
                for m in $(revamp_modules); do do_grep "$PAT" "$REVAMP_DIR/$m" "$m"; done ;;

@@ -60,6 +60,14 @@ a chave do DevOps em **Minhas integrações**).
 > `jq '.card.historicoDeAlteracoes[] | {rev:.rev, quem:.changedByName, quando:.changedDate, campos:[.changes[].field]}'`,
 > `jq '.pullRequestSalvo'`). Não deixe nenhuma fonte de fora.
 
+### 2b. Regras de negocio (Knowledge Center)
+```bash
+bash ~/.claude/skills/base-solvace/scripts/kc.sh sync --quiet 2>/dev/null || true
+bash ~/.claude/skills/base-solvace/scripts/kc.sh search "<modulo/tela/termos do card>" --limit 3
+```
+Regra de negocio envolvida no card → cite o **ART-n** no handover (quem assume encontra a regra rapido); sem
+artigo, registre que a regra nao esta documentada no Knowledge Center. (Skill `base-solvace`; sem ela, pule.)
+
 ### 3. Preencher o formulário
 Siga `prompt.txt`, que tem as mesmas regras da tela:
 - Preencha **exatamente** o layout de `template.md`, mantendo **todos os títulos e a estrutura** e trocando os

@@ -60,6 +60,14 @@ O script busca o card no DevOps, os prompts (id=3), os commits da branch e os di
 O manifesto impresso informa `isBug=1|0` e quantos commits foram selecionados. Se `isBug=0`, não
 haverá RCA e o passo 6 (root cause) é pulado — mas o comentário PT/EN ainda é gerado.
 
+### 2b. Regras de negocio (Knowledge Center) — antes de escrever o RCA
+```bash
+bash ~/.claude/skills/base-solvace/scripts/kc.sh sync --quiet 2>/dev/null || true
+bash ~/.claude/skills/base-solvace/scripts/kc.sh search "<modulo/tela/termos do card>" --limit 3
+```
+Se um artigo descrever a regra envolvida, use-o para dizer no RCA qual e o comportamento esperado e **cite o
+ART-n**; sem artigo, nao invente a regra. (Skill `base-solvace`; sem ela instalada, pule.)
+
 ### 3. Gerar o texto do PR seguindo o prompt
 Leia `/tmp/prmake/prompt.txt` e substitua:
 - `{cardNumber}` → o número do card;
