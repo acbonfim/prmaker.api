@@ -13,7 +13,7 @@ set -euo pipefail
 main() {
 BASE="${PRMAKE_API_BASE:-__PRMAKE_API_BASE__}"
 TOKEN="${PRMAKE_TOKEN:-}"
-[[ -n "$TOKEN" ]] || TOKEN="$(tr -d '\n' < "$HOME/.claude/prmake-token.txt" 2>/dev/null || true)"
+[[ -n "$TOKEN" ]] || TOKEN="$(tr -d '\r\n' < "$HOME/.claude/prmake-token.txt" 2>/dev/null || true)"
 [[ -n "$TOKEN" ]] || { echo "ERRO: informe a api-key: ... | PRMAKE_TOKEN=<sua api-key do PRMake> bash" >&2; exit 1; }
 command -v curl >/dev/null || { echo "ERRO: instale o curl antes (Debian/Ubuntu: sudo apt-get install -y curl)" >&2; exit 1; }
 
