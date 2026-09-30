@@ -15,7 +15,8 @@ namespace solvace.prform.Controllers;
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
-public class ArchitectureController(IArchitectureApplication application, solvace.timeline.application.Contracts.IUserRepository users) : ControllerBase
+public class ArchitectureController(IArchitectureApplication application, solvace.timeline.application.Contracts.IUserRepository users,
+    solvace.prform.Knowledge.ArchitectureChatService chat) : ControllerBase
 {
     public const string HashHeader = "X-Kb-Hash";
 
@@ -77,6 +78,22 @@ public class ArchitectureController(IArchitectureApplication application, solvac
         Response.Headers[HashHeader] = manifest.Hash;
         return File(zip, "application/zip", $"solvace-kb-{manifest.Hash}.zip");
     }
+
+    /// <summary>O chat de melhoria está disponível? (admin e plugin de IA configurado)</summary>
+    [Authorize(Roles = "admin")]
+    [HttpGet("chat/status")]
+    public async Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatStatus>> ChatStatus(CancellationToken ct) => Ok(await chat.GetStatusAsync(ct));
+
+    /// <summary>Conversa com o especialista sobre uma seção; pode devolver a seção inteira proposta (nada é gravado).</summary>
+    [Authorize(Roles = "admin")]
+    [HttpPost("projects/{key}/sections/{section}/chat")]
+    public Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatResponse>> Chat([FromRoute] string key, [FromRoute] string section,
+        [FromBody] solvace.prform.Knowledge.ArchitectureChatRequest request, CancellationToken ct) =>
+        Run<solvace.prform.Knowledge.ArchitectureChatResponse>(async () =>
+        {
+            try { return Ok(await chat.ChatAsync(key, section, request, ct)); }
+            catch (InvalidOperationException e) { return StatusCode(StatusCodes.Status502BadGateway, new { error = e.Message }); }
+        });
 
     private Task<string> ActorAsync(CancellationToken ct) => KnowledgeController.ActorAsync(users, User, ct);
 

@@ -43,6 +43,7 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
+builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureChatService>();
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
