@@ -3,7 +3,7 @@
 | Fase | Descrição | Status |
 |---|---|---|
 | D0 | Decisões: KC pelo banco Aurora local; vigia opcional por pessoa | ✅ concluída |
-| K0 | Credencial de leitura do Aurora DEV + `kc-query.sh` testado (db `KnowledgeCenter`, schema `knowledge_center`) | ⛔ bloqueada — usuário testado sem permissão no schema |
+| K0 | Credencial do KC DEV + leitura testada (db `KnowledgeCenter`, schema `knowledge_center`) | ✅ acesso ok (falta o `kc-query.sh`, fase S3) |
 | B1 | Plugin Knowledge Center Configurations (ambiente/alias/schema) no Skills/config | ⬜ pendente |
 | B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ⬜ pendente |
 | B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
@@ -26,3 +26,5 @@
   pendente de credencial. KC passa a entrar já na primeira geração da engenharia reversa (S2).
 - 2026-09-30: login testado com `multilingual/development`: conecta, acha o database `KnowledgeCenter` /
   schema `knowledge_center` (~59 artigos), mas sem USAGE/SELECT. Precisa de credencial com leitura no schema.
+- 2026-09-30: credencial do KC (`app_devadmin`) testada: leitura ok, escrita recusada pela sessão somente leitura.
+  DEV tem 25 artigos publicados, a maioria teste de QA; útil: ~13 do Action Plan + visão geral. Filtro de ruído no plugin.

@@ -78,11 +78,22 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
   usuário em `~/.claude/postgres-credentials-dev.json`): conecta no `solvace-pstgdev`; o KC fica no database
   **`KnowledgeCenter`**, schema **`knowledge_center`** (snake_case — a doc do repo diz `knowledgeCenter`), 25 tabelas;
   volume estimado pelas estatísticas: ~59 artigos, 35 categorias, 25 subcategorias, 32 tags, 28 categorias de tag.
-- **Bloqueio**: esse usuário **não tem USAGE no schema nem SELECT nas tabelas** do KC. Nenhum segredo no Secrets
-  Manager tem "knowledge"/"kct" no nome; a string `KnowledgeCenterConnection` da API do KC vem da configuração do
-  módulo (origem não verificada). Caminhos: (a) achar a credencial que a API do KC usa (task definition/Parameter
-  Store/pipeline) ou (b) **recomendado**: pedir ao DBA um usuário só-leitura dedicado (`GRANT USAGE ON SCHEMA
-  knowledge_center` + `GRANT SELECT ON ALL TABLES` + default privileges) e guardá-lo como segredo próprio.
+- Esse usuário não tem USAGE/SELECT no schema do KC. **Credencial do KC fornecida pelo usuário** (usuário da
+  aplicação `app_devadmin`, host `solvace-pstgdev-instance-1`, database `KnowledgeCenter`) — gravada só em
+  `~/.claude/knowledgecenter-credentials.json` (600, formato `{ "dev": {...}, "prod": {...} }`). **Teste ok**: lê
+  tudo; a sessão abre com `default_transaction_read_only=on` e o banco recusou escrita (`ReadOnlySqlTransaction`).
+  Recomendação mantida: trocar por um usuário só-leitura dedicado quando o DBA puder (a do admin ficou na conversa).
+- **Conteúdo real em DEV (2026-09-30)**: 65 artigos (25 publicados, 29 rascunhos, 5 arquivados), 41 categorias,
+  68 tags — **a maior parte é dado de teste de QA** (categorias "teste", "123x", "Teste QA"...; títulos
+  "title-Haroldo", "teste qa"). Conteúdo útil: ~13 artigos publicados sobre o **Action Plan** (permissões, kanban,
+  calendário, analytics, notificações, histórico, feed, checklist) + visão geral do produto — ~15 mil caracteres
+  (~4 mil tokens) no total. Consequências:
+  - o `kc-query.sh` e a geração só usam **publicados** (`status_id = 30`, `is_deleted = false`) e aplicam um
+    **filtro de ruído configurável no plugin** (categorias/títulos excluídos por padrão, tamanho mínimo do texto);
+  - o valor do KC hoje é pequeno e concentrado no Action Plan; cresce quando apontar para produção (mesma estrutura,
+    só troca o ambiente no plugin + credencial `prod` no arquivo local);
+  - colunas úteis de `articles`: `article_id` (ART-n), `title`, `content_plain_text`, `subcategory_unique_id`,
+    `last_update_date` (para o incremental); categorias via `subcategories` → `categories`; tags via `article_tags`.
 - Cliente: `psycopg[binary]` no venv da skill (sem `psql` local).
 
 ## Item 3 — skills mais baratas e assertivas (medido antes/depois)
