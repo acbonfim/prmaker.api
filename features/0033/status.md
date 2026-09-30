@@ -10,10 +10,10 @@
 | B3 | Chat de IA com histórico + endpoint de sugestão | ✅ concluída |
 | B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ✅ concluída |
 | F1 | Tela Arquitetura (leitura) | ✅ concluída |
-| F2 | Edição, versões e chat de melhoria (admin) | ⬜ pendente |
+| F2 | Edição, versões e chat de melhoria (admin) + fila de sugestões | ✅ concluída |
 | F3 | Retomar no Claude + custo no plano de execução | ✅ concluída |
 | S1 | Skill base-solvace (mapear/atualizar, template, espelho local, depends) | ✅ concluída |
-| S2 | Geração da base (semente claude-global + projetos por prioridade) | ⬜ pendente |
+| S2 | Geração da base (semente claude-global + projetos por prioridade) | ✅ 1ª carga pronta em `kb/` — publicar após o deploy |
 | S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, saídas) | ✅ concluída |
 | S4 | prmake-card / resume; vigia opcional | ✅ concluída |
 | Q1 | Medição antes/depois, teste local, PRs | ⬜ pendente |
@@ -64,3 +64,22 @@
     o "Continuar" e confirma); `contexto` com a base e o KC.
   - Achados/corrigidos: trecho Python embutido quebrado por escape de `\n` (visto no teste); instalador passa a exigir
     o manifesto da dependência (uma pasta vazia fazia pular a instalação — criada por engano no teste e removida).
+- 2026-09-30: **onda 3 concluída** (F2, S2).
+  - F2: fila de **sugestões** (backend `ArchitectureSuggestions`: análise propõe com `arch.sh suggest`, admin aplica/descarta;
+    `analisar-bug` propõe aprendizados e divergências no passo 9/3); tela (admin): **Editar** (markdown com prévia),
+    **Histórico** (ver e restaurar versão), **Sugerir melhoria** (chat com o especialista; proposta com Aplicar/Descartar),
+    **Nova seção** (template), **Dados do projeto** (resumo/palavras-chave do índice), painel **Sugestões** com "Incorporar com a
+    IA" (chat pré-preenchido; aplicar resolve a sugestão). Teste: chat pelo SDK real da Anthropic contra um simulador local;
+    v1→v4 (IA, restauração, edição) e sugestão incorporada saindo da fila; 403 para não-admin na fila.
+  - S2: engenharia reversa inicial em `kb/` (revisável no PR) — 9 projetos, 14 seções: `ecossistema` (mapa + mermaid, multi-tenant,
+    como achar o projeto do card), `edv-solvace` (estrutura, módulos, dados/conexões, sessão ASP↔core, armadilhas),
+    `edv-solvace-apps`, `edv-solvace-api` (ewcm-core-api: Ocelot, Cognito, dob_*), `revamp-actionplan` (estrutura, tabelas
+    `TB_ACP_*`, regras do KC com ART-n), `revamp-modulos` (padrão + onde está cada módulo), `infra-aws` (RDS por cliente, Aurora,
+    ~695 Lambdas de eventos, ECS/CodePipeline, Secrets Manager por NOME), `login`, `regras-de-negocio`. Semente: claude-global
+    (`revamp/architecture.md`, ADR 0003). **Índice do parque inteiro + KC: ~2,5 mil tokens.** `kb/publicar.sh` publica tudo com o
+    `arch.sh` (grava o commit de origem). Nenhum segredo nos textos (conferido).
+  - Observações: commits de origem vêm da branch local de cada repo (edv-solvace estava em `hotfix/73821`); o monorepo `revamp`
+    local é de 2025-10. **Próximos mapeamentos** (incrementais, admin com a skill): módulos revamp com mais cards (BOS, CIL, LPP,
+    DefectTag, Users…) e seções `modulos`/`integracoes` do legado por módulo; siglas do ASP a confirmar pelo menu.
+  - Achado de segurança (fora da base): `edv-solvace/solvace-asp/systems/includes/asp/all_conn.asp` tem credencial de banco no
+    código-fonte.
