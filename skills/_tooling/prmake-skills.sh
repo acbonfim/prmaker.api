@@ -97,7 +97,26 @@ install_one() { # <nome> <versão> <modo: install|update>
     '{name:$n, version:$v, installedAt:$at, files:$f}' > "$dir/$MANIFEST"
 
   run_setup "$name"
+  install_depends "$name"
   return 0
+}
+
+# Dependências declaradas no skill.json ("depends": ["base-solvace"]) — instaladas quando faltam (0033).
+install_depends() {
+  local dep v
+  for dep in $(jq -r '.depends[]? // empty' "$SKILLS_DIR/$1/skill.json" 2>/dev/null); do
+    [[ -d "$SKILLS_DIR/$dep" ]] && continue
+    v="$(jq -r --arg n "$dep" '.skills[] | select(.name == $n) | .version' "$TMP/catalog.json")"
+    [[ -n "$v" ]] || { warn "dependência $dep de $1 não está publicada"; continue; }
+    install_one "$dep" "$v" install && say "✔ $dep ($v) — dependência de $1"
+  done
+}
+
+# Espelho local da Base Solvace (0033): atualiza só quando o hash muda; silencioso sem rede.
+sync_kb() {
+  local kb="$SKILLS_DIR/base-solvace/scripts/kb.sh"
+  [[ -f "$kb" ]] || return 0
+  if [[ $QUIET -eq 1 ]]; then bash "$kb" sync --quiet 2>/dev/null || true; else bash "$kb" sync || true; fi
 }
 
 run_setup() {
@@ -207,6 +226,7 @@ case "$cmd" in
     done
     ensure_hook
     ensure_permissions
+    sync_kb
     self_update
     say "Pronto. As skills estão em $SKILLS_DIR e se atualizam sozinhas a cada sessão do Claude Code."
     ;;
@@ -225,7 +245,12 @@ case "$cmd" in
       [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && continue
       install_one "$name" "$v" update && [[ "$(local_version "$name")" == "$v" ]] && updated+=("$name ${cur:-novo} → $v")
     done
+    # Skill já instalada e em dia pode ter ganhado dependência nova.
+    for name in $(selected ${ARGS[@]+"${ARGS[@]}"}); do
+      [[ -d "$SKILLS_DIR/$name" ]] && install_depends "$name"
+    done
     ensure_permissions
+    sync_kb
     self_update
     if [[ ${#updated[@]} -gt 0 ]]; then
       # No hook SessionStart esta linha vai para o contexto do Claude: ele sabe que deve reler a SKILL.md.

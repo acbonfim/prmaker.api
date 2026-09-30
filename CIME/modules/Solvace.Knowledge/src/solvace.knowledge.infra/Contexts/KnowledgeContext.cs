@@ -31,6 +31,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Environment).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.SourceId).IsRequired().HasMaxLength(KnowledgeArticle.MaxSourceIdLength);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(KnowledgeArticle.MaxTitleLength);
             entity.Property(e => e.Content).IsRequired().HasColumnType("text");
             entity.Property(e => e.Category).HasMaxLength(300);
@@ -48,6 +49,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.HasKey(e => e.Environment);
             entity.Property(e => e.Environment).HasMaxLength(10);
             entity.Property(e => e.LastSyncBy).HasMaxLength(200);
+            entity.Property(e => e.FilterHash).HasMaxLength(64);
         });
 
         modelBuilder.Entity<ArchitectureProject>(entity =>

@@ -56,9 +56,9 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     public Task<ActionResult<List<ArchitectureSectionVersionResponse>>> Versions([FromRoute] string key, [FromRoute] string section, CancellationToken ct) =>
         Run<List<ArchitectureSectionVersionResponse>>(async () => Ok(await application.GetVersionsAsync(key, section, ct)));
 
-    [HttpGet("projects/{key}/sections/{section}/versions/{version:int}")]
-    public Task<ActionResult<ArchitectureSectionVersionResponse>> Version([FromRoute] string key, [FromRoute] string section, [FromRoute] int version, CancellationToken ct) =>
-        Run<ArchitectureSectionVersionResponse>(async () => Ok(await application.GetVersionAsync(key, section, version, ct)));
+    [HttpGet("projects/{key}/sections/{section}/versions/{number:int}")]
+    public Task<ActionResult<ArchitectureSectionVersionResponse>> Version([FromRoute] string key, [FromRoute] string section, [FromRoute] int number, CancellationToken ct) =>
+        Run<ArchitectureSectionVersionResponse>(async () => Ok(await application.GetVersionAsync(key, section, number, ct)));
 
     /// <summary>Índice compacto em markdown (o que a skill lê primeiro).</summary>
     [HttpGet("index")]

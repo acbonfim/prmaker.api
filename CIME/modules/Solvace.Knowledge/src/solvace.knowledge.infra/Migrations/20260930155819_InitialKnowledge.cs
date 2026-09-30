@@ -48,7 +48,7 @@ namespace solvace.knowledge.infra.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Environment = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
-                    SourceId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SourceId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     ArticleNumber = table.Column<int>(type: "integer", nullable: false),
                     Title = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     Content = table.Column<string>(type: "text", nullable: false),
@@ -75,7 +75,8 @@ namespace solvace.knowledge.infra.Migrations
                     LastSyncAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     LastFullSyncAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     LastSyncBy = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
-                    ArticleCount = table.Column<int>(type: "integer", nullable: false)
+                    ArticleCount = table.Column<int>(type: "integer", nullable: false),
+                    FilterHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true)
                 },
                 constraints: table =>
                 {

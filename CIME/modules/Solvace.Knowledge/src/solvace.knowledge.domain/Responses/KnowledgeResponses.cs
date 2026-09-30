@@ -24,6 +24,8 @@ public class KnowledgeStateResponse
     public DateTimeOffset? LastFullSyncAt { get; set; }
     public string? LastSyncBy { get; set; }
     public int ArticleCount { get; set; }
+    /// <summary>As regras do filtro mudaram desde a última carga completa — a skill faz carga completa.</summary>
+    public bool FilterChanged { get; set; }
 }
 
 public class KnowledgeArticleResponse

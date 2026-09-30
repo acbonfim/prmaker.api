@@ -10,16 +10,22 @@ public class KnowledgeSyncState
     public DateTimeOffset? LastFullSyncAt { get; private set; }
     public string? LastSyncBy { get; private set; }
     public int ArticleCount { get; private set; }
+    /// <summary>Hash das regras do filtro na última carga completa (0033): regra mudou → carga completa de novo.</summary>
+    public string? FilterHash { get; private set; }
 
     protected KnowledgeSyncState() { }
 
     public KnowledgeSyncState(string environment) => Environment = KnowledgeEnvironment.Normalize(environment);
 
-    public void Register(DateTimeOffset? maxSourceChange, bool full, int articleCount, string by, DateTimeOffset now)
+    public void Register(DateTimeOffset? maxSourceChange, bool full, int articleCount, string filterHash, string by, DateTimeOffset now)
     {
         if (maxSourceChange is { } max && (Watermark is null || max > Watermark)) Watermark = max;
         LastSyncAt = now;
-        if (full) LastFullSyncAt = now;
+        if (full)
+        {
+            LastFullSyncAt = now;
+            FilterHash = filterHash;
+        }
         LastSyncBy = by;
         ArticleCount = articleCount;
     }

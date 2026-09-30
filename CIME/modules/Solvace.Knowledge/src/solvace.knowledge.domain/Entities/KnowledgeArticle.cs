@@ -13,8 +13,10 @@ public class KnowledgeArticle
 
     public Guid Id { get; private set; }
     public string Environment { get; private set; } = KnowledgeEnvironment.Dev;
-    /// <summary><c>article_unique_id</c> no KC.</summary>
-    public Guid SourceId { get; private set; }
+    public const int MaxSourceIdLength = 64;
+
+    /// <summary><c>article_unique_id</c> no KC (inteiro no banco atual; texto para servir a qualquer formato).</summary>
+    public string SourceId { get; private set; } = string.Empty;
     /// <summary>Número ART-n.</summary>
     public int ArticleNumber { get; private set; }
     public string Title { get; private set; } = string.Empty;
@@ -29,11 +31,13 @@ public class KnowledgeArticle
 
     protected KnowledgeArticle() { }
 
-    public KnowledgeArticle(string environment, Guid sourceId)
+    public KnowledgeArticle(string environment, string sourceId)
     {
+        var id = (sourceId ?? string.Empty).Trim();
+        if (id.Length == 0 || id.Length > MaxSourceIdLength) throw new DomainException("Identificador do artigo no KC inválido.");
         Id = Guid.NewGuid();
         Environment = KnowledgeEnvironment.Normalize(environment);
-        SourceId = sourceId;
+        SourceId = id;
     }
 
     /// <summary>Atualiza com o que veio do KC; devolve true quando algo mudou.</summary>

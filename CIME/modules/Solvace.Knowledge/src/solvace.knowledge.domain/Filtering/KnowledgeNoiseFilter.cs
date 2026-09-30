@@ -35,6 +35,12 @@ public sealed class KnowledgeFilterOptions
 
     /// <summary>Tamanho mínimo do texto; abaixo do piso não vale (só pode aumentar).</summary>
     public int MinTextLength { get; init; }
+
+    /// <summary>Impressão digital das regras (piso + extras): mudou = a próxima sincronização precisa ser completa.</summary>
+    public string Fingerprint() =>
+        string.Join("|", KnowledgeNoiseFilter.FloorPatterns) + "#" + KnowledgeNoiseFilter.FloorMinTextLength + "#"
+        + string.Join("|", ExtraPatterns.Select(p => p.Trim()).Order(StringComparer.Ordinal)) + "#"
+        + string.Join(",", ExcludedArticles.Order()) + "#" + string.Join(",", AllowedArticles.Order()) + "#" + MinTextLength;
 }
 
 public sealed record KnowledgeFilterVerdict(bool Accepted, string? Reason)

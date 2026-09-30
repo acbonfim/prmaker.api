@@ -17,7 +17,8 @@ public class KnowledgeSyncRequest
 
 public class KnowledgeSyncArticle
 {
-    public Guid SourceId { get; set; }
+    /// <summary><c>article_unique_id</c> no KC, como texto.</summary>
+    public string SourceId { get; set; } = string.Empty;
     public int ArticleNumber { get; set; }
     public string? Title { get; set; }
     public string? Content { get; set; }

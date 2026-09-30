@@ -4,15 +4,15 @@
 |---|---|---|
 | D0 | Decisões: KC pelo banco Aurora local; vigia opcional por pessoa | ✅ concluída |
 | K0 | Credencial do KC DEV + leitura testada (db `KnowledgeCenter`, schema `knowledge_center`) | ✅ acesso ok (falta o `kc-query.sh`, fase S3) |
-| B1 | Plugin Knowledge Center Configurations (ambiente/alias/schema) no Skills/config | ⬜ pendente |
-| K1 | `kc-query.sh` + sincronização incremental + teste do filtro | ⬜ pendente |
-| B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ⬜ pendente |
+| B1 | Plugin Knowledge Center Configurations + cópia filtrada do KC (sync, estado, busca, artigo) | ✅ concluída |
+| K1 | `kc.sh` (check/sync/search/article) + sincronização incremental + teste do filtro | ✅ concluída |
+| B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ✅ concluída |
 | B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
-| B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ⬜ pendente |
+| B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ✅ concluída |
 | F1 | Tela Arquitetura (leitura) | ⬜ pendente |
 | F2 | Edição, versões e chat de melhoria (admin) | ⬜ pendente |
 | F3 | Retomar no Claude + custo no plano de execução | ⬜ pendente |
-| S1 | Skill mapear-arquitetura + espelho local | ⬜ pendente |
+| S1 | Skill base-solvace (mapear/atualizar, template, espelho local, depends) | ✅ concluída |
 | S2 | Geração da base (semente claude-global + projetos por prioridade) | ⬜ pendente |
 | S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, imagens, saídas) | ⬜ pendente |
 | S4 | prmake-card / resume; vigia opcional | ⬜ pendente |
@@ -31,3 +31,15 @@
   DEV tem 25 artigos publicados, a maioria teste de QA; útil: ~13 do Action Plan + visão geral. Filtro de ruído no plugin.
 - 2026-09-30: garantias do KC definidas pelo usuário (filtro de teste fixo, sync pelas skills, consultar sempre,
   troca para prod por configuração) — seção própria no `plan.md`.
+- 2026-09-30: **onda 1 concluída** (B1, B2, B4, S1 + K1). Módulo `Solvace.Knowledge` (schema `knowledge`): cópia
+  filtrada do KC e engenharia reversa; piso do filtro em `KnowledgeNoiseFilter` (C#) e `kc.py` (mesma regra, 36 testes
+  xUnit + autoteste `kc.sh check`); plugin semeado; `Skills/config.knowledge`. Plano de execução: `Sessions` (jsonb),
+  `resume-request`/`resume-ack`/`resume-candidates`, custo por sessão. Skill `base-solvace` (kc.sh, kb.sh, arch.sh,
+  template e guia de mapeamento); `analisar-bug`/`gerar-prmake`/`gerar-handover` declaram `depends: base-solvace`;
+  `prmake-skills.sh` instala dependências e sincroniza o espelho no `update`.
+  Teste local (`.t0033`, Postgres isolado + KC real de DEV): carga inicial 65 lidos → 13 aceitos (exatamente os
+  legítimos); incremental; exclusão pelo plugin remove na hora e desfazer traz de volta sem `--full` (hash do filtro);
+  troca dev→prod sem credencial pula o sync e a cópia dev volta ao desfazer; escrita de arquitetura 403 para não-admin;
+  seção igual não versiona; `kb.sh` baixa só quando o hash muda; B4 ponta a ponta (sessão, custo, continuar, candidatos
+  por máquina, respostas pela tela viram candidato, planos antigos com `Sessions = []`).
+  Achado: no banco real `article_unique_id` é inteiro (a doc do KC diz GUID) — `SourceId` virou texto.

@@ -40,7 +40,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
      e só depois a seção que precisa. Sem espelho a skill cai para a API (`GET /Architecture/...`).
    - Por que não só no banco: cada consulta viraria um turno + resposta HTTP no contexto. Por que não só local:
      sem tela, sem edição revisada, sem versão única para o time.
-2. **Geração pela skill `mapear-arquitetura`** (nova), rodada por quem tem os repositórios: um projeto por vez, com
+2. **Geração pela skill `base-solvace`** (nova; reúne mapear/atualizar a engenharia reversa, o Knowledge Center e o espelho local — as outras skills dependem dela), rodada por quem tem os repositórios: um projeto por vez, com
    template fixo de seções; publica no PRMake (toda escrita pelo PRMake). **O Knowledge Center entra já na primeira
    geração** (pedido do usuário): cada projeto/módulo ganha a seção *Regras de negócio (Knowledge Center)* com os
    artigos relacionados (`ART-n`, título, resumo de 2–3 linhas, categoria/tags) cruzados pelo nome do módulo,
@@ -114,7 +114,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
   máquina de quem tem a credencial: lê só o que mudou desde a marca d'água (`max(last_update_date)` + ids removidos/
   despublicados) e envia ao PRMake (`POST /Knowledge/sync`). Quem não tem credencial não sincroniza, mas usa a cópia.
 - Gatilhos: toda execução da `analisar-bug`/`gerar-prmake`/`gerar-handover` (1 consulta barata à marca d'água; só
-  envia se mudou) e o comando `mapear-arquitetura kc-sync`. A tela mostra a última sincronização e o ambiente.
+  envia se mudou) e o comando `kc.sh sync` (skill `base-solvace`). A tela mostra a última sincronização e o ambiente.
 - Espelho local (`~/.claude/solvace-kb/knowledge/`) atualizado junto com a arquitetura (sync por hash) — a
   consulta na análise é leitura de arquivo, sem rede e sem credencial.
 - Artigo novo/alterado reprocessa só as seções de arquitetura ligadas a ele (incremental).
@@ -132,7 +132,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 - Ao trocar o ambiente, a próxima sincronização percebe e faz a carga completa do novo ambiente; a cópia do anterior
   fica guardada e oculta (volta se desfizer a troca). Sem deploy e sem mudar skill.
 - Checklist da troca: credencial `prod` só-leitura no arquivo local de quem sincroniza → mudar `Environment` no
-  plugin → rodar `mapear-arquitetura kc-sync` → conferir contagem na tela.
+  plugin → rodar `kc.sh sync` (skill `base-solvace`) → conferir contagem na tela.
 
 ## Item 3 — skills mais baratas e assertivas (medido antes/depois)
 - **SKILL.md enxuta** (~3 mil tokens): fluxo e regras essenciais; o resto vira `references/*.md` lido só na fase
@@ -162,7 +162,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 | F1 | Tela **Arquitetura**: árvore (ecossistema, projetos, módulos, integrações, infra/AWS, terceiros, login), leitor markdown + mermaid, busca | B2 |
 | F2 | Edição (admin), histórico/versões, chat "Sugerir melhoria" com aplicar/descartar, fila de sugestões da skill | B3, F1 |
 | F3 | Plano de execução: botão "Retomar no Claude" (`prmake-card`), custo da análise, estado do vigia | B4 |
-| S1 | Skill `mapear-arquitetura` + template de seções + espelho local (sync no `prmake-skills.sh`) | B2 |
+| S1 | Skill `base-solvace` (mapear/atualizar, template de seções, espelho local `kb.sh`, sync no `prmake-skills.sh`, `depends`) | B2 |
 | S2 | Gerar a base: semente do `claude-global` + **artigos do Knowledge Center** + projetos por prioridade (legado, apps, API de integrações, revamp) | S1, KC |
 | K1 | `kc-query.sh` (search/article/check) + sincronização incremental com piso de filtro fixo e teste da regra | B1 |
 | S3 | `analisar-bug` enxuta: references, `contexto` (com KC do espelho), arquitetura primeiro, regra "consultar KC antes de perguntar", imagens, saídas curtas, aprendizado; KC também na `gerar-prmake`/`gerar-handover` | B1, K1, S1 |
@@ -174,7 +174,7 @@ S2 é a fase mais longa (um projeto por vez, incremental); a tela e a skill já 
 
 ## Riscos
 - **Base desatualizada** engana a análise: cada seção mostra o commit de origem e a skill avisa quando o repo local
-  está muito à frente (e sugere `mapear-arquitetura atualizar <projeto>`).
+  está muito à frente (e sugere `arch.sh stale <projeto> <pasta>` + reescrever as seções afetadas).
 - **Dados sensíveis** na engenharia reversa (hosts, contas, segredos): template proíbe credenciais; só nomes de
   recursos. Acesso à tela: leitura para usuários logados, edição só admin.
 - **Custo da geração inicial** (S2) é alto uma vez só; incremental depois. Priorizar pelos repositórios com mais bugs.

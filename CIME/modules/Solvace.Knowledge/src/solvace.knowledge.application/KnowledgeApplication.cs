@@ -26,10 +26,11 @@ public class KnowledgeApplication(IKnowledgeRepository repository, IKnowledgeSet
         var now = DateTimeOffset.UtcNow;
         var stored = (await repository.GetArticlesAsync(environment, tracked: true, cancellationToken)).ToDictionary(a => a.SourceId);
         var response = new KnowledgeSyncResponse { Environment = environment, Received = request.Articles.Count };
-        var seen = new HashSet<Guid>();
+        var seen = new HashSet<string>();
 
-        foreach (var item in request.Articles.Where(a => a.SourceId != Guid.Empty))
+        foreach (var item in request.Articles.Where(a => !string.IsNullOrWhiteSpace(a.SourceId)))
         {
+            item.SourceId = item.SourceId.Trim();
             seen.Add(item.SourceId);
             var verdict = KnowledgeNoiseFilter.Evaluate(new KnowledgeArticleCandidate(item.ArticleNumber, item.Title, item.Category,
                 item.Subcategory, item.StatusId, item.IsDeleted, item.CategoryActive, item.SubcategoryActive, item.Content), filter);
@@ -87,7 +88,7 @@ public class KnowledgeApplication(IKnowledgeRepository repository, IKnowledgeSet
             state = new KnowledgeSyncState(environment);
             repository.AddState(state);
         }
-        state.Register(request.Articles.Max(a => a.SourceUpdatedAt), request.Full, stored.Count, actor, now);
+        state.Register(request.Articles.Max(a => a.SourceUpdatedAt), request.Full, stored.Count, KnowledgeArticle.Hash(filter.Fingerprint()), actor, now);
         await repository.SaveChangesAsync(cancellationToken);
 
         response.Total = stored.Count;
@@ -97,7 +98,8 @@ public class KnowledgeApplication(IKnowledgeRepository repository, IKnowledgeSet
 
     public async Task<KnowledgeStateResponse> GetStateAsync(string? environment, CancellationToken cancellationToken)
     {
-        var active = (await settings.GetAsync(cancellationToken)).ActiveEnvironment;
+        var current = await settings.GetAsync(cancellationToken);
+        var active = current.ActiveEnvironment;
         var env = string.IsNullOrWhiteSpace(environment) ? active : KnowledgeEnvironment.Normalize(environment);
         var state = await repository.GetStateAsync(env, cancellationToken);
         return new KnowledgeStateResponse
@@ -108,7 +110,8 @@ public class KnowledgeApplication(IKnowledgeRepository repository, IKnowledgeSet
             LastSyncAt = state?.LastSyncAt,
             LastFullSyncAt = state?.LastFullSyncAt,
             LastSyncBy = state?.LastSyncBy,
-            ArticleCount = state?.ArticleCount ?? 0
+            ArticleCount = state?.ArticleCount ?? 0,
+            FilterChanged = state?.FilterHash is null || state.FilterHash != KnowledgeArticle.Hash(current.Filter.Fingerprint())
         };
     }
 

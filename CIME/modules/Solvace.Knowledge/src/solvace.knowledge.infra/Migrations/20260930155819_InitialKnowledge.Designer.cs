@@ -12,7 +12,7 @@ using solvace.knowledge.infra.Contexts;
 namespace solvace.knowledge.infra.Migrations
 {
     [DbContext(typeof(KnowledgeContext))]
-    [Migration("20260930154326_InitialKnowledge")]
+    [Migration("20260930155819_InitialKnowledge")]
     partial class InitialKnowledge
     {
         /// <inheritdoc />
@@ -224,8 +224,10 @@ namespace solvace.knowledge.infra.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
-                    b.Property<Guid>("SourceId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset?>("SourceUpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -269,6 +271,10 @@ namespace solvace.knowledge.infra.Migrations
 
                     b.Property<int>("ArticleCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("FilterHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset?>("LastFullSyncAt")
                         .HasColumnType("timestamp with time zone");
