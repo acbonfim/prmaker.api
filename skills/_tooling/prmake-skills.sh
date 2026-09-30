@@ -179,7 +179,11 @@ self_update() {
   local published; published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json")"
   [[ -n "$published" && "$published" != "$TOOL_VERSION" ]] || return 0
   local code; code="$(get "/tool" "$TMP/tool.sh")"
-  [[ "$code" == "200" ]] && bash -n "$TMP/tool.sh" 2>/dev/null && cp "$TMP/tool.sh" "$TOOL_DIR/prmake-skills.sh" && chmod +x "$TOOL_DIR/prmake-skills.sh"
+  [[ "$code" == "200" ]] && bash -n "$TMP/tool.sh" 2>/dev/null || return 0
+  # Troca atômica (0033): grava ao lado e renomeia — o bash que está rodando continua lendo o arquivo antigo (outro
+  # inode). Sobrescrever no lugar fazia a execução atual ler o arquivo novo do meio e dar erro de sintaxe.
+  cp "$TMP/tool.sh" "$TOOL_DIR/.prmake-skills.sh.new" && chmod +x "$TOOL_DIR/.prmake-skills.sh.new" \
+    && mv -f "$TOOL_DIR/.prmake-skills.sh.new" "$TOOL_DIR/prmake-skills.sh"
 }
 
 lock() {

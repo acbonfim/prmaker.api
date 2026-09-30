@@ -16,7 +16,7 @@
 | S2 | Geração da base (semente claude-global + projetos por prioridade) | ✅ 1ª carga pronta em `kb/` — publicar após o deploy |
 | S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, saídas) | ✅ concluída |
 | S4 | prmake-card / resume; vigia opcional | ✅ concluída |
-| Q1 | Medição antes/depois, teste local, PRs | 🔄 PRs abertos (#47 back, #28 front) — medição após o deploy |
+| Q1 | Medição antes/depois, teste local, PRs | 🔄 mesclado e publicado (#47, #28); falta a medição num card real, em sessão nova |
 
 ## Log
 - 2026-09-30: análise e plano (`plan.md`). Worktrees `prform.api-0033` e `prform-app-0033` na branch `feature/0033`.
@@ -83,3 +83,10 @@
     DefectTag, Users…) e seções `modulos`/`integracoes` do legado por módulo; siglas do ASP a confirmar pelo menu.
   - Achado de segurança (fora da base): `edv-solvace/solvace-asp/systems/includes/asp/all_conn.asp` tem credencial de banco no
     código-fonte.
+- 2026-09-30: PRs #47 (back) e #28 (front) mesclados juntos; deploys ok. Produção: plugin do KC semeado, `kc.sh sync` (65 lidos →
+  13 aceitos), `publicar.sh` (9 projetos, 14 seções), espelho local com índice de ~2,5 mil tokens; skills atualizadas na máquina do
+  usuário (`base-solvace` instalada com psycopg). Achado: a autoatualização da ferramenta sobrescrevia o próprio arquivo em execução
+  (erro de sintaxe uma vez na troca de versão) — corrigido com troca atômica (fix/0033-autoatualizacao). Máquinas com a ferramenta
+  antiga: a `base-solvace` entra na 2ª sessão (a 1ª traz a ferramenta nova, que instala as dependências).
+- Medição (Q1): precisa de uma sessão NOVA do Claude Code (esta conversa já tem contexto enorme). O custo vai sozinho para o plano
+  do card (`usage` no status) e aparece na tela; comparar com o 74775 (63 respostas, 6,68 M tokens de cache lidos, 33 mil de saída).
