@@ -47,6 +47,13 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     public ContentResult Install() => Content(catalog.Installer(ApiBase()), "text/x-shellscript; charset=utf-8");
 
     /// <summary>
+    /// Instalador do Windows (0035), no PowerShell:
+    /// $env:PRMAKE_TOKEN='…'; irm -Headers @{'x-api-key'=$env:PRMAKE_TOKEN} …/Skills/install.ps1 | iex
+    /// </summary>
+    [HttpGet("install.ps1")]
+    public ContentResult InstallPowerShell() => Content(catalog.InstallerPowerShell(ApiBase()), "text/plain; charset=utf-8");
+
+    /// <summary>
     /// Configuração que as skills seguem (feature 0030), efetiva para o usuário: "Skills Configurations"
     /// (fluxo de branches, padrões), prompts do "AI Configurations" e nomes dos campos do DevOps. Valores
     /// JSON voltam como objeto; o resto como texto. Parte indisponível vem vazia (a skill avisa).

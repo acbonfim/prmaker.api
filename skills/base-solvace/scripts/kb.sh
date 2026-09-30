@@ -25,8 +25,17 @@ token() {
 
 local_hash() { cat "$KB/.hash" 2>/dev/null; }
 
+# Descompacta sem depender do unzip (Windows/Git Bash nao tem): bsdtar do sistema ou zipfile do Python.
+extract() {
+  if command -v unzip >/dev/null; then unzip -q "$1" -d "$2"; return; fi
+  local win_tar="${SYSTEMROOT:-/c/Windows}/System32/tar.exe"
+  if [[ -x "$win_tar" ]]; then (cd "$2" && "$win_tar" -xf "$1"); return; fi
+  if tar --version 2>/dev/null | grep -q bsdtar; then tar -xf "$1" -C "$2"; return; fi
+  python3 -m zipfile -e "$1" "$2"
+}
+
 do_sync() {
-  command -v curl >/dev/null && command -v jq >/dev/null && command -v unzip >/dev/null || { say "kb: curl/jq/unzip ausentes"; return 1; }
+  command -v curl >/dev/null && command -v jq >/dev/null || { say "kb: curl/jq ausentes"; return 1; }
   local tk; tk="$(token)" || { say "kb: sem token do PRMake"; return 1; }
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/solvace-kb.XXXXXX")"
   local code; code="$(curl -s --max-time 20 -o "$tmp/m.json" -w '%{http_code}' -H "x-api-key: $tk" "$BASE/Architecture/export/manifest")"
@@ -35,7 +44,7 @@ do_sync() {
   if [[ -n "$remote" && "$remote" == "$(local_hash)" && -f "$KB/INDEX.md" ]]; then rm -rf "$tmp"; say "kb: espelho em dia ($remote)"; return 0; fi
   code="$(curl -s --max-time 120 -o "$tmp/kb.zip" -w '%{http_code}' -H "x-api-key: $tk" "$BASE/Architecture/export")"
   if [[ "$code" != "200" ]]; then rm -rf "$tmp"; say "kb: export HTTP $code (espelho mantido)"; return 1; fi
-  mkdir -p "$tmp/new" && unzip -q "$tmp/kb.zip" -d "$tmp/new" || { rm -rf "$tmp"; say "kb: pacote invalido"; return 1; }
+  mkdir -p "$tmp/new" && extract "$tmp/kb.zip" "$tmp/new" || { rm -rf "$tmp"; say "kb: pacote invalido"; return 1; }
   printf '%s' "$remote" > "$tmp/new/.hash"
   mkdir -p "$(dirname "$KB")"
   rm -rf "$KB.old"; [[ -d "$KB" ]] && mv "$KB" "$KB.old"
