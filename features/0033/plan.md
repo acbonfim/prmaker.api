@@ -41,7 +41,13 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
    - Por que não só no banco: cada consulta viraria um turno + resposta HTTP no contexto. Por que não só local:
      sem tela, sem edição revisada, sem versão única para o time.
 2. **Geração pela skill `mapear-arquitetura`** (nova), rodada por quem tem os repositórios: um projeto por vez, com
-   template fixo de seções; publica no PRMake (toda escrita pelo PRMake). **Incremental**: guarda o commit de cada
+   template fixo de seções; publica no PRMake (toda escrita pelo PRMake). **O Knowledge Center entra já na primeira
+   geração** (pedido do usuário): cada projeto/módulo ganha a seção *Regras de negócio (Knowledge Center)* com os
+   artigos relacionados (`ART-n`, título, resumo de 2–3 linhas, categoria/tags) cruzados pelo nome do módulo,
+   telas e termos de domínio; e a árvore tem um ramo *Regras de negócio* com o mapa de categorias/subcategorias
+   do KC. Assim a análise acha a regra pelo índice, sem consultar o banco — o `kc-query.sh` fica para o detalhe
+   de um artigo ou para o que ainda não foi mapeado. Ao atualizar (incremental), artigos novos/alterados desde a
+   última geração (`UpdateDate`) são reprocessados. **Incremental**: guarda o commit de cada
    projeto e depois só reanalisa o `git diff` desde ele. Ordem: repositórios com mais bugs/PRs no PRMake primeiro.
 3. **Knowledge Center — banco Aurora direto, somente leitura, pela máquina de quem roda a skill** (decidido em
    2026-09-30). Script `kc-query.sh search|article|categories` (mesmo modelo do `sql-query.sh`: valida leitura,
@@ -63,6 +69,13 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
      percebe que as respostas chegaram (ou o clique em "Continuar") e roda `claude --bg --resume <id> "respostas
      chegaram, continue"`; o usuário acompanha no PRMake ou `claude attach`. Precisa de permissões pré-aprovadas
      para rodar sem ninguém olhando — proposta: só até a próxima pergunta/PR, nunca merge.
+
+## Acesso ao Knowledge Center — verificado em 2026-09-30
+- AWS CLI autenticada (conta 367983645102); clusters Aurora PostgreSQL `solvace-pstgdev` e `solvace-pstgprd`
+  (endpoints de leitura `*.cluster-ro-cjsrhvr5mbhe.us-east-1.rds.amazonaws.com:5432`).
+- Rede: a porta 5432 dos dois responde a partir da máquina do usuário (TCP ok).
+- **Falta**: usuário/senha de leitura do banco (não obtido — segredo; o usuário indica qual credencial usar) e o nome
+  do database onde fica o schema `knowledgeCenter`. Cliente: `psycopg[binary]` no venv da skill (sem `psql` local).
 
 ## Item 3 — skills mais baratas e assertivas (medido antes/depois)
 - **SKILL.md enxuta** (~3 mil tokens): fluxo e regras essenciais; o resto vira `references/*.md` lido só na fase
@@ -93,12 +106,12 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 | F2 | Edição (admin), histórico/versões, chat "Sugerir melhoria" com aplicar/descartar, fila de sugestões da skill | B3, F1 |
 | F3 | Plano de execução: botão "Retomar no Claude" (`prmake-card`), custo da análise, estado do vigia | B4 |
 | S1 | Skill `mapear-arquitetura` + template de seções + espelho local (sync no `prmake-skills.sh`) | B2 |
-| S2 | Gerar a base: semente do `claude-global` + projetos por prioridade (legado, apps, API de integrações, revamp) | S1 |
+| S2 | Gerar a base: semente do `claude-global` + **artigos do Knowledge Center** + projetos por prioridade (legado, apps, API de integrações, revamp) | S1, KC |
 | S3 | `analisar-bug` enxuta: references, `contexto`, arquitetura primeiro, KC (`kc-query.sh`), imagens, saídas curtas, aprendizado | B1, S1 |
 | S4 | Retomar: `prmake-card`, sessão no plano; (opcional) vigia `agent` com `--bg --resume` | B4, D0 |
 | Q1 | Medir: 2–3 cards reais antes/depois (turnos, tokens, tempo) + teste local ponta a ponta + PRs | todas |
 
-Ondas: **1** B1 · B2 · B4 · S1 (template) — **2** B1 · B3 · F1 · F3 · S3 (parte sem KC) · S4 — **3** F2 · S2 · S3 (KC) — **4** Q1.
+Ondas: **0** KC: credencial local + `kc-query.sh` testado no DEV — **1** B1 · B2 · B4 · S1 (template) — **2** B1 · B3 · F1 · F3 · S3 (parte sem KC) · S4 — **3** F2 · S2 · S3 (KC) — **4** Q1.
 S2 é a fase mais longa (um projeto por vez, incremental); a tela e a skill já funcionam com o que estiver publicado.
 
 ## Riscos

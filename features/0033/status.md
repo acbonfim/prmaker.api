@@ -3,6 +3,7 @@
 | Fase | Descrição | Status |
 |---|---|---|
 | D0 | Decisões: KC pelo banco Aurora local; vigia opcional por pessoa | ✅ concluída |
+| K0 | Credencial de leitura do Aurora DEV + `kc-query.sh` testado (schema `knowledgeCenter`) | ⏳ aguardando credencial |
 | B1 | Plugin Knowledge Center Configurations (ambiente/alias/schema) no Skills/config | ⬜ pendente |
 | B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ⬜ pendente |
 | B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
@@ -21,3 +22,5 @@
   Linha de base de custo: card 74775 = 120 turnos, 12,7 M tokens de cache lidos, 72 mil de saída.
 - 2026-09-30: D0 — KC pelo banco Aurora (somente leitura, máquina local, credencial em `~/.claude/`), ambiente no
   plugin do PRMake; vigia em segundo plano opcional por pessoa, desligado por padrão, nunca faz merge.
+- 2026-09-30: acesso ao KC verificado só até a rede (porta 5432 do `solvace-pstgdev`/`pstgprd` responde); login
+  pendente de credencial. KC passa a entrar já na primeira geração da engenharia reversa (S2).
