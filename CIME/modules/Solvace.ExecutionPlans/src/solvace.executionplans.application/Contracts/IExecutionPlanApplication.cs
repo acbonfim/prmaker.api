@@ -51,4 +51,12 @@ public interface IExecutionPlanApplication
 
     /// <summary>Todos os arquivos do plano num .zip (uma pasta por tipo) e o nome sugerido.</summary>
     Task<(string FileName, byte[] Data)> BuildZipAsync(Guid planId, CancellationToken cancellationToken);
+
+    // 0033: sessão do Claude Code, custo e "continuar"
+    Task<ExecutionSessionResponse> RegisterSessionAsync(Guid planId, RegisterExecutionSessionRequest request, CancellationToken cancellationToken);
+    Task<ExecutionUsageResponse> RecordUsageAsync(Guid planId, RecordExecutionUsageRequest request, CancellationToken cancellationToken);
+    Task<ExecutionPlanSummaryResponse> RequestResumeAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task AcknowledgeResumeAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>O que o vigia local desta máquina deve retomar (host = nome da máquina; null = qualquer).</summary>
+    Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken);
 }

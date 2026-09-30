@@ -24,6 +24,49 @@ public class ExecutionPlanSummaryResponse
     /// <summary>analysis | correction (0024).</summary>
     public string Phase { get; set; } = ExecutionPhase.Analysis;
     public Guid? ParentPlanId { get; set; }
+
+    /// <summary>Sessão do Claude Code a retomar (0033); null = nenhuma registrada.</summary>
+    public ExecutionSessionResponse? Executor { get; set; }
+    /// <summary>Custo somado das sessões (0033).</summary>
+    public ExecutionUsageResponse? Usage { get; set; }
+    public DateTimeOffset? ResumeRequestedAt { get; set; }
+    public string? ResumeRequestedBy { get; set; }
+    public bool ResumePending { get; set; }
+}
+
+public class ExecutionSessionResponse
+{
+    public string SessionId { get; set; } = string.Empty;
+    public string? Host { get; set; }
+    public string? Cwd { get; set; }
+    public DateTimeOffset StartedAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+}
+
+public class ExecutionUsageResponse
+{
+    public int Sessions { get; set; }
+    public int Turns { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+/// <summary>Plano que o vigia local deve retomar (0033): pedido de "continuar" ou respostas chegadas pela tela.</summary>
+public class ExecutionResumeCandidateResponse
+{
+    public Guid PlanId { get; set; }
+    public string CardNumber { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Phase { get; set; } = ExecutionPhase.Analysis;
+    public string Status { get; set; } = string.Empty;
+    public ExecutionSessionResponse Session { get; set; } = new();
+    /// <summary>resume-request | answers.</summary>
+    public string Reason { get; set; } = string.Empty;
+    public string? RequestedBy { get; set; }
+    public DateTimeOffset Since { get; set; }
 }
 
 public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
@@ -223,8 +266,31 @@ public static class ExecutionPlanMappings
         target.StepsCompleted = stepsCompleted;
         target.Phase = plan.Phase;
         target.ParentPlanId = plan.ParentPlanId;
+        target.Executor = plan.CurrentSession?.ToResponse();
+        target.Usage = plan.Sessions.Count == 0 ? null : new ExecutionUsageResponse
+        {
+            Sessions = plan.Sessions.Count,
+            Turns = plan.Sessions.Sum(s => s.Turns),
+            InputTokens = plan.Sessions.Sum(s => s.InputTokens),
+            OutputTokens = plan.Sessions.Sum(s => s.OutputTokens),
+            CacheReadTokens = plan.Sessions.Sum(s => s.CacheReadTokens),
+            CacheWriteTokens = plan.Sessions.Sum(s => s.CacheWriteTokens),
+            UpdatedAt = plan.Sessions.Max(s => s.UsageUpdatedAt)
+        };
+        target.ResumeRequestedAt = plan.ResumeRequestedAt;
+        target.ResumeRequestedBy = plan.ResumeRequestedBy;
+        target.ResumePending = plan.ResumePending;
         return target;
     }
+
+    public static ExecutionSessionResponse ToResponse(this ExecutionSession session) => new()
+    {
+        SessionId = session.SessionId,
+        Host = session.Host,
+        Cwd = session.Cwd,
+        StartedAt = session.StartedAt,
+        LastSeenAt = session.LastSeenAt
+    };
 
     public static ExecutionStepResponse ToResponse(this ExecutionStep step) => new()
     {
