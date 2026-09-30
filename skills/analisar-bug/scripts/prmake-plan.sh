@@ -516,7 +516,7 @@ case "$CMD" in
 
   contexto)
     # 0033: tudo o que a analise precisa no inicio, num turno so (economiza tokens).
-    SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"; SK="$HOME/.claude/skills/base-solvace/scripts"
+    SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"; SK="${BASE_SOLVACE_SCRIPTS:-$HOME/.claude/skills/base-solvace/scripts}"
     CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
     echo "=== CARD $CARD (pasta: $CARD_DIR)"
     MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
@@ -537,22 +537,19 @@ case "$CMD" in
       bash "$SK/kb.sh" sync --quiet 2>/dev/null || true
       KBDIR="$(bash "$SK/kb.sh" path)"
       echo "=== BASE SOLVACE (trechos do indice ligados ao card — abra a secao com: kb.sh show <projeto> <secao>)"
-      python3 - "$KBDIR/INDEX.md" "$CTITLE $CAREA" <<'PY' 2>/dev/null || echo "(indice indisponivel)"
+      python3 - "$KBDIR/INDEX.md" "${CTITLE:-${1:-}} $CAREA" <<'PY' 2>/dev/null || echo "(indice indisponivel)"
 import re, sys, unicodedata
 def norm(t): return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
 stop = set("para com sem uma uns umas dos das nos nas pelo pela que nao when with from that this have into user usuario erro error bug card solvace product improvement development team".split())
 words = [w for w in re.findall(r"[a-z0-9]{4,}", norm(sys.argv[2])) if w not in stop]
 text = open(sys.argv[1], encoding="utf-8").read()
-blocks = [b for b in re.split(r"
-(?=### )", text) if b.startswith("### ")]
+blocks = [b.split("\n## ")[0] for b in re.split(r"\n(?=### )", text) if b.startswith("### ")]
 scored = sorted(((sum(norm(b).count(w) for w in words), b) for b in blocks), key=lambda x: -x[0])
 hits = [b for s, b in scored if s > 0][:2]
-print("
-
-".join(b[:1500] for b in hits) if hits else "(nenhum projeto da base casou com o titulo/area — veja: kb.sh index)")
+print("\n\n".join(b[:1500] for b in hits) if hits else "(nenhum projeto da base casou com o titulo/area — veja: kb.sh index)")
 PY
       echo; echo "=== KNOWLEDGE CENTER (regras de negocio relacionadas — kc.sh article <n> para o texto inteiro)"
-      bash "$SK/kc.sh" search "${CTITLE:-$CARD}" --limit 3 2>/dev/null || echo "(KC indisponivel)"
+      bash "$SK/kc.sh" search "${CTITLE:-${1:-$CARD}}" --limit 3 2>/dev/null || echo "(KC indisponivel)"
     else
       echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
     fi

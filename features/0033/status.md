@@ -7,20 +7,21 @@
 | B1 | Plugin Knowledge Center Configurations + cópia filtrada do KC (sync, estado, busca, artigo) | ✅ concluída |
 | K1 | `kc.sh` (check/sync/search/article) + sincronização incremental + teste do filtro | ✅ concluída |
 | B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ✅ concluída |
-| B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
+| B3 | Chat de IA com histórico + endpoint de sugestão | ✅ concluída |
 | B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ✅ concluída |
-| F1 | Tela Arquitetura (leitura) | ⬜ pendente |
+| F1 | Tela Arquitetura (leitura) | ✅ concluída |
 | F2 | Edição, versões e chat de melhoria (admin) | ⬜ pendente |
-| F3 | Retomar no Claude + custo no plano de execução | ⬜ pendente |
+| F3 | Retomar no Claude + custo no plano de execução | ✅ concluída |
 | S1 | Skill base-solvace (mapear/atualizar, template, espelho local, depends) | ✅ concluída |
 | S2 | Geração da base (semente claude-global + projetos por prioridade) | ⬜ pendente |
-| S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, imagens, saídas) | ⬜ pendente |
-| S4 | prmake-card / resume; vigia opcional | ⬜ pendente |
+| S3 | analisar-bug enxuta (references, contexto, arquitetura, KC, saídas) | ✅ concluída |
+| S4 | prmake-card / resume; vigia opcional | ✅ concluída |
 | Q1 | Medição antes/depois, teste local, PRs | ⬜ pendente |
 
 ## Log
 - 2026-09-30: análise e plano (`plan.md`). Worktrees `prform.api-0033` e `prform-app-0033` na branch `feature/0033`.
-  Linha de base de custo: card 74775 = 120 turnos, 12,7 M tokens de cache lidos, 72 mil de saída.
+  Linha de base de custo: card 74775 = 63 respostas, 6,68 M tokens de cache lidos, 33 mil de saída (valor corrigido —
+  a 1ª medição contava linhas repetidas do transcript).
 - 2026-09-30: D0 — KC pelo banco Aurora (somente leitura, máquina local, credencial em `~/.claude/`), ambiente no
   plugin do PRMake; vigia em segundo plano opcional por pessoa, desligado por padrão, nunca faz merge.
 - 2026-09-30: acesso ao KC verificado só até a rede (porta 5432 do `solvace-pstgdev`/`pstgprd` responde); login
@@ -43,3 +44,23 @@
   seção igual não versiona; `kb.sh` baixa só quando o hash muda; B4 ponta a ponta (sessão, custo, continuar, candidatos
   por máquina, respostas pela tela viram candidato, planos antigos com `Sessions = []`).
   Achado: no banco real `article_unique_id` é inteiro (a doc do KC diz GUID) — `SourceId` virou texto.
+- 2026-09-30: **onda 2 concluída** (B3, F1, F3, S3, S4).
+  - B3: chat "Sugerir melhoria" (admin + plugin de IA configurado), conversa inteira por turno (provedores só aceitam
+    prompt único), proposta entre marcadores `<<<SECAO`/`SECAO>>>` (a seção pode ter ```mermaid```); nada é gravado sem
+    o admin aplicar. `GET Architecture/chat/status`.
+  - F1: tela **Base Solvace** (`/auth/architecture`, menu para todos): árvore por tipo + regras de negócio do KC, busca,
+    projeto com seções em abas, markdown + **mermaid** (CDN sob demanda, modo strict), artigo do KC, links diretos
+    (`?p=&s=`, `?art=`), celular.
+  - F3: no plano, botão **Retomar no Claude** (copia `prmake-card.sh <card>`), **Continuar sozinho** (pedido ao vigia,
+    ampulheta enquanto pendente) e **custo** (respostas e tokens, detalhe no tooltip); aviso de "sem sinal" com o comando
+    de terminal.
+  - S3: `analisar-bug/SKILL.md` 49,3 KB → 8,6 KB (~12,3 mil → ~2,1 mil tokens por resposta); detalhes em `references/`;
+    `prmake-plan.sh contexto` (card, repro, plano, comentários, sync KC/base, trechos do índice e artigos do KC num
+    comando); `revamp-repos.sh grep` limitado (3/arquivo, 80 linhas); KC antes do RCA/handover nas outras skills.
+  - S4: sessão registrada no plano pela própria skill; `usage` lê o transcript (deduplicado, só desde o início do
+    plano); `prmake-card.sh` (retoma/abre, `--bg`) e vigia `agent run|install|uninstall|status` (LaunchAgent).
+  - Teste local (`.t0033`): tela com KC real e diagrama renderizado; plano com sessão real desta conversa e custo;
+    `prmake-card.sh` com `claude` falso (retoma a sessão certa na pasta certa, abre nova sem plano, `--bg`, vigia pega
+    o "Continuar" e confirma); `contexto` com a base e o KC.
+  - Achados/corrigidos: trecho Python embutido quebrado por escape de `\n` (visto no teste); instalador passa a exigir
+    o manifesto da dependência (uma pasta vazia fazia pular a instalação — criada por engano no teste e removida).

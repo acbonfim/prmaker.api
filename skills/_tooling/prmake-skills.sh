@@ -105,7 +105,7 @@ install_one() { # <nome> <versão> <modo: install|update>
 install_depends() {
   local dep v
   for dep in $(jq -r '.depends[]? // empty' "$SKILLS_DIR/$1/skill.json" 2>/dev/null); do
-    [[ -d "$SKILLS_DIR/$dep" ]] && continue
+    [[ -f "$SKILLS_DIR/$dep/$MANIFEST" || -f "$SKILLS_DIR/$dep/SKILL.md" ]] && continue
     v="$(jq -r --arg n "$dep" '.skills[] | select(.name == $n) | .version' "$TMP/catalog.json")"
     [[ -n "$v" ]] || { warn "dependência $dep de $1 não está publicada"; continue; }
     install_one "$dep" "$v" install && say "✔ $dep ($v) — dependência de $1"

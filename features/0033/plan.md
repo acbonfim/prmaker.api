@@ -5,8 +5,10 @@ retomar um tratamento sem copiar/colar comando.
 
 ## Diagnóstico (levantado em 2026-09-30)
 
-**Onde o token vai hoje** — sessão real do card 74775 (`7d4a89db`): 120 turnos, 12,7 M tokens lidos de cache
-(~106 mil de contexto **por turno**), 72 mil de saída. O custo é *turnos × tamanho do contexto*:
+**Onde o token vai hoje** — sessão real do card 74775 (`7d4a89db`): 63 respostas, 6,68 M tokens lidos de cache
+(~108 mil de contexto **por resposta**), 33 mil de saída. (Corrigido em 2026-09-30: a 1ª medição somava cada linha do
+transcript, e ele grava a mesma resposta em várias linhas — ~2,4× — deduplicado por id de mensagem agora.)
+O custo é *respostas × tamanho do contexto*:
 - A `analisar-bug/SKILL.md` tem ~12,3 mil tokens e entra inteira em todo turno (≈11% do contexto) e de novo a cada
   retomada/`/analisar-bug`.
 - Os 3 prints do usuário lidos em tamanho original somaram ~870 KB de resultado de ferramenta.
@@ -141,7 +143,8 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 - **`contexto <card>`**: um comando devolve em texto compacto card + repro + comentários/anexos novos + estado do
   plano + trecho relevante do índice da arquitetura + artigos do KC — troca 5–10 turnos iniciais por 1.
 - **Arquitetura primeiro**: índice → seção do módulo → arquivos certos; `grep` só dentro do módulo apontado.
-- **Imagens reduzidas** antes do Read (`sips -Z 1568`, qualidade suficiente): prints de ~300 KB viram ~80 KB.
+- ~~Imagens reduzidas antes do Read~~ — descartado: a API já limita o custo de imagem pelo tamanho em pixels (~1,6 mil
+  tokens por print), reduzir quase não economiza e piora a leitura de telas.
 - **Saídas curtas por padrão**: `revamp-repos.sh grep` com limite por arquivo/total; `sql-query` com TOP e colunas
   truncadas; `prmake-plan.sh` silencioso quando dá certo.
 - **Buscas amplas num subagente** (Explore) — o resultado volta resumido e o contexto principal não incha.
