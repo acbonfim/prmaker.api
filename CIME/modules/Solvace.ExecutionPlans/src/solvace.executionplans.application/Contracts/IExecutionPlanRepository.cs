@@ -12,6 +12,12 @@ public interface IExecutionPlanRepository
 
     Task<List<ExecutionPlanSummaryResponse>> GetSummariesByCardAsync(string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Planos ativos com pedido de "continuar" pendente ou com pergunta respondida pela tela depois do último sinal
+    /// da skill (0033) — do usuário informado (null = de todos).
+    /// </summary>
+    Task<List<(ExecutionPlan Plan, DateTimeOffset? AnsweredAt)>> GetResumeCandidatesAsync(Guid? userId, CancellationToken cancellationToken);
+
     /// <summary>Plano mais recente do card (qualquer status).</summary>
     Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken);
 

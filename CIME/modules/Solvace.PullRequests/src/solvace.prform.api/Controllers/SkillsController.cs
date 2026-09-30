@@ -7,6 +7,7 @@ using solvace.azure.domain.Options;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Extensions;
+using solvace.prform.Knowledge;
 using solvace.prform.Skills;
 
 namespace solvace.prform.Controllers;
@@ -65,10 +66,38 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
         try { fields = await azureService.GetFieldNamesAsync(cancellationToken); }
         catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException) { }
 
+        // Knowledge Center (0033): ambiente ativo, onde fica cada ambiente e as regras EXTRAS do filtro; o piso fixo vai
+        // junto para a skill conferir que aplica a mesma regra.
+        var kc = await TryConfigAsync(KnowledgeCenterConfigurationKeys.PluginName, cancellationToken);
+        var kcValues = (string.IsNullOrWhiteSpace(kc?.Options) ? null : kc.Options.JsonToListOfDictionaries().FirstOrDefault()) ?? new Dictionary<string, string>();
+        string Kc(string key, string fallback = "") => kcValues.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : fallback;
+        var knowledge = new
+        {
+            available = kc is not null,
+            environment = Kc(KnowledgeCenterConfigurationKeys.Environment, "dev").ToLowerInvariant(),
+            dev = new { host = Kc(KnowledgeCenterConfigurationKeys.DevHost), database = Kc(KnowledgeCenterConfigurationKeys.DevDatabase), schema = Kc(KnowledgeCenterConfigurationKeys.DevSchema) },
+            prod = new { host = Kc(KnowledgeCenterConfigurationKeys.ProdHost), database = Kc(KnowledgeCenterConfigurationKeys.ProdDatabase), schema = Kc(KnowledgeCenterConfigurationKeys.ProdSchema) },
+            filter = new
+            {
+                excludePatterns = ParseValue(Kc(KnowledgeCenterConfigurationKeys.ExcludePatterns, "[]")),
+                excludeArticles = ParseValue(Kc(KnowledgeCenterConfigurationKeys.ExcludeArticles, "[]")),
+                allowArticles = ParseValue(Kc(KnowledgeCenterConfigurationKeys.AllowArticles, "[]")),
+                minTextLength = int.TryParse(Kc(KnowledgeCenterConfigurationKeys.MinTextLength), out var min) ? min : 0,
+                floor = new
+                {
+                    patterns = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.FloorPatterns,
+                    minTextLength = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.FloorMinTextLength,
+                    publishedStatusId = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.PublishedStatusId
+                }
+            },
+            fullSyncHours = int.TryParse(Kc(KnowledgeCenterConfigurationKeys.FullSyncHours), out var hours) && hours > 0 ? hours : 24
+        };
+
         return Ok(new
         {
             available = skills is not null,
             settings,
+            knowledge,
             prompts = new
             {
                 bug = Prompt("PromptBug"),

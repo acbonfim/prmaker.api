@@ -1,0 +1,3 @@
+{"name": "Ecossistema Solvace", "kind": "ecosystem", "order": 1,
+ "summary": "Mapa do parque: legado edv-solvace (solvace-core .NET Core 3.1 por módulo + ASP clássico), front Angular 18 edv-solvace-apps (um app por módulo), API de integrações ewcm-core-api (.NET 6, Ocelot), módulos revamp (.NET 8, repositório por módulo), AWS us-east-1 (ECS, Lambdas de eventos, SQL Server por cliente, Aurora PostgreSQL, Cognito por ambiente). Comece aqui para saber em qual projeto está o bug.",
+ "keywords": ["arquitetura", "mapa", "legado", "revamp", "core", "ASP", "Angular", "onde está", "módulo", "ambiente", "site", "cliente"]}

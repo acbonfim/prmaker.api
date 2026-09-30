@@ -55,6 +55,16 @@ public class ExecutionPlanContext : DbContext
             entity.HasMany(e => e.Steps).WithOne().HasForeignKey(s => s.PlanId).OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
+
+            // 0033: sessões do Claude Code (retomar e custo) — JSON no próprio plano.
+            entity.OwnsMany(e => e.Sessions, s =>
+            {
+                s.ToJson();
+                s.Property(x => x.SessionId).HasMaxLength(ExecutionSession.MaxSessionIdLength);
+                s.Property(x => x.Host).HasMaxLength(ExecutionSession.MaxHostLength);
+                s.Property(x => x.Cwd).HasMaxLength(ExecutionSession.MaxCwdLength);
+            });
+            entity.Property(e => e.ResumeRequestedBy).HasMaxLength(200);
         });
 
         modelBuilder.Entity<ExecutionStep>(entity =>

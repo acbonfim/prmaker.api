@@ -1,0 +1,3 @@
+{"name": "Regras de negócio — mapa do Knowledge Center", "kind": "business-rules", "order": 70, "repository": "https://github.com/electradv/revamp-KnowledgeCenter",
+ "summary": "Como usar o Knowledge Center nas análises: artigos publicados (filtrados de teste) sincronizados pelas skills; hoje (DEV) cobre o Action Plan (ART-21..26, 45, 60-63) e a visão de produto (ART-46, 48, 50). Módulo sem artigo = lacuna a registrar. Troca para produção pelo plugin Knowledge Center Configurations.",
+ "keywords": ["Knowledge Center", "KC", "artigo", "ART-", "regra de negócio", "documentação", "manual", "comportamento esperado", "user education"]}

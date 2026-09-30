@@ -229,6 +229,42 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
+    // ── 0033: sessão do Claude Code, custo e "continuar" ─────────────────────────────────────────
+
+    /// <summary>A skill informa a sessão do Claude Code (CLAUDE_CODE_SESSION_ID), a máquina e a pasta.</summary>
+    [HttpPut("{id:guid}/session")]
+    public Task<ActionResult<ExecutionSessionResponse>> RegisterSession([FromRoute] Guid id, [FromBody] RegisterExecutionSessionRequest request, CancellationToken ct) =>
+        Run<ExecutionSessionResponse>(async () => Ok(await _application.RegisterSessionAsync(id, request, ct)));
+
+    /// <summary>Custo acumulado da sessão (totais do transcript).</summary>
+    [HttpPut("{id:guid}/usage")]
+    public Task<ActionResult<ExecutionUsageResponse>> RecordUsage([FromRoute] Guid id, [FromBody] RecordExecutionUsageRequest request, CancellationToken ct) =>
+        Run<ExecutionUsageResponse>(async () => Ok(await _application.RecordUsageAsync(id, request, ct)));
+
+    /// <summary>"Continuar" pela tela: o vigia local da máquina da sessão retoma a conversa do Claude.</summary>
+    [HttpPost("{id:guid}/resume-request")]
+    public Task<ActionResult<ExecutionPlanSummaryResponse>> RequestResume([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionPlanSummaryResponse>(async () => Ok(await _application.RequestResumeAsync(id, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>O vigia/skill pegou o pedido de "continuar".</summary>
+    [HttpPost("{id:guid}/resume-ack")]
+    public Task<ActionResult> AcknowledgeResume([FromRoute] Guid id, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.AcknowledgeResumeAsync(id, ct);
+            return NoContent();
+        });
+
+    /// <summary>Planos do usuário que o vigia desta máquina deve retomar (pedido de continuar ou respostas pela tela).</summary>
+    [HttpGet("resume-candidates")]
+    public Task<ActionResult<List<ExecutionResumeCandidateResponse>>> ResumeCandidates([FromQuery] string? host, CancellationToken ct) =>
+        Run<List<ExecutionResumeCandidateResponse>>(async () =>
+        {
+            var claim = User.FindFirst("ExternalId")?.Value;
+            Guid? userId = Guid.TryParse(claim, out var id) ? id : null;
+            return Ok(await _application.GetResumeCandidatesAsync(userId, host, ct));
+        });
+
     private bool IsExecutorRequest() =>
         string.Equals(Request.Headers[ExecutorHeader].ToString(), "skill", StringComparison.OrdinalIgnoreCase);
 
