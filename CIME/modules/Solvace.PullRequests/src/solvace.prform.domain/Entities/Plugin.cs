@@ -85,6 +85,28 @@ public class Plugin: IEntity<int>, IDescribable, IAuditableEntity, ISoftDeletabl
     /// <summary>Campo do usuário opcional que cai para o valor global quando o usuário não preencheu.</summary>
     public bool UsesGlobalDefault(string key) => IsOptionalField(key) && GetFieldSetting(key)?.UseGlobalDefault == true;
 
+    /// <summary>
+    /// Sugestões para o campo do usuário (0032): o valor global primeiro (quando houver) e depois as cadastradas
+    /// pelo administrador, sem repetir. Quem chama não usa para campo sensível.
+    /// </summary>
+    public List<string> GetFieldSuggestions(string key, string? globalValue)
+    {
+        if (!IsUserField(key))
+            return [];
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(globalValue)) candidates.Add(globalValue.Trim());
+        candidates.AddRange(GetFieldSetting(key)?.Suggestions ?? []);
+        return candidates
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>Texto de ajuda do campo (0032); null = sem ajuda.</summary>
+    public string? GetFieldHelp(string key) =>
+        GetFieldSetting(key)?.Help is { Length: > 0 } help ? help.Trim() : null;
+
     /// <summary>Campo fixo oculto em "Minhas integrações".</summary>
     public bool IsHiddenField(string key) => !IsUserField(key) && GetFieldSetting(key)?.Hidden == true;
 

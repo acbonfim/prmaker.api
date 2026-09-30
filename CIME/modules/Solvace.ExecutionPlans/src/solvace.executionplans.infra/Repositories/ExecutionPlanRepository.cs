@@ -148,6 +148,13 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
             ? Task.FromResult(new List<ExecutionArtifact>())
             : _context.Artifacts.AsNoTracking().Where(a => a.NoteId != null && noteIds.Contains(a.NoteId.Value)).ToListAsync(cancellationToken);
 
+    public Task<ExecutionArtifact?> FindNoteAttachmentByShaAsync(string cardNumber, string sha256, CancellationToken cancellationToken) =>
+        (from a in _context.Artifacts.AsNoTracking()
+         join p in _context.Plans on a.PlanId equals p.Id
+         where p.CardNumber == cardNumber && a.NoteId != null && a.Sha256 == sha256
+         orderby a.Number
+         select a).FirstOrDefaultAsync(cancellationToken);
+
     public async Task<int> GetMaxNoteNumberAsync(string cardNumber, CancellationToken cancellationToken) =>
         await _context.Notes.Where(n => n.CardNumber == cardNumber).MaxAsync(n => (int?)n.Number, cancellationToken) ?? 0;
 

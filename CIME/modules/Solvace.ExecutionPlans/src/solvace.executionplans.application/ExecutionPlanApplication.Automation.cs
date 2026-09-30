@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Requests;
 
 namespace solvace.executionplans.application;
 
@@ -209,14 +210,22 @@ public partial class ExecutionPlanApplication
         foreach (var q in questions)
         {
             sb.AppendLine($"{++i}. {q.Text}");
+            // 0032: rótulos genéricos ("Opção 1") não dizem nada sem a descrição — vai o texto de cada opção.
             foreach (var o in q.Options)
-                sb.AppendLine($"   - {o.Label}{(o.Recommended ? " *(recomendada)*" : "")}");
+                sb.AppendLine($"   - **{o.Label}**{OptionDetail(o)}{(o.Recommended ? " *(recomendada)*" : "")}");
         }
         return sb.ToString().TrimEnd();
     }
 
-    private static string AnswerText(ExecutionQuestion q) =>
-        $"💬 **Resposta** ({(q.AnsweredVia == "claude" ? "pelo Claude" : "pelo PRMake")}, {q.AnsweredBy})\n\n> {q.Text.Replace("\n", "\n> ")}\n\n{q.Answer}";
+    private static string AnswerText(ExecutionQuestion q)
+    {
+        var chosen = q.Options.FirstOrDefault(o => string.Equals(o.Label, q.Answer, StringComparison.OrdinalIgnoreCase));
+        var answer = chosen is null ? q.Answer : $"**{chosen.Label}**{OptionDetail(chosen)}";
+        return $"💬 **Resposta** ({(q.AnsweredVia == "claude" ? "pelo Claude" : "pelo PRMake")}, {q.AnsweredBy})\n\n> {q.Text.Replace("\n", "\n> ")}\n\n{answer}";
+    }
+
+    private static string OptionDetail(ExecutionQuestionOption option) =>
+        string.IsNullOrWhiteSpace(option.Description) ? "" : $" — {option.Description.Trim().Replace("\n", " ")}";
 
     private async Task<string> CorrectionCompletedTextAsync(ExecutionPlan plan, List<string> stepLines, CancellationToken cancellationToken)
     {

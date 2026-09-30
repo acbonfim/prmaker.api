@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using Cime.BuildingBlocks.RealTime;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
@@ -418,6 +419,17 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         var name = ExecutionArtifact.NormalizeName(upload.FileName);
         var kind = ExecutionArtifact.NormalizeKind(upload.Kind, name);
+
+        // 0032: a skill baixa os anexos dos comentários e podia reenviá-los como arquivos dela — o mesmo conteúdo
+        // aparecia duas vezes (ou três, com o plano de correção). Conteúdo idêntico a um anexo do card = o próprio anexo.
+        if (actor.IsExecutor)
+        {
+            var target = await LoadAsync(planId, cancellationToken);
+            var sha = Convert.ToHexStringLower(SHA256.HashData(upload.Data));
+            if (await _repository.FindNoteAttachmentByShaAsync(target.CardNumber, sha, cancellationToken) is { } attachment)
+                return attachment.ToResponse();
+        }
+
         ExecutionArtifact? saved = null;
 
         var plan = await MutateAsync(planId, async p =>
