@@ -55,8 +55,21 @@ das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
    correcao de codigo. Grave com `bash $PLAN devops <card> summary resumo.md`;
 4. `bash $PLAN devops <card> zero-remaining` e, **se o usuario confirmou**, a mudanca de estado configurada:
    `devops <card> test-in-production` (so se o `config` a mostrar configurada e o card estiver na area exigida —
-   senao o PRMake devolve 409) ou `devops <card> ready-for-qa`. Acao "NAO configurado" no `config` → nao ofereca;
-   avise que o admin pode configura-la no PRMake (AI Configurations).
+   senao o PRMake devolve 409) ou `devops <card> ready-for-qa` (**so nas condicoes abaixo**). Acao "NAO
+   configurado" no `config` → nao ofereca; avise que o admin pode configura-la no PRMake (AI Configurations).
+
+**Dev Test in QA → Ready for QA** (ex.: card 74572 — estado "In Development (doing)", coluna "Dev Test in QA" = o
+dev validando a correcao em QA):
+- Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**: quando a etapa `validar-qa`
+  ficar pronta (PRs mesclados/correcao em QA), rode `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> dev-test-in-qa`
+  — **pode mover sem perguntar**. Estado e coluna vem do `config` (AI Configurations); nunca escreva de memoria.
+- **Ready for QA so com autorizacao**: rode `devops <card> ready-for-qa` **somente** quando (a) o usuario
+  concluir a etapa `validar-qa` na tela do plano (o `control`/`watch` mostra `etapa validar-qa: ... -> completed`)
+  ou (b) o usuario autorizar explicitamente depois disso, pelo chat ou por comentario no plano ("pode mover para
+  Ready for QA"). A resposta a pergunta de fechamento do passo 6 **nao** autoriza o Ready for QA — ela veio antes
+  da validacao. Sem (a) ou (b), nao mova: deixe o `watch` em segundo plano e siga quando a etapa for concluida.
+- Por isso, com codigo, o `fechar-card` tem `dependsOn: ["validar-qa"]`; o root cause, a classificacao e o resumo
+  podem ser gravados antes, mas o `ready-for-qa` fica para depois da validacao.
 
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e
 `devops <card> test-in-production` chamam o endpoint do PRMake `POST Azure/card/<card>/actions/<acao>`; o PRMake
