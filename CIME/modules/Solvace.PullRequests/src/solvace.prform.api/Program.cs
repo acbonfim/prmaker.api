@@ -20,6 +20,7 @@ using solvace.vacations.application.Contracts;
 using solvace.vacations.infra.Extensions;
 using solvace.timeline.infra.Extensions;
 using solvace.executionplans.infra.Extensions;
+using solvace.knowledge.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,6 +41,8 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionTimelineWriter, ExecutionPlanTimelineWriter>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
+// Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
+builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
@@ -75,7 +78,8 @@ builder.Services
     .AddAIModule(builder.Configuration)
     .AddVacationModule(builder.Configuration)
     .AddTimelineModule(builder.Configuration)
-    .AddExecutionPlanModule(builder.Configuration);
+    .AddExecutionPlanModule(builder.Configuration)
+    .AddKnowledgeModule(builder.Configuration);
 
 
 
@@ -108,7 +112,7 @@ var app = builder.Build();
 // não migra (cold start menor). Localmente: dotnet run -- --migrate.
 if (args.Contains("--migrate"))
 {
-    // Migrations dos 3 contexts, protegidas por advisory lock do PostgreSQL. Falha => exit 1 na
+    // Migrations de todos os contexts, protegidas por advisory lock do PostgreSQL. Falha => exit 1 na
     // hora (o pipeline para). Não depende da exceção "não tratada": no teste o processo ficou vivo.
     try
     {

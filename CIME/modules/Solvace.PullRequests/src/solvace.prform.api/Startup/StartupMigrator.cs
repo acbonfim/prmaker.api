@@ -42,6 +42,7 @@ public static class StartupMigrator
                 await MigrateAsync<VacationContext>(sp, logger);
                 await MigrateAsync<TimelineContext>(sp, logger);
                 await MigrateAsync<ExecutionPlanContext>(sp, logger);
+                await MigrateAsync<solvace.knowledge.infra.Contexts.KnowledgeContext>(sp, logger);
             });
         }
         finally

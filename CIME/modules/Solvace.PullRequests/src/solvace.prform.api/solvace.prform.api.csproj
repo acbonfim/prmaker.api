@@ -40,6 +40,7 @@
         <ProjectReference Include="..\..\..\Solvace.Vacations\src\solvace.vacations.infra\solvace.vacations.infra.csproj" />
         <ProjectReference Include="..\..\..\Solvace.Timeline\src\solvace.timeline.infra\solvace.timeline.infra.csproj" />
         <ProjectReference Include="..\..\..\Solvace.ExecutionPlans\src\solvace.executionplans.infra\solvace.executionplans.infra.csproj" />
+        <ProjectReference Include="..\..\..\Solvace.Knowledge\src\solvace.knowledge.infra\solvace.knowledge.infra.csproj" />
 	</ItemGroup>
 
     <!-- Restore antes do Build para garantir que todas as dependências estejam atualizadas -->
