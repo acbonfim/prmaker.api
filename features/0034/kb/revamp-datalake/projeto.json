@@ -1,0 +1,21 @@
+{
+ "name": "Revamp infra — Datalake",
+ "kind": "infra",
+ "order": 119,
+ "repository": "https://github.com/electradv/revamp-Datalake",
+ "repoDir": "kb-mirror/revamp-Datalake",
+ "summary": "12 projetos (net8.0), 4 controllers/6 rotas, 0 casos de uso, 0 Lambdas; tabelas TB_DTL_ENVIRONMENT, TB_DTL_SNAPSHOT_RUN, TB_DTL_MODULE, TB_DTL_MODULE_COLUMN, TB_WCM_SITE.",
+ "keywords": [
+  "datalake",
+  "revamp-Datalake",
+  "Admin",
+  "Datasets",
+  "Health",
+  "Modules",
+  "TB_DTL_ENVIRONMENT",
+  "TB_DTL_SNAPSHOT_RUN",
+  "TB_DTL_MODULE",
+  "TB_DTL_MODULE_COLUMN"
+ ],
+ "relations": []
+}

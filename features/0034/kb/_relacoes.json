@@ -1,0 +1,968 @@
+{
+ "revamp-actionplan": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila ACP_USER_EVENT_CREATED)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Lambda.ACP.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Application/Commands/ActionPlan/ActionPlanNotification/ActionPlanNotificationFactory.cs:8"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Application/Commands/DeleteActionPlanComments/DeleteActionPlanCommentsCommandHandler.cs:29"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FORNECEDOR)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/scripts/Sync_ReplicaTables.sql:133"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Infra.Data.Local.SqlServer/Queries/GetObeyaBoardsLocalQuery.cs:21"
+  }
+ ],
+ "revamp-alert": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila ALERT_USER_EVENT_CREATED)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Lambda.Alert.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:28"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Application/UseCases/DeleteAlert/Service/SendAlertDeletedToCommentService.cs:13"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FALHAS)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Infra.Data.Global.SqlServer/Queries/AlertQueries.cs:43"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Infra.Data.Global.SqlServer/Queries/Helpers/User/Queries/UserHelperQueries.cs:39"
+  }
+ ],
+ "revamp-bos": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila BOS_USER_EVENT_CREATED)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Lambda.BOS.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:37"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_SHIFT)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Infra.Data.Global.SqlServer/Queries/FeedbackQueries.cs:44"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Infra.Data.Global.SqlServer/Queries/UserHelperQueries.cs:39"
+  }
+ ],
+ "revamp-communication": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila COMMUNICATION_USER_EVENT_CREATED)",
+   "evidence": "revamp-Communication/Solvace.Communication/src/Lambda.Communication.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Communication/Solvace.Communication/src/Solvace.Communication.Application/UseCases/Communication/SendCommunication/SendCommunicationCommandHandler.cs:78"
+  }
+ ],
+ "revamp-defecttag": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila DFT_USER_EVENT_CREATED)",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/DFT.User.EventCreated/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_TYPE_<amb>",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Application.Abstractions/Queries/Entities/Type.cs:20"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Application/Shared/DefectTagNotificationHelper.cs:31"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO)",
+   "evidence": "revamp-DefectTag/Solvace.DefectTag/src/Solvace.DefectTag.Infra.Data.Global.SqlServer/Migrations/20260702120000_sync_reference_data.cs:274"
+  }
+ ],
+ "revamp-fishbone": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila FISHBONE_USER_EVENT_CREATED)",
+   "evidence": "revamp-Fishbone/Solvace.Fishbone/src/Lambda.Fishbone.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-whywhy",
+   "kind": "queue",
+   "detail": "envia para a fila WHYWHY_FISHBONE_EVENT_CREATED_<amb>",
+   "evidence": "revamp-Fishbone/Solvace.Fishbone/src/Solvace.Fishbone.Application/UseCases/Notification/DiagramNotificationCommandHandler.cs:53"
+  }
+ ],
+ "revamp-lpp": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila LPP_USER_EVENT_CREATED)",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Lambda.LPP.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Application.Abstractions/Constants.cs:19"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Application/UseCases/Documents/SendApproval/SendApprovalCommandHandler.cs:17"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Infra.Data.Global.SqlServer/Queries/UserHelperQueries.cs:39"
+  }
+ ],
+ "revamp-post": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila POST_USER_EVENT_CREATED)",
+   "evidence": "revamp-Post/Solvace.Post/src/Lambda.Post.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Application/UseCases/SendNotificationComplaint/SendNotificationComplaintCommandHandler.cs:18"
+  },
+  {
+   "target": "revamp-hashtag",
+   "kind": "queue",
+   "detail": "envia para a fila HASHTAG_WORKER_<amb>",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Application/UseCases/SendPostSqsMessageGeneric/SendPostSqsMessageGenericCommandHandler.cs:141"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:242"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "database",
+   "detail": "usa tabelas TB_LUP_* (ex.: TB_LUP_DOCUMENT)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:134"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:54"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_CATEGORIA_CUSTO)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:241"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/Bookmark/Queries/UserUidQueries.cs:52"
+  }
+ ],
+ "revamp-praise": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila PRAISE_USER_EVENT_CREATED)",
+   "evidence": "revamp-Praise/Solvace.Praise/src/Lambda.Praise.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Praise/Solvace.Praise/src/Solvace.Praise.Application/UseCases/Praises/SendPraise/SendPraiseCommandHandler.cs:41"
+  }
+ ],
+ "revamp-quiz": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila QUIZ_USER_EVENT_CREATED)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Lambda.Quiz.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Application/UseCases/SendDistributionList/SendDistributionListCommandHandler.cs:132"
+  },
+  {
+   "target": "revamp-training",
+   "kind": "database",
+   "detail": "usa tabelas TB_TRN_* (ex.: TB_TRN_TRAINING)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Infra.Data.Global.SqlServer/Helpers/Training/Queries/TrainingQueries.cs:28"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Infra.Data.Global.SqlServer/Queries/Helpers/UserHelperQueries.cs:39"
+  }
+ ],
+ "revamp-rca": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila RCA_USER_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "event",
+   "detail": "consome o tópico CENTERLINE (fila RCA_CENTERLINE_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Centerline/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "event",
+   "detail": "consome o tópico KAIZEN (fila RCA_KAIZEN_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Kaizen/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "event",
+   "detail": "consome o tópico CHECKLIST (fila RCA_CHECKLIST_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Checklist/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "event",
+   "detail": "consome o tópico DOCUMENTATION (fila RCA_DOCUMENTATION_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Documentation/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "event",
+   "detail": "consome o tópico LPP (fila RCA_LPP_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.LPP/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application.Abstractions/Constants.cs:16"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application/Shared/RcaNotificationHelper.cs:28"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application.Abstractions/Constants.cs:41"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Infra.Data.Global.SqlServer/Commands/EquipamentCommand.cs:47"
+  }
+ ],
+ "revamp-reaction": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila REACTION_USER_EVENT_CREATED)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Lambda.Reaction.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_INTERACTION_UPDATED_<amb>",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Application/Services/MessageBrokerService.cs:24"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Application/Services/MessageBrokerService.cs:60"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Infra.Data.Global.SqlServer/Queries/UserHelperQuerie.cs:45"
+  },
+  {
+   "target": "ext:s3",
+   "kind": "external",
+   "detail": "AWS S3: https://solvacelabs-webcomponents.s3.amazonaws.com/ (S3BucketUrl)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.API/appsettings.json"
+  },
+  {
+   "target": "ext:s3",
+   "kind": "external",
+   "detail": "AWS S3: https://solvacelabs-webcomponents.s3.amazonaws.com/icons/ (código)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Infra.Data.Global.SqlServer/Migrations/20241209121109_UpdateSeed.cs:17"
+  }
+ ],
+ "revamp-scorecard": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila SCC_USER_EVENT_CREATED)",
+   "evidence": "revamp-ScoreCard/Solvace.Scorecard/src/Lambda.Scorecard.Schema.User/aws-lambda-tools-defaults.json"
+  }
+ ],
+ "revamp-survey": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila SURVEY_USER_EVENT_CREATED)",
+   "evidence": "revamp-Survey/Solvace.Survey/src/Lambda.Survey.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Survey/Solvace.Survey/src/Solvace.Survey.Application/UseCases/Survey/SendSurvey/SendSurveyCommandHandler.cs:100"
+  }
+ ],
+ "revamp-unsafecondition": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila UNC_USER_EVENT_CREATED)",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Lambda.UNC.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Solvace.UnsafeCondition.Application/Shared/UnsafeConditionNotificationHelper.cs:31"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO_FOTO)",
+   "evidence": "revamp-UnsafeCondition/Solvace.UnsafeCondition/src/Solvace.UnsafeCondition.Infra.Data.Global.SqlServer/Queries/EquipmentPhotoQuery.cs:26"
+  }
+ ],
+ "revamp-whywhy": [
+  {
+   "target": "revamp-rca",
+   "kind": "event",
+   "detail": "consome o tópico RCA (fila WHYWHY_RCA_EVENT_CREATED)",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Lambda.WhyWhy.Schema.RCA/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila WHYWHY_USER_EVENT_CREATED)",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Lambda.WhyWhy.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-WhyWhy/Solvace.WhyWhy/src/Solvace.WhyWhy.Application/Service/SendRootCauseAsPostService.cs:78"
+  }
+ ],
+ "revamp-comment": [
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_MENTION_WORKER_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:20"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_HEADER_WORKER_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/Services/MessageBrokerService.cs:43"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_INTERACTION_UPDATED_<amb>",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/Services/MessageBrokerService.cs:94"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Solvace.Comment.Application/UseCases/SendNotification/RedirectConfigurationsServiceByConfigType.cs:25"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/.default (TeamsConfig:Scope)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:azure-ad",
+   "kind": "external",
+   "detail": "Azure AD / Entra ID: https://login.microsoftonline.com/{0}/oauth2/v2.0/token (TeamsConfig:LoginEndpoint)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/v1.0/users/{0}/teamwork/sendactivitynotification (TeamsConfig:SendNotificationEndpoint)",
+   "evidence": "revamp-Comment/Solvace.Comment/src/Lambda.Comment.DeleteGroup/appsettings.HotfixVersion.json"
+  }
+ ],
+ "revamp-commentmanager": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.MentionWorker/UseCases/SendNotificationFromWorker/SendNotificationFromWorkerHandler.cs:40"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:45"
+  },
+  {
+   "target": "revamp-assessment",
+   "kind": "database",
+   "detail": "usa tabelas TB_AST_* (ex.: TB_AST_INSPECTION_ITEM)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:143"
+  },
+  {
+   "target": "revamp-nonconformity",
+   "kind": "database",
+   "detail": "usa tabelas TB_NCF_* (ex.: TB_NCF_NONCONFORMITY)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:33"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:131"
+  },
+  {
+   "target": "revamp-workpermit",
+   "kind": "database",
+   "detail": "usa tabelas TB_WRK_* (ex.: TB_WRK_WORK_PERMIT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:14"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "database",
+   "detail": "usa tabelas TB_CLN_* (ex.: TB_CLN_INSPECTION)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:175"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "database",
+   "detail": "usa tabelas TB_CHK_* (ex.: TB_CHK_INSPECTION)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:158"
+  },
+  {
+   "target": "revamp-training",
+   "kind": "database",
+   "detail": "usa tabelas TB_TRN_* (ex.: TB_TRN_STUDENT_TRAINING)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:293"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:13"
+  },
+  {
+   "target": "revamp-moc",
+   "kind": "database",
+   "detail": "usa tabelas TB_MOC_* (ex.: TB_MOC_MOC)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsServiceByConfigType.cs:189"
+  },
+  {
+   "target": "revamp-cil",
+   "kind": "database",
+   "detail": "usa tabelas TB_LIL_* (ex.: TB_LIL_NINSPECTION)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:240"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:63"
+  },
+  {
+   "target": "revamp-complaint",
+   "kind": "database",
+   "detail": "usa tabelas TB_CMP_* (ex.: TB_CMP_COMPLAINT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:159"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "database",
+   "detail": "usa tabelas TB_LUP_* (ex.: TB_LUP_DOCUMENT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:121"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "database",
+   "detail": "usa tabelas TB_GED_* (ex.: TB_GED_DOCUMENT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:141"
+  },
+  {
+   "target": "revamp-defecttag",
+   "kind": "database",
+   "detail": "usa tabelas TB_DFT_* (ex.: TB_DFT_DEFECT_TAG)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:23"
+  },
+  {
+   "target": "revamp-unsafecondition",
+   "kind": "database",
+   "detail": "usa tabelas TB_UNC_* (ex.: TB_UNC_UNSAFE_CONDITION)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:53"
+  },
+  {
+   "target": "revamp-project",
+   "kind": "database",
+   "detail": "usa tabelas TB_PJT_* (ex.: TB_PJT_PROJECT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:150"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Application.Abstractions/Services/RedirectConfigurationsService.cs:168"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FALHAS)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Solvace.CommentManager.Infra.Data.Local.SqlServer/Queries/MasterdataQuery.cs:20"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/.default (TeamsConfig:Scope)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Lambda.CommentManager.MicrosoftTeams/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:azure-ad",
+   "kind": "external",
+   "detail": "Azure AD / Entra ID: https://login.microsoftonline.com/{0}/oauth2/v2.0/token (TeamsConfig:LoginEndpoint)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Lambda.CommentManager.MicrosoftTeams/appsettings.HotfixVersion.json"
+  },
+  {
+   "target": "ext:microsoft-graph",
+   "kind": "external",
+   "detail": "Microsoft Graph / Teams: https://graph.microsoft.com/v1.0/users/{0}/teamwork/sendactivitynotification (TeamsConfig:SendNotificationEndpoint)",
+   "evidence": "revamp-CommentManager/Solvace.CommentManager/src/Lambda.CommentManager.MicrosoftTeams/appsettings.HotfixVersion.json"
+  }
+ ],
+ "revamp-hashtag": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Hashtag/Solvace.Hashtag/src/Solvace.Hashtag.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:132"
+  }
+ ],
+ "revamp-kaizen": [
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-Kaizen/Solvace.Kaizen/src/Solvace.Kaizen.Application/Commands/DeleteKaizenComments/DeleteKaizenCommentsCommandHandler.cs:26"
+  }
+ ],
+ "revamp-masterdata": [
+  {
+   "target": "revamp-users",
+   "kind": "queue",
+   "detail": "envia para a fila USERS_UDA_EVENT_CREATED_<amb>",
+   "evidence": "revamp-MasterData/Solvace.MasterData/src/Solvace.MasterData.API/Extensions/TopicSnsBuilderExtensions.cs:53"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "queue",
+   "detail": "envia para a fila USERS_PHYSICAL_LAYOUT_EVENT_CREATED_<amb>",
+   "evidence": "revamp-MasterData/Solvace.MasterData/src/Solvace.MasterData.API/Extensions/TopicSnsBuilderExtensions.cs:54"
+  }
+ ],
+ "revamp-subtitle": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Services/NotificationService.cs:26"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "database",
+   "detail": "usa tabelas TB_LUP_* (ex.: TB_LUP_DOCUMENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:88"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "database",
+   "detail": "usa tabelas TB_CHK_* (ex.: TB_CHK_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:181"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:11"
+  },
+  {
+   "target": "revamp-defecttag",
+   "kind": "database",
+   "detail": "usa tabelas TB_DFT_* (ex.: TB_DFT_DEFECT_TAG)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:21"
+  },
+  {
+   "target": "revamp-nonconformity",
+   "kind": "database",
+   "detail": "usa tabelas TB_NCF_* (ex.: TB_NCF_NONCONFORMITY)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:31"
+  },
+  {
+   "target": "revamp-workpermit",
+   "kind": "database",
+   "detail": "usa tabelas TB_WRK_* (ex.: TB_WRK_WORK_PERMIT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:41"
+  },
+  {
+   "target": "revamp-unsafecondition",
+   "kind": "database",
+   "detail": "usa tabelas TB_UNC_* (ex.: TB_UNC_UNSAFE_CONDITION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:51"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:61"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:74"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:109"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "database",
+   "detail": "usa tabelas TB_GED_* (ex.: TB_GED_DOCUMENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:119"
+  },
+  {
+   "target": "revamp-project",
+   "kind": "database",
+   "detail": "usa tabelas TB_PJT_* (ex.: TB_PJT_PROJECT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:129"
+  },
+  {
+   "target": "revamp-complaint",
+   "kind": "database",
+   "detail": "usa tabelas TB_CMP_* (ex.: TB_CMP_COMPLAINT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:139"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:149"
+  },
+  {
+   "target": "revamp-assessment",
+   "kind": "database",
+   "detail": "usa tabelas TB_AST_* (ex.: TB_AST_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:162"
+  },
+  {
+   "target": "revamp-cil",
+   "kind": "database",
+   "detail": "usa tabelas TB_LIL_* (ex.: TB_LIL_NINSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:209"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "database",
+   "detail": "usa tabelas TB_CLN_* (ex.: TB_CLN_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:228"
+  },
+  {
+   "target": "revamp-training",
+   "kind": "database",
+   "detail": "usa tabelas TB_TRN_* (ex.: TB_TRN_STUDENT_TRAINING)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:256"
+  }
+ ],
+ "revamp-users": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Users/Solvace.Users/src/Solvace.Users.Application/Commands/CreateNotification/CreateNotificationCommandHandler.cs:55"
+  }
+ ],
+ "revamp-whiteboard": [
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-WhiteBoard/Solvace.WhiteBoard/src/Solvace.WhiteBoard.Application.Abstractions/Responses/Constants.cs:16"
+  }
+ ],
+ "revamp-administration": [
+  {
+   "target": "revamp-survey",
+   "kind": "database",
+   "detail": "usa tabelas TB_SURVEY_* (ex.: TB_SURVEY_USER_RESPONSE)",
+   "evidence": "revamp-Administration/Solvace.Administration/src/Solvace.Administration.Infra.Data.Local.SqlServer/Queries/GetSurveyResponsesLocalQuery.cs:30"
+  }
+ ],
+ "revamp-authentication": [
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_CARGO)",
+   "evidence": "revamp-Authentication/Solvace.Authentication/src/Solvace.Authentication.Infra.Data.Local.SqlServer/Queries/GetLastEmployeePositionInfoByUserIdLocalQuery.cs:29"
+  },
+  {
+   "target": "ext:cognito",
+   "kind": "external",
+   "detail": "AWS Cognito: https://cognito-idp. (código)",
+   "evidence": "revamp-Authentication/Solvace.Authentication/src/Solvace.Authentication.Application/Services/Mcp/CognitoOAuthClient.cs:112"
+  }
+ ],
+ "revamp-buildingblocks": [
+  {
+   "target": "revamp-assessment",
+   "kind": "database",
+   "detail": "usa tabelas TB_AST_* (ex.: TB_AST_INSPECTION_ITEM)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentTotalQuestionsByMonthQuery.cs:55"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.LegacyData/Queries/ActionPlanQueries.cs:46"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "database",
+   "detail": "usa tabelas TB_CHK_* (ex.: TB_CHK_INSPECTION_ITEM)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:20"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "database",
+   "detail": "usa tabelas TB_CLN_* (ex.: TB_CLN_INSPECTION)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineTotalTasksByWeekQuery.cs:53"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Kaizen/Queries/KaizenTotalSuggestedByHourQuery.cs:53"
+  },
+  {
+   "target": "revamp-cil",
+   "kind": "database",
+   "detail": "usa tabelas TB_LIL_* (ex.: TB_LIL_NINSPECTION)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalTasksByWeekQuery.cs:51"
+  },
+  {
+   "target": "revamp-workpermit",
+   "kind": "database",
+   "detail": "usa tabelas TB_WRK_* (ex.: TB_WRK_WORK_PERMIT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.WorkPermit/Queries/WorkPermitTotalReleasedByWeekQuery.cs:52"
+  },
+  {
+   "target": "revamp-project",
+   "kind": "database",
+   "detail": "usa tabelas TB_PJT_* (ex.: TB_PJT_PROJECT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Project/Queries/ProjectListQuery.cs:59"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "database",
+   "detail": "usa tabelas TB_GED_* (ex.: TB_GED_DOCUMENT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Documentation/Queries/DocumentationTotalCreatedByDayQuery.cs:45"
+  },
+  {
+   "target": "revamp-moc",
+   "kind": "database",
+   "detail": "usa tabelas TB_MOC_* (ex.: TB_MOC_MOC)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ModificationControl/Queries/ModificationControlListQuery.cs:68"
+  },
+  {
+   "target": "revamp-nonconformity",
+   "kind": "database",
+   "detail": "usa tabelas TB_NCF_* (ex.: TB_NCF_NONCONFORMITY)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.NonConformity/Queries/NonConformityTotalReportedByHourQuery.cs:53"
+  },
+  {
+   "target": "revamp-complaint",
+   "kind": "database",
+   "detail": "usa tabelas TB_CMP_* (ex.: TB_CMP_COMPLAINT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Complaints/Queries/ComplaintsListQuery.cs:14"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Incidents/Queries/IncidentsTotalReportedByWeekQuery.cs:53"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FINISHED_PRODUCT)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineListQuery.cs:15"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetUserInfoGlobalQuery/GetUserInfoGlobalQuery_Avatar.cs:37"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET_ACTIONPLAN)",
+   "evidence": "revamp-BuildingBlocks/Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.DigitalObeyaQueries/ObeyaWidgetType.cs:6"
+  }
+ ],
+ "revamp-copilot": [
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_ROOM_MEMBER)",
+   "evidence": "revamp-Copilot/Solvace.Copilot/src/Solvace.Copilot.Infra.Data.Global.SqlServer/Queries/CheckConfidentialRoomLocalQuery.cs:46"
+  },
+  {
+   "target": "revamp-authentication",
+   "kind": "http",
+   "detail": "chama https://api-authentication-<amb>.solvacelabs.com (Mcp:AuthorizationServerUri)",
+   "evidence": "revamp-Copilot/Solvace.Copilot/src/Solvace.Copilot.API/appsettings.HotfixVersion.json"
+  }
+ ],
+ "revamp-moduleintegration": [
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET_GRAPHBAR_VALUE)",
+   "evidence": "revamp-ModuleIntegration/Solvace.ModuleIntegration/src/Solvace.ModuleIntegration.Infra.Data.Local.SqlServer/Queries/ObeyaLocalQueries.cs:80"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-ModuleIntegration/Solvace.ModuleIntegration/src/Solvace.ModuleIntegration.Infra.Data.Local.SqlServer/Queries/RootCauseLocalQueries.cs:30"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-ModuleIntegration/Solvace.ModuleIntegration/src/Solvace.ModuleIntegration.Infra.Data.Local.SqlServer/Queries/ActionPlanLocalQueries.cs:53"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-ModuleIntegration/Solvace.ModuleIntegration/src/Solvace.ModuleIntegration.Infra.Data.Local.SqlServer/Queries/IncidentsLocalQueries.cs:27"
+  }
+ ],
+ "revamp-training": [
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_FUNCAO)",
+   "evidence": "revamp-Training/Solvace.Training/src/Solvace.Training.Infra.Data.Global.SqlServer/Queries/GetKpiTrainingQualificationGlobalQuery.cs:194"
+  }
+ ],
+ "edv-solvace-hubspotapi": [
+  {
+   "target": "ext:hubspot",
+   "kind": "external",
+   "detail": "HubSpot: https://api.hubapi.com/ (código)",
+   "evidence": "edv-solvace-hubspotApi/IT/src/IT.DI/DependencyInjection/DependencyInjection.cs:50"
+  },
+  {
+   "target": "ext:azure-devops",
+   "kind": "external",
+   "detail": "Azure DevOps: https://dev.azure.com/solvacelabs/ (código)",
+   "evidence": "edv-solvace-hubspotApi/IT/src/IT.DI/DependencyInjection/DependencyInjection.cs:56"
+  }
+ ],
+ "_warnings": [
+  {
+   "kind": "duplicate-lambda",
+   "detail": "Lambda `lambda_bos_user_create_event` declarada em revamp-bos, revamp-fishbone — um deploy sobrescreve o outro",
+   "projects": [
+    "revamp-bos",
+    "revamp-fishbone"
+   ]
+  }
+ ]
+}

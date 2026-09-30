@@ -1,0 +1,37 @@
+## Endpoints HTTP
+- **AreaController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AreaController.cs): `GET names`
+- **AuditsController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AuditsController.cs): `POST /` · `PUT /` · `DELETE {id}` · `GET /` · `GET {id}`
+- **AuditsGuestController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AuditsGuestController.cs): `POST /` · `PUT /` · `DELETE {id}` · `GET /` · `GET {id}`
+- **AuditsLeaderController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AuditsLeaderController.cs): `POST /` · `PUT /` · `DELETE {id}` · `GET /` · `GET {id}`
+- **AuditsTransferController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AuditsTransferController.cs): `POST /` · `PUT /` · `DELETE {id}` · `GET /` · `GET {id}`
+- **AvatarController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/AvatarController.cs): `POST ListAvatar` · `GET /` · `GET User/{userId}` · `GET Area/{areaId}` · `GET Team/{teamId}`
+- **GdprController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/GdprController.cs): `PUT /`
+- **GroupsController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/GroupsController.cs): `GET names`
+- **RolesController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/RolesController.cs): `GET {applicationId}`
+- **TeamController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/TeamController.cs): `GET InfoByIds`
+- **UserAreaController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserAreaController.cs): `PUT /` · `PUT transfer`
+- **UserCardController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserCardController.cs): `GET Cards`
+- **UserChartController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserChartController.cs): `GET /` · `GET children`
+- **UserContractedController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserContractedController.cs): `POST /`
+- **UserContractorController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserContractorController.cs): `POST /`
+- **UserController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserController.cs): `GET {userId}` · `GET Avatar` · `GET Info` · `GET InfoByIds` · `GET names` · `GET UsersAndGuests/names` · `GET names/areas` · `GET names/teams` · `GET {userId}/subordinate/names` · `GET /user/infos/cached` · `GET status` · `GET session` · `POST merge` · `GET withpermition/{applicationId}` … (+15)
+- **UserEmployeeController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserEmployeeController.cs): `POST /`
+- **UserFederatedController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserFederatedController.cs): `POST /` · `POST Reconcile` · `PUT fixSite/{siteId}`
+- **UserGuestController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserGuestController.cs): `POST /` · `PUT /` · `DELETE {id}` · `GET /` · `GET download/pdf` · `GET download/excel`
+- **UserLeaderController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserLeaderController.cs): `GET usersLeader` · `GET download/pdf` · `GET download/excel` · `POST editUsersLeader`
+- **UserPreferenceController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserPreferenceController.cs): `GET sites` · `GET default/{siteId}` · `GET global` · `PUT global` · `PUT /` · `PUT change-site/{newLastSiteId}` · `PUT update-teams-id` · `PATCH CheckInFilter`
+- **UserPreferenceController** (`[controller]`, Solvace.Users/src/Solvace.Users.Integration.API/Controllers/UserPreferenceController.cs): `PUT /`
+- **UserPreferenceFeatureFiltersController** (`userpreference/feature/filters`, Solvace.Users/src/Solvace.Users.API/Controllers/UserPreferenceFeatureFiltersController.cs): `GET {applicationId}/{featureName}` · `DELETE /` · `PUT /`
+- **UserPreferenceFeaturesController** (`userpreference/features`, Solvace.Users/src/Solvace.Users.API/Controllers/UserPreferenceFeaturesController.cs): `GET applications` · `GET {applicationId}` · `PUT /`
+- **UserPreferencePictureController** (`userPreference/picture`, Solvace.Users/src/Solvace.Users.API/Controllers/UserPreferencePictureController.cs): `PUT /` · `DELETE /`
+- **UserPreferencePictureController** (`[controller]`, Solvace.Users/src/Solvace.Users.Integration.API/Controllers/UserPreferencePictureController.cs): `PUT /` · `DELETE /`
+- **UserRolesController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserRolesController.cs): `PUT roles`
+- **UserSessionController** (`[controller]`, Solvace.Users/src/Solvace.Users.Integration.API/Controllers/UserSessionController.cs): `GET /` · `GET enableOfflineMode`
+- **UserSsoController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserSsoController.cs): `GET pending` · `GET suggestionsByUser` · `POST release` · `GET pending/download/excel` · `GET pending/download/pdf` · `POST read/excel` · `GET excel/sample`
+- **UserSuplierController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UserSuplierController.cs): `POST /`
+- **UsersInLastSiteIdController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UsersInLastSiteIdController.cs): `GET /`
+- **UsersPerRoleController** (`[controller]`, Solvace.Users/src/Solvace.Users.API/Controllers/UsersPerRoleController.cs): `GET {applicationId}` · `GET {applicationId}/availables` · `GET {applicationId}/download/pdf` · `GET {applicationId}/download/excel`
+
+## Casos de uso
+- **Commands**: Audits, AuditsGuest, AuditsLeader, AuditsTransfer, ChangeLastSiteIdUserLogged, ConfirmGdpr, CreateNotification, CreateUser, CreateUserArea, CreateUserContracted, CreateUserCorporate, CreateUserEmployee, CreateUserFederated, CreateUserSuplier, DeleteUserSso, FixUserSiteId, MergeUser, PublishEventUser, ReconcileUserFederatedSso, ReleaseUsersSso, RemovePictureUser, ResetUserPassword, TransferUser, UpdatePictureUser, UpdateRejectUser, UpdateUser, UpdateUserArea, UpdateUserRolesByUserId, UpdateUserSiteAndArea, UpsertUserArea, UpsertUsersEditLeader, UserContractor, UserGuest, UserPreferences
+- **Queries**: Builder, GetAllAreaNames, GetAllGroupsNames, GetAllPendingUser, GetAllSubordinateNames, GetAllUsersAndGuestsNames, GetAllUsersFiltered, GetAllUsersNames, GetAudits, GetAuditsGuest, GetAuditsLeader, GetAuditsTransfer, GetAvatarArea, GetAvatarList, GetAvatarTeam, GetCurrency, GetExcelUserRoles, GetGuestUsersExport, GetHasSubortinates, GetIsGamefied, GetLeaderUsersExport, GetPdfUserRoles, GetPendingSsoExport, GetRoles, GetSuggestionsByUserSso, GetTeamInfo, GetTeamsByIds, GetUserAvatar, GetUserByUserId, GetUserCard, GetUserInfo, GetUserInfoByIds, GetUserInfosCached, GetUserLoginStatus, GetUserMatch, GetUserNamesByAreaIds, GetUserNamesByTeamIds, GetUserPreferences, GetUserSSOExcelSample, GetUserSessionEnableOfflineMode, GetUserSessionInfo, GetUsersByExcel, GetUsersCardPaged, GetUsersEditLeader, GetUsersExport, GetUsersGuestPaged, GetUsersInLastSiteId, GetUsersNonGuestBySiteId, GetUsersPaged, GetUsersPendingSsoPaged, GetUsersPerRoleByApplicationId, GetUsersPerRoleByApplicationIdAvailables, GetUsersPerRoleByApplicationIdPaged, GetUsersSearchExport, GetUsersWithPermition, UserChart

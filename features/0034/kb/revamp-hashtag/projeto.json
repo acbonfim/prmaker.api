@@ -1,0 +1,33 @@
+{
+ "name": "Revamp — Hashtag",
+ "kind": "revamp",
+ "order": 126,
+ "repository": "https://github.com/electradv/revamp-Hashtag",
+ "repoDir": "kb-mirror/revamp-Hashtag",
+ "summary": "Módulo de gerenciamento de hashtags do estate Revamp, responsável pela criação, consulta e associação de hashtags. 7 projetos (net8.0), 10 controllers/50 rotas, 36 casos de uso, 0 Lambdas; tabelas Hashtag, HashtagOwner, HashtagRegister, HashtagTeamSubscribe, HashtagType.",
+ "keywords": [
+  "hashtag",
+  "revamp-Hashtag",
+  "HashtagUdaSubscribe",
+  "Hashtag",
+  "Upload",
+  "HashtagUserSubscribe",
+  "HashtagOwner",
+  "HashtagTeamSubscribe",
+  "Post",
+  "Droplist",
+  "HashtagRegister",
+  "GetHashtag",
+  "GetHashtagById",
+  "GetHashtagByOwnerAndSiteId",
+  "GetHashtagDropList"
+ ],
+ "relations": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Hashtag/Solvace.Hashtag/src/Solvace.Hashtag.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:132"
+  }
+ ]
+}

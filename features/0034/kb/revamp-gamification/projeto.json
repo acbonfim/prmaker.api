@@ -1,0 +1,15 @@
+{
+ "name": "Revamp — Gamification",
+ "kind": "revamp",
+ "order": 125,
+ "repository": "https://github.com/electradv/revamp-Gamification",
+ "repoDir": "kb-mirror/revamp-Gamification",
+ "summary": "6 projetos (net8.0), 1 controllers/1 rotas, 1 casos de uso, 0 Lambdas.",
+ "keywords": [
+  "gamification",
+  "revamp-Gamification",
+  "Gamification",
+  "GetIsGamefied"
+ ],
+ "relations": []
+}

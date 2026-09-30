@@ -1,0 +1,16 @@
+{
+ "name": "Revamp — Views",
+ "kind": "revamp",
+ "order": 149,
+ "repository": "https://github.com/electradv/revamp-Views",
+ "repoDir": "kb-mirror/revamp-Views",
+ "summary": "Módulo responsável pelo gerenciamento de Views no estate Revamp. 4 projetos (net8.0), 1 controllers/3 rotas, 3 casos de uso, 0 Lambdas.",
+ "keywords": [
+  "views",
+  "revamp-Views",
+  "View",
+  "GetViewCount",
+  "GetViewRegistryIdsCount"
+ ],
+ "relations": []
+}

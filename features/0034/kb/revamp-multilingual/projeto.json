@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — Multilingual",
+ "kind": "revamp",
+ "order": 134,
+ "repository": "https://github.com/electradv/revamp-Multilingual",
+ "repoDir": "kb-mirror/revamp-Multilingual",
+ "summary": "Servico responsavel pela gestao de traducoes e termos multilinguais no estate Revamp. 11 projetos (net8.0), 7 controllers/13 rotas, 28 casos de uso, 0 Lambdas; tabelas custom_translation, history, language, term_key, term_key_application.",
+ "keywords": [
+  "multilingual",
+  "revamp-Multilingual",
+  "Report",
+  "Translate",
+  "SpeechToText",
+  "TermKey",
+  "CustomTranslation",
+  "History",
+  "Translation",
+  "custom_translation",
+  "history",
+  "language",
+  "term_key",
+  "CustomTermKeyById",
+  "CustomTermKeyGetToCreate"
+ ],
+ "relations": []
+}

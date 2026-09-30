@@ -1,0 +1,37 @@
+{
+ "name": "Revamp — Praise",
+ "kind": "revamp",
+ "order": 138,
+ "repository": "https://github.com/electradv/revamp-Praise",
+ "repoDir": "kb-mirror/revamp-Praise",
+ "summary": "10 projetos (net8.0), 3 controllers/18 rotas, 15 casos de uso, 2 Lambdas; tabelas Praise, TB_WCM_USER, Title, PraiseTeam, PraiseUser.",
+ "keywords": [
+  "praise",
+  "revamp-Praise",
+  "Title",
+  "Praise",
+  "User",
+  "TB_WCM_USER",
+  "PraiseTeam",
+  "Builder",
+  "GetAllTitles",
+  "GetExcelTitle",
+  "GetPdfTitle",
+  "GetPraiseById",
+  "GetPraiseByPeriod"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila PRAISE_USER_EVENT_CREATED)",
+   "evidence": "revamp-Praise/Solvace.Praise/src/Lambda.Praise.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Praise/Solvace.Praise/src/Solvace.Praise.Application/UseCases/Praises/SendPraise/SendPraiseCommandHandler.cs:41"
+  }
+ ]
+}

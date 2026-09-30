@@ -4,11 +4,15 @@
 # Uso: arch.sh <comando> [args]
 #   list                                    projetos publicados (chave, tipo, commit, secoes)
 #   project <chave> --name N --kind K [--repo URL] [--summary-file F] [--keywords "a,b"] [--repo-dir D] [--order N]
-#                                           cria/atualiza o projeto; --repo-dir grava o commit/branch atual (HEAD)
+#           [--relations-file R.json]
+#                                           cria/atualiza o projeto; --repo-dir grava o commit/branch atual (HEAD);
+#                                           --relations-file: JSON [{target, kind, detail, evidence}] (substitui as relacoes)
 #   section <chave> <secao> <arquivo.md> [--title T] [--order N] [--note N] [--source skill|admin]
 #                                           grava a secao (conteudo igual nao cria versao)
 #   get <chave> [secao]                     metadados do projeto ou o conteudo de uma secao
 #   stale <chave> <repo-dir>                o que mudou no repositorio desde o commit mapeado (para atualizar)
+#   publicar-pasta <pasta-kb> [projeto...]  publica cada <pasta-kb>/<chave>/ (projeto.json com relations + NNN-secao.md);
+#                                           repoDir relativo a SOLVACE_REPOS (padrao ~/repos/solvace) grava o commit
 #   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence] [--card N]
 #                                           PROPOE uma melhoria (qualquer usuario): vai para a fila do admin no PRMake,
 #                                           nunca grava na secao
@@ -44,14 +48,15 @@ case "$CMD" in
     RD="$(opt --repo-dir "" "$@")"; COMMIT=""; BRANCH=""
     if [[ -n "$RD" ]]; then COMMIT="$(git -C "$RD" rev-parse HEAD 2>/dev/null)" || die "$RD nao e um repositorio git"; BRANCH="$(git -C "$RD" rev-parse --abbrev-ref HEAD)"; fi
     ORDER="$(opt --order "" "$@")"
-    jq -n --arg name "$NAME" --arg kind "$(opt --kind other "$@")" --arg repo "$(opt --repo "" "$@")" --arg summary "$SUMMARY" \
+    RF="$(opt --relations-file "" "$@")"; if [[ -n "$RF" ]]; then [[ -f "$RF" ]] || die "relacoes nao encontradas: $RF"; RELS="$(cat "$RF")"; else RELS="null"; fi
+    jq -n --argjson rels "$RELS" --arg name "$NAME" --arg kind "$(opt --kind other "$@")" --arg repo "$(opt --repo "" "$@")" --arg summary "$SUMMARY" \
       --arg kw "$(opt --keywords "" "$@")" --arg commit "$COMMIT" --arg branch "$BRANCH" --arg order "$ORDER" \
       'def nn: if . == "" then null else . end;
        {name:$name, kind:$kind, repository:($repo|nn), summary:($summary|nn),
         keywords:($kw|split(",")|map(gsub("^\\s+|\\s+$";""))|map(select(.!=""))),
-        sourceCommit:($commit|nn), sourceBranch:($branch|nn), order:($order|nn|if . == null then null else tonumber end)}' > "$TMP/body"
+        sourceCommit:($commit|nn), sourceBranch:($branch|nn), order:($order|nn|if . == null then null else tonumber end), relations:$rels}' > "$TMP/body"
     api PUT "/projects/$KEY" "$TMP/body"; check
-    jq -r '"OK projeto \(.key) (\(.kind)) — commit \(.sourceCommit // "-" | .[0:8]) · \(.sections|length) secoes"' "$TMP/resp" ;;
+    jq -r '"OK projeto \(.key) (\(.kind)) — commit \(.sourceCommit // "-" | .[0:8]) · \(.sections|length) secoes · \(.relations|length) relacoes"' "$TMP/resp" ;;
   section)
     KEY="${1:?chave}"; SEC="${2:?secao}"; FILE="${3:?arquivo.md}"; shift 3
     [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
@@ -84,5 +89,30 @@ case "$CMD" in
       '{projectKey:$p, sectionKey:(if $s == "-" then null else $s end), kind:$k, content:$c, cardNumber:(if $card == "" then null else $card end)}' > "$TMP/body"
     api POST /suggestions "$TMP/body"; check
     echo "OK sugestao registrada para $KEY${SEC:+/$SEC} — o admin aplica ou descarta na tela Base Solvace" ;;
+  publicar-pasta)
+    KB="${1:?pasta-kb}"; shift
+    REPOS="${SOLVACE_REPOS:-$HOME/repos/solvace}"
+    title_of() { case "$1" in
+      visao-geral) echo "Visão geral";; modulos) echo "Módulos e fluxos";; dados) echo "Dados";; integracoes) echo "Integrações";;
+      infra) echo "Infra e AWS";; autenticacao) echo "Login e permissões";; jobs) echo "Jobs e rotinas";;
+      regras-de-negocio) echo "Regras de negócio";; armadilhas) echo "Armadilhas e bugs conhecidos";; *) echo "$1";; esac; }
+    projects=("$@"); [[ ${#projects[@]} -gt 0 ]] || projects=($(cd "$KB" && ls -d */ 2>/dev/null | tr -d / | grep -v '^_'))
+    SELF="$0"
+    for key in "${projects[@]}"; do
+      meta="$KB/$key/projeto.json"; [[ -f "$meta" ]] || { echo "sem $meta" >&2; continue; }
+      jq -r '.summary // ""' "$meta" > "$TMP/summary.md"
+      jq -c '.relations // null' "$meta" > "$TMP/rels.json"
+      args=(--name "$(jq -r .name "$meta")" --kind "$(jq -r .kind "$meta")" --summary-file "$TMP/summary.md"
+            --keywords "$(jq -r '(.keywords // []) | join(",")' "$meta")" --order "$(jq -r '.order // 0' "$meta")")
+      [[ "$(cat "$TMP/rels.json")" != "null" ]] && args+=(--relations-file "$TMP/rels.json")
+      repo="$(jq -r '.repository // empty' "$meta")"; [[ -n "$repo" ]] && args+=(--repo "$repo")
+      dir="$(jq -r '.repoDir // empty' "$meta")"; [[ -n "$dir" && -d "$REPOS/$dir/.git" ]] && args+=(--repo-dir "$REPOS/$dir")
+      bash "$SELF" project "$key" "${args[@]}" || continue
+      for f in "$KB/$key"/[0-9][0-9][0-9]-*.md; do
+        [[ -f "$f" ]] || continue
+        name="$(basename "$f" .md)"; order="${name%%-*}"; section="${name#*-}"
+        bash "$SELF" section "$key" "$section" "$f" --title "$(title_of "$section")" --order "$((10#$order))" --note "${KB_NOTE:-engenharia reversa (base-solvace)}" >/dev/null && printf '.'
+      done; echo
+    done ;;
   *) sed -n '2,16p' "$0"; exit 1 ;;
 esac

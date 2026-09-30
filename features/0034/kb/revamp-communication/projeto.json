@@ -1,0 +1,36 @@
+{
+ "name": "Revamp — Communication",
+ "kind": "revamp",
+ "order": 115,
+ "repository": "https://github.com/electradv/revamp-Communication",
+ "repoDir": "kb-mirror/revamp-Communication",
+ "summary": "Module responsible for managing communications within the Solvace Revamp estate. 13 projetos (net8.0), 2 controllers/28 rotas, 20 casos de uso, 4 Lambdas; tabelas Communication, ParticipantUsers, Type, DistributionListArea, DistributionList.",
+ "keywords": [
+  "communication",
+  "revamp-Communication",
+  "Communication",
+  "Type",
+  "ParticipantUsers",
+  "DistributionListArea",
+  "Builder",
+  "GetAllTypes",
+  "GetCommunicationById",
+  "GetCommunicationPreview",
+  "GetCommunicationUserEligibility",
+  "GetCommunicationsFiltered"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila COMMUNICATION_USER_EVENT_CREATED)",
+   "evidence": "revamp-Communication/Solvace.Communication/src/Lambda.Communication.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Communication/Solvace.Communication/src/Solvace.Communication.Application/UseCases/Communication/SendCommunication/SendCommunicationCommandHandler.cs:78"
+  }
+ ]
+}

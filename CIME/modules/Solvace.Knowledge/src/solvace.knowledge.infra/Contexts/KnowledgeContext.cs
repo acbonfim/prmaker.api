@@ -69,6 +69,8 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
             entity.HasMany(e => e.Sections).WithOne().HasForeignKey(s => s.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            // 0034: interdependências como JSON no projeto.
+            entity.OwnsMany(e => e.Relations, r => r.ToJson());
             entity.HasIndex(e => e.Key).IsUnique();
         });
 

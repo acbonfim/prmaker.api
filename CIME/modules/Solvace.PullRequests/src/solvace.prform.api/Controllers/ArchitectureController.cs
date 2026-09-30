@@ -24,6 +24,10 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     public Task<ActionResult<List<ArchitectureProjectResponse>>> Projects(CancellationToken ct) =>
         Run<List<ArchitectureProjectResponse>>(async () => Ok(await application.ListProjectsAsync(ct)));
 
+    /// <summary>Grafo do ecossistema: projetos, serviços externos e interdependências (0034).</summary>
+    [HttpGet("graph")]
+    public async Task<ActionResult<ArchitectureGraphResponse>> Graph(CancellationToken ct) => Ok(await application.GetGraphAsync(ct));
+
     [HttpGet("projects/{key}")]
     public Task<ActionResult<ArchitectureProjectResponse>> Project([FromRoute] string key, CancellationToken ct) =>
         Run<ArchitectureProjectResponse>(async () => Ok(await application.GetProjectAsync(key, ct)));

@@ -1,0 +1,51 @@
+{
+ "name": "Revamp — LPP",
+ "kind": "revamp",
+ "order": 130,
+ "repository": "https://github.com/electradv/revamp-LPP",
+ "repoDir": "kb-mirror/revamp-LPP",
+ "summary": "Lesson Practice Plan (LPP) — módulo de gestão de planos de prática de aprendizado, com suporte a campos customizados, exportação Excel/PDF, mensageria SQS, cache Redis, eventos de integração (LPP, Users, PhysicalLayout, Team, UnityDepartArea) e processamento a 15 projetos (net8.0), 14 controllers/78 rotas, 18 casos de uso, 5 Lambdas; tabelas TB_WCM_SITE, TB_WCM_USER, ApprovalLevel, CategoryApprovalLevel, Category.",
+ "keywords": [
+  "lpp",
+  "revamp-LPP",
+  "Parameter",
+  "Status",
+  "ApprovalLevel",
+  "LPP",
+  "Counter",
+  "Types",
+  "Documents",
+  "User",
+  "TB_WCM_SITE",
+  "TB_WCM_USER",
+  "CategoryApprovalLevel",
+  "Analytics",
+  "Builder"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila LPP_USER_EVENT_CREATED)",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Lambda.LPP.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Application.Abstractions/Constants.cs:19"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Application/UseCases/Documents/SendApproval/SendApprovalCommandHandler.cs:17"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-LPP/Solvace.LPP/src/Solvace.LPP.Infra.Data.Global.SqlServer/Queries/UserHelperQueries.cs:39"
+  }
+ ]
+}

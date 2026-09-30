@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — Bookmark",
+ "kind": "revamp",
+ "order": 108,
+ "repository": "https://github.com/electradv/revamp-Bookmark",
+ "repoDir": "kb-mirror/revamp-Bookmark",
+ "summary": "6 projetos (net8.0), 4 controllers/8 rotas, 8 casos de uso, 0 Lambdas; tabelas TB_WCM_USER, TB_WCM_SITE, RegistryBookmarkId, RegistryBookmarkUid, tb_sys_application.",
+ "keywords": [
+  "bookmark",
+  "revamp-Bookmark",
+  "ListId",
+  "RegistryUid",
+  "ListUId",
+  "RegistryId",
+  "TB_WCM_USER",
+  "TB_WCM_SITE",
+  "RegistryBookmarkId",
+  "RegistryBookmarkUid",
+  "GetListRegistryBookmarkIdQuery",
+  "GetListRegistryBookmarkUIdQuery",
+  "GetListRegistryByIdsIdQuery",
+  "GetListRegistryByUIdsUIdQuery",
+  "CreateRegistryIdCommand"
+ ],
+ "relations": []
+}
