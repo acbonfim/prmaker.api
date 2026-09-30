@@ -71,6 +71,11 @@ public class AzureController : ControllerBase
     public Task<ActionResult<DevOpsActionResponse>> MoveToReadyForQa(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.MoveToReadyForQaAsync(id, cancellationToken), cancellationToken);
 
+    /// <summary>Move o card (Bug) para Dev Test in QA: o dev validando a correção em QA (estado + coluna do board).</summary>
+    [HttpPost("card/{id}/actions/dev-test-in-qa")]
+    public Task<ActionResult<DevOpsActionResponse>> MoveToDevTestInQa(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
+        RunActionAsync(id, timeline, () => _actionsService.MoveToDevTestInQaAsync(id, cancellationToken), cancellationToken);
+
     /// <summary>Preenche Original Estimate / Remaining Work / Completed Work com os valores do usuário.</summary>
     [HttpPost("card/{id}/actions/initial-estimate")]
     public Task<ActionResult<DevOpsActionResponse>> SetInitialEstimate(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>

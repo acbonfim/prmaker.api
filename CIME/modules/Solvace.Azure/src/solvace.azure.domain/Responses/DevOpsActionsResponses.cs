@@ -16,6 +16,7 @@ public class DevOpsBugActionsConfig
 
     public DevOpsTestInProductionConfig TestInProduction { get; set; } = new();
     public DevOpsReadyForQaConfig ReadyForQa { get; set; } = new();
+    public DevOpsDevTestInQaConfig DevTestInQa { get; set; } = new();
     public DevOpsInitialEstimateConfig InitialEstimate { get; set; } = new();
 }
 
@@ -31,6 +32,13 @@ public class DevOpsTestInProductionConfig
 public class DevOpsReadyForQaConfig
 {
     public string? State { get; set; }
+}
+
+/// <summary>Dev validando em QA: estado e coluna do board (ex.: "In Development (doing)" · "Dev Test in QA").</summary>
+public class DevOpsDevTestInQaConfig
+{
+    public string? State { get; set; }
+    public string? Column { get; set; }
 }
 
 public class DevOpsInitialEstimateConfig

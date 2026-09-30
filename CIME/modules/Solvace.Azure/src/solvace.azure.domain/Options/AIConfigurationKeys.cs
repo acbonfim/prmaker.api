@@ -14,6 +14,13 @@ public static class AIConfigurationKeys
     public const string BugTestInProductionState = "BugTestInProductionState";
     public const string BugTestInProductionComment = "BugTestInProductionComment";
     public const string BugReadyForQaState = "BugReadyForQaState";
+
+    /// <summary>
+    /// "Dev Test in QA" (dev validando a correção em QA, antes do Ready for QA): estado e coluna do board de destino.
+    /// Coluna vazia = só o estado.
+    /// </summary>
+    public const string BugDevTestInQaState = "BugDevTestInQaState";
+    public const string BugDevTestInQaColumn = "BugDevTestInQaColumn";
     public const string BugInitialOriginalEstimate = "BugInitialOriginalEstimate";
     public const string BugInitialRemainingWork = "BugInitialRemainingWork";
     public const string BugInitialCompletedWork = "BugInitialCompletedWork";

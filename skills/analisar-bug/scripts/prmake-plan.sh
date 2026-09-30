@@ -25,7 +25,7 @@
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
 #                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
-#                 zero-remaining · ready-for-qa · test-in-production · initial-estimate
+#                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate
 #                 (tudo gravado pelo PRMake; estados, areas, estimativa, prompt do resumo e opcoes de
 #                 classificacao vem da configuracao do usuario no PRMake — `config`/`classifications`)
 #   settings    <card>                                   configuracao das skills no PRMake (Skills Configurations +
@@ -803,7 +803,7 @@ PY
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|ready-for-qa|test-in-production|initial-estimate}"
+    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -853,7 +853,11 @@ PY
                 + (if ($b.testInProduction.requiredArea // "") != "" then " (so se o card estiver na area \"\($b.testInProduction.requiredArea)\")" else "" end)
                 + (if ($b.testInProduction.comment // "") != "" then "; comentario: \"\($b.testInProduction.comment)\"" else "" end)
               else "NAO configurado" end),
-          "ready-for-qa: " + (if ($b.readyForQa.state // "") != "" then "move para \"\($b.readyForQa.state)\"" else "NAO configurado" end),
+          "dev-test-in-qa: " + (if ($b.devTestInQa.state // "") != "" or ($b.devTestInQa.column // "") != ""
+              then "move para \"\($b.devTestInQa.state // "")\"" + (if ($b.devTestInQa.column // "") != "" then " · coluna \"\($b.devTestInQa.column)\"" else "" end)
+                + " (dev validando em QA — pode mover sem perguntar quando a correcao estiver em QA)"
+              else "NAO configurado" end),
+          "ready-for-qa: " + (if ($b.readyForQa.state // "") != "" then "move para \"\($b.readyForQa.state)\" (SO com autorizacao do usuario ou etapa validar-qa concluida por ele)" else "NAO configurado" end),
           "initial-estimate: " + (if $b.initialEstimate.configured
               then "Original \($b.initialEstimate.originalEstimate) · Remaining \($b.initialEstimate.remainingWork) · Completed \($b.initialEstimate.completedWork)"
               else "NAO configurado" end),
@@ -865,7 +869,7 @@ PY
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao listar as opcoes: $(resp_error)"
         jq -r '.[] | "\(.key)\t[\(.pattern // "-")] \(.label) — \(.resolutionType) | \(.generalClassification) | \(.classification)"' "$TMP/resp"
         exit 0 ;;
-      zero-remaining|ready-for-qa|test-in-production|initial-estimate)
+      zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate)
         prmake_post_retry "Azure/card/$CARD/actions/$ACTION" ;;
       *) die "acao desconhecida: $ACTION" ;;
     esac

@@ -15,6 +15,7 @@ public interface IDevOpsActionsService
 
     Task<DevOpsActionResponse> MoveToTestInProductionAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> MoveToReadyForQaAsync(string cardNumber, CancellationToken cancellationToken = default);
+    Task<DevOpsActionResponse> MoveToDevTestInQaAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 

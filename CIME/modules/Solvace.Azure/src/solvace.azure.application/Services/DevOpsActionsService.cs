@@ -96,6 +96,11 @@ public class DevOpsActionsService : IDevOpsActionsService
                     Comment = Value(AIConfigurationKeys.BugTestInProductionComment)
                 },
                 ReadyForQa = new DevOpsReadyForQaConfig { State = Value(AIConfigurationKeys.BugReadyForQaState) },
+                DevTestInQa = new DevOpsDevTestInQaConfig
+                {
+                    State = Value(AIConfigurationKeys.BugDevTestInQaState),
+                    Column = Value(AIConfigurationKeys.BugDevTestInQaColumn)
+                },
                 InitialEstimate = new DevOpsInitialEstimateConfig
                 {
                     Configured = original is not null && remaining is not null && completed is not null,
@@ -144,6 +149,54 @@ public class DevOpsActionsService : IDevOpsActionsService
 
         var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object> { [FieldState] = state }, cancellationToken);
         return new DevOpsActionResponse { Rev = rev, Message = $"Card movido para {state} (Ready for QA)" };
+    }
+
+    /// <summary>
+    /// Dev validando a correção em QA: estado + coluna do board (campo <c>WEF_…_Kanban.Column</c> do board do time
+    /// do card). Sem checar pendências — o card ainda não foi fechado; o Ready for QA vem depois da validação.
+    /// </summary>
+    public async Task<DevOpsActionResponse> MoveToDevTestInQaAsync(string cardNumber, CancellationToken cancellationToken = default)
+    {
+        var target = (await GetConfigAsync(cancellationToken)).Bug.DevTestInQa;
+        if (string.IsNullOrEmpty(target.State) && string.IsNullOrEmpty(target.Column))
+            throw DevOpsActionException.Conflict("Estado/coluna de Dev Test in QA não configurados no plugin AI Configurations");
+
+        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var fields = new Dictionary<string, object>();
+        if (!string.IsNullOrEmpty(target.State))
+            fields[FieldState] = target.State;
+        if (!string.IsNullOrEmpty(target.Column))
+        {
+            var columnField = BoardColumnField(card)
+                ?? throw DevOpsActionException.Conflict("O card não está em nenhum board do DevOps — não dá para mudar a coluna");
+            fields[columnField] = target.Column;
+        }
+
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
+        var where = string.Join(" · ", new[] { target.State, string.IsNullOrEmpty(target.Column) ? null : $"coluna {target.Column}" }.Where(s => !string.IsNullOrEmpty(s)));
+        return new DevOpsActionResponse { Rev = rev, Message = $"Card movido para {where} (Dev Test in QA)" };
+    }
+
+    /// <summary>
+    /// Campo da coluna do board em que o card aparece: cada board tem o seu <c>WEF_&lt;id&gt;_Kanban.Column</c>; o do time
+    /// do card é o que tem <c>WEF_&lt;id&gt;_System.ExtensionMarker = true</c> (empate: o que bate com System.BoardColumn).
+    /// </summary>
+    private static string? BoardColumnField(AzureCardFullResponse card)
+    {
+        const string suffix = "_Kanban.Column";
+        var candidates = card.Fields.Keys
+            .Where(k => k.StartsWith("WEF_", StringComparison.Ordinal) && k.EndsWith(suffix, StringComparison.Ordinal))
+            .Select(k => new
+            {
+                Field = k,
+                Active = card.Fields.TryGetValue(k[..^suffix.Length] + "_System.ExtensionMarker", out var m) && m.ValueKind == JsonValueKind.True,
+                Current = GetString(card, k)
+            })
+            .ToList();
+        var boardColumn = GetString(card, "System.BoardColumn");
+        return candidates.OrderByDescending(c => c.Active)
+            .ThenByDescending(c => string.Equals(c.Current, boardColumn, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault()?.Field;
     }
 
     public async Task<DevOpsActionResponse> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken = default)

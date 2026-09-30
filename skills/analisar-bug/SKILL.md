@@ -46,6 +46,9 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center:
   voce gera os textos; nada direto no Azure DevOps/GitHub. Falta endpoint → pare e avise.
 - **Configuracao vem do PRMake** (`bash $PLAN settings <card>`, `branches`, `devops <card> config`): nunca escreva de
   memoria estados, areas, branches, titulos. Faltou regra → pergunte e sugira configurar no PRMake.
+- **Ready for QA so com autorizacao**: com a correcao em QA, mova para Dev Test in QA (`devops <card> dev-test-in-qa`,
+  sem perguntar); `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano ou
+  autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `references/catalogo-e-fechamento.md`.
 - **Foco no card**: solucoes/scripts so para o caso relatado; outros afetados → so um aviso curto.
 - **Analise e somente leitura**; codigo muda so depois da resposta do usuario, **sem comentarios novos no codigo**
   (o porque vai no commit/PR/plano). **Nunca merge nem aprovacao de PR.** Nunca escrita em banco/Cognito.

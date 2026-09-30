@@ -16,7 +16,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
      mais de um. Nem todo card tem codigo — nao presuma PR.
    - **Fechamento**: com o `devops <card> config` em maos, pode mover o card ao final (cite o estado e a area
      exatamente como configurados, so as acoes configuradas e aplicaveis a area atual do card, mais "Nao mover")?
-     A resposta autoriza voce a mover pelo PRMake no `fechar-card` (ver **Mover o card e sempre pelo PRMake**). E a
+     A resposta autoriza voce a mover pelo PRMake no `fechar-card` (ver **Mover o card e sempre pelo PRMake**) —
+     **exceto o Ready for QA**, que so vale depois da validacao em QA (ver **Dev Test in QA → Ready for QA**). E a
      classificacao sugerida (uma das opcoes de `devops <card> classifications`, com o motivo) esta certa?
    - **Fluxo de branches**: rode `branches <card> <repo>` para cada repositorio; se ele sair com exit 3, pergunte
      o que ele pedir (o fluxo, quando a area nao tem regra, ou a branch base, quando a regra manda perguntar —
@@ -58,6 +59,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`); o usuario abre no sistema de chamados (`TicketSystem`) e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | User education (`orientar-cliente`) | `task` | **user** | voce redige a orientacao ao cliente (o que aconteceu, o que fazer, por que nao e bug) em `analises/orientacao-cliente.md` (PT/EN se o card for em ingles); o usuario envia e conclui |
+| Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); quando ela ficar pronta, mova o card para Dev Test in QA (`devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar |
 | Validar com o cliente/ambiente | `validation` | user | depois da configuracao/orientacao/script, quando fizer sentido |
 | Gerar PRMake (RCA no DevOps, resumo, campos) — **com codigo** | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA ja gerados e salvos na etapa de PR (nao gere de novo) |
 
