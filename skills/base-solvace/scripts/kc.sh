@@ -4,6 +4,8 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV="$DIR/../.venv/bin/python"
+[[ -x "$VENV" ]] || [[ ! -x "$DIR/../.venv/Scripts/python.exe" ]] || VENV="$DIR/../.venv/Scripts/python.exe"  # Windows
+export PYTHONUTF8=1
 if [[ ! -x "$VENV" ]]; then
   # search/article funcionam sem o venv (espelho local / API); check/sync precisam do psycopg.
   case "${1:-}" in
