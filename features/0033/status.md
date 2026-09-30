@@ -2,8 +2,8 @@
 
 | Fase | Descrição | Status |
 |---|---|---|
-| D0 | Confirmar acesso ao KC e o vigia em segundo plano | ⏳ aguardando o usuário |
-| B1 | Plugin Knowledge Center Configurations + proxy de busca | ⬜ pendente |
+| D0 | Decisões: KC pelo banco Aurora local; vigia opcional por pessoa | ✅ concluída |
+| B1 | Plugin Knowledge Center Configurations (ambiente/alias/schema) no Skills/config | ⬜ pendente |
 | B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ⬜ pendente |
 | B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
 | B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ⬜ pendente |
@@ -19,3 +19,5 @@
 ## Log
 - 2026-09-30: análise e plano (`plan.md`). Worktrees `prform.api-0033` e `prform-app-0033` na branch `feature/0033`.
   Linha de base de custo: card 74775 = 120 turnos, 12,7 M tokens de cache lidos, 72 mil de saída.
+- 2026-09-30: D0 — KC pelo banco Aurora (somente leitura, máquina local, credencial em `~/.claude/`), ambiente no
+  plugin do PRMake; vigia em segundo plano opcional por pessoa, desligado por padrão, nunca faz merge.

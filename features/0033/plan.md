@@ -29,7 +29,7 @@ revamp, pipelines, branching) e skills `core-asp-expert`/`sustain-ticket-triage`
 `claude --bg --resume <id> "<prompt>"` (continua em segundo plano), `claude attach <id>` e `-n <nome>`. Dá para a
 skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler tudo.
 
-## Decisões propostas (confirmar as marcadas com ❓)
+## Decisões (confirmadas pelo usuário em 2026-09-30)
 
 1. **Engenharia reversa: PRMake é a fonte da verdade + espelho local nas máquinas** (responde 2.3).
    - Banco do PRMake: projetos → seções versionadas (markdown + mermaid), com o commit de origem de cada projeto;
@@ -43,13 +43,14 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 2. **Geração pela skill `mapear-arquitetura`** (nova), rodada por quem tem os repositórios: um projeto por vez, com
    template fixo de seções; publica no PRMake (toda escrita pelo PRMake). **Incremental**: guarda o commit de cada
    projeto e depois só reanalisa o `git diff` desde ele. Ordem: repositórios com mais bugs/PRs no PRMake primeiro.
-3. **Knowledge Center pelo PRMake** (config no plugin, nada fixo — 1.2): plugin *Knowledge Center Configurations*
-   (ambiente `dev|prod`, BaseUrl por ambiente, modo de acesso) semeado por migração; a skill usa
-   `kc.sh search|article` que respeita essa config. ❓ **Modo de acesso**:
-   - **(A, recomendado) API do KC com um usuário de serviço** (login da plataforma no DEV, credencial no Secret
-     Manager do PRMake): funciona do Cloud Run, respeita as regras do módulo; trocar para produção = trocar BaseUrl.
-   - (B) Banco Aurora direto, somente leitura, pela máquina de quem roda a skill (como o `sql-query.sh`): não depende
-     de login, mas o Cloud Run provavelmente não alcança a VPC — a tela do PRMake não conseguiria consultar.
+3. **Knowledge Center — banco Aurora direto, somente leitura, pela máquina de quem roda a skill** (decidido em
+   2026-09-30). Script `kc-query.sh search|article|categories` (mesmo modelo do `sql-query.sh`: valida leitura,
+   transação com ROLLBACK, limite de linhas, credenciais locais em `~/.claude/`, nunca impressas) sobre o schema
+   `knowledgeCenter`: busca em título, `ContentPlainText` e tags; devolve só trechos relevantes (não o artigo todo).
+   **Configuração no PRMake** (nada fixo — 1.2): plugin *Knowledge Center Configurations* semeado por migração com o
+   ambiente ativo (`dev` hoje; `prod` no futuro), o alias de conexão de cada ambiente e o schema; a skill lê pelo
+   `GET /Skills/config`. Trocar para produção = mudar o ambiente no plugin + ter a credencial `prod` local.
+   A tela do PRMake não consulta o KC (o Cloud Run não alcança a VPC).
 4. **Chat de melhoria (2.5)**: só admin **e** com o plugin de IA configurado; o especialista recebe a seção + o
    índice; responde com sugestão; "Aplicar" cria nova versão (nada é sobrescrito sem o admin aceitar). O
    `IAIService` ganha conversa com histórico (hoje só prompt único).
@@ -58,7 +59,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
    - comando único **`prmake-card <card>`** (instalado com as skills): se o plano tem sessão nesta máquina →
      `claude --resume <id>` (volta ao raciocínio exato); senão → `claude -n "<card>" "/analisar-bug <card>"`. O botão
      no PRMake copia `prmake-card 74775` (igual para qualquer estado);
-   - ❓ **Continuar sozinho em segundo plano** (opcional): um vigia local único (`prmake-skills.sh agent`, launchd)
+   - **Continuar sozinho em segundo plano** (decidido: opcional por pessoa, desligado por padrão): um vigia local único (`prmake-skills.sh agent`, launchd)
      percebe que as respostas chegaram (ou o clique em "Continuar") e roda `claude --bg --resume <id> "respostas
      chegaram, continue"`; o usuário acompanha no PRMake ou `claude attach`. Precisa de permissões pré-aprovadas
      para rodar sem ninguém olhando — proposta: só até a próxima pergunta/PR, nunca merge.
@@ -83,8 +84,8 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 ## Fases
 | Fase | Descrição | Depende |
 |---|---|---|
-| D0 | Confirmar ❓: acesso ao KC (A/B + usuário de serviço) e o vigia em segundo plano | — |
-| B1 | Plugin *Knowledge Center Configurations* (migração) + `GET /Knowledge/search`/`article` (proxy, cache curto) | D0 |
+| D0 | Decisões: KC pelo banco Aurora local; vigia em segundo plano opcional por pessoa | — |
+| B1 | Plugin *Knowledge Center Configurations* (migração; ambiente, alias por ambiente, schema) exposto no `Skills/config` | D0 |
 | B2 | Módulo de arquitetura: projetos, seções versionadas, índice, `export` por hash para o espelho, permissões | — |
 | B3 | `IAIService` com conversa + `POST /Architecture/sections/{id}/chat` (admin + plugin de IA) | B2 |
 | B4 | Plano: sessão/máquina/pasta do executor, `usage` (custo), pedido de "continuar" | — |
@@ -93,11 +94,11 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 | F3 | Plano de execução: botão "Retomar no Claude" (`prmake-card`), custo da análise, estado do vigia | B4 |
 | S1 | Skill `mapear-arquitetura` + template de seções + espelho local (sync no `prmake-skills.sh`) | B2 |
 | S2 | Gerar a base: semente do `claude-global` + projetos por prioridade (legado, apps, API de integrações, revamp) | S1 |
-| S3 | `analisar-bug` enxuta: references, `contexto`, arquitetura primeiro, KC (`kc.sh`), imagens, saídas curtas, aprendizado | B1, S1 |
+| S3 | `analisar-bug` enxuta: references, `contexto`, arquitetura primeiro, KC (`kc-query.sh`), imagens, saídas curtas, aprendizado | B1, S1 |
 | S4 | Retomar: `prmake-card`, sessão no plano; (opcional) vigia `agent` com `--bg --resume` | B4, D0 |
 | Q1 | Medir: 2–3 cards reais antes/depois (turnos, tokens, tempo) + teste local ponta a ponta + PRs | todas |
 
-Ondas: **1** D0 · B2 · B4 · S1 (template) — **2** B1 · B3 · F1 · F3 · S3 (parte sem KC) · S4 — **3** F2 · S2 · S3 (KC) — **4** Q1.
+Ondas: **1** B1 · B2 · B4 · S1 (template) — **2** B1 · B3 · F1 · F3 · S3 (parte sem KC) · S4 — **3** F2 · S2 · S3 (KC) — **4** Q1.
 S2 é a fase mais longa (um projeto por vez, incremental); a tela e a skill já funcionam com o que estiver publicado.
 
 ## Riscos
@@ -106,4 +107,6 @@ S2 é a fase mais longa (um projeto por vez, incremental); a tela e a skill já 
 - **Dados sensíveis** na engenharia reversa (hosts, contas, segredos): template proíbe credenciais; só nomes de
   recursos. Acesso à tela: leitura para usuários logados, edição só admin.
 - **Custo da geração inicial** (S2) é alto uma vez só; incremental depois. Priorizar pelos repositórios com mais bugs.
+- **Credencial do Aurora do KC**: cada pessoa precisa dela na máquina (como as do SQL Server); sem ela a skill segue
+  sem o KC e avisa.
 - **Vigia em segundo plano** age sem ninguém olhando: limitado a análise e perguntas, nunca merge; opcional.
