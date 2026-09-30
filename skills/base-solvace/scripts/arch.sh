@@ -18,11 +18,21 @@
 #                                           nunca grava na secao
 # Tipos: ecosystem legacy frontend integration revamp infra third-party auth business-rules other
 set -uo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 CMD="${1:-}"; shift || true
 die() { echo "ERRO: $*" >&2; exit 1; }
 command -v jq >/dev/null || die "jq nao encontrado"
-if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.claude/prmake-token.txt" ]]; then TK="$(tr -d '\n' < "$HOME/.claude/prmake-token.txt")"; else die "token do PRMake nao encontrado"; fi
+if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.claude/prmake-token.txt" ]]; then TK="$(tr -d '\r\n' < "$HOME/.claude/prmake-token.txt")"; else die "token do PRMake nao encontrado"; fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/arch.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 
 api() { # <METHOD> <path> [body-file]

@@ -13,15 +13,25 @@
 #
 # Env: PRMAKE_TOKEN (ou ~/.claude/prmake-token.txt), PRMAKE_API_BASE, PRMAKE_AGENT_INTERVAL (segundos, padrao 60).
 set -uo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
-HOST="$(hostname -s 2>/dev/null || hostname)"
+HOST="$( (hostname -s 2>/dev/null || hostname) | tr -d '\r')"
 LOG="$HOME/.claude/prmake-agent.log"
 PLIST="$HOME/Library/LaunchAgents/br.app.softhouse.prmake-agent.plist"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 die() { echo "ERRO: $*" >&2; exit 1; }
 command -v jq >/dev/null || die "jq nao encontrado"
 command -v claude >/dev/null || die "Claude Code (claude) nao encontrado no PATH"
-if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.claude/prmake-token.txt" ]]; then TK="$(tr -d '\n' < "$HOME/.claude/prmake-token.txt")"; else die "token do PRMake nao encontrado"; fi
+if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.claude/prmake-token.txt" ]]; then TK="$(tr -d '\r\n' < "$HOME/.claude/prmake-token.txt")"; else die "token do PRMake nao encontrado"; fi
 
 get() { curl -s --max-time 20 -H "x-api-key: $TK" -H 'accept: application/json' "$BASE/ExecutionPlan$1"; }
 post() { curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X POST -H "x-api-key: $TK" -H 'X-Execution-Client: skill' "$BASE/ExecutionPlan$1"; }

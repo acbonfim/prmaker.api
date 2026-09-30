@@ -7,6 +7,7 @@
 #   prmake-skills.sh update  [--quiet] [--force] [skill...]
 #                                                  atualiza o que mudou no PRMake (--quiet: só fala se atualizou)
 #   prmake-skills.sh status                        versão instalada × publicada
+#   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook)
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -16,6 +17,9 @@ set -uo pipefail
 
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;; *) WINDOWS=0 ;; esac
 if [[ $WINDOWS -eq 1 ]]; then export PATH="$HOME/bin:$PATH" PYTHONUTF8=1; else export PATH="$PATH:$HOME/.local/bin"; fi
+if [[ $WINDOWS -eq 1 && "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+  if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+fi
 
 TOOL_VERSION="__PRMAKE_TOOL_VERSION__"
 BASE="${PRMAKE_API_BASE:-__PRMAKE_API_BASE__}"
@@ -37,7 +41,7 @@ trap 'rm -rf "$TMP"; rmdir "$TOOL_DIR/.lock" 2>/dev/null' EXIT
 
 token() {
   if [[ -n "${PRMAKE_TOKEN:-}" ]]; then printf '%s' "$PRMAKE_TOKEN"; return; fi
-  [[ -f "$TOKEN_FILE" ]] && { tr -d '\n' < "$TOKEN_FILE"; return; }
+  [[ -f "$TOKEN_FILE" ]] && { tr -d '\r\n' < "$TOKEN_FILE"; return; }
   return 1
 }
 
@@ -193,16 +197,11 @@ run_setup() {
   (cd "$dir" && bash -c "$runcmd") >"$TMP/setup-$1.log" 2>&1 || warn "setup de $1 falhou (veja: $runcmd)"
 }
 
-# Windows: o shell padrão dos hooks não é garantido (cmd/PowerShell/Git Bash), então o hook roda no PowerShell
-# chamando o Git Bash pelo caminho absoluto (aspas simples do PowerShell: ' vira '').
-HOOK_SHELL=""
+# Windows: o hook roda no shell padrão dos hooks do Claude Code (Git Bash; "shell": "powershell" nem sempre é
+# respeitado). Caminhos absolutos entre aspas duplas funcionam no Git Bash e no cmd — e não caem no bash do WSL.
 if [[ $WINDOWS -eq 1 ]] && command -v cygpath >/dev/null; then
   GIT_BASH="$(cygpath -m /)/bin/bash.exe"
-  if [[ -f "$GIT_BASH" ]]; then
-    psq() { printf '%s' "$1" | sed "s/'/''/g"; }
-    HOOK_CMD="& '$(psq "$GIT_BASH")' '$(psq "$(cygpath -m "$TOOL_DIR/prmake-skills.sh")")' update --quiet"
-    HOOK_SHELL="powershell"
-  fi
+  [[ -f "$GIT_BASH" ]] && HOOK_CMD="\"$GIT_BASH\" \"$(cygpath -m "$TOOL_DIR/prmake-skills.sh")\" update --quiet"
 fi
 
 # Hook SessionStart do Claude Code: atualiza as skills a cada sessão (idempotente).
@@ -213,12 +212,17 @@ ensure_hook() {
     warn "$SETTINGS não é um JSON válido — não instalei o hook de atualização"
     return 0
   fi
-  if jq -e --arg c "$HOOK_CMD" '[.hooks.SessionStart[]?.hooks[]?.command] | index($c) != null' "$SETTINGS" >/dev/null; then
+  # Já está certo: exatamente um hook nosso, com o comando atual e sem "shell" (o de PowerShell da 0035 não rodava).
+  if jq -e --arg c "$HOOK_CMD" '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh"))]
+      | length == 1 and .[0].command == $c and .[0].shell == null' "$SETTINGS" >/dev/null; then
     return 0
   fi
   cp "$SETTINGS" "$SETTINGS.bak-prmake"
-  jq --arg c "$HOOK_CMD" --arg sh "$HOOK_SHELL" '.hooks.SessionStart = ((.hooks.SessionStart // []) +
-      [{"hooks": [{"type": "command", "command": $c, "timeout": 60} + (if $sh == "" then {} else {"shell": $sh} end)]}])' \
+  jq --arg c "$HOOK_CMD" '
+    .hooks.SessionStart = ([(.hooks.SessionStart // [])[]
+        | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-skills.sh")) | not)]
+        | select((.hooks | length) > 0)]
+      + [{"hooks": [{"type": "command", "command": $c, "timeout": 60}]}])' \
     "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
 }
@@ -287,7 +291,7 @@ case "$cmd" in
     need; lock
     token >/dev/null || die "sem token: rode com PRMAKE_TOKEN=<sua api-key do PRMake> ou crie $TOKEN_FILE"
     if [[ -n "${PRMAKE_TOKEN:-}" ]]; then
-      if [[ ! -f "$TOKEN_FILE" ]] || [[ "$(tr -d '\n' < "$TOKEN_FILE")" != "$PRMAKE_TOKEN" ]]; then
+      if [[ ! -f "$TOKEN_FILE" ]] || [[ "$(tr -d '\r\n' < "$TOKEN_FILE")" != "$PRMAKE_TOKEN" ]]; then
         [[ -f "$TOKEN_FILE" ]] && cp "$TOKEN_FILE" "$TOKEN_FILE.bak"
         printf '%s' "$PRMAKE_TOKEN" > "$TOKEN_FILE" && chmod 600 "$TOKEN_FILE"
         say "   token salvo em $TOKEN_FILE"
@@ -310,6 +314,7 @@ case "$cmd" in
 
   update)
     command -v jq >/dev/null && command -v curl >/dev/null || exit 0
+    [[ $QUIET -eq 1 ]] && windows_prepare >/dev/null 2>&1 || windows_prepare
     lock
     # Sem rede/token: silencioso no modo --quiet (o hook não pode atrapalhar a sessão).
     catalog || { [[ $QUIET -eq 1 ]] && exit 0; die "não consegui ler o catálogo de skills em $BASE"; }
@@ -326,6 +331,7 @@ case "$cmd" in
     for name in $(selected ${ARGS[@]+"${ARGS[@]}"}); do
       [[ -d "$SKILLS_DIR/$name" ]] && install_depends "$name"
     done
+    ensure_hook
     ensure_permissions
     sync_kb
     self_update
@@ -348,5 +354,21 @@ case "$cmd" in
     echo "ferramenta: $TOOL_VERSION (publicada: $(jq -r '.toolVersion' "$TMP/catalog.json"))"
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status [--quiet] [--force] [skill...]" ;;
+  doctor)
+    # Diagnóstico (0035): o que as skills enxergam nesta máquina — cole a saída para o suporte.
+    ok() { printf '  %-28s %s\n' "$1" "$2"; }
+    echo "sistema:   $(uname -s 2>/dev/null) (windows=$WINDOWS)  bash $BASH_VERSION"
+    echo "HOME:      $HOME"
+    echo "skills:    $SKILLS_DIR"
+    for c in curl jq python3 py python unzip rsync git; do ok "$c" "$(type -P "$c" 2>/dev/null || echo '— não encontrado')"; done
+    ok "jq sem CRLF" "$([[ "$(jq -rn '"x"' 2>/dev/null)" == x ]] && echo ok || echo 'NÃO (rode: prmake-skills.sh update)')"
+    ok "python3 funciona" "$(python3 -c 'import sys; print(sys.version.split()[0])' 2>/dev/null | tr -d '\r' || echo NÃO)"
+    ok "token" "$(token >/dev/null && echo "ok ($TOKEN_FILE)" || echo 'NÃO — rode o instalador da tela Skills')"
+    ok "API ($BASE)" "HTTP $(get "" "$TMP/catalog.json")"
+    ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
+    ok "hook esperado" "$HOOK_CMD"
+    for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor [--quiet] [--force] [skill...]" ;;
 esac

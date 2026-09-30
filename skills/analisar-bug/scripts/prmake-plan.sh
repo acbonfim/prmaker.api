@@ -65,6 +65,16 @@
 # Nunca derruba a skill por falha de rede: o envio vai para a fila e e reenviado na proxima chamada.
 # Env: PRMAKE_TOKEN (token), PRMAKE_API_BASE (default https://api.softhouse.app.br/api/v1), CARDS_DIR.
 set -uo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 CARDS_ROOT="${CARDS_DIR:-$HOME/.claude/cards}"
@@ -89,13 +99,18 @@ resolve_token() {
   local f
   for f in "$HOME/.claude/prmake-token.txt" "${CLAUDE_PROJECT_DIR:-}/.claude/prmake-token.txt" \
            "$(git rev-parse --show-toplevel 2>/dev/null)/.claude/prmake-token.txt"; do
-    [[ -f "$f" ]] && { tr -d '\n' < "$f"; return; }
+    [[ -f "$f" ]] && { tr -d '\r\n' < "$f"; return; }
   done
   die "token nao encontrado (defina PRMAKE_TOKEN ou crie ~/.claude/prmake-token.txt)"
 }
 TOKEN="$(resolve_token)"
 
-new_id() { uuidgen 2>/dev/null | tr 'A-Z' 'a-z' || date +%s%N; }
+# uuidgen nao existe no Git Bash (Windows): cai no python3 ou em /dev/urandom.
+new_id() {
+  if command -v uuidgen >/dev/null; then uuidgen | tr 'A-Z' 'a-z'; return; fi
+  python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null | tr -d '\r' && return
+  od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | sed -E 's/^(.{8})(.{4})(.{4})(.{4})(.{12}).*/\1-\2-\3-\4-\5/'
+}
 sha256() { if command -v shasum >/dev/null; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
 
 plan_id() { [[ -f "$STATE" ]] && jq -r '.planId // empty' "$STATE"; }
@@ -118,7 +133,7 @@ require_plan() {
 
 # Sessao do Claude Code no plano (0033): 1 chamada por (plano, sessao); guarda desde quando a sessao trabalha
 # neste plano (o custo conta so dai em diante — a mesma sessao pode ter atendido outro card antes).
-SESSION_HOST="$(hostname -s 2>/dev/null || hostname)"
+SESSION_HOST="$( (hostname -s 2>/dev/null || hostname) | tr -d '\r')"
 register_session() {
   local sid="${CLAUDE_CODE_SESSION_ID:-}" mark
   [[ -n "$sid" && -n "${PLAN:-}" ]] || return 0
