@@ -101,3 +101,19 @@ public class ArchitectureExportManifest
     public string KnowledgeEnvironment { get; set; } = string.Empty;
     public int KnowledgeArticles { get; set; }
 }
+
+public class ArchitectureSuggestionResponse
+{
+    public Guid Id { get; set; }
+    public string ProjectKey { get; set; } = string.Empty;
+    public string? SectionKey { get; set; }
+    public string Kind { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string? CardNumber { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public string? ResolvedBy { get; set; }
+    public DateTimeOffset? ResolvedAt { get; set; }
+    public string? ResolutionNote { get; set; }
+}

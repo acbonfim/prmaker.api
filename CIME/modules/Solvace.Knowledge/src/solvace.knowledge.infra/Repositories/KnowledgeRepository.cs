@@ -60,5 +60,14 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
     public Task<ArchitectureSectionVersion?> GetVersionAsync(Guid sectionId, int version, CancellationToken cancellationToken) =>
         context.SectionVersions.AsNoTracking().FirstOrDefaultAsync(v => v.SectionId == sectionId && v.Version == version, cancellationToken);
 
+    public void AddSuggestion(ArchitectureSuggestion suggestion) => context.Suggestions.Add(suggestion);
+
+    public Task<ArchitectureSuggestion?> GetSuggestionAsync(Guid id, CancellationToken cancellationToken) =>
+        context.Suggestions.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
+    public Task<List<ArchitectureSuggestion>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken) =>
+        context.Suggestions.AsNoTracking().Where(s => status == null || s.Status == status)
+            .OrderByDescending(s => s.CreatedAt).Take(500).ToListAsync(cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) => context.SaveChangesAsync(cancellationToken);
 }

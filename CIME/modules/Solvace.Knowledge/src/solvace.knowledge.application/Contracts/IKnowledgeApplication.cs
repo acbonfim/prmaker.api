@@ -26,4 +26,7 @@ public interface IArchitectureApplication
     Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken);
     /// <summary>Pacote do espelho local (~/.claude/solvace-kb): índice, seções e artigos do KC.</summary>
     Task<(ArchitectureExportManifest Manifest, byte[] Zip)> ExportAsync(CancellationToken cancellationToken);
+    Task<ArchitectureSuggestionResponse> SuggestAsync(CreateArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken);
+    Task<List<ArchitectureSuggestionResponse>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken);
+    Task<ArchitectureSuggestionResponse> ResolveSuggestionAsync(Guid id, ResolveArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken);
 }

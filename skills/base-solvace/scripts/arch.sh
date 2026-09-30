@@ -9,6 +9,9 @@
 #                                           grava a secao (conteudo igual nao cria versao)
 #   get <chave> [secao]                     metadados do projeto ou o conteudo de uma secao
 #   stale <chave> <repo-dir>                o que mudou no repositorio desde o commit mapeado (para atualizar)
+#   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence] [--card N]
+#                                           PROPOE uma melhoria (qualquer usuario): vai para a fila do admin no PRMake,
+#                                           nunca grava na secao
 # Tipos: ecosystem legacy frontend integration revamp infra third-party auth business-rules other
 set -uo pipefail
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
@@ -74,5 +77,12 @@ case "$CMD" in
     git -C "$RD" diff --stat "$C..HEAD" | tail -1
     echo "pastas alteradas (as secoes que falam delas precisam de revisao):"
     git -C "$RD" diff --name-only "$C..HEAD" | awk -F/ '{print $1"/"$2}' | sort | uniq -c | sort -rn | head -25 ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  suggest)
+    KEY="${1:?chave}"; SEC="${2:?secao (ou - para o projeto)}"; FILE="${3:?arquivo.md}"; shift 3
+    [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
+    jq -n --arg p "$KEY" --arg s "$SEC" --rawfile c "$FILE" --arg k "$(opt --kind learning "$@")" --arg card "$(opt --card "" "$@")" \
+      '{projectKey:$p, sectionKey:(if $s == "-" then null else $s end), kind:$k, content:$c, cardNumber:(if $card == "" then null else $card end)}' > "$TMP/body"
+    api POST /suggestions "$TMP/body"; check
+    echo "OK sugestao registrada para $KEY${SEC:+/$SEC} — o admin aplica ou descarta na tela Base Solvace" ;;
+  *) sed -n '2,16p' "$0"; exit 1 ;;
 esac

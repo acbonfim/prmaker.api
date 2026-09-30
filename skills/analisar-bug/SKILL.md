@@ -69,7 +69,8 @@ apontado; regra de negocio → KC. Reconstrua o fluxo, levante hipoteses prioriz
 que e hipotese. Diga em qual mundo/repo esta o codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito,
 localizar codigo fora da base: `references/consultas.md` (`consultar-ambiente`, cancele com motivo se nao
 precisar). Reconheca o padrao do caso no catalogo: `references/catalogo-e-fechamento.md`. Se o codigo divergir da
-Base Solvace, registre um `log warning` com a divergencia (a base sera atualizada).
+Base Solvace, registre um `log warning` e proponha a correcao da secao:
+`bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> divergencia.md --kind divergence --card <card>`.
 
 **4–5. Analise e Timeline** — monte `$CARD_DIR/analises/analise-inicial.md` pelo modelo de
 `references/analise-template.md` (inclua "Regras de negocio (Knowledge Center)" com os ART-n usados), `sync` e
@@ -79,8 +80,10 @@ publique com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
 a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo `branches`, PRs com `pr-text`/
 `save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
-**9. Reportar** — card, causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo esta nos
-planos do card no PRMake. O custo da sessao vai sozinho ao mudar o status do plano (`bash $PLAN usage` mostra).
+**9. Aprender e reportar** — se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
+query util), proponha em poucas linhas: `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto>
+<secao> aprendizado.md --kind learning --card <card>` (vai para a fila do admin; nunca grava direto). Reporte: card,
+causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo esta nos planos do card no PRMake. O custo da sessao vai sozinho ao mudar o status do plano (`bash $PLAN usage` mostra).
 
 ## Retomar um card
 Sessao do Claude Code fica registrada no plano. Para voltar exatamente a esta conversa depois (outro card no

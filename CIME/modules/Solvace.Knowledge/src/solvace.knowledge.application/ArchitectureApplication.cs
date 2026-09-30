@@ -93,6 +93,35 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return ToVersion(found, withContent: true);
     }
 
+    // ── Sugestões (fila do admin) ───────────────────────────────────────────────────────────────
+
+    public async Task<ArchitectureSuggestionResponse> SuggestAsync(CreateArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken)
+    {
+        var suggestion = new ArchitectureSuggestion(request.ProjectKey, request.SectionKey, request.Kind, request.Content, request.CardNumber, actor, DateTimeOffset.UtcNow);
+        repository.AddSuggestion(suggestion);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToSuggestion(suggestion);
+    }
+
+    public async Task<List<ArchitectureSuggestionResponse>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken) =>
+        (await repository.GetSuggestionsAsync(string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToLowerInvariant(), cancellationToken))
+            .Select(ToSuggestion).ToList();
+
+    public async Task<ArchitectureSuggestionResponse> ResolveSuggestionAsync(Guid id, ResolveArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken)
+    {
+        var suggestion = await repository.GetSuggestionAsync(id, cancellationToken) ?? throw new KnowledgeNotFoundException("Sugestão não encontrada.");
+        suggestion.Resolve(request.Status, request.Note, actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToSuggestion(suggestion);
+    }
+
+    private static ArchitectureSuggestionResponse ToSuggestion(ArchitectureSuggestion s) => new()
+    {
+        Id = s.Id, ProjectKey = s.ProjectKey, SectionKey = s.SectionKey, Kind = s.Kind, Content = s.Content, CardNumber = s.CardNumber,
+        Status = s.Status, CreatedBy = s.CreatedBy, CreatedAt = s.CreatedAt, ResolvedBy = s.ResolvedBy, ResolvedAt = s.ResolvedAt,
+        ResolutionNote = s.ResolutionNote
+    };
+
     // ── Índice e espelho local ──────────────────────────────────────────────────────────────────
 
     public async Task<string> BuildIndexAsync(CancellationToken cancellationToken)

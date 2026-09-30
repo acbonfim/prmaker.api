@@ -58,3 +58,21 @@ public class WriteArchitectureSectionRequest
     /// <summary>O que mudou (aparece no histórico).</summary>
     public string? Note { get; set; }
 }
+
+/// <summary>Sugestão para a engenharia reversa (análise ou pessoa) — vai para a fila do admin.</summary>
+public class CreateArchitectureSuggestionRequest
+{
+    public string ProjectKey { get; set; } = string.Empty;
+    public string? SectionKey { get; set; }
+    /// <summary>learning | divergence | other.</summary>
+    public string? Kind { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public string? CardNumber { get; set; }
+}
+
+public class ResolveArchitectureSuggestionRequest
+{
+    /// <summary>applied | dismissed.</summary>
+    public string Status { get; set; } = string.Empty;
+    public string? Note { get; set; }
+}

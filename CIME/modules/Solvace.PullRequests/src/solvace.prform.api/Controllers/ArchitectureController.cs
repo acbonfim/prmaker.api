@@ -79,6 +79,22 @@ public class ArchitectureController(IArchitectureApplication application, solvac
         return File(zip, "application/zip", $"solvace-kb-{manifest.Hash}.zip");
     }
 
+    /// <summary>Sugestão para a base (a skill propõe o que aprendeu/divergências; qualquer usuário logado). Não grava na seção.</summary>
+    [HttpPost("suggestions")]
+    public Task<ActionResult<ArchitectureSuggestionResponse>> Suggest([FromBody] CreateArchitectureSuggestionRequest request, CancellationToken ct) =>
+        Run<ArchitectureSuggestionResponse>(async () => Ok(await application.SuggestAsync(request, await ActorAsync(ct), ct)));
+
+    /// <summary>Fila de sugestões (padrão: pendentes).</summary>
+    [Authorize(Roles = "admin")]
+    [HttpGet("suggestions")]
+    public Task<ActionResult<List<ArchitectureSuggestionResponse>>> Suggestions([FromQuery] string? status = "pending", CancellationToken ct = default) =>
+        Run<List<ArchitectureSuggestionResponse>>(async () => Ok(await application.GetSuggestionsAsync(status == "all" ? null : status, ct)));
+
+    [Authorize(Roles = "admin")]
+    [HttpPost("suggestions/{id:guid}/resolve")]
+    public Task<ActionResult<ArchitectureSuggestionResponse>> ResolveSuggestion([FromRoute] Guid id, [FromBody] ResolveArchitectureSuggestionRequest request, CancellationToken ct) =>
+        Run<ArchitectureSuggestionResponse>(async () => Ok(await application.ResolveSuggestionAsync(id, request, await ActorAsync(ct), ct)));
+
     /// <summary>O chat de melhoria está disponível? (admin e plugin de IA configurado)</summary>
     [Authorize(Roles = "admin")]
     [HttpGet("chat/status")]

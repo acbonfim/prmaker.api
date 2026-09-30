@@ -14,6 +14,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
     public DbSet<ArchitectureProject> Projects { get; set; }
     public DbSet<ArchitectureSection> Sections { get; set; }
     public DbSet<ArchitectureSectionVersion> SectionVersions { get; set; }
+    public DbSet<ArchitectureSuggestion> Suggestions { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -97,6 +98,23 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.HasOne<ArchitectureSection>().WithMany().HasForeignKey(e => e.SectionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.SectionId, e.Version }).IsUnique();
+        });
+
+        modelBuilder.Entity<ArchitectureSuggestion>(entity =>
+        {
+            entity.ToTable("ArchitectureSuggestions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ProjectKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.SectionKey).HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Content).IsRequired().HasColumnType("text");
+            entity.Property(e => e.CardNumber).HasMaxLength(100);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ResolvedBy).HasMaxLength(200);
+            entity.Property(e => e.ResolutionNote).HasMaxLength(500);
+            entity.HasIndex(e => new { e.Status, e.CreatedAt });
         });
     }
 }
