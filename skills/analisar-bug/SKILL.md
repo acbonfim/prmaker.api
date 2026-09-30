@@ -247,8 +247,10 @@ bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh step <card> identifica
 bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh log <card> identificar-card info "Card <card> (branch <branch>)"
 bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh step <card> identificar-card completed
 ```
-Imagens/prints que o usuario mandar ou que voce gerar vao em `$CARD_DIR/imagens/` (a tela mostra a previa);
-outros anexos em `$CARD_DIR/anexos/`.
+Imagens/prints que voce gerar (ou que o usuario mandar **aqui no chat**) vao em `$CARD_DIR/imagens/` (a tela mostra
+a previa); outros anexos em `$CARD_DIR/anexos/`. **Anexos que o usuario ja pos no plano pelo PRMake ficam so em
+`$CARD_DIR/anexos-prmake/`** — nunca copie para `imagens/`/`anexos/` (o `sync` enviaria uma copia duplicada);
+cite-os como "anexo #n".
 Ao longo do trabalho, salve nela: a analise em `analises/`, scripts em `scripts/`, evidencias
 (saidas de consulta) em `dados/`. Opcional: um `README.md` na raiz resumindo card, causa e conteudo.
 
@@ -474,7 +476,9 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se ha script de dados: vai por **chamado** (o usuario abre no sistema de chamados configurado — `TicketSystem`
      do `settings`) ou nao e necessario.
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
-   Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal.
+   Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal. **O `label` de cada opcao e o
+   texto que o usuario le no botao e o que vai para a Timeline** — escreva a opcao em si ("Corrigir no backend
+   (recomendada)", "Script de dados via chamado"), nunca "Opcao 1"/"A"; detalhes vao em `description`.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
    - Rode `bash $PLAN wait-answers <card> 3600` **em segundo plano** (ferramenta Bash com
      `run_in_background: true`) e so entao mostre as perguntas no terminal e encerre a sua vez esperando o chat.

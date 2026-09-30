@@ -19,4 +19,13 @@ public class PluginFieldSetting
 
     /// <summary>Campo fixo que não aparece em "Minhas integrações" (ex.: prompts longos).</summary>
     public bool Hidden { get; set; }
+
+    /// <summary>
+    /// Valores sugeridos ao usuário numa lista de escolha (0032), além do valor global do campo. Ele escolhe um
+    /// ou digita outro. null/vazio = só o valor global é sugerido (comportamento anterior).
+    /// </summary>
+    public List<string>? Suggestions { get; set; }
+
+    /// <summary>Texto de ajuda do campo em "Minhas integrações" (0032).</summary>
+    public string? Help { get; set; }
 }

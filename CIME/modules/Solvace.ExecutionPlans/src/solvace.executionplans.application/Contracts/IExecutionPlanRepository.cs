@@ -46,6 +46,8 @@ public interface IExecutionPlanRepository
     /// <summary>Comentários não removidos do card (todas as fases), pelo número.</summary>
     Task<List<ExecutionNote>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken);
     Task<List<ExecutionArtifact>> GetNoteAttachmentsAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken);
+    /// <summary>Anexo de comentário do card com esse conteúdo (sha256), se houver (0032).</summary>
+    Task<ExecutionArtifact?> FindNoteAttachmentByShaAsync(string cardNumber, string sha256, CancellationToken cancellationToken);
     Task<int> GetMaxNoteNumberAsync(string cardNumber, CancellationToken cancellationToken);
     Task<int> GetMaxArtifactNumberAsync(string cardNumber, CancellationToken cancellationToken);
     /// <summary>Maior número e última mudança dos comentários do usuário no card (para o vigia da skill).</summary>

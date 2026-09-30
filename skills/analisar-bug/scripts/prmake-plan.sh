@@ -297,7 +297,7 @@ print_plan() { # imprime o plano em $TMP/resp
 
 print_questions() { # perguntas do plano em $TMP/resp, numeradas
   jq -r '.questions // [] | to_entries[] | "\(.key + 1). [\(.value.status)] \(.value.text)"
-      + (if (.value.options | length) > 0 then "\n   opcoes: " + ([.value.options[] | .label + (if .recommended then " (recomendada)" else "" end)] | join(" / ")) else "" end)
+      + (if (.value.options | length) > 0 then "\n   opcoes:" + ([.value.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)
       + (if .value.answer then "\n   RESPOSTA (\(.value.answeredVia), \(.value.answeredBy)): \(.value.answer)" else "" end)
       + "\n   id: \(.value.id)"' "$TMP/resp"
 }
@@ -421,6 +421,8 @@ case "$CMD" in
     flush_quiet
     api GET "/$PLAN"
     [[ "$CODE" == "200" ]] && jq -r '.artifacts[] | "\(.kind)/\(.name) \(.sha256)"' "$TMP/resp" > "$TMP/remote" || : > "$TMP/remote"
+    # Anexos que o usuario pos nos comentarios (qualquer plano do card) nunca sobem de novo como arquivo da skill.
+    [[ "$CODE" == "200" ]] && jq -r '[.notes[]?.attachments[]?.sha256] | .[]' "$TMP/resp" > "$TMP/user-shas" || : > "$TMP/user-shas"
     count=0
     for pair in "scripts:script" "analises:analysis" "dados:data" "imagens:image" "anexos:attachment"; do
       dir="$CARD_DIR/${pair%%:*}"; kind="${pair##*:}"
@@ -430,7 +432,9 @@ case "$CMD" in
         # Imagem dentro de outra pasta continua sendo imagem (a tela mostra a previa).
         k="$kind"; case "$(printf '%s' "${name##*.}" | tr 'A-Z' 'a-z')" in png|jpg|jpeg|gif|webp|bmp|svg) k="image";; esac
         remote_sha=$(awk -v n="$k/$name" '$1 == n {print $2}' "$TMP/remote")
-        [[ "$remote_sha" == "$(sha256 "$f")" ]] && continue
+        local_sha="$(sha256 "$f")"
+        [[ "$remote_sha" == "$local_sha" ]] && continue
+        grep -qx "$local_sha" "$TMP/user-shas" && continue
         upload_or_queue "$f" "$k" "$KEY" ""
         count=$((count + 1))
       done < <(find "$dir" -maxdepth 1 -type f ! -name '.*' -print0 | sort -z)
@@ -532,7 +536,8 @@ case "$CMD" in
     require_plan
     api GET "/$PLAN"
     [[ "$CODE" == "200" ]] || die "HTTP $CODE: $(resp_error)"
-    jq -r '.artifacts[] | "\(.id)\t\(.kind)\t\(.name)\t\(.sha256)"' "$TMP/resp" > "$TMP/list"
+    # Anexos de comentario ficam em anexos-prmake/ (comando notes) — aqui so os arquivos da skill.
+    jq -r '.artifacts[] | select(.noteId == null) | "\(.id)\t\(.kind)\t\(.name)\t\(.sha256)"' "$TMP/resp" > "$TMP/list"
     while IFS=$'\t' read -r aid kind name sha; do
       case "$kind" in script) d=scripts;; analysis) d=analises;; data) d=dados;; image) d=imagens;; *) d=anexos;; esac
       mkdir -p "$CARD_DIR/$d"; target="$CARD_DIR/$d/$name"
@@ -581,7 +586,7 @@ case "$CMD" in
     api POST "/$PLAN/questions" "$TMP/body"
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao perguntar: $(resp_error)"
     echo "PERGUNTAS publicadas no PRMake — o usuario pode responder la ou aqui no terminal:"
-    jq -r 'to_entries[] | "\(.key + 1). \(.value.text)" + (if (.value.options | length) > 0 then "\n   opcoes: " + ([.value.options[] | .label + (if .recommended then " (recomendada)" else "" end)] | join(" / ")) else "" end)' "$TMP/resp"
+    jq -r 'to_entries[] | "\(.key + 1). \(.value.text)" + (if (.value.options | length) > 0 then "\n   opcoes:" + ([.value.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)' "$TMP/resp"
     echo "(respostas: prmake-plan.sh wait-answers $CARD — ou, se responderem aqui: prmake-plan.sh answer $CARD <n> \"texto\")"
     ;;
 

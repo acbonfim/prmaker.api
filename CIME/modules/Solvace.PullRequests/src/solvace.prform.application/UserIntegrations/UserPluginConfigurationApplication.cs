@@ -256,6 +256,7 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
                     Label = label,
                     Editable = false,
                     Hidden = plugin.IsHiddenField(t.Key),
+                    Help = plugin.GetFieldHelp(t.Key),
                     Sensitive = sensitive,
                     HasValue = !string.IsNullOrEmpty(t.Value),
                     Value = sensitive || string.IsNullOrEmpty(t.Value) ? null : t.Value
@@ -265,12 +266,16 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
             var hasValue = mine.TryGetValue(t.Key, out var userValue) && !string.IsNullOrEmpty(userValue);
             var optional = plugin.IsOptionalField(t.Key);
             var usesDefault = plugin.UsesGlobalDefault(t.Key);
+            var help = plugin.GetFieldHelp(t.Key);
 
             if (sensitive)
                 return new UserIntegrationFieldResponse
                 {
-                    Key = t.Key, Label = label, Optional = optional, Sensitive = true, HasValue = hasValue
+                    Key = t.Key, Label = label, Optional = optional, Sensitive = true, HasValue = hasValue, Help = help
                 };
+
+            // Lista de escolha (0032): valor global + sugestões cadastradas pelo administrador.
+            var suggestions = plugin.GetFieldSuggestions(t.Key, t.Value);
 
             // Não sensível sem valor salvo: sugere o valor global (D7) para não redigitar. Com
             // UsesGlobalDefault (0011) a sugestão é o valor que vale enquanto o usuário não salvar.
@@ -278,7 +283,7 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
                 ? new UserIntegrationFieldResponse
                 {
                     Key = t.Key, Label = label, Optional = optional, UsesGlobalDefault = usesDefault,
-                    Value = userValue, HasValue = true
+                    Value = userValue, HasValue = true, Suggestions = suggestions, Help = help
                 }
                 : new UserIntegrationFieldResponse
                 {
@@ -287,7 +292,9 @@ public class UserPluginConfigurationApplication : IUserPluginConfigurationApplic
                     Optional = optional,
                     UsesGlobalDefault = usesDefault,
                     Value = string.IsNullOrEmpty(t.Value) ? null : t.Value,
-                    Suggested = !string.IsNullOrEmpty(t.Value)
+                    Suggested = !string.IsNullOrEmpty(t.Value),
+                    Suggestions = suggestions,
+                    Help = help
                 };
         }).ToList();
 

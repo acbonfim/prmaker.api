@@ -46,6 +46,12 @@ public class UserIntegrationFieldResponse
 
     /// <summary>false = campo fixo, definido pelo administrador na configuração global (somente leitura).</summary>
     public bool Editable { get; set; } = true;
+
+    /// <summary>Opções da lista de escolha (0032): valor global + sugestões do administrador. Vazio para sensível/fixo.</summary>
+    public List<string> Suggestions { get; set; } = new();
+
+    /// <summary>Texto de ajuda do campo definido pelo administrador (0032).</summary>
+    public string? Help { get; set; }
 }
 
 public class UserIntegrationStatusResponse
