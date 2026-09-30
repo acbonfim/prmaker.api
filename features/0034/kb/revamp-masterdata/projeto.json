@@ -1,0 +1,39 @@
+{
+ "name": "Revamp — Master Data",
+ "kind": "revamp",
+ "order": 131,
+ "repository": "https://github.com/electradv/revamp-MasterData",
+ "repoDir": "kb-mirror/revamp-MasterData",
+ "summary": "Módulo responsável pelo gerenciamento de dados mestre do estate Revamp, centralizando referências fundamentais como unidades, departamentos, áreas, equipes, equipamentos, layout físico, classificações, materiais, fornecedores, empreiteiros e falhas. 7 projetos (net8.0), 11 controllers/36 rotas, 20 casos de uso, 0 Lambdas; tabelas TB_WCM_USER, TB_WCM_SITE, TB_MST_MATERIAL, TB_MST_CLASSIFICACAO, TB_MST_FORNECEDOR.",
+ "keywords": [
+  "masterdata",
+  "revamp-MasterData",
+  "Supplier",
+  "Equipments",
+  "Uda",
+  "Contractor",
+  "Team",
+  "Material",
+  "Classification",
+  "RequestDownload",
+  "TB_WCM_USER",
+  "TB_WCM_SITE",
+  "TB_MST_MATERIAL",
+  "TB_MST_CLASSIFICACAO",
+  "Builder"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "queue",
+   "detail": "envia para a fila USERS_UDA_EVENT_CREATED_<amb>",
+   "evidence": "revamp-MasterData/Solvace.MasterData/src/Solvace.MasterData.API/Extensions/TopicSnsBuilderExtensions.cs:53"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "queue",
+   "detail": "envia para a fila USERS_PHYSICAL_LAYOUT_EVENT_CREATED_<amb>",
+   "evidence": "revamp-MasterData/Solvace.MasterData/src/Solvace.MasterData.API/Extensions/TopicSnsBuilderExtensions.cs:54"
+  }
+ ]
+}

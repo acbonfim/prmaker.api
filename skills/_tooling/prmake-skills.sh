@@ -175,7 +175,9 @@ install_depends() {
 sync_kb() {
   local kb="$SKILLS_DIR/base-solvace/scripts/kb.sh"
   [[ -f "$kb" ]] || return 0
-  if [[ $QUIET -eq 1 ]]; then bash "$kb" sync --quiet 2>/dev/null || true; else bash "$kb" sync || true; fi
+  # No hook de sessao (--quiet): Knowledge Center -> PRMake (so com credencial local) e PRMake -> espelho em segundo
+  # plano, no maximo a cada 30 min — nao atrasa a abertura da sessao. Log: ~/.claude/solvace-kb-sync.log
+  if [[ $QUIET -eq 1 ]]; then (nohup bash "$kb" agendar run >/dev/null 2>&1 &) ; else bash "$kb" sync || true; fi
 }
 
 run_setup() {

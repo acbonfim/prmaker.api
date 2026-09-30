@@ -1,0 +1,57 @@
+{
+ "name": "Revamp — Action Plan",
+ "kind": "revamp",
+ "order": 40,
+ "repository": "https://github.com/electradv/revamp-ActionPlan",
+ "repoDir": "revamp_separado/revamp-ActionPlan",
+ "summary": "Plano de ação (revamp .NET 8, hexagonal + MediatR). API: ActionPlanController (criar, metadata, comentários), Audits* (grupo, prioridade, sistema, tarefa, papéis), Analytics/Counters/KPIs, DigitalObeya, ScoreCards, ActionPlanKai (KAI). KanbanHub (SignalR) para o kanban ao vivo. Tabelas TB_ACP_* no banco Local (TB_ACP_PLAN, _PHASE, _STATUS, _TYPE, _SYSTEM, _PRIORITY, _PLAN_OWNER/_AREA_OWNER/_TEAM_OWNER, _PLAN_DRAFT) + TB_WCM_USER* no Global. Lambda RegisterDeleted (SQS). Front: edv-solvace-apps/projects/action-plan. Regras no KC: ART-21..26, 45, 60-63.",
+ "keywords": [
+  "ActionPlan",
+  "Action Plan",
+  "plano de ação",
+  "ACP",
+  "TB_ACP_PLAN",
+  "kanban",
+  "calendário",
+  "analytics",
+  "checklist",
+  "feed",
+  "histórico",
+  "permissões",
+  "KAI",
+  "aprovação",
+  "prazo"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila ACP_USER_EVENT_CREATED)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Lambda.ACP.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Application/Commands/ActionPlan/ActionPlanNotification/ActionPlanNotificationFactory.cs:8"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Application/Commands/DeleteActionPlanComments/DeleteActionPlanCommentsCommandHandler.cs:29"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FORNECEDOR)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/scripts/Sync_ReplicaTables.sql:133"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-ActionPlan/Solvace.ActionPlan/src/Solvace.ActionPlan.Infra.Data.Local.SqlServer/Queries/GetObeyaBoardsLocalQuery.cs:21"
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+{
+ "name": "Revamp — Assessment",
+ "kind": "revamp",
+ "order": 104,
+ "repository": "https://github.com/electradv/revamp-Assessment",
+ "repoDir": "kb-mirror/revamp-Assessment",
+ "summary": "Módulo responsável pelo gerenciamento de assessments no estate Revamp. 5 projetos (net8.0), 1 controllers/1 rotas, 1 casos de uso, 0 Lambdas; tabelas TB_AST_INSPECTION, TB_AST_ASSESSMENT_APPROVER.",
+ "keywords": [
+  "assessment",
+  "revamp-Assessment",
+  "Counter",
+  "TB_AST_INSPECTION",
+  "TB_AST_ASSESSMENT_APPROVER",
+  "GetInspectionApprovalsCounter"
+ ],
+ "relations": []
+}

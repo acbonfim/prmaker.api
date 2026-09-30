@@ -1,0 +1,39 @@
+{
+ "name": "Integração HubSpot ↔ Azure DevOps (edv-solvace-hubspotApi)",
+ "kind": "integration",
+ "order": 35,
+ "repository": "https://github.com/electradv/edv-solvace-hubspotApi",
+ "repoDir": "kb-mirror/edv-solvace-hubspotApi",
+ "summary": "Origem dos cards de suporte. API .NET 6 (IT.Api + Hangfire) que sincroniza a cada 1 min os tickets da HubSpot (api.hubapi.com) com work items Bug no Azure DevOps (dev.azure.com/solvacelabs): cria o Bug com Custom.Environment, Custom.Module, Custom.Site, Custom.Foundby, Custom.Originador, Custom.PLASolvaceInternal e devolve ao ticket o estágio conforme o estado do card. Retorno do cliente reabre o card (Planning (done), área Product Development Team, tag RETORNO). Health checks de HubSpot/Azure/download a cada 1 h, alertas por e-mail.",
+ "keywords": [
+  "HubSpot",
+  "ticket",
+  "suporte",
+  "Azure DevOps",
+  "work item",
+  "Bug",
+  "Hangfire",
+  "RETORNO",
+  "Custom.Environment",
+  "Custom.Module",
+  "Custom.Site",
+  "Foundby",
+  "Originador",
+  "pipeline stage",
+  "hs_pipeline_stage"
+ ],
+ "relations": [
+  {
+   "target": "ext:hubspot",
+   "kind": "external",
+   "detail": "HubSpot: https://api.hubapi.com/ (código)",
+   "evidence": "edv-solvace-hubspotApi/IT/src/IT.DI/DependencyInjection/DependencyInjection.cs:50"
+  },
+  {
+   "target": "ext:azure-devops",
+   "kind": "external",
+   "detail": "Azure DevOps: https://dev.azure.com/solvacelabs/ (código)",
+   "evidence": "edv-solvace-hubspotApi/IT/src/IT.DI/DependencyInjection/DependencyInjection.cs:56"
+  }
+ ]
+}

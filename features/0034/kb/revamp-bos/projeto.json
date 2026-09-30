@@ -1,0 +1,51 @@
+{
+ "name": "Revamp — BOS",
+ "kind": "revamp",
+ "order": 107,
+ "repository": "https://github.com/electradv/revamp-BOS",
+ "repoDir": "kb-mirror/revamp-BOS",
+ "summary": "Business Object System (BOS) é o hub central de dados mestres e configuração do estate Revamp. 20 projetos (net8.0), 13 controllers/65 rotas, 34 casos de uso, 5 Lambdas; tabelas TB_WCM_SITE, Behavior, BehaviorPhoto, Calendar, Category.",
+ "keywords": [
+  "bos",
+  "revamp-BOS",
+  "BosReport",
+  "Flexmonster",
+  "Justification",
+  "Category",
+  "Shift",
+  "CriticalBehavior",
+  "Feedback",
+  "ScoreCards",
+  "TB_WCM_SITE",
+  "Behavior",
+  "BehaviorPhoto",
+  "Calendar",
+  "Athena"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila BOS_USER_EVENT_CREATED)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Lambda.BOS.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:37"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_SHIFT)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Infra.Data.Global.SqlServer/Queries/FeedbackQueries.cs:44"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-BOS/Solvace.BOS/src/Solvace.BOS.Infra.Data.Global.SqlServer/Queries/UserHelperQueries.cs:39"
+  }
+ ]
+}

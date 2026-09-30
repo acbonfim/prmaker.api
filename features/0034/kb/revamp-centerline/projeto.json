@@ -1,0 +1,23 @@
+{
+ "name": "Revamp — Centerline",
+ "kind": "revamp",
+ "order": 111,
+ "repository": "https://github.com/electradv/revamp-Centerline",
+ "repoDir": "kb-mirror/revamp-Centerline",
+ "summary": "6 projetos (net8.0), 3 controllers/4 rotas, 3 casos de uso, 0 Lambdas; tabelas TB_SITE, TB_CLN_CHECKLIST, TB_WCM_SITE, TB_CLN_INSPECTION.",
+ "keywords": [
+  "centerline",
+  "revamp-Centerline",
+  "Centerline",
+  "Counter",
+  "Legacy",
+  "TB_SITE",
+  "TB_CLN_CHECKLIST",
+  "TB_WCM_SITE",
+  "TB_CLN_INSPECTION",
+  "Events",
+  "GetInspectionApprovalsCounter",
+  "SimpleSearch"
+ ],
+ "relations": []
+}

@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — Digital Obeya",
+ "kind": "revamp",
+ "order": 121,
+ "repository": "https://github.com/electradv/revamp-DigitalObeya",
+ "repoDir": "kb-mirror/revamp-DigitalObeya",
+ "summary": "Módulo de Digital Obeya que fornece salas estilo dashboard com widgets configuráveis. 10 projetos (net8.0), 5 controllers/7 rotas, 9 casos de uso, 2 Lambdas; tabelas TB_DOB_BOARD, TB_DOB_ROOM_MEMBER, TB_DOB_ROOM_AREA, TB_DOB_ROOM_TEAM, TB_DOB_STATUS.",
+ "keywords": [
+  "digitalobeya",
+  "revamp-DigitalObeya",
+  "Status",
+  "Widget",
+  "Room",
+  "SolvaceKai",
+  "Type",
+  "TB_DOB_BOARD",
+  "TB_DOB_ROOM_MEMBER",
+  "TB_DOB_ROOM_AREA",
+  "TB_DOB_ROOM_TEAM",
+  "NotifyWidgetUpdate",
+  "Builder",
+  "GetExcelRoom",
+  "GetPdfRoom"
+ ],
+ "relations": []
+}

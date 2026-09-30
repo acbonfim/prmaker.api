@@ -1,0 +1,14 @@
+{
+ "name": "Revamp — Knowledge Center",
+ "kind": "revamp",
+ "order": 129,
+ "repository": "https://github.com/electradv/revamp-KnowledgeCenter",
+ "repoDir": "kb-mirror/revamp-KnowledgeCenter",
+ "summary": "7 projetos (net10.0), 0 controllers/0 rotas, 0 casos de uso, 0 Lambdas; tabelas TB_WCM_SITE.",
+ "keywords": [
+  "knowledgecenter",
+  "revamp-KnowledgeCenter",
+  "TB_WCM_SITE"
+ ],
+ "relations": []
+}

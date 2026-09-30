@@ -17,6 +17,27 @@ public static class ArchitectureProjectKind
     }
 }
 
+/// <summary>Tipos de interdependência (0034).</summary>
+public static class ArchitectureRelationKind
+{
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { "event", "queue", "database", "http", "package", "external", "frontend", "other" };
+
+    public static string Normalize(string? kind)
+    {
+        var value = (kind ?? "other").Trim().ToLowerInvariant();
+        return All.Contains(value) ? value : "other";
+    }
+}
+
+/// <summary>Uma dependência de um projeto: alvo (chave do projeto ou <c>ext:&lt;serviço&gt;</c>), tipo, detalhe e evidência.</summary>
+public class ArchitectureRelation
+{
+    public string Target { get; set; } = string.Empty;
+    public string Kind { get; set; } = "other";
+    public string? Detail { get; set; }
+    public string? Evidence { get; set; }
+}
+
 /// <summary>
 /// Um projeto da engenharia reversa da Solvace (0033): repositório (legado, revamp, front, integrações) ou visão
 /// transversal (ecossistema, infra/AWS, terceiros, login, regras de negócio). O resumo e as palavras-chave vão para
@@ -47,6 +68,40 @@ public class ArchitectureProject
     public bool IsDeleted { get; private set; }
 
     public List<ArchitectureSection> Sections { get; private set; } = [];
+
+    /// <summary>
+    /// Interdependências com outros projetos/serviços (0034): evento, fila, banco, http, pacote, externo — com a evidência
+    /// (arquivo/chave). Geradas pelo extrator da skill (mapear.py) ou editadas pelo admin.
+    /// </summary>
+    public List<ArchitectureRelation> Relations { get; private set; } = [];
+
+    public const int MaxRelations = 300;
+
+    /// <summary>Substitui as relações (null = mantém as atuais).</summary>
+    public void SetRelations(IEnumerable<ArchitectureRelation>? relations)
+    {
+        if (relations is null) return;
+        var list = relations
+            .Where(r => !string.IsNullOrWhiteSpace(r.Target) && !string.IsNullOrWhiteSpace(r.Kind))
+            .Select(r => new ArchitectureRelation
+            {
+                Target = r.Target.Trim().ToLowerInvariant(),
+                Kind = ArchitectureRelationKind.Normalize(r.Kind),
+                Detail = Trim(r.Detail, 400),
+                Evidence = Trim(r.Evidence, 400)
+            })
+            .Where(r => r.Target != Key)
+            .DistinctBy(r => (r.Target, r.Kind, r.Detail))
+            .ToList();
+        if (list.Count > MaxRelations) throw new DomainException($"No máximo {MaxRelations} relações por projeto.");
+        Relations = list;
+    }
+
+    private static string? Trim(string? value, int max)
+    {
+        var v = value?.Trim();
+        return string.IsNullOrEmpty(v) ? null : v.Length <= max ? v : v[..max];
+    }
 
     protected ArchitectureProject() { }
 

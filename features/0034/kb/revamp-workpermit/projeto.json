@@ -1,0 +1,19 @@
+{
+ "name": "Revamp — Work Permit",
+ "kind": "revamp",
+ "order": 152,
+ "repository": "https://github.com/electradv/revamp-WorkPermit",
+ "repoDir": "kb-mirror/revamp-WorkPermit",
+ "summary": "Módulo de gerenciamento de Work Permits (Permissões de Trabalho). 5 projetos (net8.0), 1 controllers/1 rotas, 1 casos de uso, 0 Lambdas; tabelas TB_WRK_WORK_PERMIT_APPROVAL_LEVEL, TB_WRK_WORK_PERMIT, TB_WRK_APPROVAL_LEVEL_APPROVER, TB_WRK_WORK_PERMIT_APPROVAL, TB_WRK_WORK_PERMIT_WORK_TYPE.",
+ "keywords": [
+  "workpermit",
+  "revamp-WorkPermit",
+  "Counter",
+  "TB_WRK_WORK_PERMIT_APPROVAL_LEVEL",
+  "TB_WRK_WORK_PERMIT",
+  "TB_WRK_APPROVAL_LEVEL_APPROVER",
+  "TB_WRK_WORK_PERMIT_APPROVAL",
+  "GetWorkPermitApprovalsCounter"
+ ],
+ "relations": []
+}

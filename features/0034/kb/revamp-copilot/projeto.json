@@ -1,0 +1,39 @@
+{
+ "name": "Revamp — Copilot",
+ "kind": "revamp",
+ "order": 117,
+ "repository": "https://github.com/electradv/revamp-Copilot",
+ "repoDir": "kb-mirror/revamp-Copilot",
+ "summary": "12 projetos (net8.0), 10 controllers/35 rotas, 1 casos de uso, 3 Lambdas; tabelas Routine, RoutineExecution, RoutineInstructionExecution, UserChatHistory, UserAccessControl.",
+ "keywords": [
+  "copilot",
+  "revamp-Copilot",
+  "Faq",
+  "Chat",
+  "MeetingNotes",
+  "SolvaceAgent",
+  "Feedback",
+  "UserAccessControl",
+  "TemplateCreator",
+  "RecordList",
+  "Routine",
+  "RoutineExecution",
+  "RoutineInstructionExecution",
+  "UserChatHistory",
+  "Timezone"
+ ],
+ "relations": [
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_ROOM_MEMBER)",
+   "evidence": "revamp-Copilot/Solvace.Copilot/src/Solvace.Copilot.Infra.Data.Global.SqlServer/Queries/CheckConfidentialRoomLocalQuery.cs:46"
+  },
+  {
+   "target": "revamp-authentication",
+   "kind": "http",
+   "detail": "chama https://api-authentication-<amb>.solvacelabs.com (Mcp:AuthorizationServerUri)",
+   "evidence": "revamp-Copilot/Solvace.Copilot/src/Solvace.Copilot.API/appsettings.HotfixVersion.json"
+  }
+ ]
+}

@@ -349,6 +349,40 @@ namespace solvace.knowledge.infra.Migrations
                     b.ToTable("KnowledgeSyncStates", "knowledge");
                 });
 
+            modelBuilder.Entity("solvace.knowledge.domain.Entities.ArchitectureProject", b =>
+                {
+                    b.OwnsMany("solvace.knowledge.domain.Entities.ArchitectureRelation", "Relations", b1 =>
+                        {
+                            b1.Property<Guid>("ArchitectureProjectId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Detail");
+
+                            b1.Property<string>("Evidence");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired();
+
+                            b1.Property<string>("Target")
+                                .IsRequired();
+
+                            b1.HasKey("ArchitectureProjectId", "__synthesizedOrdinal");
+
+                            b1.ToTable("ArchitectureProjects", "knowledge");
+
+                            b1
+                                .ToJson("Relations")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ArchitectureProjectId");
+                        });
+
+                    b.Navigation("Relations");
+                });
+
             modelBuilder.Entity("solvace.knowledge.domain.Entities.ArchitectureSection", b =>
                 {
                     b.HasOne("solvace.knowledge.domain.Entities.ArchitectureProject", null)

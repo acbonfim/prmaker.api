@@ -1,0 +1,22 @@
+{
+ "name": "Revamp — Non Conformity",
+ "kind": "revamp",
+ "order": 135,
+ "repository": "https://github.com/electradv/revamp-NonConformity",
+ "repoDir": "kb-mirror/revamp-NonConformity",
+ "summary": "6 projetos (net8.0), 2 controllers/3 rotas, 3 casos de uso, 0 Lambdas; tabelas TB_NCF_NONCONFORMITY, TB_NCF_PARTICIPANTS, TB_NCF_STATUS, TB_WCM_USER_ROLE.",
+ "keywords": [
+  "nonconformity",
+  "revamp-NonConformity",
+  "Counter",
+  "ScoreCards",
+  "TB_NCF_NONCONFORMITY",
+  "TB_NCF_PARTICIPANTS",
+  "TB_NCF_STATUS",
+  "TB_WCM_USER_ROLE",
+  "GetKpiNonConformityGenerated",
+  "GetKpiNonConformityGeneratedItem",
+  "GetNonConformityApprovalsCounter"
+ ],
+ "relations": []
+}

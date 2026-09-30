@@ -15,11 +15,73 @@ namespace solvace.knowledge.application;
 /// </summary>
 public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings) : IArchitectureApplication
 {
-    public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken) =>
-        (await repository.GetProjectsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).Select(ToResponse).ToList();
+    public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken)
+    {
+        var all = await repository.GetProjectsAsync(cancellationToken);
+        return all.OrderBy(p => p.Order).ThenBy(p => p.Name).Select(p => WithUsedBy(ToResponse(p), all)).ToList();
+    }
 
-    public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken) =>
-        ToResponse(await FindAsync(key, cancellationToken));
+    public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
+    {
+        var all = await repository.GetProjectsAsync(cancellationToken);
+        return WithUsedBy(ToResponse(await FindAsync(key, cancellationToken)), all);
+    }
+
+    /// <summary>Grafo do ecossistema (0034): arestas agrupadas por (origem, destino, tipo).</summary>
+    public async Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken)
+    {
+        var projects = await repository.GetProjectsAsync(cancellationToken);
+        var graph = new ArchitectureGraphResponse
+        {
+            Nodes = projects.Select(p => new ArchitectureGraphNode { Key = p.Key, Name = p.Name, Kind = p.Kind, Mapped = true }).ToList()
+        };
+        var known = projects.Select(p => p.Key).ToHashSet();
+        foreach (var group in projects.SelectMany(p => p.Relations.Select(r => (Source: p.Key, Relation: r)))
+                     .GroupBy(x => (x.Source, x.Relation.Target, x.Relation.Kind)))
+        {
+            var target = group.Key.Target;
+            if (!known.Contains(target))
+            {
+                graph.Nodes.Add(new ArchitectureGraphNode { Key = target, Name = ExternalName(target), Kind = target.StartsWith("ext:") ? "external" : "other", Mapped = false });
+                known.Add(target);
+            }
+            graph.Edges.Add(new ArchitectureGraphEdge
+            {
+                Source = group.Key.Source, Target = target, Kind = group.Key.Kind, Count = group.Count(),
+                Details = group.Select(x => x.Relation.Detail ?? string.Empty).Where(d => d.Length > 0).Take(8).ToList()
+            });
+        }
+        return graph;
+    }
+
+    private static ArchitectureProjectResponse WithUsedBy(ArchitectureProjectResponse response, List<ArchitectureProject> all)
+    {
+        response.UsedBy = all.Where(p => p.Key != response.Key)
+            .SelectMany(p => p.Relations.Where(r => r.Target == response.Key).Select(r => new ArchitectureIncomingRelation { Source = p.Key, Kind = r.Kind, Detail = r.Detail, Evidence = r.Evidence }))
+            .ToList();
+        return response;
+    }
+
+    /// <summary>Nome legível de um serviço externo (ext:microsoft-graph → Microsoft Graph).</summary>
+    public static string ExternalName(string key) => key switch
+    {
+        "ext:microsoft-graph" => "Microsoft Graph / Teams",
+        "ext:azure-ad" => "Azure AD / Entra ID",
+        "ext:openai" => "OpenAI / Azure OpenAI",
+        "ext:anthropic" => "Anthropic (Claude)",
+        "ext:gemini" => "Google Gemini",
+        "ext:hubspot" => "HubSpot",
+        "ext:azure-devops" => "Azure DevOps",
+        "ext:powerbi" => "Power BI",
+        "ext:snowflake" => "Snowflake",
+        "ext:databricks" => "Databricks",
+        "ext:cognito" => "AWS Cognito",
+        "ext:s3" => "AWS S3",
+        "ext:sqs" => "AWS SQS",
+        "ext:opensearch" => "OpenSearch",
+        "ext:onlyoffice" => "OnlyOffice",
+        _ => key.StartsWith("ext:") ? key[4..] : key
+    };
 
     public async Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
@@ -38,6 +100,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         }
         project.Update(request.Name, request.Kind, request.Repository, request.Summary, request.Keywords,
             request.SourceCommit, request.SourceBranch, request.Order, actor, now);
+        project.SetRelations(request.Relations);
         await repository.SaveChangesAsync(cancellationToken);
         return ToResponse(project);
     }
@@ -146,9 +209,14 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         {
             Add(zip, "INDEX.md", RenderIndex(projects, articles, environment));
             Add(zip, "manifest.json", JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+            var usedBy = UsedByMap(projects);
             foreach (var project in projects)
-            foreach (var section in project.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key))
-                Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
+            {
+                Add(zip, $"projects/{project.Key}/000-projeto.md", RenderProjectCard(project, usedBy));
+                foreach (var section in project.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key))
+                    Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
+            }
+            Add(zip, "graph.json", JsonSerializer.Serialize(await GetGraphAsync(cancellationToken), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
             Add(zip, "knowledge/INDEX.md", RenderKnowledgeIndex(articles, environment));
             foreach (var article in articles)
                 Add(zip, $"knowledge/ART-{article.ArticleNumber}.md", RenderArticle(article));
@@ -172,6 +240,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             fingerprint.Append('|').Append(p.Key).Append(':').Append(p.Name).Append(':').Append(p.Kind).Append(':').Append(p.Summary)
                 .Append(':').Append(string.Join(",", p.Keywords)).Append(':').Append(p.SourceCommit).Append(':').Append(p.Order);
             foreach (var s in p.Sections.OrderBy(s => s.Key)) fingerprint.Append(';').Append(s.Key).Append('=').Append(s.ContentHash).Append('@').Append(s.Order);
+            foreach (var r in p.Relations) fingerprint.Append(">").Append(r.Target).Append(':').Append(r.Kind).Append(':').Append(r.Detail);
         }
         foreach (var a in articles) fingerprint.Append("|kc").Append(a.ArticleNumber).Append('=').Append(a.ContentHash);
         return new ArchitectureExportManifest
@@ -186,30 +255,33 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     }
 
     /// <summary>
-    /// Índice compacto: por projeto, o resumo, as palavras-chave e as seções (com tamanho aproximado em tokens), e o
-    /// mapa das regras de negócio do KC. Pensado para caber em poucos milhares de tokens para o parque inteiro.
+    /// Índice compacto (lido em todo card): uma linha por projeto — resumo curto, palavras-chave principais, seções e
+    /// contagem de integrações — e o mapa das regras de negócio do KC. O resumo completo e as dependências com evidência
+    /// ficam em <c>projects/&lt;projeto&gt;/000-projeto.md</c> (0034: com o parque inteiro o índice detalhado passava de 10k tokens).
     /// </summary>
     private static string RenderIndex(List<ArchitectureProject> projects, List<KnowledgeArticle> articles, string environment)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# Base Solvace — índice");
         sb.AppendLine();
-        sb.AppendLine("Leia este índice primeiro; abra só a seção/artigo que o caso pede (`projects/<projeto>/<ordem>-<seção>.md`, `knowledge/ART-n.md`).");
+        sb.AppendLine("Leia este índice primeiro; depois abra só o que o caso pede: `projects/<projeto>/000-projeto.md` (resumo, depende de / usado por,");
+        sb.AppendLine("com evidência), `projects/<projeto>/<ordem>-<seção>.md`, `knowledge/ART-n.md`. `⇄ d/u` = depende de d projetos, usado por u.");
         if (projects.Count == 0) sb.AppendLine().AppendLine("_Nenhum projeto mapeado ainda._");
+        var usedBy = UsedByMap(projects);
         foreach (var group in projects.GroupBy(p => p.Kind))
         {
             sb.AppendLine().AppendLine($"## {KindLabel(group.Key)}");
             foreach (var p in group)
             {
-                sb.AppendLine().Append($"### {p.Name} (`{p.Key}`)");
-                if (p.SourceCommit is not null) sb.Append($" — commit {p.SourceCommit[..Math.Min(8, p.SourceCommit.Length)]}");
-                sb.AppendLine();
-                if (p.Repository is not null) sb.AppendLine($"Repositório: {p.Repository}");
-                if (p.Summary is not null) sb.AppendLine(p.Summary);
-                if (p.Keywords.Count > 0) sb.AppendLine($"Palavras-chave: {string.Join(", ", p.Keywords)}");
+                sb.Append($"- **{p.Name}** `{p.Key}` — {Short(p.Summary, 180)}");
+                if (p.Keywords.Count > 0) sb.Append($" · kw: {string.Join(", ", p.Keywords.Take(6))}");
                 if (p.Sections.Count > 0)
-                    sb.AppendLine("Seções: " + string.Join(" · ", p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key)
-                        .Select(s => $"`{s.Order:000}-{s.Key}` {s.Title} (~{Math.Max(1, s.Content.Length / 4 / 100) * 100} tokens)")));
+                    sb.Append($" · seções {string.Join("·", p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
+                              + $" (~{Math.Max(1, p.Sections.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
+                var deps = p.Relations.Select(r => r.Target).Distinct().Count();
+                var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
+                if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");
+                sb.AppendLine();
             }
         }
 
@@ -223,6 +295,65 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 sb.AppendLine($"- ART-{a.ArticleNumber} {a.Title}{(a.Subcategory is null ? "" : $" · {a.Subcategory}")}{(a.Tags.Count == 0 ? "" : $" · tags: {string.Join(", ", a.Tags)}")}");
         }
         return sb.ToString();
+    }
+
+    /// <summary>Ficha do projeto no espelho local: resumo completo, palavras-chave, seções e relações com evidência.</summary>
+    private static string RenderProjectCard(ArchitectureProject p, Dictionary<string, List<(string Source, ArchitectureRelation Relation)>> usedBy)
+    {
+        var sb = new StringBuilder($"<!-- {p.Key} · ficha gerada pelo PRMake -->\n# {p.Name} (`{p.Key}`)\n\n");
+        sb.AppendLine($"Tipo: {KindLabel(p.Kind)}" + (p.Repository is null ? "" : $" · repositório: {p.Repository}")
+                      + (p.SourceCommit is null ? "" : $" · commit {p.SourceCommit[..Math.Min(8, p.SourceCommit.Length)]}")
+                      + (p.SourceMappedAt is null ? "" : $" ({p.SourceMappedAt:yyyy-MM-dd})"));
+        if (p.Summary is not null) sb.AppendLine().AppendLine(p.Summary);
+        if (p.Keywords.Count > 0) sb.AppendLine().AppendLine($"Palavras-chave: {string.Join(", ", p.Keywords)}");
+        if (p.Sections.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Seções");
+            foreach (var s in p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key))
+                sb.AppendLine($"- `{s.Order:000}-{s.Key}.md` {s.Title} (~{Math.Max(1, s.Content.Length / 4 / 100) * 100} tokens)");
+        }
+        if (p.Relations.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Depende de");
+            foreach (var r in p.Relations.OrderBy(r => r.Kind).ThenBy(r => r.Target))
+                sb.AppendLine($"- `{r.Target}` — {RelationLabel(r.Kind)}: {r.Detail}" + (r.Evidence is null ? "" : $" ({r.Evidence})"));
+        }
+        if (usedBy.TryGetValue(p.Key, out var incoming) && incoming.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Usado por");
+            foreach (var (source, r) in incoming.OrderBy(x => x.Relation.Kind).ThenBy(x => x.Source))
+                sb.AppendLine($"- `{source}` — {RelationLabel(r.Kind)}: {r.Detail}" + (r.Evidence is null ? "" : $" ({r.Evidence})"));
+        }
+        return sb.ToString();
+    }
+
+    private static Dictionary<string, List<(string Source, ArchitectureRelation Relation)>> UsedByMap(List<ArchitectureProject> projects) =>
+        projects.SelectMany(p => p.Relations.Where(r => r.Target != p.Key).Select(r => (Source: p.Key, Relation: r)))
+            .GroupBy(x => x.Relation.Target).ToDictionary(g => g.Key, g => g.ToList());
+
+    private static string RelationLabel(string kind) => kind switch
+    {
+        "event" => "evento (SNS → fila)",
+        "queue" => "fila (SQS)",
+        "database" => "banco compartilhado",
+        "http" => "HTTP",
+        "package" => "pacote",
+        "external" => "serviço externo",
+        "frontend" => "front-end",
+        _ => "outro"
+    };
+
+    /// <summary>Corta no fim de frase (ou palavra) antes do limite.</summary>
+    internal static string Short(string? text, int max)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        text = text.Trim();
+        if (text.Length <= max) return text;
+        var cut = text[..max];
+        var sentence = cut.LastIndexOfAny(['.', '!', '?']);
+        if (sentence >= max / 2) return cut[..(sentence + 1)];
+        var space = cut.LastIndexOf(' ');
+        return (space > 0 ? cut[..space] : cut).TrimEnd(',', ';', ':') + "…";
     }
 
     private static string RenderSection(ArchitectureProject project, ArchitectureSection section) =>
@@ -294,7 +425,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         Order = p.Order,
         UpdatedAt = p.UpdatedAt,
         UpdatedBy = p.UpdatedBy,
-        Sections = p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => (ArchitectureSectionSummaryResponse)ToSection(s, withContent: false)).ToList()
+        Sections = p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => (ArchitectureSectionSummaryResponse)ToSection(s, withContent: false)).ToList(),
+        Relations = p.Relations
     };
 
     private static ArchitectureSectionResponse ToSection(ArchitectureSection s, bool withContent) => new()

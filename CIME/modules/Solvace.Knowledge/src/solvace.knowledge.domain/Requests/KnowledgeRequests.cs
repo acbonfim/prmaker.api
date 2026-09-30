@@ -1,3 +1,5 @@
+using solvace.knowledge.domain.Entities;
+
 namespace solvace.knowledge.domain.Requests;
 
 /// <summary>
@@ -45,6 +47,8 @@ public class UpsertArchitectureProjectRequest
     public string? SourceCommit { get; set; }
     public string? SourceBranch { get; set; }
     public int? Order { get; set; }
+    /// <summary>Interdependências (0034); null = mantém as atuais.</summary>
+    public List<ArchitectureRelation>? Relations { get; set; }
 }
 
 /// <summary>Grava uma seção (chaves do projeto e da seção na rota). Conteúdo igual ao atual não cria versão.</summary>
