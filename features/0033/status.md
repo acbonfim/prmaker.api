@@ -5,6 +5,7 @@
 | D0 | Decisões: KC pelo banco Aurora local; vigia opcional por pessoa | ✅ concluída |
 | K0 | Credencial do KC DEV + leitura testada (db `KnowledgeCenter`, schema `knowledge_center`) | ✅ acesso ok (falta o `kc-query.sh`, fase S3) |
 | B1 | Plugin Knowledge Center Configurations (ambiente/alias/schema) no Skills/config | ⬜ pendente |
+| K1 | `kc-query.sh` + sincronização incremental + teste do filtro | ⬜ pendente |
 | B2 | Módulo de arquitetura (projetos, seções versionadas, índice, export) | ⬜ pendente |
 | B3 | Chat de IA com histórico + endpoint de sugestão | ⬜ pendente |
 | B4 | Sessão do executor no plano, custo da análise, pedido de continuar | ⬜ pendente |
@@ -28,3 +29,5 @@
   schema `knowledge_center` (~59 artigos), mas sem USAGE/SELECT. Precisa de credencial com leitura no schema.
 - 2026-09-30: credencial do KC (`app_devadmin`) testada: leitura ok, escrita recusada pela sessão somente leitura.
   DEV tem 25 artigos publicados, a maioria teste de QA; útil: ~13 do Action Plan + visão geral. Filtro de ruído no plugin.
+- 2026-09-30: garantias do KC definidas pelo usuário (filtro de teste fixo, sync pelas skills, consultar sempre,
+  troca para prod por configuração) — seção própria no `plan.md`.

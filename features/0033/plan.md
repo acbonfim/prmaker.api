@@ -96,6 +96,44 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
     `last_update_date` (para o incremental); categorias via `subcategories` → `categories`; tags via `article_tags`.
 - Cliente: `psycopg[binary]` no venv da skill (sem `psql` local).
 
+## Knowledge Center — garantias (requisito do usuário, 2026-09-30)
+
+**1. O filtro de dados de teste sempre existe** — não é opção de configuração, é código:
+- Piso fixo no código (script de consulta/sincronização e backend, com a mesma regra): só `status_id = 30`
+  (publicado) e `is_deleted = false`; descarta categoria/subcategoria/título que casem com o padrão de teste embutido
+  (`teste`, `test`, `qa`, `123`, `tmp`, `title-`, `categoryName`, `modal editado`...) e texto útil abaixo de um mínimo.
+- O plugin só **acrescenta** (padrões extras, artigos `ART-n` excluídos) — não existe chave para desligar o piso. O
+  único jeito de deixar passar algo que o piso barra é uma lista explícita de `ART-n` liberados, auditada.
+- Na tela do PRMake o admin pode marcar um artigo como "teste" → entra na lista de excluídos do plugin.
+- Teste automatizado da regra (casos reais do DEV: "title-Haroldo", "teste qa", categorias "Teste QA" saem; os
+  artigos do Action Plan ficam) roda no `kc-query.sh check` e nos testes do backend.
+
+**2. As skills mantêm o KC sempre atualizado do nosso lado**:
+- Cópia filtrada no PRMake (módulo de conhecimento): artigo (`ART-n`, título, texto puro, categoria/subcategoria,
+  tags, `last_update_date`, ambiente). O Cloud Run não alcança o Aurora, então **quem sincroniza é a skill**, na
+  máquina de quem tem a credencial: lê só o que mudou desde a marca d'água (`max(last_update_date)` + ids removidos/
+  despublicados) e envia ao PRMake (`POST /Knowledge/sync`). Quem não tem credencial não sincroniza, mas usa a cópia.
+- Gatilhos: toda execução da `analisar-bug`/`gerar-prmake`/`gerar-handover` (1 consulta barata à marca d'água; só
+  envia se mudou) e o comando `mapear-arquitetura kc-sync`. A tela mostra a última sincronização e o ambiente.
+- Espelho local (`~/.claude/solvace-kb/knowledge/`) atualizado junto com a arquitetura (sync por hash) — a
+  consulta na análise é leitura de arquivo, sem rede e sem credencial.
+- Artigo novo/alterado reprocessa só as seções de arquitetura ligadas a ele (incremental).
+
+**3. Consultar a base sempre que possível**:
+- O `contexto <card>` já traz os artigos relacionados ao módulo/termos do card (do espelho local) — zero turno extra.
+- Regra na SKILL.md: antes de perguntar ao usuário sobre regra de negócio ou concluir comportamento "esperado",
+  consultar o KC; citar `ART-n` na análise, no RCA e no handover quando usado; registrar no plano quando não houver
+  artigo (lacuna de documentação — vira sugestão para o time do KC).
+- `gerar-prmake` e `gerar-handover` também consultam (regra de negócio no RCA/handover).
+
+**4. Trocar para produção é uma mudança de configuração**:
+- Plugin *Knowledge Center Configurations*: `Environment` = `dev` | `prod` (um campo). O arquivo local de credenciais
+  tem uma entrada por ambiente (`{ "dev": {...}, "prod": {...} }`); host/database/schema vêm do plugin por ambiente.
+- Ao trocar o ambiente, a próxima sincronização percebe e faz a carga completa do novo ambiente; a cópia do anterior
+  fica guardada e oculta (volta se desfizer a troca). Sem deploy e sem mudar skill.
+- Checklist da troca: credencial `prod` só-leitura no arquivo local de quem sincroniza → mudar `Environment` no
+  plugin → rodar `mapear-arquitetura kc-sync` → conferir contagem na tela.
+
 ## Item 3 — skills mais baratas e assertivas (medido antes/depois)
 - **SKILL.md enxuta** (~3 mil tokens): fluxo e regras essenciais; o resto vira `references/*.md` lido só na fase
   (catálogo de tratamentos, Cognito, SQL, correção/branches, fechamento no DevOps). Economia ≈ 9 mil tokens por
@@ -117,7 +155,7 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 | Fase | Descrição | Depende |
 |---|---|---|
 | D0 | Decisões: KC pelo banco Aurora local; vigia em segundo plano opcional por pessoa | — |
-| B1 | Plugin *Knowledge Center Configurations* (migração; ambiente, alias por ambiente, schema) exposto no `Skills/config` | D0 |
+| B1 | Plugin *Knowledge Center Configurations* (migração: `Environment`, host/db/schema por ambiente, exclusões extras) no `Skills/config` + módulo de conhecimento: cópia filtrada, `POST /Knowledge/sync`, marca d'água, piso de filtro no backend + testes | D0 |
 | B2 | Módulo de arquitetura: projetos, seções versionadas, índice, `export` por hash para o espelho, permissões | — |
 | B3 | `IAIService` com conversa + `POST /Architecture/sections/{id}/chat` (admin + plugin de IA) | B2 |
 | B4 | Plano: sessão/máquina/pasta do executor, `usage` (custo), pedido de "continuar" | — |
@@ -126,7 +164,8 @@ skill registrar a sessão no plano e voltar ao raciocínio exato — sem reler t
 | F3 | Plano de execução: botão "Retomar no Claude" (`prmake-card`), custo da análise, estado do vigia | B4 |
 | S1 | Skill `mapear-arquitetura` + template de seções + espelho local (sync no `prmake-skills.sh`) | B2 |
 | S2 | Gerar a base: semente do `claude-global` + **artigos do Knowledge Center** + projetos por prioridade (legado, apps, API de integrações, revamp) | S1, KC |
-| S3 | `analisar-bug` enxuta: references, `contexto`, arquitetura primeiro, KC (`kc-query.sh`), imagens, saídas curtas, aprendizado | B1, S1 |
+| K1 | `kc-query.sh` (search/article/check) + sincronização incremental com piso de filtro fixo e teste da regra | B1 |
+| S3 | `analisar-bug` enxuta: references, `contexto` (com KC do espelho), arquitetura primeiro, regra "consultar KC antes de perguntar", imagens, saídas curtas, aprendizado; KC também na `gerar-prmake`/`gerar-handover` | B1, K1, S1 |
 | S4 | Retomar: `prmake-card`, sessão no plano; (opcional) vigia `agent` com `--bg --resume` | B4, D0 |
 | Q1 | Medir: 2–3 cards reais antes/depois (turnos, tokens, tempo) + teste local ponta a ponta + PRs | todas |
 
