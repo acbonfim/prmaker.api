@@ -12,7 +12,7 @@
 | F1 | Front: botão + faixa do pedido | ✅ concluída |
 | F2 | Front: Meus executores | ✅ concluída |
 | Q1 | Teste ponta a ponta | ✅ concluído |
-| D1 | PRs, merge e deploy | 🚀 PRs abertos |
+| D1 | PRs, merge e deploy | ✅ em produção (back #65, front #37) |
 
 ## Q1 — teste local (Postgres 18 isolado, auth falso, executor real com `claude` falso, Chrome headless)
 - Pedido pela tela sem executor: `queued`, motivo "Nenhuma máquina com o executor"; segundo clique devolve o mesmo pedido.
@@ -46,3 +46,7 @@
 ## Log
 - 2026-10-01: spec, plano e branches `feature/0039` (back e front) criados.
 - 2026-10-01: B1–B5, A1, S1, F1–F2 implementadas; Q1 executado (2 correções).
+- 2026-10-01: em produção. Correção (fix/0039-doctor): diagnóstico rodava só na subida e a cada 6 h e podia se perder num
+  409 (long-poll gravando a máquina ao mesmo tempo) — "MCP não registrado" ficava na tela mesmo registrado. Agora: gravações
+  do executor com retry, doctor de hora em hora + botão "Rodar diagnóstico" (executor 1.0.1), e o instalador só marca o
+  MCP como registrado quando `claude mcp get prmake` confirma (e refaz o doctor).

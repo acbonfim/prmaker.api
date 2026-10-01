@@ -12,13 +12,15 @@ namespace Cime.ExecutionAgent;
 public sealed class Runner(AgentConfig config)
 {
     private static readonly TimeSpan ReportEvery = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan DoctorEvery = TimeSpan.FromHours(6);
+    /// <summary>Doctor de hora em hora (e na hora quando a tela pede): um resultado velho confundia a tela.</summary>
+    private static readonly TimeSpan DoctorEvery = TimeSpan.FromHours(1);
     private static readonly TimeSpan JanitorEvery = TimeSpan.FromHours(12);
 
     private readonly ConcurrentDictionary<Guid, (JobRunner Job, Task Task)> _jobs = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _recent = new();
     private WorkerState _state = new();
     private volatile bool _revoked;
+    private int _doctorRunning;
 
     public async Task<int> RunAsync(CancellationToken stopping)
     {
@@ -138,6 +140,11 @@ public sealed class Runner(AgentConfig config)
             }, ct);
             _state = state;
             _revoked = false;
+            if (state.DoctorRequested)
+            {
+                Log.Info("diagnóstico pedido pela tela — rodando agora");
+                _ = DoctorAsync(client, ct);
+            }
 
             // O PRMake acha que um pedido está aqui, mas não há processo (o executor reiniciou): devolve para a fila.
             foreach (var id in state.ActiveRequestIds.Where(id => !_jobs.ContainsKey(id)))
@@ -168,6 +175,8 @@ public sealed class Runner(AgentConfig config)
 
     private async Task DoctorAsync(PrmakeClient client, CancellationToken ct)
     {
+        // Um de cada vez (o pedido da tela pode chegar junto com o de hora em hora).
+        if (Interlocked.Exchange(ref _doctorRunning, 1) == 1) return;
         try
         {
             var checks = await Doctor.RunChecksAsync(config, client, ct);
@@ -179,6 +188,10 @@ public sealed class Runner(AgentConfig config)
         catch (Exception e) when (e is not OperationCanceledException)
         {
             Log.Warn($"doctor falhou: {e.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _doctorRunning, 0);
         }
     }
 

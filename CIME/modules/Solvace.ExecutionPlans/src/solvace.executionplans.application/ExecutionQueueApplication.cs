@@ -159,10 +159,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     public async Task<ExecutionClaimResponse?> NextAsync(Guid workerId, TimeSpan wait, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var worker = await RequireWorkerAsync(workerId, cancellationToken);
+        var worker = await MutateWorkerAsync(workerId, (w, at) => w.Seen(at), cancellationToken);
         var owner = worker.OwnerUserId;
-        worker.Seen(now);
-        await _queue.SaveChangesAsync(cancellationToken);
 
         await MaintainAsync(owner, now, cancellationToken, force: true);
         await EvaluateRuleAsync(owner, now, cancellationToken);
@@ -269,11 +267,13 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     public async Task<ExecutionWorkerStateResponse> ReportWorkerAsync(Guid workerId, ExecutionWorkerReportRequest request, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var worker = await RequireWorkerAsync(workerId, cancellationToken);
-        var wasOnline = worker.IsOnline(now);
+        var wasOnline = false;
         var capabilities = request.Capabilities is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } c ? c.GetRawText() : null;
-        worker.Report(request.AgentVersion, request.ClaudeVersion, request.SkillsVersion, request.Workspace, capabilities, now);
-        await _queue.SaveChangesAsync(cancellationToken);
+        var worker = await MutateWorkerAsync(workerId, (w, at) =>
+        {
+            wasOnline = w.IsOnline(at);
+            w.Report(request.AgentVersion, request.ClaudeVersion, request.SkillsVersion, request.Workspace, capabilities, at);
+        }, cancellationToken);
         if (!wasOnline) await NotifyWorkersAsync(worker.OwnerUserId, cancellationToken);
 
         var active = await _queue.GetActiveForWorkerAsync(workerId, cancellationToken);
@@ -281,6 +281,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         {
             Status = worker.Status,
             MaxConcurrency = worker.MaxConcurrency,
+            DoctorRequested = worker.DoctorPending,
             LatestAgentVersion = _agentInfo?.LatestVersion,
             ActiveRequestIds = active.Select(r => r.Id).ToList()
         };
@@ -289,7 +290,6 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     public async Task<ExecutionWorkerResponse> ReportDoctorAsync(Guid workerId, ExecutionWorkerDoctorRequest request, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var worker = await RequireWorkerAsync(workerId, cancellationToken);
         var checks = request.Checks.Take(50).Select(c => new ExecutionDoctorCheck
         {
             Name = Trim(c.Name, 100) ?? "?",
@@ -297,8 +297,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             Message = Trim(c.Message, 500),
             Severity = c.Severity is "warning" ? "warning" : "error"
         }).ToList();
-        worker.SetDoctor(JsonSerializer.Serialize(checks, CamelCase), now);
-        await _queue.SaveChangesAsync(cancellationToken);
+        var json = JsonSerializer.Serialize(checks, CamelCase);
+        var worker = await MutateWorkerAsync(workerId, (w, at) => w.SetDoctor(json, at), cancellationToken);
         await NotifyWorkersAsync(worker.OwnerUserId, cancellationToken);
         return await WorkerResponseAsync(worker, now, cancellationToken);
     }
@@ -321,6 +321,10 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     public Task<ExecutionWorkerResponse> ConfigureWorkerAsync(Guid workerId, ConfigureExecutionWorkerRequest request, ExecutionActor actor, CancellationToken cancellationToken) =>
         MutateOwnWorkerAsync(workerId, actor, (w, now) => w.Configure(request.Name, request.MaxConcurrency, now), cancellationToken);
+
+    /// <summary>"Rodar diagnóstico agora": o executor vê no próximo sinal de vida (até 1 min) e roda o doctor.</summary>
+    public Task<ExecutionWorkerResponse> RequestDoctorAsync(Guid workerId, ExecutionActor actor, CancellationToken cancellationToken) =>
+        MutateOwnWorkerAsync(workerId, actor, (w, now) => w.RequestDoctor(now), cancellationToken);
 
     public Task<ExecutionWorkerResponse> PauseWorkerAsync(Guid workerId, ExecutionActor actor, CancellationToken cancellationToken) =>
         MutateOwnWorkerAsync(workerId, actor, (w, now) => w.Pause(now), cancellationToken);
@@ -742,6 +746,30 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             {
                 // O long-poll do executor grava o "último sinal" o tempo todo: relê e reaplica.
                 _queue.ClearTracking();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Grava algo do próprio executor (sinal de vida, report, doctor). O long-poll grava o "último sinal" o tempo todo:
+    /// conflito de concorrência relê e reaplica, em vez de devolver 409 (que perdia o resultado do doctor).
+    /// </summary>
+    private async Task<ExecutionWorker> MutateWorkerAsync(Guid workerId, Action<ExecutionWorker, DateTimeOffset> mutate, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var worker = await RequireWorkerAsync(workerId, cancellationToken);
+            mutate(worker, now);
+            try
+            {
+                await _queue.SaveChangesAsync(cancellationToken);
+                return worker;
+            }
+            catch (ExecutionPlanConcurrencyException) when (attempt < 5)
+            {
+                _queue.ClearTracking();
+                await Task.Delay(Random.Shared.Next(10, 40) * attempt, cancellationToken);
             }
         }
     }

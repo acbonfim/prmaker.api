@@ -176,6 +176,11 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
     public Task<ActionResult<ExecutionWorkerResponse>> Configure([FromRoute] Guid id, [FromBody] ConfigureExecutionWorkerRequest request, CancellationToken ct) =>
         Run<ExecutionWorkerResponse>(async () => Ok(await queue.ConfigureWorkerAsync(id, request, await GetActorAsync(ct), ct)));
 
+    /// <summary>"Rodar diagnóstico agora": o executor roda o doctor no próximo sinal de vida (até 1 min).</summary>
+    [HttpPost("{id:guid}/doctor-request")]
+    public Task<ActionResult<ExecutionWorkerResponse>> RequestDoctor([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionWorkerResponse>(async () => Ok(await queue.RequestDoctorAsync(id, await GetActorAsync(ct), ct)));
+
     [HttpPost("{id:guid}/pause")]
     public Task<ActionResult<ExecutionWorkerResponse>> Pause([FromRoute] Guid id, CancellationToken ct) =>
         Run<ExecutionWorkerResponse>(async () => Ok(await queue.PauseWorkerAsync(id, await GetActorAsync(ct), ct)));

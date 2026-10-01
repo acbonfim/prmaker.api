@@ -402,16 +402,27 @@ MCP_URL="${BASE%/api/v*}/mcp"
 CLAUDE_BIN="$(type -P claude 2>/dev/null || true)"
 [[ -z "$CLAUDE_BIN" && -x "$HOME/.local/bin/claude" ]] && CLAUDE_BIN="$HOME/.local/bin/claude"
 
-ensure_mcp() { # [force]
-  [[ "${PRMAKE_SKIP_MCP:-0}" == 1 || -z "$CLAUDE_BIN" ]] && return 0
-  local tk; tk="$(token)" || return 0
+ensure_mcp() { # [force] — 0 só com o MCP registrado (a marca de "já registrado" depende disso)
+  [[ "${PRMAKE_SKIP_MCP:-0}" == 1 ]] && return 0
+  [[ -n "$CLAUDE_BIN" ]] || return 1
+  local tk; tk="$(token)" || return 1
   if [[ "${1:-}" != force ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1; then return 0; fi
   "$CLAUDE_BIN" mcp remove --scope user prmake >/dev/null 2>&1
-  if "$CLAUDE_BIN" mcp add --transport http --scope user prmake "$MCP_URL" --header "x-api-key: $tk" >/dev/null 2>&1; then
+  if "$CLAUDE_BIN" mcp add --transport http --scope user prmake "$MCP_URL" --header "x-api-key: $tk" >/dev/null 2>&1 \
+     && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1; then
     say "   MCP do PRMake registrado no Claude Code ($MCP_URL)"
-  else
-    warn "não consegui registrar o MCP do PRMake (rode depois: prmake-skills.sh mcp)"
+    agent_doctor_bg
+    return 0
   fi
+  warn "não consegui registrar o MCP do PRMake (rode depois: prmake-skills.sh mcp)"
+  return 1
+}
+
+# O executor (se instalado) refaz o diagnóstico em segundo plano: a tela "Meus executores" não fica com o resultado velho.
+agent_doctor_bg() {
+  local bin; bin="$(agent_bin 2>/dev/null)"
+  [[ -x "$bin" ]] && ( "$bin" doctor >/dev/null 2>&1 & )
+  return 0
 }
 
 # Executor do PRMake (0039): binário único publicado pela API para o sistema desta máquina.
