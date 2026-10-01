@@ -16,7 +16,7 @@ Branch `feature/0038` em `prform.api-0038` (backend + skills) e `prform-app-0038
 | F5 | Pergunte: "leia a seção", lacuna → analisar a fundo → seção proposta | ✅ concluída | front 815b0b1 |
 | S1 | Skill base-solvace: template do Guia, `--audience`, `learn` | ✅ concluída | 1244c33 |
 | Q1 | Teste local | ✅ backend + front + IA (provedor falso) |  |
-| G1 | Carga inicial dos guias (produção) | 🔄 em andamento (autorizada) | |
+| G1 | Carga inicial dos guias (produção) | ✅ concluída | produção 2026-10-01 |
 
 ## Handoff
 - Contrato implementado como no plano. Respostas da IA em blocos `<<<TAG ... TAG>>>` (`ArchitectureBlocks`) — markdown com
@@ -52,3 +52,7 @@ Branch `feature/0038` em `prform.api-0038` (backend + skills) e `prform-app-0038
   dados amigáveis (lendo o projeto atual — resumo, palavras-chave e relações preservados). Hash do espelho conferido igual
   (`c226580a5affb357`). Achados: `arch.sh` cortava em 60 s (guia/learn agora 300 s) e o Claude corta a saída em 8000 tokens —
   guia de projeto grande estourava; o prompt do guia passou a pedir no máximo ~280 palavras por seção.
+- 2026-10-01 — G1 concluída: 61 de 62 projetos com Guia (345 seções human; 44 com as 6 seções, 8 com 5, 7 com 4 — a IA
+  pula a seção sem material) e nome amigável/frase/área. Audit Trail sem guia: o repositório só tem o template do README.
+  Hash do espelho igual (`c226580a5affb357`, 243 seções técnicas). Nomes amigáveis sem o prefixo "Revamp — " e área
+  "Revamp" removida antes de publicar. A revisar na tela: áreas de negócio (vários módulos caíram em "Infraestrutura").
