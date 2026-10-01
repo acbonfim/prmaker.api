@@ -63,6 +63,7 @@ public sealed class WorkerState
     public string Status { get; set; } = "active";
     public int MaxConcurrency { get; set; } = 1;
     public string? LatestAgentVersion { get; set; }
+    public bool DoctorRequested { get; set; }
     public List<Guid> ActiveRequestIds { get; set; } = [];
 }
 

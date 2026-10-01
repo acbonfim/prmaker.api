@@ -43,6 +43,8 @@ public class ExecutionWorker
     /// <summary>JSON do último <c>prmake-agent doctor</c>: [{ name, ok, message }].</summary>
     public string? Doctor { get; private set; }
     public DateTimeOffset? DoctorAt { get; private set; }
+    /// <summary>"Rodar diagnóstico agora" pela tela: pendente enquanto não chega um doctor mais novo.</summary>
+    public DateTimeOffset? DoctorRequestedAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -70,6 +72,7 @@ public class ExecutionWorker
     }
 
     public bool IsRevoked => Status == ExecutionWorkerStatus.Revoked;
+    public bool DoctorPending => DoctorRequestedAt is { } requested && (DoctorAt is null || DoctorAt < requested);
     public bool IsOnline(DateTimeOffset now) => !IsRevoked && LastSeenAt is { } seen && now - seen <= OnlineWindow;
     public bool AcceptsWork(DateTimeOffset now) => Status == ExecutionWorkerStatus.Active && IsOnline(now);
 
@@ -105,6 +108,13 @@ public class ExecutionWorker
         Doctor = Json(doctor);
         DoctorAt = now;
         LastSeenAt = now;
+        UpdatedAt = now;
+    }
+
+    public void RequestDoctor(DateTimeOffset now)
+    {
+        EnsureNotRevoked();
+        DoctorRequestedAt = now;
         UpdatedAt = now;
     }
 

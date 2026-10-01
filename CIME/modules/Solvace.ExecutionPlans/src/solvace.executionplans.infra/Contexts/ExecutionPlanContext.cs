@@ -247,6 +247,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.RevokedBy).HasMaxLength(200);
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.IsRevoked);
+            entity.Ignore(e => e.DoctorPending);
 
             entity.HasIndex(e => new { e.OwnerUserId, e.Host });
         });

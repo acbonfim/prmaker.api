@@ -63,6 +63,8 @@ public class ExecutionWorkerResponse
     public JsonElement? Capabilities { get; set; }
     public JsonElement? Doctor { get; set; }
     public DateTimeOffset? DoctorAt { get; set; }
+    /// <summary>Diagnóstico pedido pela tela e ainda não recebido.</summary>
+    public bool DoctorPending { get; set; }
     /// <summary>Checagens do doctor que falharam (resumo para a tela).</summary>
     public int DoctorProblems { get; set; }
     public int Running { get; set; }
@@ -113,6 +115,8 @@ public class ExecutionWorkerStateResponse
     public string Status { get; set; } = string.Empty;
     public int MaxConcurrency { get; set; }
     public string? LatestAgentVersion { get; set; }
+    /// <summary>A tela pediu "rodar diagnóstico agora".</summary>
+    public bool DoctorRequested { get; set; }
     /// <summary>Pedidos que o PRMake ainda considera deste executor (o executor reconcilia com os processos dele).</summary>
     public List<Guid> ActiveRequestIds { get; set; } = [];
 }
@@ -194,6 +198,7 @@ public static class ExecutionQueueResponseExtensions
             Capabilities = Parse(w.Capabilities),
             Doctor = doctor,
             DoctorAt = w.DoctorAt,
+            DoctorPending = w.DoctorPending,
             DoctorProblems = doctor is { ValueKind: JsonValueKind.Array } arr
                 ? arr.EnumerateArray().Count(c => c.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
                 : 0,
