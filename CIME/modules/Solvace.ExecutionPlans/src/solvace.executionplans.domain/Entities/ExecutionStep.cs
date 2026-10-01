@@ -29,6 +29,9 @@ public partial class ExecutionStep
     public string? StatusReason { get; private set; }
     public string? StatusChangedBy { get; private set; }
 
+    /// <summary>Etapa "aguardando": de quem depende — user | answer | external (0037). Null fora de "aguardando".</summary>
+    public string? WaitingOn { get; private set; }
+
     /// <summary>O que a skill está fazendo agora nesta etapa (uma linha, atualizada ao vivo).</summary>
     public string? Activity { get; private set; }
 
@@ -135,7 +138,7 @@ public partial class ExecutionStep
         Checkpoint = string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    internal void ChangeStatus(string status, string? reason, string actor, DateTimeOffset now)
+    internal void ChangeStatus(string status, string? reason, string actor, DateTimeOffset now, string? waitingOn = null)
     {
         if (!ExecutionStatus.StepStatuses.Contains(status))
             throw new DomainException($"Status de etapa inválido: '{status}'.");
@@ -143,6 +146,17 @@ public partial class ExecutionStep
         var trimmedReason = reason?.Trim();
         if (status == ExecutionStatus.Cancelled && string.IsNullOrEmpty(trimmedReason))
             throw new DomainException("Informe o motivo do cancelamento da etapa.");
+
+        string? waiting = null;
+        if (status == ExecutionStatus.Waiting)
+        {
+            waiting = string.IsNullOrWhiteSpace(waitingOn) ? ExecutionWaitingOn.External : waitingOn.Trim().ToLowerInvariant();
+            if (!ExecutionWaitingOn.All.Contains(waiting))
+                throw new DomainException($"waitingOn inválido: '{waitingOn}' (use user, answer ou external).");
+            // 0037: pendência do usuário sem dizer o que ele precisa fazer não ajuda ninguém.
+            if (waiting == ExecutionWaitingOn.User && string.IsNullOrEmpty(trimmedReason))
+                throw new DomainException("Diga o que o usuário precisa fazer (reason) para destravar a etapa.");
+        }
 
         if (status is ExecutionStatus.Running or ExecutionStatus.Waiting)
         {
@@ -161,6 +175,7 @@ public partial class ExecutionStep
         }
 
         Status = status;
+        WaitingOn = waiting;
         StatusReason = string.IsNullOrEmpty(trimmedReason) ? null : Truncate(trimmedReason, MaxReasonLength);
         StatusChangedBy = actor;
         UpdatedAt = now;

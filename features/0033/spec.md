@@ -12,5 +12,6 @@ Objetivo: Melhorar as analises, ser mais assertivo e ter conhecimento das regras
 2.4. Criar uma tela no prmake para ver exatamente essa engenharia reversa salva, projeto por projeto, sessao por sessao, ter partes onde analisa os modulos, como um se integra com o outro, parte de infra, aws, servicos de terceiros, login e afins
 2.5. Deve ser possivel analisar tudo em tela, editar, sugerir melhorias (conectar com plugin de ia configurado e abrir um chat para solicitar melhoria com o especialista no solvace) Essa acao so permite se for um admin e tiver plugin configurado corretamente
 2.6. A skill analisar-bug deve aproveitar toda essa engenharia reversa para usar menos tokens e melhorar a velocidade e qualidade das analises.
+2.7. A engenharia reversa deve ser bem profunda, fazer uma analise completa inicialmente e se atualizar
 3. Promover solicoes nas skills atuais e fluxos de tratamento de bug, para reduzir custo de tokens, melhorar assertividade e velicidade nos tratamentos
 4. Sugerir melhorias nas conexoes entre prmake e claude code no plano de execucao, pois muitas vezes precisamos pausar um tratamento e seguir para o proximo enquanto nao recebemos resposta, mas ao voltar pro anterior, precisamos copiar o comando e colar o /analisar-bug xxx no claude code novamente. Poderia ter alguma forma de retomar o raciocinio sem fazer isso, caso seja possivel 

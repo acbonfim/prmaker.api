@@ -226,7 +226,7 @@ public class ExecutionPlan
     /// um envio por ter esquecido de declarar a etapa antes).
     /// </summary>
     public ExecutionStep UpdateStep(string key, string? status, string? reason, string? activity, string? checkpoint,
-        string? title, string? description, string actor, DateTimeOffset now)
+        string? title, string? description, string actor, DateTimeOffset now, string? waitingOn = null)
     {
         EnsureNotCancelled();
 
@@ -249,11 +249,11 @@ public class ExecutionPlan
         if (!string.IsNullOrWhiteSpace(status))
         {
             var normalizedStatus = status.Trim().ToLowerInvariant();
-            step.ChangeStatus(normalizedStatus, reason, actor, now);
+            step.ChangeStatus(normalizedStatus, reason, actor, now, waitingOn);
 
             // A skill voltou a trabalhar: o plano (pendente, com falha ou já concluído) volta a
             // "em andamento". Pausado continua pausado — só o usuário (ou a retomada) tira da pausa.
-            if (normalizedStatus == ExecutionStatus.Running
+            if (normalizedStatus is ExecutionStatus.Running or ExecutionStatus.Waiting
                 && Status is ExecutionStatus.Pending or ExecutionStatus.Failed or ExecutionStatus.Completed)
             {
                 SetPlanStatus(ExecutionStatus.Running, null, actor, now);
@@ -307,13 +307,13 @@ public class ExecutionPlan
     }
 
     /// <summary>Etapa passa a aguardar algo externo (resposta, chamado, merge); o plano segue — 0024.</summary>
-    public ExecutionStep SetStepWaiting(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
+    public ExecutionStep SetStepWaiting(string key, string reason, string waitingOn, string actor, DateTimeOffset now, bool fromExecutor)
     {
         EnsureNotCancelled();
         var step = RequireStep(key);
         if (ExecutionStatus.IsStepFinished(step.Status))
             return step;
-        step.ChangeStatus(ExecutionStatus.Waiting, reason, actor, now);
+        step.ChangeStatus(ExecutionStatus.Waiting, reason, actor, now, waitingOn);
         if (Status is ExecutionStatus.Pending or ExecutionStatus.Failed)
             SetPlanStatus(ExecutionStatus.Running, null, actor, now);
         Touch(now, fromExecutor);
@@ -332,6 +332,39 @@ public class ExecutionPlan
     }
 
     /// <summary>
+    /// "Já resolvi" pela tela (0037): o usuário fez o que a etapa esperava dele (liberou a permissão, ligou a VPN...).
+    /// A etapa volta a "em andamento" — o vigia da skill vê a mudança e tenta de novo.
+    /// </summary>
+    public ExecutionStep ResolveStepByUser(string key, string? note, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (step.Status != ExecutionStatus.Waiting || step.WaitingOn != ExecutionWaitingOn.User)
+            throw new DomainException("Esta etapa não está aguardando você.");
+        var trimmed = note?.Trim();
+        step.ChangeStatus(ExecutionStatus.Running, string.IsNullOrEmpty(trimmed) ? $"Resolvido por {actor}" : $"Resolvido por {actor}: {trimmed}", actor, now);
+        if (Status is ExecutionStatus.Pending or ExecutionStatus.Failed)
+            SetPlanStatus(ExecutionStatus.Running, null, actor, now);
+        Touch(now, fromExecutor: false);
+        return step;
+    }
+
+    /// <summary>
+    /// O que depende do usuário agora (0037): etapas do usuário prontas/em andamento e etapas travadas esperando uma
+    /// ação dele. As perguntas abertas entram à parte (não são do agregado). Plano terminado/falho não tem pendência.
+    /// </summary>
+    public IEnumerable<ExecutionStep> StepsPendingForUser()
+    {
+        if (IsFinished || Status == ExecutionStatus.Failed)
+            return [];
+        var ready = ReadySteps().Select(s => s.Key).ToHashSet();
+        return Steps.Where(s =>
+                (s.Status == ExecutionStatus.Waiting && s.WaitingOn == ExecutionWaitingOn.User)
+                || (s.Executor == ExecutionExecutor.User && (s.Status == ExecutionStatus.Running || ready.Contains(s.Key))))
+            .OrderBy(s => s.Order);
+    }
+
+    /// <summary>
     /// Recalcula a etapa pelos chamados que a bloqueiam (0024): algum aberto → aguardando; o mais recente
     /// resolvido → concluída; só fechados sem resolução → aguardando um novo chamado.
     /// </summary>
@@ -347,7 +380,7 @@ public class ExecutionPlan
         if (open.Count > 0)
         {
             var label = open.Count == 1 ? $"o chamado {open[0].DisplayName}" : $"{open.Count} chamados";
-            return SetStepWaiting(key, $"Aguardando {label}", actor, now, fromExecutor);
+            return SetStepWaiting(key, $"Aguardando {label}", ExecutionWaitingOn.External, actor, now, fromExecutor);
         }
 
         var latest = blockingTickets.OrderByDescending(t => t.CreatedAt).First();
@@ -358,7 +391,8 @@ public class ExecutionPlan
             return step;
         }
 
-        return SetStepWaiting(key, $"Chamado {latest.DisplayName} fechado sem resolução — abra outro chamado ou conclua a etapa", actor, now, fromExecutor);
+        return SetStepWaiting(key, $"Chamado {latest.DisplayName} fechado sem resolução — abra outro chamado ou conclua a etapa",
+            ExecutionWaitingOn.User, actor, now, fromExecutor);
     }
 
     /// <summary>Conclui uma etapa por uma regra automática (ex.: PRs mesclados) — 0024.</summary>

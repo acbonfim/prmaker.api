@@ -24,20 +24,41 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
 
     public async Task<List<ExecutionPlanSummaryResponse>> GetSummariesByCardAsync(string cardNumber, CancellationToken cancellationToken)
     {
-        var rows = await _context.Plans
+        // Poucos planos por card: carrega as etapas para calcular as pendências do usuário com a mesma regra da tela (0037).
+        var plans = await _context.Plans
             .AsNoTracking()
+            .Include(p => p.Steps)
             .Where(p => p.CardNumber == cardNumber)
             .OrderByDescending(p => p.CreatedAt)
-            .Select(p => new
-            {
-                Plan = p,
-                Total = p.Steps.Count,
-                Completed = p.Steps.Count(s => s.Status == ExecutionStatus.Completed)
-            })
             .ToListAsync(cancellationToken);
+        var questions = await GetOpenQuestionsAsync(plans.Select(p => p.Id).ToList(), cancellationToken);
 
-        return rows.Select(r => r.Plan.FillSummary(new ExecutionPlanSummaryResponse(), r.Total, r.Completed)).ToList();
+        return plans.Select(p =>
+        {
+            var summary = p.FillSummary(new ExecutionPlanSummaryResponse(), p.Steps.Count, p.Steps.Count(s => s.Status == ExecutionStatus.Completed));
+            summary.UserPending = p.UserActions(questions.Where(q => q.PlanId == p.Id)).Count;
+            return summary;
+        }).ToList();
     }
+
+    public Task<List<ExecutionPlan>> GetActivePlansByUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var active = new[] { ExecutionStatus.Pending, ExecutionStatus.Running, ExecutionStatus.Paused };
+        return _context.Plans
+            .AsNoTracking()
+            .Include(p => p.Steps)
+            .Where(p => p.CreatedByUserId == userId && active.Contains(p.Status))
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<ExecutionQuestion>> GetOpenQuestionsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken) =>
+        planIds.Count == 0
+            ? Task.FromResult(new List<ExecutionQuestion>())
+            : _context.Questions
+                .AsNoTracking()
+                .Where(q => planIds.Contains(q.PlanId) && q.Status == ExecutionQuestionStatus.Open)
+                .ToListAsync(cancellationToken);
 
     public async Task<List<(ExecutionPlan Plan, DateTimeOffset? AnsweredAt)>> GetResumeCandidatesAsync(Guid? userId, CancellationToken cancellationToken)
     {

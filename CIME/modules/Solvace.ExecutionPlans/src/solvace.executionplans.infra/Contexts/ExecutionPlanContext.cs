@@ -78,6 +78,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.StatusReason).HasMaxLength(ExecutionStep.MaxReasonLength);
             entity.Property(e => e.StatusChangedBy).HasMaxLength(200);
+            entity.Property(e => e.WaitingOn).HasMaxLength(20);
             entity.Property(e => e.Activity).HasMaxLength(ExecutionStep.MaxActivityLength);
             entity.Property(e => e.Checkpoint).HasColumnType("text");
             entity.Property(e => e.Executor).IsRequired().HasMaxLength(20).HasDefaultValue(ExecutionExecutor.Claude);

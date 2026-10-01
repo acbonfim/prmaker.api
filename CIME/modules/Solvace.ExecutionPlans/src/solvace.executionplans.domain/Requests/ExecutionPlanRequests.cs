@@ -48,6 +48,12 @@ public class UpdateExecutionStepRequest
 {
     public string? Status { get; set; }
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// Com <c>status: "waiting"</c>: de quem a etapa depende — <c>user</c> (pendência do usuário; <c>reason</c> diz o
+    /// que ele precisa fazer) ou <c>external</c> (padrão) — 0037.
+    /// </summary>
+    public string? WaitingOn { get; set; }
     public string? Activity { get; set; }
     public string? Checkpoint { get; set; }
     public string? Title { get; set; }

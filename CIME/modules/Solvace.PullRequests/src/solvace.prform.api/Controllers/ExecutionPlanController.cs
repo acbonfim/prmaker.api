@@ -89,6 +89,22 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<ExecutionStepResponse>> CompleteStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] ExecutionStepActionRequest? request, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () => Ok(await _application.CompleteStepAsync(id, key, request?.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
+    /// <summary>"Já resolvi" (0037): o usuário fez o que a etapa travada esperava dele; a skill tenta de novo.</summary>
+    [HttpPost("{id:guid}/steps/{key}/resolve")]
+    public Task<ActionResult<ExecutionStepResponse>> ResolveStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] ExecutionStepActionRequest? request, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () => Ok(await _application.ResolveStepAsync(id, key, request?.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Planos ativos do usuário logado com pendência dele (0037) — lista de recentes e título da aba.</summary>
+    [HttpGet("pending")]
+    public Task<ActionResult<List<ExecutionUserPendingResponse>>> Pending(CancellationToken ct) =>
+        Run<List<ExecutionUserPendingResponse>>(async () =>
+        {
+            var claim = User.FindFirst("ExternalId")?.Value;
+            return Guid.TryParse(claim, out var userId)
+                ? Ok(await _application.GetUserPendingAsync(userId, ct))
+                : Ok(new List<ExecutionUserPendingResponse>());
+        });
+
     /// <summary>A skill pergunta; a etapa ligada fica "aguardando" até responderem (tela ou terminal) — 0024.</summary>
     [HttpPost("{id:guid}/questions")]
     public Task<ActionResult<List<ExecutionQuestionResponse>>> Ask([FromRoute] Guid id, [FromBody] AskExecutionQuestionsRequest request, CancellationToken ct) =>
