@@ -4,18 +4,28 @@
 # Uso: arch.sh <comando> [args]
 #   list                                    projetos publicados (chave, tipo, commit, secoes)
 #   project <chave> --name N --kind K [--repo URL] [--summary-file F] [--keywords "a,b"] [--repo-dir D] [--order N]
-#           [--relations-file R.json]
+#           [--relations-file R.json] [--display-name N] [--tagline T] [--area A]
 #                                           cria/atualiza o projeto; --repo-dir grava o commit/branch atual (HEAD);
-#                                           --relations-file: JSON [{target, kind, detail, evidence}] (substitui as relacoes)
-#   section <chave> <secao> <arquivo.md> [--title T] [--order N] [--note N] [--source skill|admin]
-#                                           grava a secao (conteudo igual nao cria versao)
+#                                           --relations-file: JSON [{target, kind, detail, evidence}] (substitui as relacoes);
+#                                           --display-name/--tagline/--area: nome, frase e area para pessoas (0038)
+#   section <chave> <secao> <arquivo.md> [--title T] [--order N] [--note N] [--source skill|admin] [--audience llm|human]
+#                                           grava a secao (conteudo igual nao cria versao); human = Guia para pessoas, fica
+#                                           fora do espelho das skills (secao guia-* ja nasce human)
 #   get <chave> [secao]                     metadados do projeto ou o conteudo de uma secao
 #   stale <chave> <repo-dir>                o que mudou no repositorio desde o commit mapeado (para atualizar)
 #   publicar-pasta <pasta-kb> [projeto...]  publica cada <pasta-kb>/<chave>/ (projeto.json com relations + NNN-secao.md);
 #                                           repoDir relativo a SOLVACE_REPOS (padrao ~/repos/solvace) grava o commit
-#   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence] [--card N]
+#   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence|gap] [--card N]
 #                                           PROPOE uma melhoria (qualquer usuario): vai para a fila do admin no PRMake,
 #                                           nunca grava na secao
+#   learn <card> [--instructions T] [--send 1,3|all]
+#                                           APRENDER COM UM CARD (0038): o PRMake junta DevOps, PR/RCA, Timeline e planos e a
+#                                           IA propoe aprendizados; --send envia as propostas escolhidas para a fila
+#   guia <chave> <pasta> [--instructions T] GUIA COM A IA (admin, 0038): grava a proposta em <pasta>/<chave>/5NN-guia-*.md +
+#                                           guia.json (nome/frase/area) para revisar e publicar com publicar-pasta
+#   lacunas                                 sugestoes do tipo gap pendentes (admin): perguntas que a base nao cobre — analise o
+#                                           codigo, publique a secao e rode: resolver <id> applied
+#   resolver <id> applied|dismissed [nota]  resolve uma sugestao da fila (admin)
 # Tipos: ecosystem legacy frontend integration revamp infra third-party auth business-rules other
 set -uo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
@@ -61,10 +71,12 @@ case "$CMD" in
     RF="$(opt --relations-file "" "$@")"; if [[ -n "$RF" ]]; then [[ -f "$RF" ]] || die "relacoes nao encontradas: $RF"; RELS="$(cat "$RF")"; else RELS="null"; fi
     jq -n --argjson rels "$RELS" --arg name "$NAME" --arg kind "$(opt --kind other "$@")" --arg repo "$(opt --repo "" "$@")" --arg summary "$SUMMARY" \
       --arg kw "$(opt --keywords "" "$@")" --arg commit "$COMMIT" --arg branch "$BRANCH" --arg order "$ORDER" \
+      --arg dn "$(opt --display-name "" "$@")" --arg tl "$(opt --tagline "" "$@")" --arg area "$(opt --area "" "$@")" \
       'def nn: if . == "" then null else . end;
        {name:$name, kind:$kind, repository:($repo|nn), summary:($summary|nn),
         keywords:($kw|split(",")|map(gsub("^\\s+|\\s+$";""))|map(select(.!=""))),
-        sourceCommit:($commit|nn), sourceBranch:($branch|nn), order:($order|nn|if . == null then null else tonumber end), relations:$rels}' > "$TMP/body"
+        sourceCommit:($commit|nn), sourceBranch:($branch|nn), order:($order|nn|if . == null then null else tonumber end), relations:$rels,
+        displayName:($dn|nn), tagline:($tl|nn), businessArea:($area|nn)}' > "$TMP/body"
     api PUT "/projects/$KEY" "$TMP/body"; check
     jq -r '"OK projeto \(.key) (\(.kind)) — commit \(.sourceCommit // "-" | .[0:8]) · \(.sections|length) secoes · \(.relations|length) relacoes"' "$TMP/resp" ;;
   section)
@@ -72,11 +84,12 @@ case "$CMD" in
     [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
     ORDER="$(opt --order "" "$@")"
     jq -n --rawfile content "$FILE" --arg title "$(opt --title "" "$@")" --arg note "$(opt --note "" "$@")" \
-      --arg source "$(opt --source skill "$@")" --arg order "$ORDER" \
+      --arg source "$(opt --source skill "$@")" --arg order "$ORDER" --arg aud "$(opt --audience "" "$@")" \
       'def nn: if . == "" then null else . end;
-       {content:$content, title:($title|nn), note:($note|nn), source:$source, order:($order|nn|if . == null then null else tonumber end)}' > "$TMP/body"
+       {content:$content, title:($title|nn), note:($note|nn), source:$source, order:($order|nn|if . == null then null else tonumber end),
+        audience:($aud|nn)}' > "$TMP/body"
     api PUT "/projects/$KEY/sections/$SEC" "$TMP/body"; check
-    jq -r '"OK \(.key) v\(.version) (\(.length) caracteres)"' "$TMP/resp" ;;
+    jq -r '"OK \(.key) v\(.version) (\(.length) caracteres, \(if .audience == "human" then "Guia" else "tecnica" end))"' "$TMP/resp" ;;
   get)
     KEY="${1:?chave}"
     if [[ -n "${2:-}" ]]; then api GET "/projects/$KEY/sections/$2"; check; jq -r '.content' "$TMP/resp"
@@ -105,7 +118,10 @@ case "$CMD" in
     title_of() { case "$1" in
       visao-geral) echo "Visão geral";; modulos) echo "Módulos e fluxos";; dados) echo "Dados";; integracoes) echo "Integrações";;
       infra) echo "Infra e AWS";; autenticacao) echo "Login e permissões";; jobs) echo "Jobs e rotinas";;
-      regras-de-negocio) echo "Regras de negócio";; armadilhas) echo "Armadilhas e bugs conhecidos";; *) echo "$1";; esac; }
+      regras-de-negocio) echo "Regras de negócio";; armadilhas) echo "Armadilhas e bugs conhecidos";;
+      guia-o-que-e) echo "O que é e para que serve";; guia-como-funciona) echo "Como funciona, passo a passo";;
+      guia-regras) echo "Regras de negócio";; guia-conexoes) echo "Com quem conversa";; guia-como-testar) echo "Como testar";;
+      guia-perguntas) echo "Perguntas frequentes";; guia-glossario) echo "Glossário";; *) echo "$1";; esac; }
     projects=("$@"); [[ ${#projects[@]} -gt 0 ]] || projects=($(cd "$KB" && ls -d */ 2>/dev/null | tr -d / | grep -v '^_'))
     SELF="$0"
     for key in "${projects[@]}"; do
@@ -116,13 +132,59 @@ case "$CMD" in
             --keywords "$(jq -r '(.keywords // []) | join(",")' "$meta")" --order "$(jq -r '.order // 0' "$meta")")
       [[ "$(cat "$TMP/rels.json")" != "null" ]] && args+=(--relations-file "$TMP/rels.json")
       repo="$(jq -r '.repository // empty' "$meta")"; [[ -n "$repo" ]] && args+=(--repo "$repo")
+      for f in displayName:--display-name tagline:--tagline businessArea:--area; do
+        v="$(jq -r --arg k "${f%%:*}" '.[$k] // empty' "$meta")"; [[ -n "$v" ]] && args+=("${f#*:}" "$v")
+      done
       dir="$(jq -r '.repoDir // empty' "$meta")"; [[ -n "$dir" && -d "$REPOS/$dir/.git" ]] && args+=(--repo-dir "$REPOS/$dir")
       bash "$SELF" project "$key" "${args[@]}" || continue
       for f in "$KB/$key"/[0-9][0-9][0-9]-*.md; do
         [[ -f "$f" ]] || continue
         name="$(basename "$f" .md)"; order="${name%%-*}"; section="${name#*-}"
-        bash "$SELF" section "$key" "$section" "$f" --title "$(title_of "$section")" --order "$((10#$order))" --note "${KB_NOTE:-engenharia reversa (base-solvace)}" >/dev/null && printf '.'
+        aud=llm; [[ "$section" == guia-* ]] && aud=human
+        bash "$SELF" section "$key" "$section" "$f" --title "$(title_of "$section")" --order "$((10#$order))" --audience "$aud" --note "${KB_NOTE:-engenharia reversa (base-solvace)}" >/dev/null && printf '.'
       done; echo
     done ;;
-  *) sed -n '2,16p' "$0"; exit 1 ;;
+  learn)
+    CARD="${1:?card}"; shift
+    jq -n --arg c "$CARD" --arg i "$(opt --instructions "" "$@")" '{cardNumber:$c, instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
+    echo "lendo o card $CARD no PRMake (DevOps, PR/RCA, Timeline, planos) — pode levar ~1 min..." >&2
+    api POST /learn-from-card "$TMP/body"; check
+    cp "$TMP/resp" "$TMP/learn.json"
+    jq -r '"Card \(.cardNumber): \(.cardTitle // "-")",
+      "Fontes: \([.sources[] | "\(if .ok then "✓" else "✗" end) \(.label)\(if .detail then " (\(.detail))" else "" end)"] | join(" · "))",
+      (if (.existing | length) > 0 then "JA SUGERIDO para este card: \(.existing | length) — \([.existing[] | "\(.projectKey)/\(.sectionKey // "-") [\(.status)]"] | join(", "))" else empty end),
+      (if .aiUnavailableReason then "IA indisponivel: \(.aiUnavailableReason)" else empty end),
+      "", "Resumo: \(.summary // "-")", "",
+      (.proposals | to_entries[] | "[\(.key + 1)] \(.value.projectKey // "?")/\(.value.sectionKey // "-") (\(if .value.audience == "human" then "Guia" else "tecnica" end)) — \(.value.title)\n    motivo: \(.value.reason // "-")\n\(.value.content | split("\n") | map("    " + .) | join("\n"))\n")' "$TMP/learn.json"
+    SEND="$(opt --send "" "$@")"
+    [[ -n "$SEND" ]] || { echo "(para enviar: arch.sh learn $CARD --send 1,2 ou --send all)"; exit 0; }
+    N="$(jq '.proposals | length' "$TMP/learn.json")"
+    [[ "$SEND" == all ]] && SEND="$(seq -s, 1 "$N")"
+    for i in ${SEND//,/ }; do
+      jq -e --argjson i "$i" '.proposals[$i - 1] and (.proposals[$i - 1].projectKey != "")' "$TMP/learn.json" >/dev/null || { echo "proposta $i invalida ou sem projeto — pulei" >&2; continue; }
+      jq --argjson i "$i" '.proposals[$i - 1] as $p | {projectKey:$p.projectKey, sectionKey:$p.sectionKey, kind:"learning", cardNumber:.cardNumber,
+        content:("**" + $p.title + "**\n" + (if $p.audience == "human" then "Público: Guia (linguagem simples)\n" else "" end) + "\n" + $p.content)}' "$TMP/learn.json" > "$TMP/body"
+      api POST /suggestions "$TMP/body"; check; echo "OK proposta $i enviada para a fila"
+    done ;;
+  guia)
+    KEY="${1:?chave}"; OUT="${2:?pasta}"; shift 2
+    jq -n --arg i "$(opt --instructions "" "$@")" '{instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
+    echo "gerando o Guia de $KEY com a IA do PRMake..." >&2
+    api POST "/projects/$KEY/guide" "$TMP/body"; check
+    mkdir -p "$OUT/$KEY"
+    jq '{displayName, tagline, businessArea, notes}' "$TMP/resp" > "$OUT/$KEY/guia.json"
+    jq -r '.sections[] | @base64' "$TMP/resp" | while read -r row; do
+      sec="$(printf '%s' "$row" | base64 --decode)"
+      f="$OUT/$KEY/$(printf '%03d' "$(jq -r .order <<<"$sec")")-$(jq -r .key <<<"$sec").md"
+      jq -r .content <<<"$sec" > "$f"; echo "  $f"
+    done
+    echo "dados para pessoas e notas: $OUT/$KEY/guia.json — revise; publique cada secao com: arch.sh section $KEY <guia-...> <arquivo> --audience human" ;;
+  lacunas)
+    api GET "/suggestions?status=pending"; check
+    jq -r '[.[] | select(.kind == "gap")] | if length == 0 then "nenhuma lacuna pendente" else .[] | "\(.id)  \(.projectKey)/\(.sectionKey // "-")  por \(.createdBy) em \(.createdAt[0:10])\n\(.content | split("\n") | map("    " + .) | join("\n"))\n" end' "$TMP/resp" ;;
+  resolver)
+    ID="${1:?id}"; ST="${2:?applied|dismissed}"
+    jq -n --arg s "$ST" --arg n "${3:-}" '{status:$s, note:(if $n == "" then null else $n end)}' > "$TMP/body"
+    api POST "/suggestions/$ID/resolve" "$TMP/body"; check; echo "OK sugestao $ID -> $ST" ;;
+  *) sed -n '2,29p' "$0"; exit 1 ;;
 esac
