@@ -16,7 +16,7 @@ Branch `feature/0038` em `prform.api-0038` (backend + skills) e `prform-app-0038
 | F5 | Pergunte: "leia a seção", lacuna → analisar a fundo → seção proposta | ✅ concluída | front 815b0b1 |
 | S1 | Skill base-solvace: template do Guia, `--audience`, `learn` | ✅ concluída | 1244c33 |
 | Q1 | Teste local | ✅ backend + front + IA (provedor falso) |  |
-| G1 | Carga inicial dos guias (produção) | ⏸ aguarda autorização | |
+| G1 | Carga inicial dos guias (produção) | 🔄 em andamento (autorizada) | |
 
 ## Handoff
 - Contrato implementado como no plano. Respostas da IA em blocos `<<<TAG ... TAG>>>` (`ArchitectureBlocks`) — markdown com
@@ -47,3 +47,8 @@ Branch `feature/0038` em `prform.api-0038` (backend + skills) e `prform-app-0038
   `login/autenticacao` › "Tabela de registro"; deep leu 10 seções e propôs `login/guia-regras` (Guia) como lacuna com o que
   conferir no código; guia → nome/frase/área + 2 seções; learn → resumo + 2 propostas (a de projeto inexistente avisada).
   Telas conferidas no Chrome headless (Simples/Técnico, ficha, mapa, aprender, pergunte, deep, revisão do guia).
+- 2026-10-01 — PRs mesclados juntos (back #59, front prmakerweb#35) e publicados.
+- 2026-10-01 — G1 autorizada: guias gerados pela IA do PRMake (`arch.sh guia`, Claude) e publicados com público human e os
+  dados amigáveis (lendo o projeto atual — resumo, palavras-chave e relações preservados). Hash do espelho conferido igual
+  (`c226580a5affb357`). Achados: `arch.sh` cortava em 60 s (guia/learn agora 300 s) e o Claude corta a saída em 8000 tokens —
+  guia de projeto grande estourava; o prompt do guia passou a pedir no máximo ~280 palavras por seção.
