@@ -83,6 +83,15 @@ public class CreateArchitectureSuggestionRequest
     public string? CardNumber { get; set; }
 }
 
+/// <summary>Resolve uma pergunta da fila (0040): answered (com a seção que responde) | dismissed | open.</summary>
+public class ResolveArchitectureQuestionRequest
+{
+    public string Status { get; set; } = string.Empty;
+    public string? ProjectKey { get; set; }
+    public string? SectionKey { get; set; }
+    public string? Note { get; set; }
+}
+
 public class ResolveArchitectureSuggestionRequest
 {
     /// <summary>applied | dismissed.</summary>

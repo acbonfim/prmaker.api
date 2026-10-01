@@ -1,0 +1,40 @@
+plataforma|Como habilitar um módulo em uma planta de um cliente?
+plataforma|Por que um módulo aparece com cadeado no menu?
+plataforma|Como dar acesso de administrador de um módulo para um usuário?
+plataforma|Qual a diferença entre admin Solvace, admin do cliente e admin do módulo?
+plataforma|Como trocar a planta em que o usuário está trabalhando?
+plataforma|Mudei um parâmetro da planta e nada mudou na tela, por quê?
+plataforma|Como esconder os módulos inativos do menu?
+plataforma|Onde ficam os parâmetros de uma planta?
+plataforma|Como criar um usuário novo para um cliente?
+plataforma|Como inativar um usuário?
+plataforma|Por que o usuário não consegue ver um módulo que está habilitado na planta?
+plataforma|Como adicionar um usuário como visitante em outra planta?
+plano-de-acao|Como configurar os tipos de plano de ação?
+plano-de-acao|Quem pode aprovar um plano de ação?
+plano-de-acao|Quando o plano de ação envia e-mail?
+plano-de-acao|Como reprogramar a data de um plano de ação e quem aprova a reprogramação?
+plano-de-acao|Por que o usuário não consegue editar um plano de ação?
+checklist|Como cadastrar um novo checklist?
+checklist|Como definir quem é o responsável por um checklist?
+cil|Como configurar a frequência de um checklist do CIL?
+checklist|Por que o checklist não aparece para o operador?
+usuarios|Como adicionar um usuário a um time?
+usuarios|Como mudar a área ou departamento de um usuário?
+login|O usuário consegue fazer login com sua senha ou somente com SSO?
+notificacao|Como desligar as notificações por e-mail de um módulo?
+notificacao|Por que o usuário não recebeu o e-mail de notificação?
+defect-tag|Como configurar as categorias de Defect Tag?
+defect-tag|Como configurar as prioridades e os prazos de uma Defect Tag?
+unc|Quem pode fechar uma condição insegura?
+work-permit|Como configurar o fluxo de aprovação de uma permissão de trabalho?
+incident|Como cadastrar os tipos de incidente?
+digital-obeya|Como criar um novo quadro no Digital Obeya?
+digital-obeya|Como dar acesso a uma sala do Digital Obeya?
+scorecard|Como configurar os indicadores de um Score Card?
+survey|Como enviar uma pesquisa para um grupo de usuários?
+training|Como cadastrar um treinamento obrigatório para uma função?
+moc|Como configurar as etapas de aprovação de um MOC?
+rca|Quem pode criar uma análise de causa raiz (RCA)?
+multilingual|Como traduzir um termo da tela para outro idioma?
+custom-field|Como criar um campo personalizado em um módulo?

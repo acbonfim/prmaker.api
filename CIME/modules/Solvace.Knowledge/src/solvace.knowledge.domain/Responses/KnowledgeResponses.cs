@@ -146,6 +146,28 @@ public class ArchitectureExportManifest
     public int KnowledgeArticles { get; set; }
 }
 
+/// <summary>Pergunta do "Pergunte" (0040) — fila de perguntas sem resposta.</summary>
+public class ArchitectureQuestionResponse
+{
+    public Guid Id { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    public string Coverage { get; set; } = string.Empty;
+    public string? SuggestedProject { get; set; }
+    public string? SuggestedSection { get; set; }
+    public int Times { get; set; }
+    public DateTimeOffset FirstAskedAt { get; set; }
+    public string FirstAskedBy { get; set; } = string.Empty;
+    public DateTimeOffset LastAskedAt { get; set; }
+    public string LastAskedBy { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? AnsweredProject { get; set; }
+    public string? AnsweredSection { get; set; }
+    public string? ResolvedBy { get; set; }
+    public DateTimeOffset? ResolvedAt { get; set; }
+    public string? Note { get; set; }
+}
+
 public class ArchitectureSuggestionResponse
 {
     public Guid Id { get; set; }

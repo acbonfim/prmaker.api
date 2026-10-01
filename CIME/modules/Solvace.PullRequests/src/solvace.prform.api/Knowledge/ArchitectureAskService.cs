@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using solvace.ai.application.Contract;
 using solvace.knowledge.application.Contracts;
+using solvace.knowledge.domain.Entities;
 using solvace.knowledge.domain.Filtering;
 using solvace.knowledge.domain.Responses;
 
@@ -43,7 +44,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         if (!status.Available)
         {
             response.AiUnavailableReason = status.Reason ?? "IA não configurada.";
-            response.Results = await architecture.SearchAsync(q, MaxResults * 2, null, null, cancellationToken);
+            response.Results = await architecture.SearchAsync(q, MaxResults * 2, null, null, null, cancellationToken);
             return response;
         }
 
@@ -54,7 +55,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var plan = new StringBuilder()
                 .AppendLine("Você ajuda a encontrar documentação na Base Solvace (engenharia reversa dos sistemas Solvace: legado edv-solvace .NET/ASP clássico, apps Angular, API de integrações, módulos revamp .NET, AWS, login/Cognito; e regras de negócio do Knowledge Center).")
                 .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON, sem texto fora dele:")
-                .AppendLine("{\"terms\": [até 14 termos de busca — sinônimos em português e inglês, nomes técnicos prováveis de tabelas (ex.: TB_WCM_USER), colunas, classes, serviços, telas, eventos e endpoints, curtos], \"projects\": [chaves de até 4 projetos do catálogo mais prováveis]}")
+                .AppendLine("{\"kind\": \"operacao (como habilitar/configurar/dar acesso/cadastrar/onde fica/por que não aparece) | regra (como o produto deve se comportar) | tecnica (implementação, código, banco) | outra\", \"terms\": [até 14 termos de busca — sinônimos em português e inglês, nomes técnicos prováveis de tabelas (ex.: TB_WCM_USER), colunas, classes, serviços, telas, eventos e endpoints, curtos], \"projects\": [chaves de até 4 projetos do catálogo mais prováveis]}")
                 .AppendLine()
                 .AppendLine("PERGUNTA: " + q)
                 .AppendLine()
@@ -63,13 +64,15 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var first = await ai.GenerateContentAsync(plan.ToString(), cancellationToken);
             if (first is null || !string.IsNullOrWhiteSpace(first.Error) || string.IsNullOrWhiteSpace(first.Content))
                 throw new InvalidOperationException(first?.Error ?? "O provedor de IA não respondeu.");
-            var (terms, projects) = ParsePlan(first.Content);
+            var (terms, projects, kind) = ParsePlan(first.Content);
             response.Terms = terms;
+            response.Kind = kind;
+            var (boostProjects, boostSections) = Boosts(kind, projects);
             response.Provider = first.Provider;
             response.Model = first.Model;
 
             // 2) candidatos no conteúdo
-            var candidates = await architecture.SearchAsync(q, Candidates, terms, projects, cancellationToken);
+            var candidates = await architecture.SearchAsync(q, Candidates, terms, boostProjects, boostSections, cancellationToken);
             if (candidates.Count == 0)
             {
                 response.AiUsed = true;
@@ -82,7 +85,10 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var pick = new StringBuilder()
                 .AppendLine("Você é o especialista da Base Solvace. Responda à PERGUNTA usando SÓ os TRECHOS numerados abaixo (não invente).")
                 .AppendLine("Devolva SÓ um JSON, sem texto fora dele:")
-                .AppendLine("{\"answer\": \"resposta curta em português simples (2 a 4 frases), para quem não programa, citando os trechos como [n]; se os trechos não respondem, diga isso\", \"coverage\": \"answered (os trechos respondem) | partial (respondem em parte) | not-found (não respondem)\", \"section\": n do trecho cuja seção é a melhor para ler sobre o assunto (ou 0), \"results\": [{\"ref\": n, \"reason\": \"por que este trecho responde (1 frase)\"}]}")
+                .AppendLine(kind == ArchitectureQuestionKind.Operation
+                    ? "A pergunta é de OPERAÇÃO: responda em passo a passo numerado (onde fica na tela, quem pode fazer, o que acontece depois) e termine com \"Se não funcionar, confira:\" e as causas comuns que os trechos citarem."
+                    : "")
+                .AppendLine("{\"answer\": \"resposta em português simples, para quem não programa (2 a 4 frases; em pergunta de operação, o passo a passo), citando os trechos como [n]; se os trechos não respondem, diga isso\", \"coverage\": \"answered (os trechos respondem) | partial (respondem em parte) | not-found (não respondem)\", \"section\": n do trecho cuja seção é a melhor para ler sobre o assunto (ou 0), \"results\": [{\"ref\": n, \"reason\": \"por que este trecho responde (1 frase)\"}]}")
                 .AppendLine($"Inclua em results só os trechos que ajudam de verdade, do mais útil para o menos útil, no máximo {MaxResults}.")
                 .AppendLine()
                 .AppendLine("PERGUNTA: " + q)
@@ -116,7 +122,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         catch (Exception e) when (e is InvalidOperationException or JsonException or HttpRequestException)
         {
             response.AiUnavailableReason = $"A IA não respondeu ({e.Message}) — mostrando a busca no conteúdo.";
-            response.Results = await architecture.SearchAsync(q, MaxResults * 2, response.Terms, null, cancellationToken);
+            response.Results = await architecture.SearchAsync(q, MaxResults * 2, response.Terms, null, null, cancellationToken);
             return response;
         }
     }
@@ -144,13 +150,14 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var catalog = await architecture.BuildCatalogAsync(CatalogChars, cancellationToken);
             var plan = new StringBuilder()
                 .AppendLine("Você ajuda a encontrar documentação na Base Solvace (engenharia reversa dos sistemas Solvace e regras de negócio do Knowledge Center).")
-                .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON: {\"terms\": [até 14 termos de busca — sinônimos PT/EN, nomes técnicos prováveis], \"projects\": [chaves de até 4 projetos mais prováveis]}")
+                .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON: {\"kind\": \"operacao | regra | tecnica | outra\", \"terms\": [até 14 termos de busca — sinônimos PT/EN, nomes técnicos prováveis], \"projects\": [chaves de até 4 projetos mais prováveis]}")
                 .AppendLine().AppendLine("PERGUNTA: " + q).AppendLine().AppendLine("CATÁLOGO:").AppendLine(catalog);
             var (planContent, provider, model) = await ArchitectureAi.GenerateAsync(ai, plan.ToString(), cancellationToken);
             response.Provider = provider;
             response.Model = model;
-            var (terms, projects) = ParsePlan(planContent);
-            var candidates = await architecture.SearchAsync(q, 20, terms, projects, cancellationToken);
+            var (terms, projects, kind) = ParsePlan(planContent);
+            var (boostProjects, boostSections) = Boosts(kind, projects);
+            var candidates = await architecture.SearchAsync(q, 20, terms, boostProjects, boostSections, cancellationToken);
 
             // Seções a ler inteiras: as que tiveram trechos, depois as dos projetos prováveis.
             var targets = candidates.Where(h => h.Type == "section" && h.ProjectKey is not null && h.SectionKey is not null)
@@ -183,6 +190,9 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
 
             var prompt = new StringBuilder()
                 .AppendLine("Você é o especialista da Base Solvace. Responda à PERGUNTA usando SÓ o MATERIAL abaixo (seções inteiras da base e artigos do Knowledge Center) — não invente.")
+                .AppendLine(kind == ArchitectureQuestionKind.Operation
+                    ? "A pergunta é de OPERAÇÃO: responda em passo a passo (onde fica, quem pode, o que acontece depois, o que conferir se não funcionar). Na proposta, prefira a seção técnica \"operacao\" (Configuração e operação) do módulo — ou do projeto operacao-plataforma, quando vale para todos os módulos — ou a do Guia \"guia-como-configurar\"."
+                    : "")
                 .AppendLine("Depois proponha a seção que deixaria esse assunto bem documentado na base: um projeto do CATÁLOGO, uma chave (minúsculas com hífen; use uma seção existente do projeto se o assunto cabe nela, ou uma nova), o título e o texto COMPLETO da seção proposta em markdown.")
                 .AppendLine("Público: human (Guia, linguagem simples) quando a pergunta é de uso/regra de negócio, como as de QA, gestores e suporte; llm (técnico) quando é de implementação. Para human: " + solvace.knowledge.domain.Entities.ArchitectureGuideTemplate.WritingRules.Replace("\n", " "))
                 .AppendLine("O que o material não confirma fica como \"a confirmar\" no texto, e você diz no bloco CODIGO o que olhar no código para confirmar (telas, serviços, tabelas, configurações prováveis). Se o material basta, não devolva o bloco CODIGO.")
@@ -236,12 +246,26 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         response.CodeHints = string.IsNullOrWhiteSpace(hints) ? null : hints;
     }
 
-    private static (List<string> Terms, List<string> Projects) ParsePlan(string content)
+    private static (List<string> Terms, List<string> Projects, string Kind) ParsePlan(string content)
     {
         using var doc = JsonDocument.Parse(ExtractJson(content));
         var root = doc.RootElement;
-        return (Strings(root, "terms", 14, 60), Strings(root, "projects", 4, 100));
+        var kind = ArchitectureQuestionKind.Normalize(root.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null);
+        return (Strings(root, "terms", 14, 60), Strings(root, "projects", 4, 100), kind);
     }
+
+    /// <summary>Projeto transversal da operação da plataforma (0040).</summary>
+    public const string PlatformOperationProject = "operacao-plataforma";
+
+    /// <summary>Seções que respondem "como fazer" (0040): a técnica de operação e as do Guia.</summary>
+    public static readonly IReadOnlyCollection<string> OperationSections =
+        new HashSet<string> { "operacao", "guia-como-configurar", "guia-perguntas", "guia-regras", "guia-como-funciona" };
+
+    /// <summary>Pergunta de operação: reforça o projeto da plataforma e as seções de "como fazer".</summary>
+    private static (IReadOnlyCollection<string> Projects, IReadOnlyCollection<string>? Sections) Boosts(string kind, List<string> projects) =>
+        kind == ArchitectureQuestionKind.Operation
+            ? (projects.Append(PlatformOperationProject).Distinct().ToList(), OperationSections)
+            : (projects, null);
 
     /// <summary>A seção principal para ler (0038): a que a IA indicou; senão a do primeiro trecho de seção escolhido.</summary>
     private static ArchitectureSuggestedSection? Suggested(List<ArchitectureSearchHit> candidates, int sectionRef, List<(int Ref, string? Reason)> refs)

@@ -29,6 +29,12 @@ public interface IKnowledgeRepository
     Task<ArchitectureSuggestion?> GetSuggestionAsync(Guid id, CancellationToken cancellationToken);
     Task<List<ArchitectureSuggestion>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken);
 
+    // Perguntas do "Pergunte" (0040)
+    void AddQuestion(ArchitectureQuestion question);
+    Task<ArchitectureQuestion?> GetQuestionByNormalizedAsync(string normalized, CancellationToken cancellationToken);
+    Task<ArchitectureQuestion?> GetQuestionAsync(Guid id, CancellationToken cancellationToken);
+    Task<List<ArchitectureQuestion>> GetQuestionsAsync(string? status, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 

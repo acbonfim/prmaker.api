@@ -76,7 +76,7 @@ public class ArchitectureGuideService(IAIService ai, IArchitectureApplication ar
         }
 
         var hits = await architecture.SearchAsync($"{project.DisplayName ?? project.Name} {string.Join(" ", project.Keywords.Take(6))}", 12, null,
-            [project.Key], cancellationToken);
+            [project.Key], null, cancellationToken);
         foreach (var number in hits.Where(h => h.ArticleNumber is not null).Select(h => h.ArticleNumber!.Value).Distinct().Take(3))
         {
             var article = await knowledge.GetArticleAsync(number, cancellationToken);
