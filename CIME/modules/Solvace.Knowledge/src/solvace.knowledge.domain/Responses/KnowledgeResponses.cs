@@ -51,6 +51,8 @@ public class ArchitectureSectionSummaryResponse
     public int Order { get; set; }
     public int Version { get; set; }
     public string Source { get; set; } = string.Empty;
+    /// <summary>llm | human (0038).</summary>
+    public string Audience { get; set; } = "llm";
     public int Length { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public string UpdatedBy { get; set; } = string.Empty;
@@ -74,6 +76,10 @@ public class ArchitectureProjectResponse
     public string? SourceBranch { get; set; }
     public DateTimeOffset? SourceMappedAt { get; set; }
     public int Order { get; set; }
+    /// <summary>0038: nome, frase e área para pessoas (fora do espelho das skills).</summary>
+    public string? DisplayName { get; set; }
+    public string? Tagline { get; set; }
+    public string? BusinessArea { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public string UpdatedBy { get; set; } = string.Empty;
     public List<ArchitectureSectionSummaryResponse> Sections { get; set; } = [];

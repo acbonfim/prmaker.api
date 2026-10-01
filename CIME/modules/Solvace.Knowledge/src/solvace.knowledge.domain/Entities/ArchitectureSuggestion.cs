@@ -18,7 +18,8 @@ public class ArchitectureSuggestion
     public Guid Id { get; private set; }
     public string ProjectKey { get; private set; } = string.Empty;
     public string? SectionKey { get; private set; }
-    /// <summary>learning (aprendizado da análise) | divergence (base diferente do código) | other.</summary>
+    /// <summary>learning (aprendizado da análise) | divergence (base diferente do código) | gap (lacuna: a base não
+    /// cobre o assunto e precisa analisar o código — 0038) | other.</summary>
     public string Kind { get; private set; } = "other";
     public string Content { get; private set; } = string.Empty;
     public string? CardNumber { get; private set; }
@@ -39,7 +40,7 @@ public class ArchitectureSuggestion
         Id = Guid.NewGuid();
         ProjectKey = ArchitectureProject.NormalizeKey(projectKey);
         SectionKey = string.IsNullOrWhiteSpace(sectionKey) ? null : ArchitectureProject.NormalizeKey(sectionKey);
-        Kind = (kind ?? "other").Trim().ToLowerInvariant() is "learning" or "divergence" ? kind!.Trim().ToLowerInvariant() : "other";
+        Kind = (kind ?? "other").Trim().ToLowerInvariant() is "learning" or "divergence" or "gap" ? kind!.Trim().ToLowerInvariant() : "other";
         Content = text;
         CardNumber = string.IsNullOrWhiteSpace(cardNumber) ? null : cardNumber.Trim();
         CreatedBy = actor;

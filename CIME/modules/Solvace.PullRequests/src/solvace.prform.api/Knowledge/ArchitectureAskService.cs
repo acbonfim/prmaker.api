@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using solvace.ai.application.Contract;
 using solvace.knowledge.application.Contracts;
+using solvace.knowledge.domain.Filtering;
 using solvace.knowledge.domain.Responses;
 
 namespace solvace.prform.Knowledge;
@@ -20,8 +21,11 @@ public class ArchitectureAskRequest
 /// 3) a IA escolhe, entre os candidatos, os trechos que respondem e explica por quê, com uma resposta curta.
 /// Sem IA configurada (plugin AI Configurations), devolve só a busca no conteúdo.
 /// </summary>
-public class ArchitectureAskService(IAIService ai, IArchitectureApplication architecture, ArchitectureChatService chat)
+public class ArchitectureAskService(IAIService ai, IArchitectureApplication architecture, ArchitectureChatService chat, IKnowledgeApplication knowledge)
 {
+    private const int DeepBudget = 60_000;
+    private const int DeepPerSection = 14_000;
+    private const int DeepSections = 10;
     public const int MaxQuestionChars = 600;
     private const int CatalogChars = 14_000;
     private const int Candidates = 14;
@@ -69,6 +73,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             if (candidates.Count == 0)
             {
                 response.AiUsed = true;
+                response.Coverage = ArchitectureCoverage.NotFound;
                 response.Answer = "Não encontrei nada na Base Solvace sobre isso. Talvez o assunto ainda não esteja documentado — vale sugerir à base (skill base-solvace) ou consultar o código.";
                 return response;
             }
@@ -77,7 +82,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var pick = new StringBuilder()
                 .AppendLine("Você é o especialista da Base Solvace. Responda à PERGUNTA usando SÓ os TRECHOS numerados abaixo (não invente).")
                 .AppendLine("Devolva SÓ um JSON, sem texto fora dele:")
-                .AppendLine("{\"answer\": \"resposta curta em português (2 a 4 frases), citando os trechos como [n]; se os trechos não respondem, diga isso\", \"results\": [{\"ref\": n, \"reason\": \"por que este trecho responde (1 frase)\"}]}")
+                .AppendLine("{\"answer\": \"resposta curta em português simples (2 a 4 frases), para quem não programa, citando os trechos como [n]; se os trechos não respondem, diga isso\", \"coverage\": \"answered (os trechos respondem) | partial (respondem em parte) | not-found (não respondem)\", \"section\": n do trecho cuja seção é a melhor para ler sobre o assunto (ou 0), \"results\": [{\"ref\": n, \"reason\": \"por que este trecho responde (1 frase)\"}]}")
                 .AppendLine($"Inclua em results só os trechos que ajudam de verdade, do mais útil para o menos útil, no máximo {MaxResults}.")
                 .AppendLine()
                 .AppendLine("PERGUNTA: " + q)
@@ -93,9 +98,11 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             if (second is null || !string.IsNullOrWhiteSpace(second.Error) || string.IsNullOrWhiteSpace(second.Content))
                 throw new InvalidOperationException(second?.Error ?? "O provedor de IA não respondeu.");
 
-            var (answer, refs) = ParsePick(second.Content);
+            var (answer, refs, coverage, sectionRef) = ParsePick(second.Content);
             response.AiUsed = true;
             response.Answer = answer;
+            response.Coverage = coverage;
+            response.SuggestedSection = Suggested(candidates, sectionRef, refs);
             response.Results = refs
                 .Where(r => r.Ref >= 1 && r.Ref <= candidates.Count)
                 .DistinctBy(r => r.Ref)
@@ -114,6 +121,121 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         }
     }
 
+    /// <summary>
+    /// "Analisar a fundo" (0038): quando a base não cobre bem a pergunta, a IA lê as SEÇÕES INTEIRAS dos projetos
+    /// prováveis (não só os trechos) e os artigos do KC, responde o que dá e propõe a seção que documenta o assunto.
+    /// Se a documentação não basta, diz o que confirmar no código (vira sugestão do tipo lacuna). Nada é gravado.
+    /// </summary>
+    public async Task<ArchitectureDeepAnswerResponse> DeepAsync(string question, CancellationToken cancellationToken)
+    {
+        var q = (question ?? string.Empty).Trim();
+        if (q.Length < 3) throw new solvace.knowledge.domain.Entities.DomainException("Escreva a pergunta.");
+        if (q.Length > MaxQuestionChars) q = q[..MaxQuestionChars];
+        var response = new ArchitectureDeepAnswerResponse { Question = q };
+        var status = await chat.GetStatusAsync(cancellationToken);
+        if (!status.Available)
+        {
+            response.AiUnavailableReason = status.Reason ?? "IA não configurada.";
+            return response;
+        }
+
+        try
+        {
+            var catalog = await architecture.BuildCatalogAsync(CatalogChars, cancellationToken);
+            var plan = new StringBuilder()
+                .AppendLine("Você ajuda a encontrar documentação na Base Solvace (engenharia reversa dos sistemas Solvace e regras de negócio do Knowledge Center).")
+                .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON: {\"terms\": [até 14 termos de busca — sinônimos PT/EN, nomes técnicos prováveis], \"projects\": [chaves de até 4 projetos mais prováveis]}")
+                .AppendLine().AppendLine("PERGUNTA: " + q).AppendLine().AppendLine("CATÁLOGO:").AppendLine(catalog);
+            var (planContent, provider, model) = await ArchitectureAi.GenerateAsync(ai, plan.ToString(), cancellationToken);
+            response.Provider = provider;
+            response.Model = model;
+            var (terms, projects) = ParsePlan(planContent);
+            var candidates = await architecture.SearchAsync(q, 20, terms, projects, cancellationToken);
+
+            // Seções a ler inteiras: as que tiveram trechos, depois as dos projetos prováveis.
+            var targets = candidates.Where(h => h.Type == "section" && h.ProjectKey is not null && h.SectionKey is not null)
+                .Select(h => (h.ProjectKey!, h.SectionKey!)).ToList();
+            foreach (var key in projects.Concat(candidates.Where(h => h.ProjectKey is not null).Select(h => h.ProjectKey!)).Distinct().Take(4))
+            {
+                try
+                {
+                    var project = await architecture.GetProjectAsync(key, cancellationToken);
+                    targets.AddRange(project.Sections.OrderBy(s => s.Order).Select(s => (project.Key, s.Key)));
+                }
+                catch (solvace.knowledge.domain.Entities.KnowledgeNotFoundException) { }
+            }
+
+            var material = new StringBuilder();
+            foreach (var (projectKey, sectionKey) in targets.Distinct().Take(DeepSections))
+            {
+                if (material.Length >= DeepBudget) break;
+                var section = await architecture.GetSectionAsync(projectKey, sectionKey, cancellationToken);
+                material.AppendLine($"## {projectKey}/{section.Key} — {section.Title}{(section.Audience == "human" ? " (Guia)" : "")}")
+                    .AppendLine(ArchitectureAi.Cut(section.Content, Math.Min(DeepPerSection, DeepBudget - material.Length))).AppendLine();
+                response.SourcesRead.Add($"{projectKey}/{section.Key}");
+            }
+            foreach (var number in candidates.Where(h => h.ArticleNumber is not null).Select(h => h.ArticleNumber!.Value).Distinct().Take(3))
+            {
+                var article = await knowledge.GetArticleAsync(number, cancellationToken);
+                material.AppendLine($"## Knowledge Center ART-{article.ArticleNumber} — {article.Title}").AppendLine(ArchitectureAi.Cut(article.Content, 4_000)).AppendLine();
+                response.SourcesRead.Add($"ART-{article.ArticleNumber}");
+            }
+
+            var prompt = new StringBuilder()
+                .AppendLine("Você é o especialista da Base Solvace. Responda à PERGUNTA usando SÓ o MATERIAL abaixo (seções inteiras da base e artigos do Knowledge Center) — não invente.")
+                .AppendLine("Depois proponha a seção que deixaria esse assunto bem documentado na base: um projeto do CATÁLOGO, uma chave (minúsculas com hífen; use uma seção existente do projeto se o assunto cabe nela, ou uma nova), o título e o texto COMPLETO da seção proposta em markdown.")
+                .AppendLine("Público: human (Guia, linguagem simples) quando a pergunta é de uso/regra de negócio, como as de QA, gestores e suporte; llm (técnico) quando é de implementação. Para human: " + solvace.knowledge.domain.Entities.ArchitectureGuideTemplate.WritingRules.Replace("\n", " "))
+                .AppendLine("O que o material não confirma fica como \"a confirmar\" no texto, e você diz no bloco CODIGO o que olhar no código para confirmar (telas, serviços, tabelas, configurações prováveis). Se o material basta, não devolva o bloco CODIGO.")
+                .AppendLine()
+                .AppendLine("Devolva sem texto fora dos blocos:")
+                .AppendLine(ArchitectureBlocks.Format("RESPOSTA", "cobertura").Replace("...", "answered | partial | not-found"))
+                .AppendLine(ArchitectureBlocks.Format("SECAO", "projeto", "chave", "titulo", "publico", "motivo"))
+                .AppendLine("<<<CODIGO\n(o que confirmar no código)\nCODIGO>>>")
+                .AppendLine().AppendLine("PERGUNTA: " + q)
+                .AppendLine().AppendLine("## CATÁLOGO").AppendLine(ArchitectureAi.Cut(catalog, 8_000))
+                .AppendLine().AppendLine("## MATERIAL").AppendLine(material.Length == 0 ? "(nada encontrado na base)" : material.ToString());
+            var (content, provider2, model2) = await ArchitectureAi.GenerateAsync(ai, prompt.ToString(), cancellationToken);
+            response.Provider = provider2;
+            response.Model = model2;
+            var known = (await architecture.ListProjectsAsync(cancellationToken)).Select(p => p.Key).ToHashSet();
+            ApplyDeep(response, content, known);
+        }
+        catch (Exception e) when (e is InvalidOperationException or JsonException or HttpRequestException)
+        {
+            response.AiUnavailableReason = $"A IA não respondeu ({e.Message}).";
+        }
+        return response;
+    }
+
+    public static void ApplyDeep(ArchitectureDeepAnswerResponse response, string content, IReadOnlySet<string> knownProjects)
+    {
+        var answer = ArchitectureBlocks.First(content, "RESPOSTA");
+        if (answer is not null)
+        {
+            response.Answer = answer.Body.Length > 0 ? answer.Body : null;
+            response.Coverage = ArchitectureCoverage.Normalize(answer.Field("cobertura"));
+        }
+        var section = ArchitectureBlocks.First(content, "SECAO");
+        if (section is not null && section.Body.Length > 0)
+        {
+            var project = section.Field("projeto")?.Trim().ToLowerInvariant() ?? string.Empty;
+            var key = section.Field("chave")?.Trim().ToLowerInvariant();
+            response.Proposal = new ArchitectureSectionProposal
+            {
+                ProjectKey = knownProjects.Contains(project) ? project : string.Empty,
+                SectionKey = string.IsNullOrWhiteSpace(key) ? null : key,
+                Audience = section.Field("publico")?.Trim().ToLowerInvariant() is "human" or "guia" ? "human" : "llm",
+                Title = section.Field("titulo") ?? response.Question,
+                Content = section.Body,
+                Reason = section.Field("motivo")
+            };
+        }
+        var code = ArchitectureBlocks.First(content, "CODIGO");
+        var hints = code is null ? null : string.Join("\n", code.Fields.Select(f => $"{f.Key}: {f.Value}").Append(code.Body)).Trim();
+        response.NeedsCodeAnalysis = !string.IsNullOrWhiteSpace(hints) || response.Coverage == ArchitectureCoverage.NotFound;
+        response.CodeHints = string.IsNullOrWhiteSpace(hints) ? null : hints;
+    }
+
     private static (List<string> Terms, List<string> Projects) ParsePlan(string content)
     {
         using var doc = JsonDocument.Parse(ExtractJson(content));
@@ -121,11 +243,29 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         return (Strings(root, "terms", 14, 60), Strings(root, "projects", 4, 100));
     }
 
-    private static (string? Answer, List<(int Ref, string? Reason)> Refs) ParsePick(string content)
+    /// <summary>A seção principal para ler (0038): a que a IA indicou; senão a do primeiro trecho de seção escolhido.</summary>
+    private static ArchitectureSuggestedSection? Suggested(List<ArchitectureSearchHit> candidates, int sectionRef, List<(int Ref, string? Reason)> refs)
+    {
+        var pick = sectionRef >= 1 && sectionRef <= candidates.Count && candidates[sectionRef - 1].Type == "section" ? candidates[sectionRef - 1]
+            : refs.Where(r => r.Ref >= 1 && r.Ref <= candidates.Count).Select(r => candidates[r.Ref - 1]).FirstOrDefault(h => h.Type == "section");
+        if (pick?.ProjectKey is null || pick.SectionKey is null) return null;
+        var reason = refs.FirstOrDefault(r => r.Ref >= 1 && r.Ref <= candidates.Count && candidates[r.Ref - 1] == pick).Reason;
+        return new ArchitectureSuggestedSection
+        {
+            ProjectKey = pick.ProjectKey, SectionKey = pick.SectionKey, Heading = pick.Heading,
+            Title = $"{pick.ProjectName} › {pick.SectionTitle}", Reason = reason
+        };
+    }
+
+    private static (string? Answer, List<(int Ref, string? Reason)> Refs, string Coverage, int Section) ParsePick(string content)
     {
         using var doc = JsonDocument.Parse(ExtractJson(content));
         var root = doc.RootElement;
         var answer = root.TryGetProperty("answer", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() : null;
+        var coverage = ArchitectureCoverage.Normalize(root.TryGetProperty("coverage", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null);
+        var section = root.TryGetProperty("section", out var sec)
+            ? sec.ValueKind == JsonValueKind.Number ? sec.GetInt32() : int.TryParse(sec.ValueKind == JsonValueKind.String ? sec.GetString() : null, out var sn) ? sn : 0
+            : 0;
         var refs = new List<(int, string?)>();
         if (root.TryGetProperty("results", out var list) && list.ValueKind == JsonValueKind.Array)
             foreach (var item in list.EnumerateArray())
@@ -135,7 +275,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
                 var reason = item.TryGetProperty("reason", out var why) && why.ValueKind == JsonValueKind.String ? why.GetString() : null;
                 refs.Add((n, reason));
             }
-        return (answer?.Trim(), refs);
+        return (answer?.Trim(), refs, coverage, section);
     }
 
     private static List<string> Strings(JsonElement root, string name, int max, int maxLength) =>

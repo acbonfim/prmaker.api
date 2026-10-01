@@ -96,7 +96,7 @@ public static partial class ArchitectureSearch
                 var (snippet, heading) = Snippet(section.Content, text, headings, firstPos);
                 hits.Add(new ArchitectureSearchHit
                 {
-                    Type = "section", ProjectKey = project.Key, ProjectName = project.Name, SectionKey = section.Key, SectionTitle = section.Title,
+                    Type = "section", ProjectKey = project.Key, ProjectName = project.Name, SectionKey = section.Key, SectionTitle = section.Title, Audience = section.Audience,
                     Title = $"{project.Name} — {section.Title}", Heading = heading, Snippet = snippet,
                     Score = Math.Round(score * Math.Pow(coverage, 1.5) * boost, 2), Matched = matched
                 });

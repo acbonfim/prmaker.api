@@ -55,6 +55,14 @@ repro steps, root cause, comentários, histórico), o PR/RCA salvo no PRMake, a 
 por quê, técnico ou guia). A pessoa revisa, edita e envia para a fila de sugestões (com o número do card) — o admin
 incorpora como hoje. Se o card já tem sugestão (automática, da skill), a tela avisa e mostra quais.
 
+**6. "Pergunte" que aponta a seção e cobre lacunas.** Ex.: *"O usuário consegue fazer login com sua senha, ou somente
+com SSO?"* → a resposta diz se a base cobre o assunto (`answered`/`partial`/`not-found`) e aponta a seção principal para
+ler. Sem cobertura: "Analisar a fundo e propor uma seção" — a IA lê as seções inteiras dos projetos prováveis (não só
+trechos) e os artigos do KC, responde o que dá e propõe a seção nova (projeto, chave, público, texto). A pessoa envia
+como sugestão; quando a documentação não basta, a sugestão vai como **lacuna** (`gap`) com o que confirmar no código —
+o admin resolve com a skill `base-solvace` (`arch.sh lacunas` → analisa o código → publica a seção). Admin pode criar
+a seção na hora.
+
 ## Contrato (backend)
 
 - `ArchitectureSection.Audience` (`llm` | `human`); `PUT .../sections/{key}` aceita `audience` (null mantém; seção
@@ -67,6 +75,10 @@ incorpora como hoje. Se o card já tem sugestão (automática, da skill), a tela
   sources:[…], existing:[sugestões do card], proposals:[{projectKey, sectionKey, audience, title, content, reason}],
   provider, model, aiUnavailableReason}` — não grava; a tela envia cada proposta aceita por `POST suggestions`.
 - Chat de melhoria: seção `human` usa a persona de redator para leigos.
+- `POST ask` ganha `coverage` (`answered`|`partial`|`not-found`|`unknown`) e `suggestedSection {projectKey, sectionKey,
+  heading, title, reason}`. Novo `POST ask/deep` (logado) `{question}` → `{answer, coverage, proposal {projectKey,
+  sectionKey, title, audience, content, reason}, needsCodeAnalysis, codeHints, sourcesRead}` — não grava.
+- Sugestão ganha o tipo `gap` (lacuna: precisa analisar o código).
 
 ## Fases
 
@@ -76,15 +88,18 @@ incorpora como hoje. Se o card já tem sugestão (automática, da skill), a tela
 | **B2** | Dados amigáveis do projeto: domínio + migração `AddProjectFriendly` + request/response (fora do export/hash). | — |
 | **B3** | `POST projects/{key}/guide` (IA, admin, não grava). | B1, B2 |
 | **B4** | `POST learn-from-card` (IA, logado, não grava) juntando DevOps, PR/RCA, Timeline, planos e sugestões existentes. | B1 |
+| **B5** | "Pergunte" com cobertura + seção sugerida; `POST ask/deep` (lê seções inteiras e propõe a seção); sugestão `gap`. | B1 |
 | **F1** | Modo Simples × Técnico; ficha amigável (cabeçalho em chips, Guia em abas, "Com quem conversa" em frases, técnico recolhido, sem chaves/commit/tokens); sumário da seção; artigo do KC formatado. | B1, B2 |
 | **F2** | Visão geral para leigos: catálogo por área de negócio (nome amigável + frase), "Como o Solvace funciona", glossário; mapa simplificado (vizinhança do projeto, rótulos em português). | F1 |
 | **F3** | Admin: "Gerar guia com a IA" (revisar/aplicar por seção), editor com público, dados amigáveis no "Dados do projeto", template com o Guia. | B3, F1 |
 | **F4** | "Aprender com um card": diálogo (número → resumo do que foi feito, sugestões já existentes, propostas editáveis com projeto/seção/público) → enviar para a fila. | B4 |
-| **S1** | Skill `base-solvace`: template do Guia (tom e regras), `arch.sh section --audience`, `publicar-pasta` reconhece `5NN-guia-*.md`, `arch.sh learn <card>` (chama o endpoint e mostra as propostas). `analisar-bug` não muda (o espelho não traz o Guia). | B1, B4 |
+| **F5** | "Leia a seção" em destaque; cartão "a base ainda não cobre" → analisar a fundo → proposta editável → sugestão (`gap`/`learning`) ou (admin) criar a seção. | B5 |
+| **S1** | Skill `base-solvace`: template do Guia (tom e regras), `arch.sh section --audience`, `publicar-pasta` reconhece `5NN-guia-*.md`, `arch.sh learn <card>` (chama o endpoint e mostra as propostas), `arch.sh lacunas` (sugestões `gap` para o admin
+analisar o código e publicar a seção). `analisar-bug` não muda (o espelho não traz o Guia). | B1, B4 |
 | **Q1** | Teste local (Postgres isolado, base semeada com o espelho): hash/índice iguais com guia novo; `kb.sh index` igual; tela Simples/Técnico; gerar guia e aprender com card (IA real se houver plugin no banco isolado, senão o caminho sem IA). | todas |
 | **G1** | Carga inicial dos guias no parque (produção): pelos projetos mais usados, via botão ou skill — **depende de autorização** (escreve na base de produção). | deploy |
 
-**Ondas:** 1 = B1 ‖ B2 ‖ S1(template) · 2 = B3 ‖ B4 ‖ F1 · 3 = F2 ‖ F3 ‖ F4 ‖ S1(learn) · 4 = Q1 → PRs.
+**Ondas:** 1 = B1 ‖ B2 ‖ S1(template) · 2 = B3 ‖ B4 ‖ B5 ‖ F1 · 3 = F2 ‖ F3 ‖ F4 ‖ F5 ‖ S1(learn/lacunas) · 4 = Q1 → PRs.
 
 ## Decisões (assumidas — dá para trocar)
 - **D1** Modo Simples é o padrão para todos; Técnico a um clique (lembrado no navegador).

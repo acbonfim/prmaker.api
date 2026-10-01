@@ -16,7 +16,8 @@ namespace solvace.prform.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
 public class ArchitectureController(IArchitectureApplication application, solvace.timeline.application.Contracts.IUserRepository users,
-    solvace.prform.Knowledge.ArchitectureChatService chat, solvace.prform.Knowledge.ArchitectureAskService ask) : ControllerBase
+    solvace.prform.Knowledge.ArchitectureChatService chat, solvace.prform.Knowledge.ArchitectureAskService ask,
+    solvace.prform.Knowledge.ArchitectureGuideService guide, solvace.prform.Knowledge.ArchitectureLearnService learn) : ControllerBase
 {
     public const string HashHeader = "X-Kb-Hash";
 
@@ -128,6 +129,27 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     [HttpPost("ask")]
     public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
         Run<ArchitectureAskResponse>(async () => Ok(await ask.AskAsync(request.Question, ct)));
+
+    /// <summary>"Analisar a fundo" (0038): lê as seções inteiras dos projetos prováveis e propõe a seção que documenta o assunto (não grava).</summary>
+    [HttpPost("ask/deep")]
+    public Task<ActionResult<ArchitectureDeepAnswerResponse>> AskDeep([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
+        Run<ArchitectureDeepAnswerResponse>(async () => Ok(await ask.DeepAsync(request.Question, ct)));
+
+    /// <summary>"Gerar guia com a IA" (0038): propõe o Guia do projeto em linguagem simples + nome/frase/área (não grava).</summary>
+    [Authorize(Roles = "admin")]
+    [HttpPost("projects/{key}/guide")]
+    public Task<ActionResult<ArchitectureGuideResponse>> Guide([FromRoute] string key, [FromBody] solvace.prform.Knowledge.ArchitectureGuideRequest? request, CancellationToken ct) =>
+        Run<ArchitectureGuideResponse>(async () =>
+        {
+            try { return Ok(await guide.GenerateAsync(key, request ?? new(), ct)); }
+            catch (solvace.prform.Knowledge.ArchitectureAiUnavailableException e) { return Conflict(new { error = e.Message }); }
+            catch (InvalidOperationException e) { return StatusCode(StatusCodes.Status502BadGateway, new { error = e.Message }); }
+        });
+
+    /// <summary>"Aprender com um card" (0038): junta o que foi feito no card e propõe aprendizados (não grava — a tela envia para a fila).</summary>
+    [HttpPost("learn-from-card")]
+    public Task<ActionResult<LearnFromCardResponse>> LearnFromCard([FromBody] solvace.prform.Knowledge.LearnFromCardRequest request, CancellationToken ct) =>
+        Run<LearnFromCardResponse>(async () => Ok(await learn.LearnAsync(request, ct)));
 
     private Task<string> ActorAsync(CancellationToken ct) => KnowledgeController.ActorAsync(users, User, ct);
 
