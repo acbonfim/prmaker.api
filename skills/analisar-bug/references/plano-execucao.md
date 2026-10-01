@@ -125,3 +125,21 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
+
+## Executor do PRMake e MCP (0039)
+- **Quem abre a sessao**: o `prmake-agent` (servico na maquina do usuario) quando alguem clica em "Analisar com Claude"/
+  "Continuar com Claude", responde pela tela, conclui uma etapa dele, resolve um chamado, um PR e mesclado ou a regra
+  automatica do DevOps pede. O ambiente traz `PRMAKE_EXECUTOR=1`, `PRMAKE_CARD` e `PRMAKE_REQUEST_ID`.
+- **Encerrar a vez e o normal**: com algo pendente de fora, registre no plano (pergunta, `block`, etapa `waiting` com o
+  motivo) e termine. `watch`, `wait` e `wait-answers` nao esperam (exit 12) — o PRMake cria o proximo pedido e retoma
+  esta sessao (`claude --resume`) quando houver trabalho. Pausa pela tela por mais de 10 min encerra o processo; o
+  "Continuar" retoma. Cancelar pela tela mata o processo na hora.
+- **Sem prompt de permissao**: merge/aprovacao de PR, push forcado ou em branch protegida, escrita em banco/Cognito sao
+  bloqueados pelo executor (o comando volta com "Bloqueado pelo executor do PRMake") — registre no plano o que precisa
+  de uma pessoa e siga.
+- **Worktree por card**: `WT="$(bash $PLAN worktree <card> <pasta-do-repo> <branch> <base>)"` cria
+  `<pasta-do-repo>/../.prmake-wt/<card>/<repo>`; trabalhe com `git -C "$WT" ...` e caminhos absolutos dentro de `$WT`.
+  O executor remove o worktree 7 dias depois que o plano termina. Fora do executor: `PRMAKE_WORKTREE=1` faz o mesmo.
+- **MCP** (`mcp__prmake__*`): `prmake_plan`, `prmake_steps`, `prmake_step`, `prmake_log`, `prmake_control`,
+  `prmake_plan_status`, `prmake_ask`, `prmake_answers`, `prmake_notes`, `prmake_attachment`, `prmake_timeline`,
+  `prmake_devops`, `prmake_queue`. Mesmo efeito do script no PRMake; `phase` escolhe analise/correcao.

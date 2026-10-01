@@ -53,8 +53,16 @@ bash $PLAN status <card> completed "" <resumo.md>
 
 ## Regras que valem sempre
 - **Plano de execucao obrigatorio**: tudo o que voce produz vai para o plano em pedacos; `control` entre etapas;
-  nunca encerre a vez com algo pendente de fora sem o vigia (`watch` **em segundo plano**). O PRMake escreve sozinho
-  os marcos na Timeline — nao duplique.
+  nunca encerre a vez com algo pendente de fora sem o vigia (`watch` **em segundo plano**), exceto no modo executor.
+  O PRMake escreve sozinho os marcos na Timeline — nao duplique.
+- **Modo executor (`PRMAKE_EXECUTOR=1`: sessao aberta pelo PRMake, sem terminal)**: ninguem le esta sessao. Nada de
+  `watch`/`wait`/`wait-answers` (saem com exit 12) nem pergunta no chat: o que depende de alguem vai para o plano
+  (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir.
+  Correcao sempre no worktree do card (o `branches` ja imprime os comandos com `$WT`). Detalhes: `$REF plano executor`.
+- **MCP do PRMake**: com as ferramentas `mcp__prmake__*` disponiveis, use-as no lugar do script para plano, etapas,
+  log, control, perguntas, comentarios, anexos (`prmake_attachment` ja devolve a imagem), Timeline e DevOps (menos
+  tokens). Continuam no script: `contexto`, `advance`, `block`, `sync`/`upload`, `branches`, `worktree`, `pr-text`/
+  `save-pr-text`/`open-pr`, `settings`, `devops <card> config` e a fila offline.
 - **Pendencia do usuario sempre evidente no PRMake**: etapa sua travada por algo que so o usuario resolve (o Claude
   Code barrou o comando — permissao/auto mode —, VPN desligada, credencial ausente, acesso negado) → **na hora**
   `bash $PLAN block <card> <key> "<o que ele precisa fazer: o que liberar, o comando exato e a alternativa>"`, diga o
@@ -131,8 +139,8 @@ causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo 
 Sessao do Claude Code fica registrada no plano. Para voltar exatamente a esta conversa depois (outro card no
 meio, sessao fechada): `bash ~/.claude/skills/analisar-bug/scripts/prmake-card.sh <card>` (o botao "Retomar no
 Claude" do PRMake copia esse comando). Ao ser retomado, rode `resume-info` e `notes` (o que mudou na tela enquanto
-estava parado) e siga de onde parou. Vigia opcional que retoma sozinho quando as respostas chegam pela tela:
-`prmake-card.sh agent install`.
+estava parado) e siga de onde parou. Para o PRMake rodar e retomar sozinho (botao "Analisar com Claude", respostas
+pela tela) sem terminal: executor do PRMake — `bash ~/.claude/skills/.prmake/prmake-skills.sh agent install`.
 
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
 | Quando | Comando |
