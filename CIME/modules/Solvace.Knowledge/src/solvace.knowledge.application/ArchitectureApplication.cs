@@ -205,13 +205,53 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     }
 
     public async Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
-        IReadOnlyCollection<string>? boostProjects, CancellationToken cancellationToken)
+        IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, CancellationToken cancellationToken)
     {
         var terms = ArchitectureSearch.Terms(query, extraTerms);
         if (terms.Count == 0) return [];
         var (projects, articles, _) = await LoadAllAsync(cancellationToken);
-        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects);
+        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections);
     }
+
+    // ── Perguntas do "Pergunte" (0040) ──────────────────────────────────────────────────────────
+
+    public async Task RecordQuestionAsync(string text, string? kind, string? coverage, string? suggestedProject, string? suggestedSection,
+        string actor, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var normalized = ArchitectureQuestion.NormalizeText(text);
+        if (normalized.Length < 3) return;
+        var question = await repository.GetQuestionByNormalizedAsync(normalized, cancellationToken);
+        if (question is null)
+        {
+            question = new ArchitectureQuestion(text, actor, now);
+            repository.AddQuestion(question);
+        }
+        question.Asked(kind, coverage, suggestedProject, suggestedSection, actor, now);
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<List<ArchitectureQuestionResponse>> GetQuestionsAsync(string? status, bool gapsOnly, CancellationToken cancellationToken) =>
+        (await repository.GetQuestionsAsync(string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToLowerInvariant(), cancellationToken))
+            .Where(q => !gapsOnly || q.IsGap)
+            .OrderByDescending(q => q.Times).ThenByDescending(q => q.LastAskedAt)
+            .Select(ToQuestion).ToList();
+
+    public async Task<ArchitectureQuestionResponse> ResolveQuestionAsync(Guid id, ResolveArchitectureQuestionRequest request, string actor, CancellationToken cancellationToken)
+    {
+        var question = await repository.GetQuestionAsync(id, cancellationToken) ?? throw new KnowledgeNotFoundException("Pergunta não encontrada.");
+        question.Resolve(request.Status, request.ProjectKey, request.SectionKey, request.Note, actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToQuestion(question);
+    }
+
+    private static ArchitectureQuestionResponse ToQuestion(ArchitectureQuestion q) => new()
+    {
+        Id = q.Id, Text = q.Text, Kind = q.Kind, Coverage = q.Coverage, SuggestedProject = q.SuggestedProject, SuggestedSection = q.SuggestedSection,
+        Times = q.Times, FirstAskedAt = q.FirstAskedAt, FirstAskedBy = q.FirstAskedBy, LastAskedAt = q.LastAskedAt, LastAskedBy = q.LastAskedBy,
+        Status = q.Status, AnsweredProject = q.AnsweredProject, AnsweredSection = q.AnsweredSection, ResolvedBy = q.ResolvedBy,
+        ResolvedAt = q.ResolvedAt, Note = q.Note
+    };
 
     public async Task<string> BuildCatalogAsync(int maxChars, CancellationToken cancellationToken)
     {

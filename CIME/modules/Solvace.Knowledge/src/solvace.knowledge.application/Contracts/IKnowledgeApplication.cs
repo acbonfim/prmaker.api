@@ -30,6 +30,7 @@ public interface IArchitectureApplication
     /// IA sugeriu para uma pergunta); <paramref name="boostProjects"/>: projetos que sobem no ranking.
     /// </summary>
     Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms, IReadOnlyCollection<string>? boostProjects,
+        IReadOnlyCollection<string>? boostSections,
         CancellationToken cancellationToken);
 
     /// <summary>Catálogo compacto (projetos e títulos das seções) para a IA entender o que existe na base.</summary>
@@ -40,4 +41,10 @@ public interface IArchitectureApplication
     Task<ArchitectureSuggestionResponse> SuggestAsync(CreateArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken);
     Task<List<ArchitectureSuggestionResponse>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken);
     Task<ArchitectureSuggestionResponse> ResolveSuggestionAsync(Guid id, ResolveArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken);
+
+    // 0040 — perguntas do "Pergunte"
+    Task RecordQuestionAsync(string text, string? kind, string? coverage, string? suggestedProject, string? suggestedSection, string actor, CancellationToken cancellationToken);
+    /// <param name="status">open | answered | dismissed | null (todas); gapsOnly = só not-found/partial.</param>
+    Task<List<ArchitectureQuestionResponse>> GetQuestionsAsync(string? status, bool gapsOnly, CancellationToken cancellationToken);
+    Task<ArchitectureQuestionResponse> ResolveQuestionAsync(Guid id, ResolveArchitectureQuestionRequest request, string actor, CancellationToken cancellationToken);
 }

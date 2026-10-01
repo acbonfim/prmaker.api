@@ -16,6 +16,8 @@ public static class ArchitectureGuideTemplate
             "os fluxos principais do ponto de vista do usuário, os estados/status e o que muda em cada um, o que acontece automaticamente"),
         new("guia-regras", "Regras de negócio", 530,
             "as regras em linguagem simples (quem pode fazer o quê, prazos, aprovações, validações), citando os artigos do Knowledge Center como ART-n"),
+        new("guia-como-configurar", "Como configurar e dar acesso", 545,
+            "como habilitar o sistema na planta, quem pode configurar, onde ficam as configurações (cadastros, tipos, parâmetros, notificações), como dar acesso às pessoas e o que conferir quando algo não aparece — passo a passo pelo nome das telas"),
         new("guia-conexoes", "Com quem conversa", 540,
             "com quais outros sistemas ele se comunica e como: o que dispara cada comunicação, quem fica escutando, se é na hora ou em segundo plano (fila/evento/Lambda/rotina agendada), e-mails/notificações e o que acontece se falhar — explique cada termo técnico numa frase"),
         new("guia-como-testar", "Como testar", 550,

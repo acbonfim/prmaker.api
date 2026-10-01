@@ -15,6 +15,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
     public DbSet<ArchitectureSection> Sections { get; set; }
     public DbSet<ArchitectureSectionVersion> SectionVersions { get; set; }
     public DbSet<ArchitectureSuggestion> Suggestions { get; set; }
+    public DbSet<ArchitectureQuestion> Questions { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -123,6 +124,30 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.ResolvedBy).HasMaxLength(200);
             entity.Property(e => e.ResolutionNote).HasMaxLength(500);
             entity.HasIndex(e => new { e.Status, e.CreatedAt });
+        });
+
+        // 0040: perguntas do "Pergunte" — as sem resposta viram a fila do admin/skill.
+        modelBuilder.Entity<ArchitectureQuestion>(entity =>
+        {
+            entity.ToTable("ArchitectureQuestions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Text).IsRequired().HasMaxLength(ArchitectureQuestion.MaxTextLength);
+            entity.Property(e => e.Normalized).IsRequired().HasMaxLength(ArchitectureQuestion.MaxTextLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Coverage).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.SuggestedProject).HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.SuggestedSection).HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.FirstAskedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.LastAskedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.AnsweredProject).HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.AnsweredSection).HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.ResolvedBy).HasMaxLength(200);
+            entity.Property(e => e.Note).HasMaxLength(ArchitectureQuestion.MaxNoteLength);
+            entity.Ignore(e => e.IsGap);
+            entity.HasIndex(e => e.Normalized).IsUnique();
+            entity.HasIndex(e => new { e.Status, e.LastAskedAt });
         });
     }
 }

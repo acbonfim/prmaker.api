@@ -69,5 +69,17 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.Suggestions.AsNoTracking().Where(s => status == null || s.Status == status)
             .OrderByDescending(s => s.CreatedAt).Take(500).ToListAsync(cancellationToken);
 
+    public void AddQuestion(ArchitectureQuestion question) => context.Questions.Add(question);
+
+    public Task<ArchitectureQuestion?> GetQuestionByNormalizedAsync(string normalized, CancellationToken cancellationToken) =>
+        context.Questions.FirstOrDefaultAsync(q => q.Normalized == normalized, cancellationToken);
+
+    public Task<ArchitectureQuestion?> GetQuestionAsync(Guid id, CancellationToken cancellationToken) =>
+        context.Questions.FirstOrDefaultAsync(q => q.Id == id, cancellationToken);
+
+    public Task<List<ArchitectureQuestion>> GetQuestionsAsync(string? status, CancellationToken cancellationToken) =>
+        context.Questions.AsNoTracking().Where(q => status == null || q.Status == status)
+            .OrderByDescending(q => q.LastAskedAt).Take(1000).ToListAsync(cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) => context.SaveChangesAsync(cancellationToken);
 }

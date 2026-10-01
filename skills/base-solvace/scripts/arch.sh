@@ -26,6 +26,10 @@
 #   lacunas                                 sugestoes do tipo gap pendentes (admin): perguntas que a base nao cobre — analise o
 #                                           codigo, publique a secao e rode: resolver <id> applied
 #   resolver <id> applied|dismissed [nota]  resolve uma sugestao da fila (admin)
+#   perguntas [open|answered|all] [--todas] PERGUNTAS DO "PERGUNTE" sem resposta (admin, 0040): as mais perguntadas primeiro;
+#                                           --todas inclui as que a base ja respondia
+#   pergunta-respondida <id> <projeto> <secao> [nota]   marca a pergunta como respondida pela secao publicada
+#   pergunta-descartar <id> [nota]          descarta (fora do escopo da base)
 # Tipos: ecosystem legacy frontend integration revamp infra third-party auth business-rules other
 set -uo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
@@ -121,7 +125,9 @@ case "$CMD" in
       regras-de-negocio) echo "Regras de negócio";; armadilhas) echo "Armadilhas e bugs conhecidos";;
       guia-o-que-e) echo "O que é e para que serve";; guia-como-funciona) echo "Como funciona, passo a passo";;
       guia-regras) echo "Regras de negócio";; guia-conexoes) echo "Com quem conversa";; guia-como-testar) echo "Como testar";;
-      guia-perguntas) echo "Perguntas frequentes";; guia-glossario) echo "Glossário";; *) echo "$1";; esac; }
+      guia-perguntas) echo "Perguntas frequentes";; guia-glossario) echo "Glossário";; guia-como-configurar) echo "Como configurar e dar acesso";;
+      operacao) echo "Configuração e operação";; catalogo-modulos) echo "Catálogo de módulos e onde configurar";; parametros) echo "Parâmetros globais e de planta";;
+      *) echo "$1";; esac; }
     projects=("$@"); [[ ${#projects[@]} -gt 0 ]] || projects=($(cd "$KB" && ls -d */ 2>/dev/null | tr -d / | grep -v '^_'))
     SELF="$0"
     for key in "${projects[@]}"; do
@@ -182,9 +188,21 @@ case "$CMD" in
   lacunas)
     api GET "/suggestions?status=pending"; check
     jq -r '[.[] | select(.kind == "gap")] | if length == 0 then "nenhuma lacuna pendente" else .[] | "\(.id)  \(.projectKey)/\(.sectionKey // "-")  por \(.createdBy) em \(.createdAt[0:10])\n\(.content | split("\n") | map("    " + .) | join("\n"))\n" end' "$TMP/resp" ;;
+  perguntas)
+    ST="${1:-open}"; [[ "$ST" == --todas ]] && ST=open; GAPS=true; for a in "$@"; do [[ "$a" == --todas ]] && GAPS=false; done
+    api GET "/questions?status=$ST&gaps=$GAPS"; check
+    jq -r 'if length == 0 then "nenhuma pergunta pendente" else .[] | "\(.id)  \(.times)x  [\(.coverage)/\(.kind)]  \(.text)\n    ultima: \(.lastAskedBy) em \(.lastAskedAt[0:10])\(if .suggestedProject then " · base sugeriu \(.suggestedProject)/\(.suggestedSection // "-")" else "" end)" end' "$TMP/resp" ;;
+  pergunta-respondida|pergunta-descartar)
+    ID="${1:?id}"
+    if [[ "$CMD" == pergunta-respondida ]]; then
+      jq -n --arg p "${2:?projeto}" --arg s "${3:?secao}" --arg n "${4:-}" '{status:"answered", projectKey:$p, sectionKey:$s, note:(if $n == "" then null else $n end)}' > "$TMP/body"
+    else
+      jq -n --arg n "${2:-}" '{status:"dismissed", note:(if $n == "" then null else $n end)}' > "$TMP/body"
+    fi
+    api POST "/questions/$ID/resolve" "$TMP/body"; check; jq -r '"OK pergunta \(.id) -> \(.status)"' "$TMP/resp" ;;
   resolver)
     ID="${1:?id}"; ST="${2:?applied|dismissed}"
     jq -n --arg s "$ST" --arg n "${3:-}" '{status:$s, note:(if $n == "" then null else $n end)}' > "$TMP/body"
     api POST "/suggestions/$ID/resolve" "$TMP/body"; check; echo "OK sugestao $ID -> $ST" ;;
-  *) sed -n '2,29p' "$0"; exit 1 ;;
+  *) sed -n '2,33p' "$0"; exit 1 ;;
 esac

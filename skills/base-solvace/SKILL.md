@@ -51,5 +51,11 @@ ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | p
 - **Lacunas** (`gap`): perguntas do "Pergunte" que a base não cobre. Admin: `bash $ARCH lacunas` → analise o código
   apontado → publique a seção (`section`, com `--audience human` se for do Guia) → `bash $ARCH resolver <id> applied`.
 
+## Operação e configuração (0040)
+Perguntas de "como habilitar / dar acesso / onde configura / por que não aparece": projeto `operacao-plataforma` (vale
+para todos os módulos) e a seção `operacao` + Guia `guia-como-configurar` de cada módulo. Mapear (catálogo do menu,
+papéis e parâmetros, sem LLM) e **resolver as perguntas sem resposta do "Pergunte"** (`bash $ARCH perguntas`):
+`references/operacao.md`.
+
 ## Mapear / atualizar a engenharia reversa (admin)
 Leia `references/mapear.md` e `references/template-secoes.md` so quando for mapear ou atualizar.

@@ -38,6 +38,8 @@ public class ArchitectureAskResponse
     public string? AiUnavailableReason { get; set; }
     public string? Provider { get; set; }
     public string? Model { get; set; }
+    /// <summary>Tipo da pergunta (0040): operacao | regra | tecnica | outra (null sem IA).</summary>
+    public string? Kind { get; set; }
     /// <summary>A base cobre o assunto? answered | partial | not-found | unknown (sem IA) — 0038.</summary>
     public string Coverage { get; set; } = ArchitectureCoverage.Unknown;
     /// <summary>A seção principal para ler sobre o assunto (0038).</summary>

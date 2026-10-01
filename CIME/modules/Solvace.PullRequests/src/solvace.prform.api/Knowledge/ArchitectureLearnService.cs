@@ -129,7 +129,7 @@ public partial class ArchitectureLearnService(
         try
         {
             var catalog = await architecture.BuildCatalogAsync(10_000, cancellationToken);
-            var related = await architecture.SearchAsync($"{title} {module}", 8, null, null, cancellationToken);
+            var related = await architecture.SearchAsync($"{title} {module}", 8, null, null, null, cancellationToken);
             var prompt = new StringBuilder()
                 .AppendLine("Você é o curador da Base Solvace (engenharia reversa e regras de negócio dos sistemas Solvace, lida pelas análises de bugs e por pessoas).")
                 .AppendLine("Leia tudo o que foi feito no CARD abaixo e proponha o que vale entrar na base para que os próximos bugs parecidos sejam resolvidos mais rápido.")

@@ -136,6 +136,11 @@ public class ArchitectureGuideTests
         public void AddSuggestion(ArchitectureSuggestion suggestion) { }
         public Task<ArchitectureSuggestion?> GetSuggestionAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult<ArchitectureSuggestion?>(null);
         public Task<List<ArchitectureSuggestion>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken) => Task.FromResult(new List<ArchitectureSuggestion>());
+        private readonly List<ArchitectureQuestion> _questions = [];
+        public void AddQuestion(ArchitectureQuestion question) => _questions.Add(question);
+        public Task<ArchitectureQuestion?> GetQuestionByNormalizedAsync(string normalized, CancellationToken cancellationToken) => Task.FromResult(_questions.FirstOrDefault(q => q.Normalized == normalized));
+        public Task<ArchitectureQuestion?> GetQuestionAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(_questions.FirstOrDefault(q => q.Id == id));
+        public Task<List<ArchitectureQuestion>> GetQuestionsAsync(string? status, CancellationToken cancellationToken) => Task.FromResult(_questions.Where(q => status == null || q.Status == status).ToList());
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

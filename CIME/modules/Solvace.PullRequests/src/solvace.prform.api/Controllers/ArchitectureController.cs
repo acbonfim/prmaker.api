@@ -17,7 +17,8 @@ namespace solvace.prform.Controllers;
 [Authorize]
 public class ArchitectureController(IArchitectureApplication application, solvace.timeline.application.Contracts.IUserRepository users,
     solvace.prform.Knowledge.ArchitectureChatService chat, solvace.prform.Knowledge.ArchitectureAskService ask,
-    solvace.prform.Knowledge.ArchitectureGuideService guide, solvace.prform.Knowledge.ArchitectureLearnService learn) : ControllerBase
+    solvace.prform.Knowledge.ArchitectureGuideService guide, solvace.prform.Knowledge.ArchitectureLearnService learn,
+    ILogger<ArchitectureController> logger) : ControllerBase
 {
     public const string HashHeader = "X-Kb-Hash";
 
@@ -119,7 +120,7 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     /// <summary>Busca no conteúdo das seções e dos artigos do KC (0037) — qualquer usuário logado.</summary>
     [HttpGet("search")]
     public Task<ActionResult<List<ArchitectureSearchHit>>> Search([FromQuery] string? q, [FromQuery] int limit, CancellationToken ct) =>
-        Run<List<ArchitectureSearchHit>>(async () => Ok(await application.SearchAsync(q ?? string.Empty, limit <= 0 ? 20 : limit, null, null, ct)));
+        Run<List<ArchitectureSearchHit>>(async () => Ok(await application.SearchAsync(q ?? string.Empty, limit <= 0 ? 20 : limit, null, null, null, ct)));
 
     /// <summary>A pergunta à base com IA está disponível? (plugin AI Configurations) — 0037.</summary>
     [HttpGet("ask/status")]
@@ -128,12 +129,43 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     /// <summary>"Pergunte à Base Solvace" (0037): a IA entende a pergunta e leva aos trechos que respondem.</summary>
     [HttpPost("ask")]
     public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
-        Run<ArchitectureAskResponse>(async () => Ok(await ask.AskAsync(request.Question, ct)));
+        Run<ArchitectureAskResponse>(async () =>
+        {
+            var response = await ask.AskAsync(request.Question, ct);
+            if (response.AiUsed)
+                await RecordAsync(response.Question, response.Kind, response.Coverage, response.SuggestedSection?.ProjectKey, response.SuggestedSection?.SectionKey, ct);
+            return Ok(response);
+        });
 
     /// <summary>"Analisar a fundo" (0038): lê as seções inteiras dos projetos prováveis e propõe a seção que documenta o assunto (não grava).</summary>
     [HttpPost("ask/deep")]
     public Task<ActionResult<ArchitectureDeepAnswerResponse>> AskDeep([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
-        Run<ArchitectureDeepAnswerResponse>(async () => Ok(await ask.DeepAsync(request.Question, ct)));
+        Run<ArchitectureDeepAnswerResponse>(async () =>
+        {
+            var response = await ask.DeepAsync(request.Question, ct);
+            if (response.AiUnavailableReason is null)
+                await RecordAsync(response.Question, null, response.Coverage, response.Proposal?.ProjectKey, response.Proposal?.SectionKey, ct);
+            return Ok(response);
+        });
+
+    /// <summary>Perguntas feitas no "Pergunte" (0040): padrão = as sem resposta (not-found/partial) em aberto, mais perguntadas primeiro.</summary>
+    [Authorize(Roles = "admin")]
+    [HttpGet("questions")]
+    public Task<ActionResult<List<ArchitectureQuestionResponse>>> Questions([FromQuery] string? status = "open", [FromQuery] bool gaps = true, CancellationToken ct = default) =>
+        Run<List<ArchitectureQuestionResponse>>(async () => Ok(await application.GetQuestionsAsync(status == "all" ? null : status, gaps, ct)));
+
+    /// <summary>Marca a pergunta como respondida (com a seção que responde), descartada ou reaberta (0040).</summary>
+    [Authorize(Roles = "admin")]
+    [HttpPost("questions/{id:guid}/resolve")]
+    public Task<ActionResult<ArchitectureQuestionResponse>> ResolveQuestion([FromRoute] Guid id, [FromBody] ResolveArchitectureQuestionRequest request, CancellationToken ct) =>
+        Run<ArchitectureQuestionResponse>(async () => Ok(await application.ResolveQuestionAsync(id, request, await ActorAsync(ct), ct)));
+
+    /// <summary>Registra a pergunta sem atrapalhar a resposta (falha no registro só vai para o log).</summary>
+    private async Task RecordAsync(string question, string? kind, string? coverage, string? project, string? section, CancellationToken ct)
+    {
+        try { await application.RecordQuestionAsync(question, kind, coverage, project, section, await ActorAsync(ct), ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { logger.LogWarning(e, "Não registrei a pergunta da Base Solvace"); }
+    }
 
     /// <summary>"Gerar guia com a IA" (0038): propõe o Guia do projeto em linguagem simples + nome/frase/área (não grava).</summary>
     [Authorize(Roles = "admin")]

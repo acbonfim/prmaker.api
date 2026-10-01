@@ -63,7 +63,7 @@ public static partial class ArchitectureSearch
         word.Length > 5 && !word.Contains('_') && !word.Any(char.IsDigit) ? word[..(word.Length - 2)] : word;
 
     public static List<ArchitectureSearchHit> Run(IReadOnlyList<ArchitectureProject> projects, IReadOnlyList<KnowledgeArticle> articles,
-        IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects = null)
+        IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects = null, IReadOnlyCollection<string>? boostSections = null)
     {
         if (terms.Count == 0) return [];
         var hits = new List<ArchitectureSearchHit>();
@@ -75,6 +75,8 @@ public static partial class ArchitectureSearch
             var boost = boostProjects?.Contains(project.Key) == true ? 1.6 : 1.0;
             foreach (var section in project.Sections)
             {
+                // 0040: pergunta de operação puxa as seções de configuração/operação.
+                var sectionBoost = boostSections?.Contains(section.Key) == true ? 2.5 : 1.0;
                 var (text, headings) = Cache.GetOrAdd((section.Id, section.Version), _ => Prepare(section.Content));
                 var title = Normalize(section.Title);
                 double score = 0;
@@ -98,7 +100,7 @@ public static partial class ArchitectureSearch
                 {
                     Type = "section", ProjectKey = project.Key, ProjectName = project.Name, SectionKey = section.Key, SectionTitle = section.Title, Audience = section.Audience,
                     Title = $"{project.Name} — {section.Title}", Heading = heading, Snippet = snippet,
-                    Score = Math.Round(score * Math.Pow(coverage, 1.5) * boost, 2), Matched = matched
+                    Score = Math.Round(score * Math.Pow(coverage, 1.5) * boost * sectionBoost, 2), Matched = matched
                 });
             }
         }
