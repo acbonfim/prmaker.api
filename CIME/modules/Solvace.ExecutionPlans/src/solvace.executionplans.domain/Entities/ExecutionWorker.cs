@@ -45,6 +45,8 @@ public class ExecutionWorker
     public DateTimeOffset? DoctorAt { get; private set; }
     /// <summary>"Rodar diagnóstico agora" pela tela: pendente enquanto não chega um doctor mais novo.</summary>
     public DateTimeOffset? DoctorRequestedAt { get; private set; }
+    /// <summary>Limite de uso da conta do Claude atingido (0041): a máquina não pega pedidos até este horário.</summary>
+    public DateTimeOffset? ThrottledUntil { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -72,6 +74,14 @@ public class ExecutionWorker
     }
 
     public bool IsRevoked => Status == ExecutionWorkerStatus.Revoked;
+    public bool IsThrottled(DateTimeOffset now) => ThrottledUntil is { } until && until > now;
+
+    public void Throttle(DateTimeOffset until, DateTimeOffset now)
+    {
+        ThrottledUntil = until;
+        UpdatedAt = now;
+    }
+
     public bool DoctorPending => DoctorRequestedAt is { } requested && (DoctorAt is null || DoctorAt < requested);
     public bool IsOnline(DateTimeOffset now) => !IsRevoked && LastSeenAt is { } seen && now - seen <= OnlineWindow;
     public bool AcceptsWork(DateTimeOffset now) => Status == ExecutionWorkerStatus.Active && IsOnline(now);

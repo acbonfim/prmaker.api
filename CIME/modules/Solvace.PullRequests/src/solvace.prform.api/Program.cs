@@ -45,6 +45,9 @@ builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
 builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
+// 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
+builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
+builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddMemoryCache();
 // MCP remoto do PRMake (0039): /mcp, Streamable HTTP sem sessão (Cloud Run), autenticado pela x-api-key.
 builder.Services.AddMcpServer(o =>

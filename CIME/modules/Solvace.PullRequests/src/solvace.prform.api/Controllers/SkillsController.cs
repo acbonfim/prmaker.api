@@ -20,8 +20,7 @@ namespace solvace.prform.Controllers;
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
-public class SkillsController(SkillsCatalog catalog, IConfiguration configuration,
-    IPluginConfigurationResolver configurationResolver, IAzureService azureService) : ControllerBase
+public class SkillsController(SkillsCatalog catalog, IConfiguration configuration) : ControllerBase
 {
     /// <summary>Skills publicadas (nome, descrição, versão) e a versão da ferramenta de atualização.</summary>
     [HttpGet]
@@ -59,77 +58,17 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     /// JSON voltam como objeto; o resto como texto. Parte indisponível vem vazia (a skill avisa).
     /// </summary>
     [HttpGet("config")]
-    public async Task<ActionResult<object>> Config(CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> Config([FromServices] SkillsConfigService configService, CancellationToken cancellationToken)
     {
-        var settings = new JsonObject();
-        var skills = await TryConfigAsync(SkillsConfigurationKeys.PluginName, cancellationToken);
-        foreach (var (key, value) in (string.IsNullOrWhiteSpace(skills?.Options) ? null : skills.Options.JsonToListOfDictionaries().FirstOrDefault()) ?? new Dictionary<string, string>())
-            settings[key] = ParseValue(value);
-
-        var ai = await TryConfigAsync(AIConfigurationKeys.PluginName, cancellationToken);
-        string? Prompt(string key) => ai?.GetConfigurationValueOrDefault(key, string.Empty) is { Length: > 0 } v ? v : null;
-
-        AzureDevOpsFieldNames? fields = null;
-        try { fields = await azureService.GetFieldNamesAsync(cancellationToken); }
-        catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException) { }
-
-        // Knowledge Center (0033): ambiente ativo, onde fica cada ambiente e as regras EXTRAS do filtro; o piso fixo vai
-        // junto para a skill conferir que aplica a mesma regra.
-        var kc = await TryConfigAsync(KnowledgeCenterConfigurationKeys.PluginName, cancellationToken);
-        var kcValues = (string.IsNullOrWhiteSpace(kc?.Options) ? null : kc.Options.JsonToListOfDictionaries().FirstOrDefault()) ?? new Dictionary<string, string>();
-        string Kc(string key, string fallback = "") => kcValues.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : fallback;
-        var knowledge = new
-        {
-            available = kc is not null,
-            environment = Kc(KnowledgeCenterConfigurationKeys.Environment, "dev").ToLowerInvariant(),
-            dev = new { host = Kc(KnowledgeCenterConfigurationKeys.DevHost), database = Kc(KnowledgeCenterConfigurationKeys.DevDatabase), schema = Kc(KnowledgeCenterConfigurationKeys.DevSchema) },
-            prod = new { host = Kc(KnowledgeCenterConfigurationKeys.ProdHost), database = Kc(KnowledgeCenterConfigurationKeys.ProdDatabase), schema = Kc(KnowledgeCenterConfigurationKeys.ProdSchema) },
-            filter = new
-            {
-                excludePatterns = ParseValue(Kc(KnowledgeCenterConfigurationKeys.ExcludePatterns, "[]")),
-                excludeArticles = ParseValue(Kc(KnowledgeCenterConfigurationKeys.ExcludeArticles, "[]")),
-                allowArticles = ParseValue(Kc(KnowledgeCenterConfigurationKeys.AllowArticles, "[]")),
-                minTextLength = int.TryParse(Kc(KnowledgeCenterConfigurationKeys.MinTextLength), out var min) ? min : 0,
-                floor = new
-                {
-                    patterns = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.FloorPatterns,
-                    minTextLength = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.FloorMinTextLength,
-                    publishedStatusId = solvace.knowledge.domain.Filtering.KnowledgeNoiseFilter.PublishedStatusId
-                }
-            },
-            fullSyncHours = int.TryParse(Kc(KnowledgeCenterConfigurationKeys.FullSyncHours), out var hours) && hours > 0 ? hours : 24
-        };
-
+        var c = await configService.BuildAsync(cancellationToken);
         return Ok(new
         {
-            available = skills is not null,
-            settings,
-            knowledge,
-            prompts = new
-            {
-                bug = Prompt("PromptBug"),
-                userStory = Prompt("PromptUS"),
-                summary = Prompt(AIConfigurationKeys.BugSummaryPrompt)
-            },
-            fields
+            available = c.Available,
+            settings = c.Settings,
+            knowledge = c.Knowledge,
+            prompts = new { bug = c.Prompts.Bug, userStory = c.Prompts.UserStory, summary = c.Prompts.Summary },
+            fields = c.Fields
         });
-    }
-
-    private async Task<PluginConfiguration?> TryConfigAsync(string plugin, CancellationToken cancellationToken)
-    {
-        try { return await configurationResolver.GetEffectiveConfigurationAsync(plugin, cancellationToken); }
-        catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException) { return null; }
-    }
-
-    private static JsonNode? ParseValue(string? value)
-    {
-        var trimmed = value?.Trim() ?? string.Empty;
-        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
-        {
-            try { return JsonNode.Parse(trimmed); }
-            catch (JsonException) { }
-        }
-        return JsonValue.Create(value ?? string.Empty);
     }
 
     /// <summary>URL pública da API para os scripts (Skills:ApiBase; senão o host da requisição, https fora do localhost).</summary>

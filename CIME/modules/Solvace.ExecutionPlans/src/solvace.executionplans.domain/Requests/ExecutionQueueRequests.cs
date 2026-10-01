@@ -85,6 +85,8 @@ public class FinishExecutionRequestRequest
     public long? InputTokens { get; set; }
     public long? OutputTokens { get; set; }
     public int? Turns { get; set; }
+    /// <summary>0041: limite de uso da conta do Claude — o pedido espera até aqui sem gastar tentativa.</summary>
+    public DateTimeOffset? RetryAt { get; set; }
 }
 
 public class UpdateExecutionUserSettingsRequest

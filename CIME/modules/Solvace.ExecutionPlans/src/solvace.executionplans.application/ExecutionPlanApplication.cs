@@ -39,6 +39,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionPlanResponse> CreateAsync(CreateExecutionPlanRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
+        ExecutionSession? parentSession = null;
         if (request.ParentPlanId is { } parentId)
         {
             // Plano de correção: nasce de um plano de análise do mesmo card.
@@ -48,10 +49,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 throw new DomainException("O plano de origem é de outro card.");
             if (parent.Phase != ExecutionPhase.Analysis)
                 throw new DomainException("O plano de origem precisa ser um plano de análise.");
+            parentSession = parent.CurrentSession;
             _repository.ClearTracking();
         }
         var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
             request.Phase, request.ParentPlanId);
+        // 0041: a correção é a mesma conversa do Claude que fez a análise — herda a sessão (o executor retoma por ela;
+        // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão).
+        if (parentSession is not null)
+            plan.RegisterSession(parentSession.SessionId, parentSession.Host, parentSession.Cwd, now);
         if (request.Steps.Count > 0)
             plan.UpsertSteps(request.Steps, now);
 
