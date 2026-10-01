@@ -54,3 +54,14 @@ Branch `feature/0037` em `prform.api-0037` (backend + skills) e `prform-app-0037
 Teste local: sino 74700 → 74669 troca o card; plano criado → `prform.PullRequests` com o card (FormId 1, usuário do token); comentário pela tela →
 `notesReadNumber` null; `prmake-plan.sh notes` → 1 e a tela mostra "analisando o seu comentário #1…"; POST atrasado 2,5 s → bolha "enviando…" na hora;
 `db-credentials` sem TTY recusa, com TTY grava (600) e `list`/`doctor` mostram sem senha; `sql-query` sem credencial → exit 4.
+
+## Rodada 3 — Base Solvace e integrações (branch `feature/0037-base-solvace` nos dois repos)
+| Item | O quê | Status |
+|---|---|---|
+| K1 | Sugestão incorporada com a IA saía da lista só após F5: o painel resolvia a sugestão depois de avisar "salvou" (a tela fechava o painel e o aviso se perdia). Agora resolve antes e a tela confere a lista | ✅ |
+| K2 | Busca no conteúdo (`GET Architecture/search`): seções e artigos, sem acento/caixa, radical simples, nomes técnicos inteiros, trecho + cabeçalho mais próximo | ✅ |
+| K3 | "Pergunte à Base Solvace" (`POST Architecture/ask`): IA gera termos/projetos prováveis → busca no conteúdo → IA escolhe os trechos e explica; sem IA, cai na busca no conteúdo com o motivo. Campo na visão geral, Enter no filtro, disparo automático quando a busca simples não acha e o texto é pergunta; resultado abre a seção rolando até o trecho (`?h=`) | ✅ |
+| K4 | Integração pessoal **opcional** (ex.: Claude) bloqueava a tela de PR depois de abrir "Minhas integrações": o front recalculava o status contando as opcionais (o backend não conta) | ✅ |
+
+Teste local: base semeada com o espelho `~/.claude/solvace-kb` (62 projetos, 243 seções); "Como saber se o usuário fez login com sucesso?" → 1º resultado
+`login › Login e permissões › Peças`, clique rola até "Peças"; `TB_WCM_USER LAST_SITE_ID` → login › Peças. O caminho com IA não foi testado aqui (sem plugin de IA no banco isolado).

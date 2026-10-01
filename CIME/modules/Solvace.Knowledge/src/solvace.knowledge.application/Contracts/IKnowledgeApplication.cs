@@ -24,6 +24,16 @@ public interface IArchitectureApplication
     Task<ArchitectureSectionVersionResponse> GetVersionAsync(string projectKey, string sectionKey, int version, CancellationToken cancellationToken);
     /// <summary>Índice compacto (markdown) de todo o parque + regras de negócio — o que a skill lê primeiro.</summary>
     Task<string> BuildIndexAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Busca no conteúdo das seções e dos artigos do KC (0037). <paramref name="extraTerms"/>: termos a mais (ex.: os que a
+    /// IA sugeriu para uma pergunta); <paramref name="boostProjects"/>: projetos que sobem no ranking.
+    /// </summary>
+    Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms, IReadOnlyCollection<string>? boostProjects,
+        CancellationToken cancellationToken);
+
+    /// <summary>Catálogo compacto (projetos e títulos das seções) para a IA entender o que existe na base.</summary>
+    Task<string> BuildCatalogAsync(int maxChars, CancellationToken cancellationToken);
     Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken);
     /// <summary>Pacote do espelho local (~/.claude/solvace-kb): índice, seções e artigos do KC.</summary>
     Task<(ArchitectureExportManifest Manifest, byte[] Zip)> ExportAsync(CancellationToken cancellationToken);

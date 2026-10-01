@@ -16,7 +16,7 @@ namespace solvace.prform.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
 public class ArchitectureController(IArchitectureApplication application, solvace.timeline.application.Contracts.IUserRepository users,
-    solvace.prform.Knowledge.ArchitectureChatService chat) : ControllerBase
+    solvace.prform.Knowledge.ArchitectureChatService chat, solvace.prform.Knowledge.ArchitectureAskService ask) : ControllerBase
 {
     public const string HashHeader = "X-Kb-Hash";
 
@@ -114,6 +114,20 @@ public class ArchitectureController(IArchitectureApplication application, solvac
             try { return Ok(await chat.ChatAsync(key, section, request, ct)); }
             catch (InvalidOperationException e) { return StatusCode(StatusCodes.Status502BadGateway, new { error = e.Message }); }
         });
+
+    /// <summary>Busca no conteúdo das seções e dos artigos do KC (0037) — qualquer usuário logado.</summary>
+    [HttpGet("search")]
+    public Task<ActionResult<List<ArchitectureSearchHit>>> Search([FromQuery] string? q, [FromQuery] int limit, CancellationToken ct) =>
+        Run<List<ArchitectureSearchHit>>(async () => Ok(await application.SearchAsync(q ?? string.Empty, limit <= 0 ? 20 : limit, null, null, ct)));
+
+    /// <summary>A pergunta à base com IA está disponível? (plugin AI Configurations) — 0037.</summary>
+    [HttpGet("ask/status")]
+    public async Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatStatus>> AskStatus(CancellationToken ct) => Ok(await chat.GetStatusAsync(ct));
+
+    /// <summary>"Pergunte à Base Solvace" (0037): a IA entende a pergunta e leva aos trechos que respondem.</summary>
+    [HttpPost("ask")]
+    public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
+        Run<ArchitectureAskResponse>(async () => Ok(await ask.AskAsync(request.Question, ct)));
 
     private Task<string> ActorAsync(CancellationToken ct) => KnowledgeController.ActorAsync(users, User, ct);
 
