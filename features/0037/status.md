@@ -41,3 +41,16 @@ Branch `feature/0037` em `prform.api-0037` (backend + skills) e `prform-app-0037
 - 2026-10-01 — Q1 da skill (API local): block → 200 e "aguardando o usuario" no control; block sem texto → erro; *Já resolvi* pela API → watch
   `PENDENCIA RESOLVIDA pelo usuario (Admin Teste)`; unblock → running; `permissions` num HOME falso: 6 regras novas, idempotente; doctor acusa
   a regra ausente; `--ping` sem credenciais → 4, host inalcançável → 2.
+
+## Melhorias (rodada 2 — branch `feature/0037-melhorias` nos dois repos)
+| Item | O quê | Status |
+|---|---|---|
+| M1 | Sino: clicar na pendência abre o card na tela de PR (a tela passa a seguir o `?card=` da URL) | ✅ |
+| M2 | Comentário instantâneo: aparece na hora com "enviando…" (animação), caixa livre; erro devolve o texto; edição/remoção também | ✅ |
+| M3 | Acesso aos bancos: etapa 4 na tela *Skills do Claude* (permissão + credenciais com segurança); `prmake-skills.sh db-credentials [list]` (só em terminal interativo, senha sem eco, arquivo 600, testa com `--ping`); `doctor` mostra as credenciais; `contexto` diz se há credencial; `sql-query` sem credencial → exit 4 com a orientação; skill diz claramente que está sem acesso e nunca pede senha no chat | ✅ |
+| M4 | Conversa com o Claude em popup (ícone do rodapé / "Abrir conversa"): bolhas, dia, ✓/✓✓, "o Claude leu e está analisando" (backend grava `NotesReadNumber/At` quando a skill lê os comentários — migração `AddNotesRead`), destino em menu (plano análise/correção + etapa com status), Enter envia, sugestões, colar/arrastar | ✅ |
+| M5 | Ao criar o plano o card é salvo no PRMake (registro em PullRequest, como o botão Salvar) — `IExecutionCardRegistrar` | ✅ |
+
+Teste local: sino 74700 → 74669 troca o card; plano criado → `prform.PullRequests` com o card (FormId 1, usuário do token); comentário pela tela →
+`notesReadNumber` null; `prmake-plan.sh notes` → 1 e a tela mostra "analisando o seu comentário #1…"; POST atrasado 2,5 s → bolha "enviando…" na hora;
+`db-credentials` sem TTY recusa, com TTY grava (600) e `list`/`doctor` mostram sem senha; `sql-query` sem credencial → exit 4.

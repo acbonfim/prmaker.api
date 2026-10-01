@@ -34,6 +34,26 @@ public class ExecutionPlanPullRequestSource(IPullRequestGithubApplication github
     }
 }
 
+/// <summary>
+/// Salva o card ao criar o plano (0037): o mesmo registro do botão Salvar da tela (FormId 1, sem descrição/RCA, que vêm
+/// depois). Já existindo, não mexe em nada.
+/// </summary>
+public class ExecutionPlanCardRegistrar(solvace.prform.application.Contracts.IPullRequestApplication pullRequests) : IExecutionCardRegistrar
+{
+    public async Task<bool> EnsureRegisteredAsync(string cardNumber, Guid userId, CancellationToken cancellationToken)
+    {
+        if (await pullRequests.GetByCardNumber(cardNumber, cancellationToken) is not null)
+            return false;
+        await pullRequests.Create(new solvace.prform.domain.Requests.PullRequestRegisterRequest
+        {
+            CardNumber = cardNumber,
+            UserId = userId,
+            FormId = 1
+        }, cancellationToken);
+        return true;
+    }
+}
+
 /// <summary>Marcos do plano de execução na Timeline do card (0024).</summary>
 public class ExecutionPlanTimelineWriter(ITimelineApplication timeline) : IExecutionTimelineWriter
 {

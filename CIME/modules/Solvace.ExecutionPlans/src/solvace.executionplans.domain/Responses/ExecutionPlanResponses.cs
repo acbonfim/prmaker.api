@@ -33,6 +33,10 @@ public class ExecutionPlanSummaryResponse
     public string? ResumeRequestedBy { get; set; }
     public bool ResumePending { get; set; }
 
+    /// <summary>Até qual comentário do card a skill já leu e quando (0037).</summary>
+    public int? NotesReadNumber { get; set; }
+    public DateTimeOffset? NotesReadAt { get; set; }
+
     /// <summary>Quantas coisas dependem do usuário agora (0037): perguntas abertas + etapas dele + etapas travadas esperando ele.</summary>
     public int UserPending { get; set; }
 }
@@ -353,6 +357,8 @@ public static class ExecutionPlanMappings
         target.ResumeRequestedAt = plan.ResumeRequestedAt;
         target.ResumeRequestedBy = plan.ResumeRequestedBy;
         target.ResumePending = plan.ResumePending;
+        target.NotesReadNumber = plan.NotesReadNumber;
+        target.NotesReadAt = plan.NotesReadAt;
         return target;
     }
 

@@ -9,6 +9,7 @@
 #   prmake-skills.sh status                        versão instalada × publicada
 #   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
 #   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
+#   prmake-skills.sh db-credentials [list]         cadastra (no SEU terminal) as credenciais de leitura dos bancos
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -292,6 +293,70 @@ permissions_report() {
   done
 }
 
+# Credenciais de leitura dos bancos dos clientes (0037), usadas pelo sql-query.sh da analisar-bug. Ficam só na
+# máquina do usuário, com acesso restrito a ele; a senha é digitada sem eco e nunca passa pelo chat do Claude nem pelo PRMake.
+CREDS_FILE="${SQLSERVER_CREDENTIALS:-$HOME/.claude/sqlserver-credentials.json}"
+file_mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null; }
+creds_report() { # linha do doctor
+  if [[ ! -s "$CREDS_FILE" ]]; then
+    printf '  %-28s %s\n' "credenciais de banco" "NÃO — o Claude não lê o banco dos clientes. No seu terminal: bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials"
+    return
+  fi
+  local aliases mode
+  aliases="$(jq -r '[(.servers // [])[] | .alias // "?"] | join(", ")' "$CREDS_FILE" 2>/dev/null)" || aliases="arquivo inválido"
+  mode="$(file_mode "$CREDS_FILE")"
+  printf '  %-28s %s\n' "credenciais de banco" "${aliases:-nenhum servidor} ($CREDS_FILE$([[ $WINDOWS -eq 0 && -n "$mode" && "$mode" != "600" ]] && echo " — permissão $mode: rode chmod 600"))"
+}
+db_credentials() {
+  if [[ "${1:-}" == "list" ]]; then
+    [[ -s "$CREDS_FILE" ]] || { echo "Nenhuma credencial de banco nesta máquina ($CREDS_FILE)."; return 0; }
+    echo "Servidores com credencial em $CREDS_FILE (senhas não são mostradas):"
+    jq -r '(.servers // [])[] | "  \(.alias // "?")\t\((.hosts // []) | join(", "))\tusuário: \(.user // "?")"' "$CREDS_FILE"
+    return 0
+  fi
+  # A senha não pode passar pela conversa: sem terminal interativo (ex.: rodado pelo Claude) recusa.
+  [[ -t 0 && -t 1 ]] || die "rode no SEU terminal, fora do chat do Claude: bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials"
+  command -v jq >/dev/null || die "precisa do jq"
+  echo "Credenciais de LEITURA dos bancos dos clientes — gravadas só nesta máquina em $CREDS_FILE (acesso só seu)."
+  echo "Use as credenciais recebidas pelo canal oficial (gestor/infra, cofre de senhas), de preferência um usuário somente leitura."
+  echo "Nunca cole a senha no chat do Claude, no PRMake ou no Teams. Ctrl+C cancela sem gravar."
+  local alias hosts user pass more test mode
+  mkdir -p "$(dirname "$CREDS_FILE")"
+  if [[ ! -s "$CREDS_FILE" ]]; then
+    ( umask 077; echo '{"port":1433,"servers":[]}' > "$CREDS_FILE" )
+  elif ! jq -e . "$CREDS_FILE" >/dev/null 2>&1; then
+    die "$CREDS_FILE não é um JSON válido — corrija ou renomeie o arquivo (não vou sobrescrever)"
+  fi
+  while :; do
+    echo
+    db_credentials list | sed -n '2,$p'
+    read -rp "Nome curto do servidor (alias, ex.: prod, prod1, prod3, prod4): " alias
+    [[ -n "$alias" ]] || { echo "alias obrigatório"; continue; }
+    read -rp "Host (hostname completo; mais de um separado por vírgula): " hosts
+    read -rp "Usuário: " user
+    read -rsp "Senha (não aparece): " pass; echo
+    [[ -n "$hosts" && -n "$user" && -n "$pass" ]] || { echo "host, usuário e senha são obrigatórios — nada gravado"; continue; }
+    ( umask 077
+      # A senha vai por variável de ambiente (não aparece na lista de processos).
+      DBC_ALIAS="$alias" DBC_HOSTS="$hosts" DBC_USER="$user" DBC_PASS="$pass" jq '
+        .port = (.port // 1433)
+        | .servers = ([(.servers // [])[] | select(.alias != env.DBC_ALIAS)]
+            + [{alias: env.DBC_ALIAS, hosts: (env.DBC_HOSTS | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))),
+                user: env.DBC_USER, password: env.DBC_PASS}])' "$CREDS_FILE" > "$CREDS_FILE.tmp" ) \
+      && mv "$CREDS_FILE.tmp" "$CREDS_FILE" || { rm -f "$CREDS_FILE.tmp"; die "não consegui gravar $CREDS_FILE"; }
+    pass=""
+    chmod 600 "$CREDS_FILE" 2>/dev/null
+    echo "✔ $alias gravado em $CREDS_FILE"
+    if [[ -x "$SKILLS_DIR/analisar-bug/scripts/sql-query.sh" || -f "$SKILLS_DIR/analisar-bug/scripts/sql-query.sh" ]]; then
+      read -rp "Testar a conexão agora (precisa da VPN)? [S/n] " test
+      [[ "$test" =~ ^[nN] ]] || bash "$SKILLS_DIR/analisar-bug/scripts/sql-query.sh" --host "$alias" --ping
+    fi
+    read -rp "Cadastrar outro servidor? [s/N] " more
+    [[ "$more" =~ ^[sS] ]] || break
+  done
+  echo "Pronto. Na próxima análise o Claude já consegue ler esses bancos (somente leitura)."
+}
+
 # A própria ferramenta também se atualiza (vale a partir da próxima execução).
 self_update() {
   local published; published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json")"
@@ -406,6 +471,7 @@ case "$cmd" in
     ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
     ok "hook esperado" "$HOOK_CMD"
     permissions_report
+    creds_report
     for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
     ;;
 
@@ -415,5 +481,9 @@ case "$cmd" in
     permissions_report
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions [--quiet] [--force] [skill...]" ;;
+  db-credentials)
+    db_credentials ${ARGS[@]+"${ARGS[@]}"}
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials [--quiet] [--force] [skill...]" ;;
 esac

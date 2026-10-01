@@ -593,6 +593,18 @@ PY
     else
       echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
     fi
+    # 0037: o usuario precisa saber logo se o Claude consegue ler o banco do cliente (nunca mostra senha).
+    echo; echo "=== ACESSO AOS BANCOS DOS CLIENTES (somente leitura)"
+    CREDS="${SQLSERVER_CREDENTIALS:-$HOME/.claude/sqlserver-credentials.json}"
+    if [[ -s "$CREDS" ]] && jq -e '(.servers // []) | length > 0' "$CREDS" >/dev/null 2>&1; then
+      jq -r '"servidores com credencial nesta maquina: " + ([.servers[] | (.alias // "?") + " (" + ((.hosts // []) | join(", ")) + ")"] | join("; "))' "$CREDS"
+      echo "(teste o do cliente antes de investigar: sql-query.sh --host <alias> -d <banco> --ping)"
+    else
+      echo "SEM CREDENCIAIS DE BANCO nesta maquina ($CREDS) — voce NAO consegue ler o banco do cliente."
+      echo "Se o card depende de dados, diga isso ao usuario JA, de forma clara, e oriente (sem pedir a senha no chat):"
+      echo "  no terminal DELE (nao aqui): bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials"
+      echo "  — pergunta servidor, usuario e senha (oculta), grava so na maquina dele com acesso restrito e testa a conexao."
+    fi
     ;;
 
   control)

@@ -212,7 +212,7 @@ public class ExecutionPlanController : ControllerBase
     /// <summary>Comentários do card (análise e correção), com os anexos — a skill lê daqui.</summary>
     [HttpGet("card/{cardNumber}/notes")]
     public Task<ActionResult<List<ExecutionNoteResponse>>> GetNotes([FromRoute] string cardNumber, CancellationToken ct) =>
-        Run<List<ExecutionNoteResponse>>(async () => Ok(await _application.GetNotesByCardAsync(cardNumber, ct)));
+        Run<List<ExecutionNoteResponse>>(async () => Ok(await _application.GetNotesByCardAsync(cardNumber, ct, IsExecutorRequest())));
 
     /// <summary>Novo comentário (multipart: text, stepKey, files — vários). Anexos nunca substituem outros arquivos.</summary>
     [HttpPost("{id:guid}/notes")]

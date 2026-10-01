@@ -108,11 +108,21 @@ public partial class ExecutionPlanApplication
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Note, note!.StepKey, cancellationToken);
     }
 
-    public async Task<List<ExecutionNoteResponse>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken)
+    public async Task<List<ExecutionNoteResponse>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken, bool fromExecutor = false)
     {
         var card = cardNumber.Trim();
         var notes = await _repository.GetNotesByCardAsync(card, cancellationToken);
         if (notes.Count == 0) return [];
+
+        // 0037: a skill leu os comentários — a tela mostra "lido · o Claude está analisando" no último do usuário.
+        if (fromExecutor && notes.Where(n => !n.FromExecutor).Select(n => n.Number).DefaultIfEmpty(0).Max() is var lastUserNote and > 0
+            && await _repository.MarkNotesReadAsync(card, lastUserNote, DateTimeOffset.UtcNow, cancellationToken)
+            && await _repository.GetCurrentPlanIdAsync(card, cancellationToken) is { } currentId
+            && await _repository.GetPlanWithStepsAsync(currentId, cancellationToken) is { } current)
+        {
+            _repository.ClearTracking();
+            await NotifyAsync(current, ExecutionPlanRealTimeEvents.Actions.Note, null, cancellationToken);
+        }
 
         var phases = (await _repository.GetSummariesByCardAsync(card, cancellationToken)).ToDictionary(p => p.Id, p => p.Phase);
         var attachments = (await _repository.GetNoteAttachmentsAsync(notes.Select(n => n.Id).ToList(), cancellationToken))
