@@ -5,7 +5,11 @@
 # Uso: kb.sh <comando> [args]
 #   sync [--quiet]            baixa o pacote do PRMake so quando o hash muda
 #   path                      imprime a pasta do espelho
-#   index                     imprime o indice (confere o PRMake se o espelho tem mais de 6 h; avisa se > 24 h)
+#   index [termos] [--max N] [--full]
+#                             sem termos: indice COMPACTO (uma linha curta por projeto: chave, nome, palavras-chave, ~tokens);
+#                             com termos: so os projetos/artigos que casam (linha completa, com as secoes), os N melhores
+#                             (default 5); --full: o INDEX.md inteiro (~20 KB — evite na analise). Confere o PRMake se
+#                             o espelho tem mais de 6 h; avisa se > 24 h
 #   show <projeto> [secao]    sem secao: a ficha do projeto (resumo, depende de / usado por, com evidencia) e as secoes;
 #                             com secao: imprime a secao (chave ou parte do nome)
 #   find <termo> [max=20]     onde o termo aparece no espelho (arquivo:linha, trecho curto)
@@ -80,6 +84,78 @@ do_sync() {
   echo "Base Solvace atualizada ($remote): $(jq -r '"\(.projects) projetos, \(.sections) secoes, \(.knowledgeArticles) artigos do KC (\(.knowledgeEnvironment))"' "$KB/manifest.json")"
 }
 
+# Indice sem gastar contexto: compacto, filtrado por termos ou inteiro (--full).
+index_view() {
+  local full=0 max=5 terms=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --full) full=1 ;;
+      --max) max="${2:-5}"; shift ;;
+      --quiet) ;;
+      *) terms+=("$1") ;;
+    esac
+    shift
+  done
+  if [[ $full -eq 1 ]]; then cat "$KB/INDEX.md"; return; fi
+  python3 - "$KB/INDEX.md" "$max" "${terms[*]:-}" <<'PY'
+import re, sys, unicodedata
+path, mx, terms = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+def norm(t): return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+PROJ = re.compile(r"^- \*\*(.+?)\*\* `([^`]+)` — (.*)$")
+ART = re.compile(r"^- (ART-\d+) (.*)$")
+lines = open(path, encoding="utf-8").read().splitlines()
+projects, articles = [], []
+for l in lines:
+    m = PROJ.match(l)
+    if m:
+        title, key, rest = m.groups()
+        parts = rest.split(" · ")
+        kw = next((p[4:] for p in parts if p.startswith("kw: ")), "")
+        tok = next((re.search(r"\(~\d+ tok\)", p).group(0) for p in parts if re.search(r"\(~\d+ tok\)", p)), "")
+        dep = next((p for p in parts if p.startswith("⇄")), "")
+        projects.append(dict(line=l, key=key, title=title, desc=parts[0], kw=kw, tok=tok, dep=dep))
+        continue
+    m = ART.match(l)
+    if m:
+        articles.append(dict(line=l, key=m.group(1), title=m.group(2).split(" · ")[0]))
+if not terms.strip():
+    sec = None
+    print("# Base Solvace — indice compacto (filtre: kb.sh index <termos> · ficha: kb.sh show <projeto> · secao: kb.sh show <projeto> <secao>)")
+    for l in lines:
+        if l.startswith("## "):
+            print("\n" + l)
+            continue
+        m = PROJ.match(l)
+        if m:
+            p = next(x for x in projects if x["line"] == l)
+            short = p["title"].split(" — ")[-1]
+            kws = ", ".join(p["kw"].split(", ")[:4])
+            print(f"- {p['key']} · {short} · {kws} {p['tok']}{(' ' + p['dep']) if p['dep'] else ''}".rstrip())
+            continue
+        m = ART.match(l)
+        if m:
+            print(f"- {m.group(1)} {m.group(2).split(' · ')[0][:90]}")
+    sys.exit(0)
+stop = set("""para com sem uma uns umas dos das nos nas pelo pela que nao when with from that this have into cannot could
+be added account erro error bug card solvace product improvement development team revamp legado
+legacy modulo module tela screen production producao site planta""".split())
+words = [w for w in dict.fromkeys(re.findall(r"[a-z0-9_]{3,}", norm(terms))) if w not in stop]
+def score(text, w): return 1 if re.search(r"(?<![a-z0-9])" + re.escape(w), text) else 0
+def best(items, n):
+    # so o que chega perto do melhor resultado (corta o ruido de palavras soltas)
+    items = sorted((x for x in items if x[0] > 0), key=lambda x: -x[0])
+    return [l for s, l in items if s >= 0.4 * items[0][0]][:n] if items else []
+ps = best([(sum(6 * score(norm(p["key"]), w) + 4 * score(norm(p["title"]), w) + 3 * score(norm(p["kw"]), w)
+                + score(norm(p["desc"]), w) for w in words), p["line"][:420]) for p in projects], mx)
+arts = best([(sum(score(norm(a["title"]), w) for w in words), a["line"][:160]) for a in articles], 3)
+ps = [l for l in ps if l]; arts = [l for l in arts if l]
+if not ps and not arts:
+    print("(nada da Base Solvace casou com: " + " ".join(words) + " — veja o indice compacto: kb.sh index)")
+else:
+    print("\n".join(ps + arts))
+PY
+}
+
 scheduled() { launchctl list 2>/dev/null | grep -q br.app.softhouse.solvace-kb; }
 
 case "$CMD" in
@@ -94,7 +170,7 @@ case "$CMD" in
     if (( $(age) > 86400 )); then
       echo "AVISO: Base Solvace sem conferir com o PRMake ha $(( $(age) / 3600 )) h — pode estar desatualizada (kb.sh sync)" >&2
     fi
-    cat "$KB/INDEX.md" ;;
+    index_view "$@" ;;
   show)
     P="${1:?projeto}"; SEC="${2:-}"
     [[ -d "$KB/projects/$P" ]] || { P="$(ls "$KB/projects" 2>/dev/null | grep -i -- "$P" | head -1)"; [[ -n "$P" ]] || die "projeto '${1}' nao esta no espelho (kb.sh index)"; }

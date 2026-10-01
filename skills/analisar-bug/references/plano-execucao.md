@@ -1,8 +1,9 @@
 # Plano de execucao no PRMake — comandos e regras
 
-Lido quando precisar do detalhe de um comando do plano (`$PLAN` = `~/.claude/skills/analisar-bug/scripts/prmake-plan.sh`). As regras essenciais estao resumidas na SKILL.md.
+Leia so a secao que precisa: `bash ~/.claude/skills/analisar-bug/scripts/ref.sh plano <secao>` (`$PLAN` =
+`~/.claude/skills/analisar-bug/scripts/prmake-plan.sh`). As regras essenciais e os comandos do dia a dia estao na SKILL.md.
 
-## Plano de execucao no PRMake (obrigatorio em todo o fluxo)
+## Comandos (lista completa)
 
 Quem acompanha o card no PRMake ve, ao vivo, os planos (etapas), o que voce esta fazendo, as perguntas e os
 arquivos. Por isso: **nada fica so na memoria/na maquina** — tudo o que voce produz vai para o plano em pedacos.
@@ -23,6 +24,7 @@ bash $PLAN log <card> <key> decision "Nao vou consultar o SQL: o erro e de valid
 bash $PLAN checkpoint <card> <key> "Onde parei / o que falta nesta etapa"   # para retomar
 bash $PLAN sync <card> <key>                                          # envia arquivos novos/alterados da pasta do card
 bash $PLAN step <card> <key> completed                                # terminou
+bash $PLAN advance <card> <key> <proxima> "resumo curto"              # terminou + log + comecou a proxima (1 chamada)
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN block <card> <key> "Ligar a VPN e clicar em Ja resolvi (ou colar o resultado de scripts/00_x.sql)"  # travada esperando o usuario
 bash $PLAN unblock <card> <key>                                       # o usuario resolveu pelo chat: volta a running
@@ -46,7 +48,7 @@ bash $PLAN open-pr <card> <repo> <branch> <destino> "<titulo>" desc.md   # abre 
 bash $PLAN status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"   # fim do plano ativo
 ```
 
-Regras:
+## Comecar, retomar e refinar as etapas
 - **Comece por ele.** Assim que souber o numero do card (passo 1), rode `start`. Se ele responder
   `PLANO INDISPONIVEL` (PRMake fora do ar ou sem o recurso), siga normalmente: os comandos do plano viram
   no-op. Se ja existir um plano aberto (analise **ou correcao**), o `start` **retoma** o mais recente e imprime
@@ -59,6 +61,12 @@ Regras:
 - **Refine o plano de analise** depois de ler o card (passo 2): ajuste titulos/descricoes ao caso concreto (a
   descricao diz *o que vai ser feito*), remova/cancele (com motivo) o que nao se aplica e acrescente o que
   surgir. Keys: minusculas, numeros, `-`/`_`, estaveis (nunca renomeie uma key).
+Etapas padrao da analise (o `start` cria se voce nao passar outras): `identificar-card`, `coletar-dados`,
+`investigar-codigo`, `consultar-ambiente` (cancele com motivo so se o caso nao depender de dados; se depender, nao
+fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
+`montar-analise`, `publicar`, `propor-solucoes`.
+
+## Em cada etapa e entre etapas (control, pausa)
 - **Em cada etapa:** `step running` → `log` a cada acao relevante (arquivo lido, hipotese, achado, decisao,
   consulta — frases curtas, markdown ok; `finding` para achados, `decision` para escolhas, `warning`/`error`
   para problemas) → salve os arquivos na pasta do card e rode `sync <card> <key>` → `checkpoint` → `step completed`.
@@ -69,6 +77,7 @@ Regras:
   nao envie mais nada. O `control` tambem lista: etapas **canceladas** (pule), **prontas** (pode comecar),
   **aguardando o usuario** (as que voce bloqueou), **aguardando** (resposta/chamado/merge — nao mexa), **perguntas
   sem resposta** e as **pendencias do usuario** que o PRMake mostra para ele.
+## Etapa travada esperando o usuario (block)
 - **Etapa travada por algo que so o usuario resolve** (o Claude Code barrou o comando por permissao/auto mode, VPN
   desligada/timeout, credencial ausente, acesso negado): `block <card> <key> "<texto>"` **na hora** — a etapa sai de
   "em andamento" e o PRMake mostra "Aguardando voce" no topo do plano, na linha da etapa, no sino e no titulo da aba,
@@ -78,6 +87,7 @@ Regras:
   colar o resultado num comentario). Diga o mesmo no chat, siga com outras etapas prontas que nao dependem disso e
   rode o vigia. Quando o vigia imprimir `PENDENCIA RESOLVIDA` (ou o usuario resolver pelo chat → `unblock`), rode
   `step <key> running` se preciso e **tente de novo**. Nunca deixe a etapa `running` parada so com um `log warning`.
+## Etapas do usuario e vigia (watch)
 - **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
   (com o texto/arquivos prontos) e **siga com as outras etapas prontas** — o usuario conclui a dele na tela.
 - **Nunca fique parado esperando o PRMake sem o vigia.** O PRMake nao consegue chamar esta sessao; quem te
@@ -90,6 +100,7 @@ Regras:
   para escrever nada. Se ainda restar espera, rode o vigia de novo. Exit 11 = plano concluido/cancelado: faca o
   relatorio final (passo 9) e pare. O usuario nao precisa clicar em nada nem avisar no chat.
   (Se a sessao for fechada, o vigia morre junto — `/analisar-bug <card>` retoma depois.)
+## Comentarios e anexos do usuario
 - **Comentarios e anexos do usuario (PRMake)** — o usuario pode escrever comentarios no plano e anexar imagens
   (arrastando, colando com Ctrl+V ou pelo icone de anexo) e arquivos (logs, planilhas, PDFs). Cada comentario e
   cada arquivo tem um **numero por card** (`comentario #3`, `anexo #12`), o mesmo nas abas Analise e Correcao.
@@ -110,11 +121,7 @@ Regras:
   - Se o comentario pedir algo (ex.: "considere tambem o ambiente X"), trate como instrucao do usuario; se mudar
     o plano, ajuste as etapas. Pode responder no proprio plano com `note <card> "..."` (aparece na tela e na
     Timeline) — util quando o usuario comentou pela tela e nao esta no terminal.
+## Falha de rede e PII
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
-
-Etapas padrao da analise (o `start` cria se voce nao passar outras): `identificar-card`, `coletar-dados`,
-`investigar-codigo`, `consultar-ambiente` (cancele com motivo so se o caso nao depender de dados; se depender, nao
-fecha sem o banco — `references/consultas.md`), `causa-raiz`,
-`montar-analise`, `publicar`, `propor-solucoes`.

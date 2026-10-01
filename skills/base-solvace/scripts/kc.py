@@ -337,7 +337,11 @@ def cmd_search(args):
         limit = int(args[i + 1])
         args = args[:i] + args[i + 2:]
     term = " ".join(args).strip()
-    words = [w for w in normalize(term).split() if len(w) > 1]
+    # palavras genericas (titulo de card em ingles/portugues) so trazem ruido; nada de artigo por "be"/"the"/"user"
+    stop = set("""the and for with from that this when into have has not cannot can could should be is are was added
+    add account error erro bug card user users usuario usuarios para com sem uma que nao dos das nos nas pelo pela
+    solvace production producao""".split())
+    words = [w for w in dict.fromkeys(re.findall(r"[a-z0-9_]{3,}", normalize(term))) if w not in stop]
     arts = mirror_articles()
     if arts is None:
         res = api("GET", f"/Knowledge/articles?q={urllib.parse.quote(term)}&limit={limit}") or []
@@ -354,6 +358,10 @@ def cmd_search(args):
         if score:
             scored.append((score, a))
     scored.sort(key=lambda x: (-x[0], x[1]["articleNumber"]))
+    if scored:
+        # so o que chega perto do melhor (palavra solta no corpo do texto nao basta)
+        floor = max(2, 0.4 * scored[0][0])
+        scored = [x for x in scored if x[0] >= floor]
     for _, a in scored[:limit]:
         body = a["text"].split("\n\n", 2)[-1].replace("\n", " ")
         hit = next((body.lower().find(w) for w in words if body.lower().find(w) >= 0), 0)

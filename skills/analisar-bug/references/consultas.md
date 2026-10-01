@@ -1,6 +1,9 @@
 # Consultas: codigo legado x revamp, Cognito e SQL Server (somente leitura)
 
-Lido quando a investigacao precisar ir alem da Base Solvace: localizar codigo, consultar o Cognito ou o banco.
+Leia so a secao que precisa (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh consultas <secao>`): localizar
+codigo fora da Base Solvace (3a), Cognito (3b) ou o banco (3c).
+
+### 3a. Localizar o codigo (legado x revamp) e foco no card
 
 > **Onde o codigo pode estar — legado vs. revamp.** O Solvace tem dois mundos de codigo, e o bug pode
 > estar em qualquer um:

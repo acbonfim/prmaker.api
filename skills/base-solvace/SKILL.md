@@ -7,14 +7,17 @@ description: Base de conhecimento da Solvace para as analises — engenharia rev
 
 Scripts (`$KB`, `$KC`, `$ARCH` abaixo):
 ```bash
-KB=~/.claude/skills/base-solvace/scripts/kb.sh      # espelho local: sync | index | show <projeto> [secao] | find <termo> | status | agendar
+KB=~/.claude/skills/base-solvace/scripts/kb.sh      # espelho local: sync | index [termos] [--full] | show <projeto> [secao] | find <termo> | status | agendar
 KC=~/.claude/skills/base-solvace/scripts/kc.sh      # Knowledge Center: search <termos> | article <n> | sync [--full] | check
 ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | project | section | get | stale
 ```
 
 ## Consultar (toda analise — e o que economiza tokens)
-1. **Indice primeiro**: `bash $KB index` (uma linha por projeto; `⇄ d/u` = depende de d, usado por u). Ache o
-   projeto/modulo pelas palavras-chave e abra **so** o que o caso pede: `bash $KB show <projeto>` (ficha: resumo,
+1. **Indice filtrado primeiro**: `bash $KB index <modulo tela termos>` traz so os projetos/artigos que casam (linha
+   completa, com as secoes; `⇄ d/u` = depende de d, usado por u). Sem termos, `bash $KB index` e o indice compacto
+   (uma linha curta por projeto); `--full` (~20 KB) nao e para analise — tudo que entra no contexto e relido a cada
+   resposta. Na `analisar-bug`, o `contexto` ja mostra os projetos do card. Abra **so** o que o caso pede:
+   `bash $KB show <projeto>` (ficha: resumo,
    **depende de / usado por** com evidencia arquivo:linha) e `bash $KB show <projeto> <secao>`. So depois va ao
    codigo, direto nas pastas/arquivos apontados (nada de grep no repositorio inteiro).
 2. **Impacto entre modulos**: mexeu em tabela `TB_<SIGLA>_*`, fila, topico SNS ou evento? Veja o "Usado por" da

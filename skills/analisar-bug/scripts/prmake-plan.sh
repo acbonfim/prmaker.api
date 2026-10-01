@@ -12,6 +12,8 @@
 #                                                        Claude Code, VPN, credencial, acesso — a tela mostra "Aguardando
 #                                                        voce" com o texto e o botao "Ja resolvi" (o vigia acorda)
 #   unblock     <card> <key>                             a pendencia foi resolvida: etapa volta a running
+#   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress]
+#                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
 #   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
@@ -55,7 +57,8 @@
 #   flush       <card>                                   reenvia a fila local (envios que falharam)
 #   contexto    <card> [titulo]                          CONTEXTO INICIAL NUM COMANDO (0033): card + repro steps, plano
 #                                                        criado/retomado, comentarios/anexos novos, sync do KC e da Base
-#                                                        Solvace e os trechos/artigos relacionados ao card
+#                                                        Solvace e os projetos/artigos relacionados ao card (campos do card
+#                                                        em dados/card-resumo.txt — o card.json bruto nao precisa ser lido)
 #   usage       <card>                                   custo desta sessao do Claude no plano (tokens/turnos do transcript)
 #                                                        — enviado sozinho ao mudar o status do plano
 # Sessao (0033): com CLAUDE_CODE_SESSION_ID no ambiente, o plano guarda a sessao/maquina/pasta — o PRMake e o
@@ -479,6 +482,15 @@ case "$CMD" in
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> running"
     ;;
 
+  advance)
+    # Fecha uma etapa e abre a proxima numa chamada so (menos turnos = menos contexto relido).
+    require_plan; FROM="${1:?etapa que terminou}"; TO="${2:--}"; MSG="${3:-}"; KIND="${4:-progress}"
+    if [[ -n "$MSG" ]]; then bash "$0" log "$CARD" "$FROM" "$KIND" "$MSG" >/dev/null || exit $?; fi
+    bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
+    if [[ "$TO" != "-" ]]; then bash "$0" step "$CARD" "$TO" running >/dev/null || exit $?; fi
+    if [[ "$TO" != "-" ]]; then echo "OK $FROM -> completed · $TO -> running"; else echo "OK $FROM -> completed"; fi
+    ;;
+
   activity)
     require_plan; KEY="${1:?key}"; TEXT="${2:?texto}"
     jq -n --arg a "$TEXT" '{activity:$a}' > "$TMP/body"
@@ -560,8 +572,15 @@ case "$CMD" in
     CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
     echo "=== CARD $CARD (pasta: $CARD_DIR)"
     MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
-    grep -E "^(workItemType|state|area|fluxo|title)=" <<<"$MANIFEST_OUT"
-    CTITLE="$(sed -n 's/^title=//p' <<<"$MANIFEST_OUT")"; CAREA="$(sed -n 's/^area=//p' <<<"$MANIFEST_OUT")"
+    grep -E "^(workItemType|fluxo)=" <<<"$MANIFEST_OUT"
+    CTITLE="$(sed -n 's/^title=//p' <<<"$MANIFEST_OUT")"
+    RESUMO="$CARD_DIR/dados/card-resumo.txt"
+    if [[ -s "$RESUMO" ]]; then
+      echo "--- campos do card (o card.json bruto nao precisa ser aberto)"; head -c 2500 "$RESUMO"; echo
+    else
+      grep -E "^(state|area|title)=" <<<"$MANIFEST_OUT"
+    fi
+    CMOD="$(sed -n 's/^Module: //p' "$RESUMO" 2>/dev/null | head -1)"
     DESC="$CARD_DIR/dados/description.txt"
     if [[ -s "$DESC" ]]; then
       echo "--- repro steps/descricao ($(wc -c < "$DESC" | tr -d ' ') bytes; inteiro em $DESC)"
@@ -575,21 +594,10 @@ case "$CMD" in
     if [[ -f "$SK/kb.sh" ]]; then
       bash "$SK/kc.sh" sync --quiet 2>/dev/null || true
       bash "$SK/kb.sh" sync --quiet 2>/dev/null || true
-      KBDIR="$(bash "$SK/kb.sh" path)"
-      echo "=== BASE SOLVACE (trechos do indice ligados ao card — abra a secao com: kb.sh show <projeto> <secao>)"
-      python3 - "$KBDIR/INDEX.md" "${CTITLE:-${1:-}} $CAREA" <<'PY' 2>/dev/null || echo "(indice indisponivel)"
-import re, sys, unicodedata
-def norm(t): return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
-stop = set("para com sem uma uns umas dos das nos nas pelo pela que nao when with from that this have into user usuario erro error bug card solvace product improvement development team".split())
-words = [w for w in re.findall(r"[a-z0-9]{4,}", norm(sys.argv[2])) if w not in stop]
-text = open(sys.argv[1], encoding="utf-8").read()
-blocks = [b.split("\n## ")[0] for b in re.split(r"\n(?=### )", text) if b.startswith("### ")]
-scored = sorted(((sum(norm(b).count(w) for w in words), b) for b in blocks), key=lambda x: -x[0])
-hits = [b for s, b in scored if s > 0][:2]
-print("\n\n".join(b[:1500] for b in hits) if hits else "(nenhum projeto da base casou com o titulo/area — veja: kb.sh index)")
-PY
+      echo "=== BASE SOLVACE (projetos ligados ao card — ficha: kb.sh show <projeto> · secao: kb.sh show <projeto> <secao> · outros: kb.sh index <termos>)"
+      bash "$SK/kb.sh" index "${CTITLE:-${1:-}} $CMOD" --max 3 2>/dev/null || echo "(indice indisponivel)"
       echo; echo "=== KNOWLEDGE CENTER (regras de negocio relacionadas — kc.sh article <n> para o texto inteiro)"
-      bash "$SK/kc.sh" search "${CTITLE:-${1:-$CARD}}" --limit 3 2>/dev/null || echo "(KC indisponivel)"
+      bash "$SK/kc.sh" search "${CTITLE:-${1:-$CARD}} $CMOD" --limit 3 2>/dev/null || echo "(KC indisponivel)"
     else
       echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
     fi

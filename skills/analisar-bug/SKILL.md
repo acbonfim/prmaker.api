@@ -16,25 +16,45 @@ instalada). Depende da skill `base-solvace` (instalada junto). Token: env `PRMAK
 `~/.claude/prmake-token.txt` (HTTP 401/403 = token expirou).
 
 ```bash
-PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh    # plano de execucao (todos os comandos: references/plano-execucao.md)
-KB=~/.claude/skills/base-solvace/scripts/kb.sh               # Base Solvace: index | show <projeto> [secao] | find <termo>
+PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh    # plano de execucao (lista completa: ref.sh plano comandos)
+REF=~/.claude/skills/analisar-bug/scripts/ref.sh              # referencias por SECAO: ref.sh [arquivo] [secao]
+KB=~/.claude/skills/base-solvace/scripts/kb.sh               # Base Solvace: index [termos] | show <projeto> [secao] | find <termo>
 KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center: search <termos> | article <n>
 ```
 
 ## Economia de tokens (vale para todo o fluxo)
-- **Um comando traz o contexto inicial**: `bash $PLAN contexto <card>` (pasta, plano criado/retomado, card, repro
-  steps, comentarios/anexos novos, trechos da Base Solvace e artigos do KC relacionados). Nao repita essas buscas.
-- **Base Solvace antes do codigo**: indice → secao do modulo → so os arquivos que ela aponta. Nada de grep no
-  repositorio inteiro; varredura ampla inevitavel → subagente `Explore` (volta so o resumo).
-- **Leia as referencias so quando chegar na fase** (tabela no fim). Nao releia arquivos ja lidos; saidas longas
-  (SQL, logs) → salve em `$CARD_DIR/dados/` e leia so o trecho que importa.
-- Menos turnos: agrupe comandos independentes numa chamada; `log` curto; nada de "vou fazer X" sem fazer.
+O custo e **respostas × contexto**: tudo o que entra (saida de comando, arquivo lido) e relido em **cada resposta
+seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. Por isso:
+- **Contexto inicial num comando**: `bash $PLAN contexto <card>` ja traz os campos do card (`dados/card-resumo.txt`),
+  repro steps, plano, comentarios/anexos, os projetos da Base Solvace e os artigos do KC ligados ao card. Nao abra
+  `card.json`, nao rode `kb.sh index` sem termos nem repita essas buscas.
+- **Referencias so por secao, so na hora**: `bash $REF <arquivo> <secao>` (tabela no fim). **Nunca** `cat`/Read de
+  um arquivo inteiro de `references/`, nunca varios de uma vez, nunca "para ja ter". Esta SKILL.md ja esta no
+  contexto — nao a releia (so se o passo 0 disser que atualizou).
+- **Base Solvace antes do codigo**: projeto do `contexto` → `kb.sh show <projeto> <secao>` → so os arquivos que ela
+  aponta. Outro modulo: `kb.sh index <termos>` (filtrado). Nada de grep no repositorio inteiro; varredura ampla
+  inevitavel → subagente `Explore` (volta so o resumo).
+- **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
+- **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
+  com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
+
+## Comandos do plano no dia a dia
+```bash
+bash $PLAN advance <card> <key> <proxima|-> "achado/resumo curto" [finding]   # conclui a etapa e inicia a proxima
+bash $PLAN step <card> <key> running|completed|cancelled ["motivo"]
+bash $PLAN log <card> <key> progress|finding|decision|warning "texto curto"
+bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}]'   ·   sync <card> <key>   ·   checkpoint <card> <key> "onde parei"
+bash $PLAN control <card>             # entre etapas: 0 segue · 10 pausado (wait em 2o plano) · 11 pare
+bash $PLAN watch <card>               # vigia, SEMPRE em segundo plano antes de encerrar a vez com algo pendente
+bash $PLAN block <card> <key> "o que o usuario faz"   # travada por permissao/VPN/credencial
+bash $PLAN ask <card> - <<< '[...]'   ·   wait-answers <card> 3600 (2o plano)   ·   answer <card> <n> "..."
+bash $PLAN status <card> completed "" <resumo.md>
+```
 
 ## Regras que valem sempre
-- **Plano de execucao obrigatorio**: tudo o que voce produz vai para o plano em pedacos (`step`, `log`, `sync`,
-  `checkpoint`); `control` entre etapas (exit 10 pausado → `wait` em segundo plano e encerre a vez; 11 → pare).
-  Nunca encerre a vez com algo pendente de fora sem o vigia: `bash $PLAN watch <card>` **em segundo plano**. O
-  PRMake escreve sozinho os marcos na Timeline — nao duplique. Detalhes: `references/plano-execucao.md`.
+- **Plano de execucao obrigatorio**: tudo o que voce produz vai para o plano em pedacos; `control` entre etapas;
+  nunca encerre a vez com algo pendente de fora sem o vigia (`watch` **em segundo plano**). O PRMake escreve sozinho
+  os marcos na Timeline — nao duplique.
 - **Pendencia do usuario sempre evidente no PRMake**: etapa sua travada por algo que so o usuario resolve (o Claude
   Code barrou o comando — permissao/auto mode —, VPN desligada, credencial ausente, acesso negado) → **na hora**
   `bash $PLAN block <card> <key> "<o que ele precisa fazer: o que liberar, o comando exato e a alternativa>"`, diga o
@@ -47,10 +67,10 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center:
   terminal dele** com `prmake-skills.sh db-credentials` — **nunca peca nem aceite senha no chat ou no PRMake**; `block`
   na `consultar-ambiente` e espere — nao conclua a analise, nao proponha solucoes como fato e nao
   empurre a verificacao para o plano de correcao. So siga sem o banco se o usuario responder explicitamente que e
-  para seguir assim (`ask`), e diga isso na analise. Detalhes: `references/consultas.md`.
+  para seguir assim (`ask`), e diga isso na analise. Detalhes: `$REF consultas 3c`.
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
-  plano conclui no `fechar-card`. Detalhes: `references/correcao.md`.
+  plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `bash $PLAN attachment <card> "<ref>"` e abra com Read; comentario →
   `bash $PLAN notes <card> <n>`. Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
@@ -64,7 +84,7 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center:
   memoria estados, areas, branches, titulos. Faltou regra → pergunte e sugira configurar no PRMake.
 - **Ready for QA so com autorizacao**: com a correcao em QA, mova para Dev Test in QA (`devops <card> dev-test-in-qa`,
   sem perguntar); `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano ou
-  autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `references/catalogo-e-fechamento.md`.
+  autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
 - **Foco no card**: solucoes/scripts so para o caso relatado; outros afetados → so um aviso curto.
 - **Analise e somente leitura**; codigo muda so depois da resposta do usuario, **sem comentarios novos no codigo**
   (o porque vai no commit/PR/plano). **Nunca merge nem aprovacao de PR.** Nunca escrita em banco/Cognito.
@@ -79,27 +99,28 @@ se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`. Ele cria/retoma o plano (se ja existe plano aberto,
 **continue da primeira etapa pronta com o checkpoint**; analise concluida sem correcao → siga do passo 6, sem
-refazer), grava `description.txt`/`card.json` em `$CARD_DIR/dados/`, lista comentarios/anexos novos (abra cada
-anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os trechos relacionados. Conclua
-`identificar-card`/`coletar-dados` e **refine as etapas** (`steps`) para este caso concreto.
+refazer), mostra os campos do card e os repro steps (inteiros em `$CARD_DIR/dados/`), lista comentarios/anexos novos
+(abra cada anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
+Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas** (`steps`) para este caso concreto.
 
-**3. Investigar** — comece pela secao da Base Solvace do modulo (`bash $KB show <projeto> <secao>`), depois o codigo
-apontado; regra de negocio → KC. Reconstrua o fluxo, levante hipoteses priorizadas com `caminho:linha`, marque o
-que e hipotese. Diga em qual mundo/repo esta o codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito,
-localizar codigo fora da base: `references/consultas.md` (`consultar-ambiente`; cancele com motivo so se o caso
-**nao** depender de dados). Card que envolve dados (usuario, cadastro, status, configuracao por tenant): **antes de
-investigar a fundo**, `bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host <h> -d <db> --ping` — falhou
-→ `block` com o que fazer (ligar a VPN, liberar a permissao, credencial). Reconheca o padrao do caso no catalogo: `references/catalogo-e-fechamento.md`. Se o codigo divergir da
-Base Solvace, registre um `log warning` e proponha a correcao da secao:
+**3. Investigar** — comece pela secao da Base Solvace do modulo que o `contexto` mostrou (`bash $KB show <projeto>
+<secao>`; nenhum casou → `bash $KB index <modulo/tela>`), depois o codigo apontado; regra de negocio → KC. Reconstrua
+o fluxo, levante hipoteses priorizadas com `caminho:linha`, marque o que e hipotese. Diga em qual mundo/repo esta o
+codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito, localizar codigo fora da base:
+`$REF consultas 3a|3b|3c` (`consultar-ambiente`; cancele com motivo so se o caso **nao** depender de dados). Card que envolve dados
+(usuario, cadastro, status, configuracao por tenant): **antes de investigar a fundo**,
+`bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host <h> -d <db> --ping` — falhou → `block` com o que fazer
+(ligar a VPN, liberar a permissao, credencial). Reconheca o padrao do caso no catalogo: `$REF catalogo catalogo`. Se o
+codigo divergir da Base Solvace, registre um `log warning` e proponha a correcao da secao:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> divergencia.md --kind divergence --card <card>`.
 
-**4–5. Analise e Timeline** — monte `$CARD_DIR/analises/analise-inicial.md` pelo modelo de
-`references/analise-template.md` (inclua "Regras de negocio (Knowledge Center)" com os ART-n usados), `sync` e
-publique com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
+**4–5. Analise e Timeline** — monte `$CARD_DIR/analises/analise-inicial.md` pelo modelo de `$REF analise 4`
+(publicacao: `$REF analise 5`; inclua "Regras de negocio (Knowledge Center)" com os ART-n usados), `sync` e publique
+com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
 
-**6–8b. Solucoes, plano de correcao e execucao** — `references/correcao.md` (perguntas com opcoes cujo `label` e
-a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo `branches`, PRs com `pr-text`/
-`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
+**6–8b. Solucoes, plano de correcao e execucao** — uma secao por passo: `$REF correcao 6`, depois `7`, `8`, `8b`
+(perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo
+`branches`, PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
 **9. Aprender e reportar** — se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
 query util), proponha em poucas linhas: `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto>
@@ -113,11 +134,13 @@ Claude" do PRMake copia esse comando). Ao ser retomado, rode `resume-info` e `no
 estava parado) e siga de onde parou. Vigia opcional que retoma sozinho quando as respostas chegam pela tela:
 `prmake-card.sh agent install`.
 
-## Referencias (leia so na fase)
-| Arquivo | Quando |
+## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
+| Quando | Comando |
 |---|---|
-| `references/plano-execucao.md` | detalhe de qualquer comando/regra do plano (vigia, pausa, anexos, fila offline) |
-| `references/consultas.md` | localizar codigo legado × revamp, Cognito, SQL Server somente leitura |
-| `references/catalogo-e-fechamento.md` | padrao do caso (A–H), configuracao do PRMake, fechamento e mover o card |
-| `references/analise-template.md` | passos 4–5 |
-| `references/correcao.md` | passos 6–8b |
+| passo 3: localizar codigo, Cognito, banco | `$REF consultas 3a` · `3b` · `3c` |
+| passo 3/6/7: padrao do caso (A–H) | `$REF catalogo catalogo` |
+| passos 4–5 | `$REF analise 4` · `$REF analise 5` |
+| passos 6–8b | `$REF correcao 6` · `7` · `8` · `8b` |
+| fechamento | `$REF catalogo fechamento` · `"ready for qa"` · `mover` · `"quem grava"` |
+| detalhe do plano | `$REF plano comandos` · `retomar` · `control` · `block` · `watch` · `anexos` |
+| nao sabe a secao | `$REF` (lista arquivos e secoes com ~tokens) |
