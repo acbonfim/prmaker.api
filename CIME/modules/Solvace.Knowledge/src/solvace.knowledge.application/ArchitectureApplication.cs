@@ -193,6 +193,39 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return RenderIndex(projects, articles, environment);
     }
 
+    public async Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
+        IReadOnlyCollection<string>? boostProjects, CancellationToken cancellationToken)
+    {
+        var terms = ArchitectureSearch.Terms(query, extraTerms);
+        if (terms.Count == 0) return [];
+        var (projects, articles, _) = await LoadAllAsync(cancellationToken);
+        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects);
+    }
+
+    public async Task<string> BuildCatalogAsync(int maxChars, CancellationToken cancellationToken)
+    {
+        var (projects, articles, _) = await LoadAllAsync(cancellationToken);
+        var sb = new StringBuilder();
+        foreach (var p in projects)
+        {
+            sb.Append($"- {p.Key} | {p.Name} ({p.Kind})");
+            if (!string.IsNullOrWhiteSpace(p.Summary)) sb.Append($": {(p.Summary.Length > 160 ? p.Summary[..160] + "…" : p.Summary)}");
+            if (p.Keywords.Count > 0) sb.Append($" [palavras: {string.Join(", ", p.Keywords.Take(8))}]");
+            sb.Append(" — seções: ").AppendLine(string.Join("; ", p.Sections.OrderBy(s => s.Order).Select(s => $"{s.Key} ({s.Title})")));
+            if (sb.Length > maxChars) break;
+        }
+        if (sb.Length < maxChars && articles.Count > 0)
+        {
+            sb.AppendLine("Knowledge Center (regras de negócio):");
+            foreach (var a in articles)
+            {
+                sb.AppendLine($"- ART-{a.ArticleNumber}: {a.Title}");
+                if (sb.Length > maxChars) break;
+            }
+        }
+        return sb.Length <= maxChars ? sb.ToString() : sb.ToString()[..maxChars] + "\n…(cortado)";
+    }
+
     public async Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken)
     {
         var (projects, articles, environment) = await LoadAllAsync(cancellationToken);
