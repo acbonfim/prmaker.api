@@ -4,6 +4,7 @@
 # Saida: escreve arquivos em $OUTDIR (default /tmp/bug-analysis) e imprime um manifesto.
 #   card.json       -> dados brutos do card (para conferencia)
 #   description.txt  -> ReproSteps (Bug) ou System.Description (US), sem HTML
+#   card-resumo.txt  -> campos uteis do card numa linha cada (modulo, ambiente, site, tags...) — leia este, nao o card.json
 # Env opcional:
 #   PRMAKE_TOKEN = sobrescreve o token (senao resolve via arquivos, igual ao gerar-prmake).
 #   OUTDIR       = diretorio de saida (default /tmp/bug-analysis)
@@ -75,6 +76,16 @@ else
   IS_BUG=0
 fi
 
+# Campos uteis numa linha cada: o card.json bruto tem ~10 KB de URLs/identidades que so gastam contexto.
+jq -r '.fields | to_entries[]
+  | select(.value != null and .value != false and .value != "" and .value != 0)
+  | select(.key | test("^(System[.](Title|State|BoardColumn|AreaPath|Tags|AssignedTo|CreatedDate|Parent)|Microsoft[.]VSTS[.]Common[.](Priority|Severity)|Custom[.])"))
+  | select(.key | test("RemainingWork|ReproSteps|Kanban") | not)
+  | (.key | sub("^(System|Custom|Microsoft[.]VSTS[.]Common)[.]"; "")) + ": "
+    + (if (.value | type) == "object" then (.value.displayName // (.value | tostring))
+       else (.value | tostring | gsub("<[^>]*>"; " ") | gsub("&nbsp;"; " ") | gsub("[[:space:]]+"; " ")) end | .[0:300])' \
+  "$OUTDIR/card.json" > "$OUTDIR/card-resumo.txt" 2>/dev/null || : > "$OUTDIR/card-resumo.txt"
+
 cat <<EOF
 OK
 card=$CARD
@@ -88,4 +99,5 @@ outdir=$OUTDIR
 arquivos:
   card.json       ($(wc -c < "$OUTDIR/card.json") bytes)
   description.txt ($(wc -c < "$OUTDIR/description.txt") bytes)
+  card-resumo.txt ($(wc -c < "$OUTDIR/card-resumo.txt") bytes)
 EOF

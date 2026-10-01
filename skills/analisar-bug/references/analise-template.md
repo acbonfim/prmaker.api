@@ -1,6 +1,6 @@
 # Modelo do texto da analise (passo 4) e publicacao (passo 5)
 
-Lido ao montar a analise.
+Leia ao montar a analise (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh analise <4|5>`).
 
 ### 4. Montar o texto da analise
 

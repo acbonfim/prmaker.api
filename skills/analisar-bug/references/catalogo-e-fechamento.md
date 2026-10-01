@@ -1,6 +1,7 @@
 # Catalogo de tratamentos, configuracao e fechamento do card
 
-Lido ao reconhecer o padrao do caso (passo 3/6), ao montar o plano de correcao (passo 7) e no fechamento.
+Leia so a secao da fase (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh catalogo <secao>`): o catalogo ao
+reconhecer o padrao do caso (passo 3/6) e ao montar o plano de correcao (passo 7); o resto no fechamento.
 
 ## Catalogo de tratamentos (aprendido dos cards reais)
 
@@ -20,6 +21,7 @@ orientacao ao cliente).
 | **G. Nao reproduz / sem retorno** | 10 | sem evidencia do erro; instabilidade passada; cliente nao responde | tentativas em qa/sandbox, logs, dados | registrar as tentativas (voce) → `pedir-informacoes` ao cliente (usuario) → fechamento | `cannot-reproduce` · `no-user-feedback` |
 | **H. Duplicado** | 3 | mesmo problema de outro card | buscar o card original | vincular/avisar (usuario) → fechamento | `duplicated` |
 
+## Quem grava e configuracao do PRMake
 **Quem grava e o PRMake — sempre.** Voce le o card (pelo PRMake), investiga e **gera os textos** (analise, root
 cause, resumo nao tecnico PT/EN, descricao do PR, passo a passo, orientacao ao cliente), mas **nada e gravado
 direto no Azure DevOps**: toda gravacao (root cause, resumo na discussion, classificacao, estimativa, Remaining,
@@ -43,6 +45,7 @@ estado, area, branch ou titulo). Faltou uma regra (ex.: repositorio sem tipo, fl
 usuario** e sugira que o admin configure no PRMake. O que o card tem hoje (estado, area, tipo) vem do card lido
 pelo PRMake (`bug-fetch.sh` → `state`/`area`).
 
+## Fechamento do card (devops)
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
 1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
@@ -61,6 +64,10 @@ das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
    senao o PRMake devolve 409) ou `devops <card> ready-for-qa` (**so nas condicoes abaixo**). Acao "NAO
    configurado" no `config` → nao ofereca; avise que o admin pode configura-la no PRMake (AI Configurations).
 
+Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
+RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
+
+## Dev Test in QA e Ready for QA
 **Dev Test in QA → Ready for QA** (ex.: card 74572 — estado "In Development (doing)", coluna "Dev Test in QA" = o
 dev validando a correcao em QA):
 - Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**: quando a etapa `validar-qa`
@@ -74,6 +81,7 @@ dev validando a correcao em QA):
 - Por isso, com codigo, o `fechar-card` tem `dependsOn: ["validar-qa"]`; o root cause, a classificacao e o resumo
   podem ser gravados antes, mas o `ready-for-qa` fica para depois da validacao.
 
+## Mover o card (permissao, DevOps fora do ar, 409)
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e
 `devops <card> test-in-production` chamam o endpoint do PRMake `POST Azure/card/<card>/actions/<acao>`; o PRMake
 move o card com a integracao do Azure do usuario e registra na Timeline. A resposta do usuario a pergunta de
@@ -91,5 +99,3 @@ tela do DevOps/PRMake**. "Nao mover agora" → nao chame e registre no plano.
   `run_in_background: true`), ex.: `for i in 1 2 3 4 5 6; do sleep 120; bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> <acao> && exit 0; done; exit 1`,
   registre um `log warning` e conclua o fechamento quando ele terminar com sucesso.
 - `HTTP 409` = o card nao esta na area exigida pela acao: diga qual e a area e ofereca as outras acoes configuradas.
-Sem codigo, antes do passo 1 salve o texto do tratamento no card com `save-pr-text` (descricao do que foi feito +
-RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.

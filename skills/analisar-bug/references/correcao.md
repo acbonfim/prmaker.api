@@ -1,6 +1,6 @@
 # Propor solucoes, plano de correcao e execucao (passos 6 a 8b)
 
-Lido a partir do passo 6.
+Leia so a secao do passo em que esta (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh correcao <6|7|8|8b>`).
 
 ### 6. Propor solucoes e perguntar (etapa `propor-solucoes`)
 Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** e **decida com o usuario**.
@@ -135,7 +135,7 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   link na etapa no PRMake") e que o botao *Concluir* esta na propria linha da etapa no PRMake (ela aparece em
   "Aguardando voce" no topo do plano e no sino), e siga com as outras etapas prontas.
 - Etapa sua travada por algo do usuario (permissao, VPN, credencial, acesso): `block` na hora — ver
-  `references/plano-execucao.md`.
+  `ref.sh plano block`.
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
