@@ -48,6 +48,9 @@ public class ArchitectureProject
     public const int MaxKeyLength = 100;
     public const int MaxNameLength = 200;
     public const int MaxSummaryLength = 2_000;
+    public const int MaxDisplayNameLength = 120;
+    public const int MaxTaglineLength = 300;
+    public const int MaxBusinessAreaLength = 80;
 
     public Guid Id { get; private set; }
     public string Key { get; private set; } = string.Empty;
@@ -61,6 +64,12 @@ public class ArchitectureProject
     public string? SourceBranch { get; private set; }
     public DateTimeOffset? SourceMappedAt { get; private set; }
     public int Order { get; private set; }
+    /// <summary>Nome para pessoas ("Plano de Ação") — 0038; fora do espelho das skills.</summary>
+    public string? DisplayName { get; private set; }
+    /// <summary>Uma frase em linguagem simples sobre o que o projeto faz — 0038.</summary>
+    public string? Tagline { get; private set; }
+    /// <summary>Área de negócio que agrupa legado, revamp e front do mesmo módulo ("Plano de Ação", "Usuários e acesso") — 0038.</summary>
+    public string? BusinessArea { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -141,6 +150,26 @@ public class ArchitectureProject
         if (order is { } o) Order = o;
         IsDeleted = false;
         Touch(actor, now);
+    }
+
+    /// <summary>Dados para pessoas (0038): null mantém, vazio limpa. Devolve true se algo mudou.</summary>
+    public bool SetFriendly(string? displayName, string? tagline, string? businessArea)
+    {
+        var changed = false;
+        DisplayName = Friendly(DisplayName, displayName, MaxDisplayNameLength, "O nome amigável", ref changed);
+        Tagline = Friendly(Tagline, tagline, MaxTaglineLength, "A frase", ref changed);
+        BusinessArea = Friendly(BusinessArea, businessArea, MaxBusinessAreaLength, "A área de negócio", ref changed);
+        return changed;
+    }
+
+    private static string? Friendly(string? current, string? value, int max, string label, ref bool changed)
+    {
+        if (value is null) return current;
+        var clean = value.Trim();
+        if (clean.Length > max) throw new DomainException($"{label} pode ter no máximo {max} caracteres.");
+        var result = clean.Length == 0 ? null : clean;
+        if (result != current) changed = true;
+        return result;
     }
 
     public void Touch(string actor, DateTimeOffset now)

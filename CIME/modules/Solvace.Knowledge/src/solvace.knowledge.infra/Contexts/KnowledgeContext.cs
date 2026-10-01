@@ -66,6 +66,10 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Keywords).HasColumnType("jsonb");
             entity.Property(e => e.SourceCommit).HasMaxLength(64);
             entity.Property(e => e.SourceBranch).HasMaxLength(200);
+            // 0038: nome, frase e área para pessoas (não vão para o espelho das skills).
+            entity.Property(e => e.DisplayName).HasMaxLength(ArchitectureProject.MaxDisplayNameLength);
+            entity.Property(e => e.Tagline).HasMaxLength(ArchitectureProject.MaxTaglineLength);
+            entity.Property(e => e.BusinessArea).HasMaxLength(ArchitectureProject.MaxBusinessAreaLength);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
             entity.HasMany(e => e.Sections).WithOne().HasForeignKey(s => s.ProjectId).OnDelete(DeleteBehavior.Cascade);
@@ -84,6 +88,8 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Content).IsRequired().HasColumnType("text");
             entity.Property(e => e.ContentHash).IsRequired().HasMaxLength(64);
             entity.Property(e => e.Source).IsRequired().HasMaxLength(10);
+            // 0038: llm (vai para as skills) | human (Guia, só na tela); as seções existentes são técnicas.
+            entity.Property(e => e.Audience).IsRequired().HasMaxLength(10).HasDefaultValue(ArchitectureSectionAudience.Llm);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
             entity.HasIndex(e => new { e.ProjectId, e.Key }).IsUnique();
         });

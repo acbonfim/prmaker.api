@@ -18,6 +18,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\solvace.knowledge.domain\solvace.knowledge.domain.csproj" />
+        <ProjectReference Include="..\..\src\solvace.knowledge.application\solvace.knowledge.application.csproj" />
     </ItemGroup>
 
 </Project>

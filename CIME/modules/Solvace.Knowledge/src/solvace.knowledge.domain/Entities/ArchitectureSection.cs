@@ -15,6 +15,28 @@ public static class ArchitectureSource
     }
 }
 
+/// <summary>
+/// Para quem a seção foi escrita (0038): <c>llm</c> = técnica, lida pelas skills (vai para o espelho/índice);
+/// <c>human</c> = o Guia em linguagem simples para QA, gestores e suporte — só na tela, na busca e no "Pergunte".
+/// </summary>
+public static class ArchitectureSectionAudience
+{
+    public const string Llm = "llm";
+    public const string Human = "human";
+    /// <summary>Prefixo das chaves do Guia (guia-o-que-e, guia-como-funciona...).</summary>
+    public const string GuidePrefix = "guia-";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Llm, Human };
+
+    public static string Normalize(string? audience)
+    {
+        var value = (audience ?? Llm).Trim().ToLowerInvariant();
+        return All.Contains(value) ? value : throw new DomainException($"Público inválido: '{audience}' (llm ou human).");
+    }
+
+    /// <summary>Público de uma seção nova sem público informado: o Guia pela chave, senão técnica.</summary>
+    public static string DefaultFor(string key) => key.StartsWith(GuidePrefix, StringComparison.Ordinal) ? Human : Llm;
+}
+
 /// <summary>Uma seção (markdown + mermaid) de um projeto da engenharia reversa; cada mudança vira uma versão.</summary>
 public class ArchitectureSection
 {
@@ -31,16 +53,32 @@ public class ArchitectureSection
     public string ContentHash { get; private set; } = string.Empty;
     public int Version { get; private set; }
     public string Source { get; private set; } = ArchitectureSource.Admin;
+    /// <summary>llm (exportada para as skills) | human (Guia, só na tela) — 0038.</summary>
+    public string Audience { get; private set; } = ArchitectureSectionAudience.Llm;
     public DateTimeOffset UpdatedAt { get; private set; }
     public string UpdatedBy { get; private set; } = string.Empty;
 
+    /// <summary>Vai para o espelho/índice das skills.</summary>
+    public bool IsForLlm => Audience == ArchitectureSectionAudience.Llm;
+
     protected ArchitectureSection() { }
 
-    public ArchitectureSection(Guid projectId, string key)
+    public ArchitectureSection(Guid projectId, string key, string? audience = null)
     {
         Id = Guid.NewGuid();
         ProjectId = projectId;
         Key = ArchitectureProject.NormalizeKey(key);
+        Audience = audience is null ? ArchitectureSectionAudience.DefaultFor(Key) : ArchitectureSectionAudience.Normalize(audience);
+    }
+
+    /// <summary>Muda o público (null mantém); devolve true se mudou.</summary>
+    public bool SetAudience(string? audience)
+    {
+        if (audience is null) return false;
+        var value = ArchitectureSectionAudience.Normalize(audience);
+        if (value == Audience) return false;
+        Audience = value;
+        return true;
     }
 
     /// <summary>Grava o conteúdo; devolve a versão nova quando o conteúdo/título mudou (senão null — nada a versionar).</summary>

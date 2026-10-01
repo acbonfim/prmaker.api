@@ -46,6 +46,8 @@ builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
 builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureChatService>();
 builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureAskService>();
+builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureGuideService>();
+builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureLearnService>();
 builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();

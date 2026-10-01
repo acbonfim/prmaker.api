@@ -48,6 +48,7 @@ public class ArchitectureChatService(IAIService ai, IArchitectureApplication arc
     public const int MaxMessages = 20;
     private const int MaxConversationChars = 30_000;
     private const int MaxIndexChars = 12_000;
+    private const int MaxTechnicalChars = 30_000;
     private const string AIConfigurationsPlugin = "AI Configurations";
     private const string Open = solvace.knowledge.domain.Filtering.ArchitectureProposal.Open;
     private const string Close = solvace.knowledge.domain.Filtering.ArchitectureProposal.Close;
@@ -79,10 +80,17 @@ public class ArchitectureChatService(IAIService ai, IArchitectureApplication arc
 
         var project = await architecture.GetProjectAsync(projectKey, cancellationToken);
         var section = await architecture.GetSectionAsync(projectKey, sectionKey, cancellationToken);
-        var index = await architecture.BuildIndexAsync(cancellationToken);
 
+        var guide = section.Audience == solvace.knowledge.domain.Entities.ArchitectureSectionAudience.Human;
         var prompt = new StringBuilder();
-        prompt.AppendLine("Você é o especialista em arquitetura da Solvace (plataforma de melhoria contínua/manufatura: legado edv-solvace .NET + ASP clássico, apps Angular, API de integrações, módulos revamp .NET, AWS). Ajude o administrador a melhorar a documentação de engenharia reversa abaixo.");
+        if (guide)
+        {
+            // 0038: seção do Guia — o texto é para QA, gestores e suporte, não para a LLM.
+            prompt.AppendLine("Você é o redator do Guia da Base Solvace: documentação de um sistema da Solvace (plataforma de melhoria contínua para manufatura) para pessoas que não programam. Ajude o administrador a melhorar a seção do Guia abaixo, usando a documentação técnica do mesmo sistema como fonte.");
+            prompt.AppendLine(solvace.knowledge.domain.Entities.ArchitectureGuideTemplate.WritingRules);
+        }
+        else
+            prompt.AppendLine("Você é o especialista em arquitetura da Solvace (plataforma de melhoria contínua/manufatura: legado edv-solvace .NET + ASP clássico, apps Angular, API de integrações, módulos revamp .NET, AWS). Ajude o administrador a melhorar a documentação de engenharia reversa abaixo.");
         prompt.AppendLine("Regras: responda em português, direto; não invente — o que não dá para afirmar pela documentação vira pergunta ou \"a confirmar\"; nunca inclua credenciais, senhas, tokens ou connection strings.");
         prompt.AppendLine($"Quando propuser uma nova versão da seção, devolva a seção COMPLETA (markdown, mermaid permitido) entre as linhas {Open} e {Close}, uma única vez, e explique antes em poucas linhas o que mudou. Sem proposta, não use os marcadores.");
         prompt.AppendLine();
@@ -93,8 +101,24 @@ public class ArchitectureChatService(IAIService ai, IArchitectureApplication arc
         prompt.AppendLine($"## Seção atual: {section.Title} (`{section.Key}`, versão {section.Version})");
         prompt.AppendLine(section.Content);
         prompt.AppendLine();
-        prompt.AppendLine("## Índice da base (contexto do parque)");
-        prompt.AppendLine(index.Length <= MaxIndexChars ? index : index[..MaxIndexChars] + "\n…(índice cortado)");
+        if (guide)
+        {
+            var used = 0;
+            foreach (var technical in project.Sections.Where(x => x.Audience != solvace.knowledge.domain.Entities.ArchitectureSectionAudience.Human).OrderBy(x => x.Order))
+            {
+                if (used >= MaxTechnicalChars) break;
+                var source = await architecture.GetSectionAsync(projectKey, technical.Key, cancellationToken);
+                var excerpt = ArchitectureAi.Cut(source.Content, Math.Min(10_000, MaxTechnicalChars - used));
+                used += excerpt.Length;
+                prompt.AppendLine($"## Documentação técnica: {source.Title} ({source.Key})").AppendLine(excerpt).AppendLine();
+            }
+        }
+        else
+        {
+            var index = await architecture.BuildIndexAsync(cancellationToken);
+            prompt.AppendLine("## Índice da base (contexto do parque)");
+            prompt.AppendLine(index.Length <= MaxIndexChars ? index : index[..MaxIndexChars] + "\n…(índice cortado)");
+        }
         prompt.AppendLine();
         prompt.AppendLine("## Conversa");
         var conversation = new StringBuilder();

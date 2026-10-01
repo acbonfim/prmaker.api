@@ -49,6 +49,12 @@ public class UpsertArchitectureProjectRequest
     public int? Order { get; set; }
     /// <summary>Interdependências (0034); null = mantém as atuais.</summary>
     public List<ArchitectureRelation>? Relations { get; set; }
+    /// <summary>Nome para pessoas (0038); null mantém, "" limpa. Não vai para o espelho das skills.</summary>
+    public string? DisplayName { get; set; }
+    /// <summary>Uma frase em linguagem simples (0038); null mantém, "" limpa.</summary>
+    public string? Tagline { get; set; }
+    /// <summary>Área de negócio (0038); null mantém, "" limpa.</summary>
+    public string? BusinessArea { get; set; }
 }
 
 /// <summary>Grava uma seção (chaves do projeto e da seção na rota). Conteúdo igual ao atual não cria versão.</summary>
@@ -61,6 +67,9 @@ public class WriteArchitectureSectionRequest
     public string? Source { get; set; }
     /// <summary>O que mudou (aparece no histórico).</summary>
     public string? Note { get; set; }
+    /// <summary>llm (técnica, vai para as skills) | human (Guia, só na tela) — 0038. Null mantém; seção nova sem
+    /// público: human se a chave começa com "guia-", senão llm.</summary>
+    public string? Audience { get; set; }
 }
 
 /// <summary>Sugestão para a engenharia reversa (análise ou pessoa) — vai para a fila do admin.</summary>

@@ -9,7 +9,7 @@ Scripts (`$KB`, `$KC`, `$ARCH` abaixo):
 ```bash
 KB=~/.claude/skills/base-solvace/scripts/kb.sh      # espelho local: sync | index [termos] [--full] | show <projeto> [secao] | find <termo> | status | agendar
 KC=~/.claude/skills/base-solvace/scripts/kc.sh      # Knowledge Center: search <termos> | article <n> | sync [--full] | check
-ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | project | section | get | stale
+ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | project | section | get | stale | guia | lacunas | resolver; learn <card> (todos)
 ```
 
 ## Consultar (toda analise — e o que economiza tokens)
@@ -41,6 +41,15 @@ ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | p
 - **Ambiente** (dev hoje): definido no plugin; trocar para prod = mudar `Environment` no plugin + credencial `prod`
   no arquivo local — a proxima sincronizacao faz a carga completa. Nada muda nas skills.
 - Sessao com o banco sempre somente leitura. Nunca imprima a credencial.
+
+## Guia, aprender com um card e lacunas (0038)
+- **Guia** (seções `guia-*`, público `human`): a mesma base em linguagem simples para QA/gestores, só na tela do
+  PRMake — **não** vem no espelho nem no índice (a análise não lê). Template e tom: `references/template-secoes.md`.
+  Gerar com a IA: `bash $ARCH guia <chave> <pasta>` (admin) → revisar → publicar.
+- **Aprender com um card** que não virou sugestão sozinho: `bash $ARCH learn <card>` (o PRMake junta DevOps, PR/RCA,
+  Timeline e planos; a IA propõe) → `--send 1,2|all` envia para a fila. Na tela: botão "Aprender com um card".
+- **Lacunas** (`gap`): perguntas do "Pergunte" que a base não cobre. Admin: `bash $ARCH lacunas` → analise o código
+  apontado → publique a seção (`section`, com `--audience human` se for do Guia) → `bash $ARCH resolver <id> applied`.
 
 ## Mapear / atualizar a engenharia reversa (admin)
 Leia `references/mapear.md` e `references/template-secoes.md` so quando for mapear ou atualizar.

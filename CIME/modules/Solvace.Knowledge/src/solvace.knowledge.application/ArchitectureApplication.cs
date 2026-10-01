@@ -12,6 +12,8 @@ namespace solvace.knowledge.application;
 /// Engenharia reversa da Solvace (0033): projetos (repositórios e visões transversais) com seções em markdown
 /// versionadas. A skill lê primeiro o índice compacto e só depois a seção que precisa; o espelho local
 /// (~/.claude/solvace-kb) é este mesmo conteúdo num .zip, baixado só quando o hash muda.
+/// O espelho leva só as seções técnicas (público <c>llm</c>); o Guia para pessoas (<c>human</c>, 0038) fica só na tela,
+/// sem pesar no índice da análise nem mudar o hash.
 /// </summary>
 public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings) : IArchitectureApplication
 {
@@ -101,6 +103,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         project.Update(request.Name, request.Kind, request.Repository, request.Summary, request.Keywords,
             request.SourceCommit, request.SourceBranch, request.Order, actor, now);
         project.SetRelations(request.Relations);
+        project.SetFriendly(request.DisplayName, request.Tagline, request.BusinessArea);
         await repository.SaveChangesAsync(cancellationToken);
         return ToResponse(project);
     }
@@ -126,11 +129,13 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var section = project.Sections.FirstOrDefault(s => s.Key == key);
         if (section is null)
         {
-            section = new ArchitectureSection(project.Id, key);
+            section = new ArchitectureSection(project.Id, key, request.Audience);
             project.Sections.Add(section);
             repository.AddSection(section);
         }
-        var version = section.Write(request.Title, request.Content, request.Order ?? (section.Version == 0 ? project.Sections.Count * 10 : null),
+        else if (section.SetAudience(request.Audience))
+            project.Touch(actor, now);
+        var version = section.Write(request.Title, request.Content, request.Order ?? (section.Version == 0 ? DefaultOrder(project, section) : null),
             request.Source, request.Note, actor, now);
         if (version is not null)
         {
@@ -140,6 +145,12 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         await repository.SaveChangesAsync(cancellationToken);
         return ToSection(section, withContent: true);
     }
+
+    /// <summary>Ordem de uma seção nova sem ordem: técnicas de 10 em 10; o Guia (0038) a partir de 510, depois das técnicas.</summary>
+    private static int DefaultOrder(ArchitectureProject project, ArchitectureSection section) =>
+        section.IsForLlm
+            ? project.Sections.Count(s => s.IsForLlm) * 10
+            : project.Sections.Where(s => !s.IsForLlm && s != section).Select(s => s.Order + 10).DefaultIfEmpty(510).Max();
 
     public async Task<List<ArchitectureSectionVersionResponse>> GetVersionsAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
@@ -246,7 +257,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             foreach (var project in projects)
             {
                 Add(zip, $"projects/{project.Key}/000-projeto.md", RenderProjectCard(project, usedBy));
-                foreach (var section in project.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key))
+                foreach (var section in Exported(project).OrderBy(s => s.Order).ThenBy(s => s.Key))
                     Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
             }
             Add(zip, "graph.json", JsonSerializer.Serialize(await GetGraphAsync(cancellationToken), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
@@ -272,7 +283,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         {
             fingerprint.Append('|').Append(p.Key).Append(':').Append(p.Name).Append(':').Append(p.Kind).Append(':').Append(p.Summary)
                 .Append(':').Append(string.Join(",", p.Keywords)).Append(':').Append(p.SourceCommit).Append(':').Append(p.Order);
-            foreach (var s in p.Sections.OrderBy(s => s.Key)) fingerprint.Append(';').Append(s.Key).Append('=').Append(s.ContentHash).Append('@').Append(s.Order);
+            foreach (var s in Exported(p).OrderBy(s => s.Key)) fingerprint.Append(';').Append(s.Key).Append('=').Append(s.ContentHash).Append('@').Append(s.Order);
             foreach (var r in p.Relations) fingerprint.Append(">").Append(r.Target).Append(':').Append(r.Kind).Append(':').Append(r.Detail);
         }
         foreach (var a in articles) fingerprint.Append("|kc").Append(a.ArticleNumber).Append('=').Append(a.ContentHash);
@@ -281,7 +292,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             Hash = KnowledgeArticle.Hash(fingerprint.ToString())[..16],
             GeneratedAt = DateTimeOffset.UtcNow,
             Projects = projects.Count,
-            Sections = projects.Sum(p => p.Sections.Count),
+            Sections = projects.Sum(p => Exported(p).Count()),
             KnowledgeEnvironment = environment,
             KnowledgeArticles = articles.Count
         };
@@ -308,9 +319,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             {
                 sb.Append($"- **{p.Name}** `{p.Key}` — {Short(p.Summary, 180)}");
                 if (p.Keywords.Count > 0) sb.Append($" · kw: {string.Join(", ", p.Keywords.Take(6))}");
-                if (p.Sections.Count > 0)
-                    sb.Append($" · seções {string.Join("·", p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
-                              + $" (~{Math.Max(1, p.Sections.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
+                var exported = Exported(p).ToList();
+                if (exported.Count > 0)
+                    sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
+                              + $" (~{Math.Max(1, exported.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
                 var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
                 if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");
@@ -339,10 +351,11 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                       + (p.SourceMappedAt is null ? "" : $" ({p.SourceMappedAt:yyyy-MM-dd})"));
         if (p.Summary is not null) sb.AppendLine().AppendLine(p.Summary);
         if (p.Keywords.Count > 0) sb.AppendLine().AppendLine($"Palavras-chave: {string.Join(", ", p.Keywords)}");
-        if (p.Sections.Count > 0)
+        var exported = Exported(p).ToList();
+        if (exported.Count > 0)
         {
             sb.AppendLine().AppendLine("## Seções");
-            foreach (var s in p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key))
+            foreach (var s in exported.OrderBy(s => s.Order).ThenBy(s => s.Key))
                 sb.AppendLine($"- `{s.Order:000}-{s.Key}.md` {s.Title} (~{Math.Max(1, s.Content.Length / 4 / 100) * 100} tokens)");
         }
         if (p.Relations.Count > 0)
@@ -359,6 +372,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         }
         return sb.ToString();
     }
+
+    /// <summary>Seções que vão para o espelho/índice das skills: só as técnicas (o Guia é para pessoas — 0038).</summary>
+    internal static IEnumerable<ArchitectureSection> Exported(ArchitectureProject project) => project.Sections.Where(s => s.IsForLlm);
 
     private static Dictionary<string, List<(string Source, ArchitectureRelation Relation)>> UsedByMap(List<ArchitectureProject> projects) =>
         projects.SelectMany(p => p.Relations.Where(r => r.Target != p.Key).Select(r => (Source: p.Key, Relation: r)))
@@ -456,6 +472,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         SourceBranch = p.SourceBranch,
         SourceMappedAt = p.SourceMappedAt,
         Order = p.Order,
+        DisplayName = p.DisplayName,
+        Tagline = p.Tagline,
+        BusinessArea = p.BusinessArea,
         UpdatedAt = p.UpdatedAt,
         UpdatedBy = p.UpdatedBy,
         Sections = p.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => (ArchitectureSectionSummaryResponse)ToSection(s, withContent: false)).ToList(),
@@ -470,6 +489,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         Order = s.Order,
         Version = s.Version,
         Source = s.Source,
+        Audience = s.Audience,
         Length = s.Content.Length,
         UpdatedAt = s.UpdatedAt,
         UpdatedBy = s.UpdatedBy,
