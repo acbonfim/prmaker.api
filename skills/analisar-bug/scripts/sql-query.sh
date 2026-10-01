@@ -5,7 +5,9 @@
 # Exemplos:
 #   sql-query.sh --host prod3 -d SolvaceDB -q "SELECT TOP 10 * FROM Users"
 #   sql-query.sh --host prod -d SolvaceDB -f consulta.sql
-#   echo "SELECT @@VERSION" | sql-query.sh --host prod4
+#   sql-query.sh --host prod -d SolvaceDB --ping        # so testa o acesso (VPN/credencial) — inicio da analise
+# Rode sempre com o caminho literal e num comando so (sem pipe, &&, ;): e assim que a regra de permissao do
+# Claude Code (`prmake-skills.sh permissions`) libera a consulta sem prompt.
 #
 # Aliases de host: prod | prod3 | prod4 (ou o hostname completo).
 # Credenciais: ~/.claude/sqlserver-credentials.json (nunca impressas).

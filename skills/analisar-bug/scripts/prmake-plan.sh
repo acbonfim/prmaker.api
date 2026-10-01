@@ -7,7 +7,11 @@
 #   correction  <card> <titulo> <etapas.json|->           cria o plano de CORRECAO ligado a analise (passa a ser o ativo)
 #   use         <card> analysis|correction                escolhe em qual plano os comandos agem
 #   steps       <card> <etapas.json|->                   define/refina as etapas (upsert pela key, na ordem)
-#   step        <card> <key> <status> [motivo]           status da etapa: running|completed|failed|cancelled|pending
+#   step        <card> <key> <status> [motivo]           status da etapa: running|completed|failed|cancelled|pending|waiting
+#   block       <card> <key> <o que o usuario faz|STDIN> ETAPA TRAVADA esperando o usuario (0037): permissao negada no
+#                                                        Claude Code, VPN, credencial, acesso — a tela mostra "Aguardando
+#                                                        voce" com o texto e o botao "Ja resolvi" (o vigia acorda)
+#   unblock     <card> <key>                             a pendencia foi resolvida: etapa volta a running
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
 #   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
@@ -454,6 +458,27 @@ case "$CMD" in
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> $ST"
     ;;
 
+  block)
+    # 0037: nunca deixe uma etapa "em andamento" parada por algo que so o usuario resolve. O texto diz exatamente o que
+    # ele precisa fazer (o que liberar, o comando, a alternativa) — e o que aparece no PRMake e no sino do topo.
+    require_plan; KEY="${1:?key}"; TEXT="${2:-}"
+    [[ -n "$TEXT" ]] || TEXT="$(cat)"
+    [[ -n "${TEXT// /}" ]] || die "diga o que o usuario precisa fazer para destravar a etapa"
+    TEXT="${TEXT:0:1000}"
+    jq -n --arg r "$TEXT" '{status:"waiting", waitingOn:"user", reason:$r}' > "$TMP/body"
+    send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body"
+    jq -n --arg k "$KEY" --arg m "Aguardando voce: $TEXT" --arg cid "$(new_id)" \
+      '{logs:[{clientId:$cid, stepKey:$k, kind:"warning", message:$m}]}' > "$TMP/body"
+    send_or_queue POST "/$PLAN/logs" "$TMP/body"
+    echo "OK $KEY -> aguardando o usuario. Diga o mesmo no chat e rode o vigia em segundo plano: prmake-plan.sh watch $CARD"
+    ;;
+
+  unblock)
+    require_plan; KEY="${1:?key}"
+    jq -n '{status:"running"}' > "$TMP/body"
+    send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> running"
+    ;;
+
   activity)
     require_plan; KEY="${1:?key}"; TEXT="${2:?texto}"
     jq -n --arg a "$TEXT" '{activity:$a}' > "$TMP/body"
@@ -579,7 +604,12 @@ PY
     echo "$ACTION"
     [[ -n "$CANCELLED" ]] && echo "etapas canceladas (pular): $CANCELLED"
     READY=$(jq -r '(.readySteps // []) | join(",")' "$TMP/resp"); [[ -n "$READY" ]] && echo "prontas para comecar: $READY"
-    WAITING=$(jq -r '(.waitingSteps // []) | join(",")' "$TMP/resp"); [[ -n "$WAITING" ]] && echo "aguardando (nao mexer): $WAITING"
+    YOURS=$(jq -r '[(.steps // [])[] | select(.status == "waiting" and .waitingOn == "user") | .key] | join(",")' "$TMP/resp")
+    [[ -n "$YOURS" ]] && echo "aguardando o usuario (block — siga quando ele clicar \"Ja resolvi\" ou resolver no chat): $YOURS"
+    WAITING=$(jq -r '[(.steps // []) as $s | (.waitingSteps // [])[] | . as $k | select(([$s[] | select(.key == $k and .waitingOn == "user")] | length) == 0)] | join(",")' "$TMP/resp")
+    [[ -n "$WAITING" ]] && echo "aguardando (resposta/chamado/merge — nao mexer): $WAITING"
+    UP=$(jq -r '.userPending // 0' "$TMP/resp")
+    [[ "$UP" != "0" ]] && echo "pendencias do usuario no PRMake: $UP — $(jq -r '[(.userActions // [])[] | (if .type == "question" then "pergunta" elif .type == "unblock" then "destravar \(.stepKey)" else "etapa dele \(.stepKey)" end)] | join("; ")' "$TMP/resp")"
     OPENQ=$(jq -r '.openQuestions // 0' "$TMP/resp"); [[ "$OPENQ" != "0" ]] && echo "perguntas sem resposta: $OPENQ (rode: prmake-plan.sh wait-answers $CARD)"
     case "$ACTION" in
       wait) echo "PAUSADO por $(jq -r '.statusChangedBy // "?"' "$TMP/resp")$(jq -r 'if .statusReason then ": " + .statusReason else "" end' "$TMP/resp") — rode: prmake-plan.sh wait $CARD"; exit 10;;
@@ -611,7 +641,7 @@ PY
     # O PRMake nao consegue chamar esta sessao: quem acorda o Claude e este comando, rodando em segundo plano.
     # Cada consulta ao control tambem sincroniza os PRs com o GitHub. Termina quando o estado muda.
     require_plan; MAX="${1:-28800}"; waited=0
-    fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), n:(.lastUserNoteNumber // 0), nc:(.userNotesChangedAt // ""), steps:[(.steps // [])[] | [.key, .status]]}' "$TMP/resp"; }
+    fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), n:(.lastUserNoteNumber // 0), nc:(.userNotesChangedAt // ""), steps:[(.steps // [])[] | [.key, .status, (.waitingOn // "")]]}' "$TMP/resp"; }
     api POST "/$PLAN/control"
     [[ "$CODE" =~ ^2 ]] || { sleep 20; api POST "/$PLAN/control"; }
     [[ "$CODE" =~ ^2 ]] || die "sem resposta do PRMake (HTTP $CODE) — tente de novo"
@@ -628,13 +658,20 @@ PY
       echo "MUDOU NO PRMAKE (plano $(jq -r '.status' "$TMP/resp")):"
       jq -r --slurpfile old "$TMP/ctl0" '
         ($old[0].steps // [] | map({(.key): .status}) | add // {}) as $before
+        | ($old[0].steps // [] | map({(.key): (.waitingOn // "")}) | add // {}) as $beforeOn
         | (if $old[0].status != .status then "  plano: \($old[0].status) -> \(.status)" + (if .statusReason then " (\(.statusReason))" else "" end) + (if .statusChangedBy then " por \(.statusChangedBy)" else "" end) else empty end),
-          ((.steps // [])[] | select($before[.key] != .status) | "  etapa \(.key): \($before[.key] // "nova") -> \(.status)" + (if .executor == "user" then " (etapa do usuario)" else "" end)),
+          ((.steps // [])[] | select($before[.key] != .status or ($beforeOn[.key] // "") != (.waitingOn // ""))
+            | if $before[.key] == "waiting" and $beforeOn[.key] == "user" and .status == "running"
+              then "  PENDENCIA RESOLVIDA pelo usuario\(if .changedBy then " (\(.changedBy))" else "" end): etapa \(.key) — tente de novo o que estava travado"
+              elif .status == "waiting" and .waitingOn == "user"
+              then "  etapa \(.key): aguardando o usuario — \(.reason // "")"
+              else "  etapa \(.key): \($before[.key] // "nova") -> \(.status)" + (if .executor == "user" then " (etapa do usuario)" else "" end) end),
           (if ($old[0].openQuestions // 0) != (.openQuestions // 0) then "  perguntas sem resposta: \($old[0].openQuestions // 0) -> \(.openQuestions // 0)" else empty end),
           (if ($old[0].lastUserNoteNumber // 0) != (.lastUserNoteNumber // 0) or ($old[0].userNotesChangedAt // "") != (.userNotesChangedAt // "")
              then "  comentarios do usuario no plano mudaram (ultimo #\(.lastUserNoteNumber // 0)) — rode: prmake-plan.sh notes '"$CARD"' e leia os anexos" else empty end),
           (if ((.readySteps // []) | length) > 0 then "  prontas para comecar: \(.readySteps | join(","))" else empty end),
-          (if ((.waitingSteps // []) | length) > 0 then "  aguardando: \(.waitingSteps | join(","))" else empty end)' "$TMP/resp"
+          ([(.steps // [])[] | select(.status == "waiting" and .waitingOn != "user") | .key] as $ext
+            | if ($ext | length) > 0 then "  aguardando (resposta/chamado/merge): \($ext | join(","))" else empty end)' "$TMP/resp"
       [[ "$(jq -r '.action' "$TMP/resp")" == "stop" ]] && exit 11
       exit 0
     done

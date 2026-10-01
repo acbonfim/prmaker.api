@@ -7,7 +7,8 @@
 #   prmake-skills.sh update  [--quiet] [--force] [skill...]
 #                                                  atualiza o que mudou no PRMake (--quiet: só fala se atualizou)
 #   prmake-skills.sh status                        versão instalada × publicada
-#   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook)
+#   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
+#   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -227,31 +228,68 @@ ensure_hook() {
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
 }
 
-# Permissão do Claude Code para o fechamento pelo PRMake (`prmake-plan.sh devops ...`: root cause, resumo,
-# classificação, mover o card). Adicionada uma única vez (marcador em $TOOL_DIR): se o usuário remover a regra,
-# não volta. PRMAKE_SKIP_PERMISSIONS=1 não mexe nas permissões.
-PERMISSIONS_MARK="$TOOL_DIR/.permissions-devops-v1"
-ensure_permissions() {
-  [[ "${PRMAKE_SKIP_PERMISSIONS:-0}" == "1" || -f "$PERMISSIONS_MARK" ]] && return 0
+# Permissões do Claude Code para os comandos das skills que não podem ficar presos no prompt/auto mode:
+# - devops-v1: fechamento pelo PRMake (`prmake-plan.sh devops ...`: root cause, resumo, classificação, mover o card);
+# - readonly-v2 (0037): consultas somente leitura da análise (`sql-query.sh`, `cognito-query.sh`) — o auto mode barrava
+#   a leitura do banco de produção e a análise ficava parada (card 74669). O próprio script só aceita SELECT/WITH e
+#   sempre faz ROLLBACK.
+# Cada grupo é adicionado uma única vez (marcador em $TOOL_DIR): se o usuário remover a regra, não volta sozinha —
+# `prmake-skills.sh permissions` reaplica. PRMAKE_SKIP_PERMISSIONS=1 não mexe nas permissões.
+PERMISSION_GROUPS=(
+  "devops-v1|analisar-bug/scripts/prmake-plan.sh devops:*|fechamento pelo PRMake (prmake-plan.sh devops)"
+  "readonly-v2|analisar-bug/scripts/sql-query.sh:*;analisar-bug/scripts/cognito-query.sh:*|consultas somente leitura (sql-query.sh, cognito-query.sh)"
+)
+# Regras (JSON) de uma lista de scripts separados por ';' — nas formas de caminho que o Claude usa (~, $HOME, absoluto).
+permission_rules() {
+  local s out=() list
+  IFS=';' read -r -a list <<< "$1"
+  for s in "${list[@]}"; do
+    if [[ "$SKILLS_DIR" == "$HOME/.claude/skills" ]]; then
+      out+=("Bash(bash ~/.claude/skills/$s)" "Bash(bash \$HOME/.claude/skills/$s)")
+    fi
+    out+=("Bash(bash $SKILLS_DIR/$s)")
+  done
+  printf '%s\n' "${out[@]}" | jq -R . | jq -s -c .
+}
+ensure_permissions() { # [force=0]
+  [[ "${PRMAKE_SKIP_PERMISSIONS:-0}" == "1" ]] && return 0
   [[ -d "$SKILLS_DIR/analisar-bug" ]] || return 0
-  mkdir -p "$(dirname "$SETTINGS")"
-  [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
-  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
-    warn "$SETTINGS não é um JSON válido — não liberei a permissão do fechamento"
-    return 0
-  fi
-  local script="analisar-bug/scripts/prmake-plan.sh devops:*" rules
-  if [[ "$SKILLS_DIR" == "$HOME/.claude/skills" ]]; then
-    rules="$(jq -n --arg a "Bash(bash ~/.claude/skills/$script)" --arg b "Bash(bash \$HOME/.claude/skills/$script)" \
-      --arg c "Bash(bash $SKILLS_DIR/$script)" '[$a, $b, $c]')"
-  else
-    rules="$(jq -n --arg c "Bash(bash $SKILLS_DIR/$script)" '[$c]')"
-  fi
-  cp "$SETTINGS" "$SETTINGS.bak-prmake"
-  jq --argjson r "$rules" '.permissions.allow = (((.permissions.allow // []) + $r) | unique)' \
-    "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS" || return 0
-  : > "$PERMISSIONS_MARK"
-  say "   permissão do fechamento pelo PRMake (prmake-plan.sh devops) liberada em $SETTINGS"
+  local force="${1:-0}" g id scripts label mark rules
+  for g in "${PERMISSION_GROUPS[@]}"; do
+    IFS='|' read -r id scripts label <<< "$g"
+    mark="$TOOL_DIR/.permissions-$id"
+    [[ "$force" != "1" && -f "$mark" ]] && continue
+    mkdir -p "$(dirname "$SETTINGS")"
+    [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+    if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+      warn "$SETTINGS não é um JSON válido — não liberei: $label"
+      return 0
+    fi
+    rules="$(permission_rules "$scripts")"
+    cp "$SETTINGS" "$SETTINGS.bak-prmake"
+    jq --argjson r "$rules" '.permissions.allow = (((.permissions.allow // []) + $r) | unique)' \
+      "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS" || continue
+    mkdir -p "$TOOL_DIR"; : > "$mark"
+    say "   permissão do Claude Code liberada em $SETTINGS: $label"
+  done
+}
+# Diagnóstico: cada script das regras tem ao menos uma forma de caminho liberada?
+permissions_report() {
+  local g id scripts label s list missing
+  for g in "${PERMISSION_GROUPS[@]}"; do
+    IFS='|' read -r id scripts label <<< "$g"
+    IFS=';' read -r -a list <<< "$scripts"
+    missing=()
+    for s in "${list[@]}"; do
+      jq -e --arg s "skills/$s)" '[.permissions.allow[]? | select(endswith($s))] | length > 0' "$SETTINGS" >/dev/null 2>&1 \
+        || missing+=("${s##*/}")
+    done
+    if [[ ${#missing[@]} -eq 0 ]]; then
+      printf '  %-28s %s\n' "permissão $id" "ok — $label"
+    else
+      printf '  %-28s %s\n' "permissão $id" "NÃO liberada (${missing[*]}) — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh permissions"
+    fi
+  done
 }
 
 # A própria ferramenta também se atualiza (vale a partir da próxima execução).
@@ -367,8 +405,15 @@ case "$cmd" in
     ok "API ($BASE)" "HTTP $(get "" "$TMP/catalog.json")"
     ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
     ok "hook esperado" "$HOOK_CMD"
+    permissions_report
     for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor [--quiet] [--force] [skill...]" ;;
+  permissions)
+    # Reaplica as regras mesmo que o usuário as tenha removido (ignora os marcadores).
+    PRMAKE_SKIP_PERMISSIONS=0 ensure_permissions 1
+    permissions_report
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions [--quiet] [--force] [skill...]" ;;
 esac

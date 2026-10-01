@@ -24,6 +24,8 @@ bash $PLAN checkpoint <card> <key> "Onde parei / o que falta nesta etapa"   # pa
 bash $PLAN sync <card> <key>                                          # envia arquivos novos/alterados da pasta do card
 bash $PLAN step <card> <key> completed                                # terminou
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
+bash $PLAN block <card> <key> "Ligar a VPN e clicar em Ja resolvi (ou colar o resultado de scripts/00_x.sql)"  # travada esperando o usuario
+bash $PLAN unblock <card> <key>                                       # o usuario resolveu pelo chat: volta a running
 bash $PLAN control <card>                                             # entre etapas: 0 segue, 10 pausado, 11 parar
 bash $PLAN wait <card>                                                # pausado: espera o "Continuar" da tela
 bash $PLAN watch <card>                                               # VIGIA em segundo plano: acorda voce quando algo muda no PRMake
@@ -65,7 +67,17 @@ Regras:
   sua vez — quando o usuario clicar *Continuar* no PRMake o comando termina e te acorda (exit 0 = continue;
   11 = cancelado: pare). Exit **11** = cancelado/concluido pela tela: pare e
   nao envie mais nada. O `control` tambem lista: etapas **canceladas** (pule), **prontas** (pode comecar),
-  **aguardando** (resposta/chamado/merge — nao mexa) e **perguntas sem resposta**.
+  **aguardando o usuario** (as que voce bloqueou), **aguardando** (resposta/chamado/merge — nao mexa), **perguntas
+  sem resposta** e as **pendencias do usuario** que o PRMake mostra para ele.
+- **Etapa travada por algo que so o usuario resolve** (o Claude Code barrou o comando por permissao/auto mode, VPN
+  desligada/timeout, credencial ausente, acesso negado): `block <card> <key> "<texto>"` **na hora** — a etapa sai de
+  "em andamento" e o PRMake mostra "Aguardando voce" no topo do plano, na linha da etapa, no sino e no titulo da aba,
+  com o botao *Ja resolvi*. O texto e acionavel e curto: o que fazer (ex.: liberar a regra
+  `Bash(bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh:*)` ou rodar
+  `bash ~/.claude/skills/.prmake/prmake-skills.sh permissions`; ligar a VPN) e a alternativa (rodar a consulta e
+  colar o resultado num comentario). Diga o mesmo no chat, siga com outras etapas prontas que nao dependem disso e
+  rode o vigia. Quando o vigia imprimir `PENDENCIA RESOLVIDA` (ou o usuario resolver pelo chat → `unblock`), rode
+  `step <key> running` se preciso e **tente de novo**. Nunca deixe a etapa `running` parada so com um `log warning`.
 - **Etapas do usuario** (`executor: user`, ex.: abrir o chamado, validar em QA): diga ao usuario o que fazer
   (com o texto/arquivos prontos) e **siga com as outras etapas prontas** — o usuario conclui a dele na tela.
 - **Nunca fique parado esperando o PRMake sem o vigia.** O PRMake nao consegue chamar esta sessao; quem te
@@ -103,5 +115,6 @@ Regras:
 - PII: o que vai para o plano fica visivel no PRMake — mesmo cuidado da timeline.
 
 Etapas padrao da analise (o `start` cria se voce nao passar outras): `identificar-card`, `coletar-dados`,
-`investigar-codigo`, `consultar-ambiente` (opcional — cancele com motivo se nao precisar), `causa-raiz`,
+`investigar-codigo`, `consultar-ambiente` (cancele com motivo so se o caso nao depender de dados; se depender, nao
+fecha sem o banco — `references/consultas.md`), `causa-raiz`,
 `montar-analise`, `publicar`, `propor-solucoes`.

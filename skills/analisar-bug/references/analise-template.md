@@ -28,6 +28,10 @@ no proprio script). Evidencias/saidas de consulta vao em `$CARD_DIR/dados/`.
 **Contexto do usuario/ambiente (Cognito)** *(incluir so se consultado no passo 3b)*
 <achados relevantes: status/enabled/grupos/atributos que expliquem o comportamento; sem PII desnecessaria>
 
+**Banco de dados** *(obrigatorio)*
+<uma linha: **consultado** (host/banco e o que confirmou) · **nao necessario** (por que o caso nao depende de dados) ·
+**nao consultado — o usuario pediu para seguir sem o banco** (resposta #n; o que ficou como hipotese por isso)>
+
 **Dados relevantes (SQL)** *(incluir so se consultado no passo 3c)*
 <achados no banco que expliquem/confirmem o bug: registro faltando, status inesperado, inconsistencia — resumido, sem PII desnecessaria>
 
