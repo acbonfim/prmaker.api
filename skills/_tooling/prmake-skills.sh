@@ -182,8 +182,10 @@ self_update() {
   [[ "$code" == "200" ]] && bash -n "$TMP/tool.sh" 2>/dev/null || return 0
   # Troca atômica (0033): grava ao lado e renomeia — o bash que está rodando continua lendo o arquivo antigo (outro
   # inode). Sobrescrever no lugar fazia a execução atual ler o arquivo novo do meio e dar erro de sintaxe.
+  # Windows/Git Bash pode recusar renomear por cima de um script aberto: ai copia no lugar (como antes).
   cp "$TMP/tool.sh" "$TOOL_DIR/.prmake-skills.sh.new" && chmod +x "$TOOL_DIR/.prmake-skills.sh.new" \
-    && mv -f "$TOOL_DIR/.prmake-skills.sh.new" "$TOOL_DIR/prmake-skills.sh"
+    && { mv -f "$TOOL_DIR/.prmake-skills.sh.new" "$TOOL_DIR/prmake-skills.sh" 2>/dev/null \
+         || { cp "$TMP/tool.sh" "$TOOL_DIR/prmake-skills.sh" && chmod +x "$TOOL_DIR/prmake-skills.sh"; rm -f "$TOOL_DIR/.prmake-skills.sh.new"; }; }
 }
 
 lock() {
