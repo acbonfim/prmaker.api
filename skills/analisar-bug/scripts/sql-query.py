@@ -8,6 +8,10 @@ Seguranca contra escrita (em camadas):
      — nada e persistido, mesmo que algo escape da validacao.
   3) Isolamento READ UNCOMMITTED (nao bloqueia a producao) e limite de linhas.
 
+--ping (0037): so testa o acesso (SELECT 1) — rode no inicio da analise para descobrir cedo VPN desligada,
+credencial ausente ou o Claude Code barrando o comando. Exit 0 = ok; 2 = sem conexao (VPN?);
+3 = login recusado; 4 = credenciais nao encontradas.
+
 Credenciais: resolvidas por host a partir de ~/.claude/sqlserver-credentials.json
 (ou env SQLSERVER_CREDENTIALS). NUNCA sao impressas.
 """
@@ -37,7 +41,40 @@ def load_creds():
         if p and os.path.isfile(p):
             with open(p) as f:
                 return json.load(f)
-    sys.exit("ERRO: credenciais nao encontradas (~/.claude/sqlserver-credentials.json ou env SQLSERVER_CREDENTIALS)")
+    print("ERRO: credenciais nao encontradas (~/.claude/sqlserver-credentials.json ou env SQLSERVER_CREDENTIALS)", file=sys.stderr)
+    sys.exit(4)
+
+
+def connection_problem(e):
+    """Diz o que fazer com uma falha de conexao: VPN/rede (exit 2) ou login (exit 3)."""
+    text = str(e).lower()
+    if any(k in text for k in ("login failed", "18456", "password", "authentication")):
+        return 3, "login recusado pelo SQL Server — confira o usuario/senha do host em ~/.claude/sqlserver-credentials.json"
+    return 2, "sem conexao com o host — a VPN esta conectada? (os hosts RDS so respondem com a VPN)"
+
+
+def ping(creds, srv, database):
+    import pytds
+    host = srv["hosts"][0]
+    port = int(creds.get("port", 1433))
+    try:
+        conn = pytds.connect(server=host, port=port, database=database, user=srv["user"], password=srv["password"],
+                             autocommit=False, login_timeout=15, timeout=15, appname="analisar-bug-readonly")
+    except Exception as e:
+        code, hint = connection_problem(e)
+        print(f"ERRO ping {srv.get('alias', host)}/{database}: {hint}\n  detalhe: {str(e) or repr(e)}", file=sys.stderr)
+        sys.exit(code)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchall()
+    finally:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+    print(f"OK ping {srv.get('alias', host)}/{database}: acesso de leitura funcionando")
 
 
 def resolve_server(creds, host):
@@ -93,7 +130,13 @@ def main():
     ap.add_argument("--max-rows", type=int, default=1000, help="limite de linhas (default 1000)")
     ap.add_argument("--timeout", type=int, default=60, help="timeout da query em s (default 60)")
     ap.add_argument("--json", action="store_true", help="saida em JSON (default: tabela)")
+    ap.add_argument("--ping", action="store_true", help="so testa o acesso (SELECT 1): VPN, credencial, permissao")
     args = ap.parse_args()
+
+    if args.ping:
+        creds = load_creds()
+        ping(creds, resolve_server(creds, args.host), args.database)
+        return
 
     if args.file:
         with open(args.file) as f:
@@ -120,7 +163,9 @@ def main():
             as_dict=True, appname="analisar-bug-readonly",
         )
     except Exception as e:
-        sys.exit(f"ERRO de conexao a {srv.get('alias', host)}/{args.database}: {e}")
+        code, hint = connection_problem(e)
+        print(f"ERRO de conexao a {srv.get('alias', host)}/{args.database}: {hint}\n  detalhe: {str(e) or repr(e)}", file=sys.stderr)
+        sys.exit(code)
 
     err = None
     rows, cols, truncated = [], [], False

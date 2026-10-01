@@ -35,6 +35,19 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center:
   `checkpoint`); `control` entre etapas (exit 10 pausado → `wait` em segundo plano e encerre a vez; 11 → pare).
   Nunca encerre a vez com algo pendente de fora sem o vigia: `bash $PLAN watch <card>` **em segundo plano**. O
   PRMake escreve sozinho os marcos na Timeline — nao duplique. Detalhes: `references/plano-execucao.md`.
+- **Pendencia do usuario sempre evidente no PRMake**: etapa sua travada por algo que so o usuario resolve (o Claude
+  Code barrou o comando — permissao/auto mode —, VPN desligada, credencial ausente, acesso negado) → **na hora**
+  `bash $PLAN block <card> <key> "<o que ele precisa fazer: o que liberar, o comando exato e a alternativa>"`, diga o
+  mesmo no chat e rode o vigia. **Nunca deixe a etapa `running` parada.** O vigia avisa `PENDENCIA RESOLVIDA` quando
+  ele clica *Ja resolvi* (ou ele responde no chat) → `step <key> running` e tente de novo. Autorizar no PRMake **nao**
+  libera comando no Claude Code: quem libera e a regra de permissao (`prmake-skills.sh permissions`).
+- **Card que depende de dados nao fecha sem o banco**: teste o acesso cedo (`sql-query.sh --ping`, passo 3); sem
+  acesso, `block` na `consultar-ambiente` e espere — nao conclua a analise, nao proponha solucoes como fato e nao
+  empurre a verificacao para o plano de correcao. So siga sem o banco se o usuario responder explicitamente que e
+  para seguir assim (`ask`), e diga isso na analise. Detalhes: `references/consultas.md`.
+- **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
+  orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
+  plano conclui no `fechar-card`. Detalhes: `references/correcao.md`.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `bash $PLAN attachment <card> "<ref>"` e abra com Read; comentario →
   `bash $PLAN notes <card> <n>`. Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
@@ -70,8 +83,10 @@ anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os trechos relac
 **3. Investigar** — comece pela secao da Base Solvace do modulo (`bash $KB show <projeto> <secao>`), depois o codigo
 apontado; regra de negocio → KC. Reconstrua o fluxo, levante hipoteses priorizadas com `caminho:linha`, marque o
 que e hipotese. Diga em qual mundo/repo esta o codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito,
-localizar codigo fora da base: `references/consultas.md` (`consultar-ambiente`, cancele com motivo se nao
-precisar). Reconheca o padrao do caso no catalogo: `references/catalogo-e-fechamento.md`. Se o codigo divergir da
+localizar codigo fora da base: `references/consultas.md` (`consultar-ambiente`; cancele com motivo so se o caso
+**nao** depender de dados). Card que envolve dados (usuario, cadastro, status, configuracao por tenant): **antes de
+investigar a fundo**, `bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host <h> -d <db> --ping` — falhou
+→ `block` com o que fazer (ligar a VPN, liberar a permissao, credencial). Reconheca o padrao do caso no catalogo: `references/catalogo-e-fechamento.md`. Se o codigo divergir da
 Base Solvace, registre um `log warning` e proponha a correcao da secao:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> divergencia.md --kind divergence --card <card>`.
 

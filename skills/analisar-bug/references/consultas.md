@@ -81,22 +81,39 @@ desnecessarios na timeline.
 
 ### 3c. Consultar o banco SQL Server (quando o bug depende de dados)
 Quando a causa provavel envolve **estado dos dados** (registro faltando, flag/status inesperado,
-inconsistencia, config por tenant), consulte o banco em **modo somente leitura** com `sql-query.sh`.
+inconsistencia, config por tenant, usuario/planta/area), consulte o banco em **modo somente leitura** com
+`sql-query.sh`.
 
-> **Pre-requisito: VPN.** Os hosts RDS so sao alcancaveis com a **VPN conectada**. Se der timeout de
-> conexao, o mais provavel e que a VPN esteja desligada — avise o usuario.
+**1. Teste o acesso cedo** — logo que souber o host/banco do cliente, antes de investigar a fundo (assim a falta de
+VPN/permissao aparece no comeco, nao no fim):
+```bash
+bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> --ping
+```
+Exit 0 = ok · 2 = sem conexao (**VPN desligada**, o mais comum) · 3 = login recusado (credencial) · 4 = sem
+`~/.claude/sqlserver-credentials.json`. **O Claude Code barrou o comando** (permissao/auto mode) = falta a regra de
+permissao: a autorizacao dada no PRMake nao vale para o Claude Code. Em qualquer falha:
+`bash $PLAN block <card> consultar-ambiente "<o que fazer>"` — ex.: "Ligar a VPN e clicar em *Ja resolvi*", "Liberar
+no Claude Code a regra `Bash(bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh:*)` (ou rodar
+`bash ~/.claude/skills/.prmake/prmake-skills.sh permissions`) e clicar em *Ja resolvi*", sempre com a alternativa
+"ou rode `scripts/00_consulta.sql` e cole o resultado num comentario do plano". Diga o mesmo no chat e rode o vigia.
 
+**2. Consulte** — sempre com o **caminho literal** e **num comando so** (sem pipe, `&&`, `;` ou variavel antes): e
+assim que a regra de permissao do Claude Code casa e a consulta roda sem prompt. SQL com mais de uma linha vai em
+arquivo (`-f`), salvo em `$CARD_DIR/scripts/00_*.sql` (o usuario tambem consegue rodar e colar o resultado):
 ```bash
 # aliases de host: prod | prod3 | prod4 (ou o hostname RDS completo)
-bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod3 -d <database> \
-  -q "SELECT TOP 20 Id, Name, Status FROM dbo.SomeTable WHERE ... "
-
-# SQL longa por arquivo ou STDIN; saida em JSON com --json
-bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> -f consulta.sql
-echo "SELECT ..." | bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod4 -d <database>
+bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod3 -d <database> -q "SELECT TOP 20 Id, Name, Status FROM dbo.SomeTable WHERE ..."
+bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> -f <card-dir>/scripts/00_consulta_somente_leitura.sql
 ```
 
-Opcoes: `-d/--database` (default `master`), `--max-rows` (default 1000), `--timeout` (s), `--json`.
+Opcoes: `-d/--database` (default `master`), `--max-rows` (default 1000), `--timeout` (s), `--json`, `--ping`.
+
+**3. Sem o banco, a analise nao fecha.** Se a hipotese depende de dados (o que confirma a causa ou decide a solucao
+esta no banco), a etapa `consultar-ambiente` **nao pode ser cancelada** e a analise **nao pode ser concluida** nem
+virar plano de correcao com a verificacao empurrada para depois (ex.: uma etapa `confirmar-dados` na correcao): a
+etapa fica `block`eada esperando o usuario. So siga sem o banco se o usuario responder **explicitamente** que e para
+seguir assim (`ask` com as opcoes "Vou liberar o acesso" / "Seguir sem o banco") — e entao a analise diz, na secao
+**Banco de dados**, que nao foi consultado e o que ficou como hipotese.
 
 **Garantias de somente-leitura (nao contornar):**
 - Apenas statements que comecam com `SELECT`/`WITH` sao aceitos; qualquer `INSERT/UPDATE/DELETE/

@@ -46,7 +46,9 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
 ### 7. Montar o plano de correcao
 Monte as etapas **a partir do(s) padrao(oes) confirmados e das especificidades deste card** — o catalogo da
 as etapas tipicas, voce adapta (nomes, descricoes com o que exatamente sera feito neste card, quem executa,
-dependencias) e **sempre termina com o fechamento** (`fechar-card`, executor claude, com os comandos `devops`).
+dependencias) e **sempre termina com o fechamento** (`fechar-card`, executor claude, com os comandos `devops`) —
+**ele e a ultima etapa** (nada do usuario depois dele, salvo `validar-qa` no fluxo com codigo, que vem antes do
+Ready for QA).
 So tem etapas de codigo/PR se houver codigo. Crie com `correction` — ele vira o
 plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `executor` (`claude` ou `user`),
 `kind` e, quando for o caso, `repository` e `dependsOn`:
@@ -58,9 +60,9 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
 | Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`); o usuario abre no sistema de chamados (`TicketSystem`) e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
-| User education (`orientar-cliente`) | `task` | **user** | voce redige a orientacao ao cliente (o que aconteceu, o que fazer, por que nao e bug) em `analises/orientacao-cliente.md` (PT/EN se o card for em ingles); o usuario envia e conclui |
+| ~~`orientar-cliente`~~ — **nao e etapa** | — | — | a orientacao ao cliente (o que aconteceu, o que fazer, passo a passo, por que nao e bug) **e o resumo nao tecnico PT/EN** que o `fechar-card` publica na discussion: redija em `analises/orientacao-cliente.md` e use esse texto no resumo (ver abaixo) |
 | Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); quando ela ficar pronta, mova o card para Dev Test in QA (`devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar |
-| Validar com o cliente/ambiente | `validation` | user | depois da configuracao/orientacao/script, quando fizer sentido |
+| Validar o ambiente (`validar-dados`, `validar-configuracao`) | `validation` | claude ou user | **antes** do fechamento, quando o caso pede conferir o resultado (ex.: SQL somente leitura depois do script). A confirmacao **com o cliente** nao e etapa: ela acontece depois do *Test in Production*, fora do plano — so crie uma etapa assim se o usuario pedir |
 | Gerar PRMake (RCA no DevOps, resumo, campos) — **com codigo** | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA ja gerados e salvos na etapa de PR (nao gere de novo) |
 
 **Tratamento sem codigo** (o plano e dinamico — monte so o que o caso pede): quando a solucao e user education,
@@ -71,13 +73,24 @@ dados → so a etapa de chamado). O plano pode ter apenas, por exemplo:
 ```json
 [{"key":"configurar-permissao","title":"Ajustar a permissao do perfil no sistema","kind":"task","executor":"user",
   "description":"Passo a passo em analises/configuracao.md"},
- {"key":"orientar-cliente","title":"Orientar o cliente (user education)","kind":"task","executor":"user",
-  "description":"Texto pronto em analises/orientacao-cliente.md","dependsOn":["configurar-permissao"]},
- {"key":"validar-cliente","title":"Confirmar com o cliente","kind":"validation","executor":"user","dependsOn":["orientar-cliente"]}]
+ {"key":"fechar-card","title":"Fechamento: root cause, classificacao, resumo PT/EN (orientacao ao cliente) e Test in Production",
+  "kind":"task","executor":"claude","dependsOn":["configurar-permissao"],
+  "description":"O resumo PT/EN publicado na discussion e a orientacao ao cliente (texto de analises/orientacao-cliente.md)"}]
 ```
 
+User education puro (nada a configurar) = **so o `fechar-card`**.
+
+**Orientacao ao cliente = resumo PT/EN do fechamento** (card 74669): o resumo nao tecnico que o `fechar-card`
+publica na discussion e o que o cliente le — entao ele **e** a orientacao. Redija a orientacao (o que aconteceu, o
+que foi feito ou o que o cliente faz, o passo a passo, por que nao e bug) em `analises/orientacao-cliente.md`, use
+esse conteudo no resumo (seguindo o `summary-prompt` do `config`, no formato `**PT**`/`**EN**`) e nao crie etapa
+para "enviar a orientacao". Depois do fechamento nao ha etapa do usuario: a validacao do cliente e acompanhada pelo
+estado *Test in Production*, fora do plano.
+
 Nesses casos o seu trabalho e redigir o passo a passo / a orientacao (e salvar com `sync`), deixar o vigia rodando
-e acompanhar: o plano **conclui quando as etapas terminam**, sem PR.
+e acompanhar: quando o `fechar-card` termina (root cause, classificacao, resumo, Remaining e o card movido, se
+autorizado), **todas as etapas estao terminadas e o plano conclui sozinho** — sem PR. Se ainda sobrar alguma etapa
+do usuario que perdeu o sentido (plano antigo), cancele com o motivo ("a orientacao foi no resumo PT/EN") e conclua.
 
 **Fluxo de branches — sempre pelo `branches`** (regras no PRMake, `Skills Configurations`):
 ```bash
@@ -119,7 +132,10 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
 - Etapa de PR: os PRs abertos com `open-pr` ficam no card, na Timeline e anexados a etapa. **Nunca faca merge,
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
 - Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
-  link na etapa no PRMake") e siga com as outras etapas prontas.
+  link na etapa no PRMake") e que o botao *Concluir* esta na propria linha da etapa no PRMake (ela aparece em
+  "Aguardando voce" no topo do plano e no sino), e siga com as outras etapas prontas.
+- Etapa sua travada por algo do usuario (permissao, VPN, credencial, acesso): `block` na hora — ver
+  `references/plano-execucao.md`.
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
