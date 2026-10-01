@@ -97,12 +97,13 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             // 0040: o trecho de ~260 caracteres muitas vezes corta a resposta (ex.: a pergunta frequente acha o título mas
             // não a resposta) — as melhores seções vão com o bloco inteiro sob o título encontrado.
             var expanded = 0;
+            var blockTerms = solvace.knowledge.application.ArchitectureSearch.Terms(q, terms);
             for (var i = 0; i < candidates.Count; i++)
             {
                 var c = candidates[i];
                 pick.AppendLine($"[{i + 1}] {c.Title}{(c.Heading is null ? "" : " › " + c.Heading)}");
                 var block = expanded < ExpandedCandidates && c.Type == "section" && c.ProjectKey is not null && c.SectionKey is not null
-                    ? await BlockAsync(c, cancellationToken) : null;
+                    ? await BlockAsync(c, blockTerms, cancellationToken) : null;
                 if (block is not null) expanded++;
                 pick.AppendLine("    " + (block ?? c.Snippet).Replace("\n", "\n    "));
             }
@@ -256,14 +257,56 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
     private const int BlockChars = 1_800;
 
     /// <summary>O bloco da seção sob o título do trecho (até o próximo título do mesmo nível ou acima).</summary>
-    private async Task<string?> BlockAsync(ArchitectureSearchHit hit, CancellationToken cancellationToken)
+    private async Task<string?> BlockAsync(ArchitectureSearchHit hit, IReadOnlyList<string> terms, CancellationToken cancellationToken)
     {
         try
         {
             var section = await architecture.GetSectionAsync(hit.ProjectKey!, hit.SectionKey!, cancellationToken);
-            return ExtractBlock(section.Content, hit.Heading, BlockChars);
+            return BestBlock(section.Content, terms, BlockChars) ?? ExtractBlock(section.Content, hit.Heading, BlockChars);
         }
         catch (Exception e) when (e is not OperationCanceledException) { return null; }
+    }
+
+    /// <summary>
+    /// O bloco (título + texto até o próximo título) que mais casa com os termos da pergunta: termo no título vale 3,
+    /// no texto 1, e cobrir mais termos distintos ganha. Seção curta vai inteira. Null = nenhum bloco casou.
+    /// </summary>
+    public static string? BestBlock(string content, IReadOnlyList<string> terms, int max)
+    {
+        var text = (content ?? string.Empty).Replace("\r\n", "\n");
+        if (text.Length <= max) return text.Trim();
+        if (terms.Count == 0) return null;
+        var lines = text.Split('\n');
+        var blocks = new List<(string Heading, StringBuilder Body)>();
+        var fenced = false;
+        foreach (var line in lines)
+        {
+            if (line.TrimStart().StartsWith("```")) fenced = !fenced;
+            var m = fenced ? null : System.Text.RegularExpressions.Regex.Match(line, @"^#{1,6}\s+(.+?)\s*#*\s*$");
+            if (m is { Success: true } || blocks.Count == 0) blocks.Add((m is { Success: true } ? m.Groups[1].Value : string.Empty, new StringBuilder()));
+            blocks[^1].Body.AppendLine(line);
+        }
+        (double Score, string Text)? best = null;
+        foreach (var (heading, body) in blocks)
+        {
+            var h = solvace.knowledge.application.ArchitectureSearch.Normalize(heading);
+            var b = solvace.knowledge.application.ArchitectureSearch.Normalize(body.ToString());
+            var matched = 0;
+            double score = 0;
+            foreach (var t in terms)
+            {
+                var inHeading = h.Contains(t);
+                var inBody = b.Contains(t);
+                if (!inHeading && !inBody) continue;
+                matched++;
+                score += (inHeading ? 3 : 0) + (inBody ? 1 : 0);
+            }
+            if (matched == 0) continue;
+            score *= (double)matched / terms.Count;
+            if (best is null || score > best.Value.Score) best = (score, body.ToString().Trim());
+        }
+        if (best is null) return null;
+        return best.Value.Text.Length <= max ? best.Value.Text : best.Value.Text[..max] + "…";
     }
 
     public static string ExtractBlock(string content, string? heading, int max)
