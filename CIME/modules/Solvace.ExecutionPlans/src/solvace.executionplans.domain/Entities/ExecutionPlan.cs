@@ -51,6 +51,13 @@ public class ExecutionPlan
     public string? ResumeRequestedBy { get; private set; }
     public DateTimeOffset? ResumeHandledAt { get; private set; }
 
+    /// <summary>
+    /// Até qual comentário do card a skill já leu (0037) e quando — a tela mostra "o Claude leu e está analisando".
+    /// Gravado direto no banco quando a skill busca os comentários (não passa pelo agregado).
+    /// </summary>
+    public int? NotesReadNumber { get; private set; }
+    public DateTimeOffset? NotesReadAt { get; private set; }
+
     public const int MaxSessions = 50;
 
     public ExecutionSession? CurrentSession => Sessions.OrderByDescending(s => s.LastSeenAt).FirstOrDefault();

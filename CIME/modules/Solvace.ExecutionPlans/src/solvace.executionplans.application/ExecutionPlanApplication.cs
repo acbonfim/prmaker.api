@@ -21,10 +21,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IRealTimeNotifier _realTimeNotifier;
     private readonly IExecutionPullRequestSource _pullRequests;
     private readonly IExecutionTimelineWriter _timeline;
+    private readonly IExecutionCardRegistrar? _cards;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
-        IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline)
+        IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null)
     {
+        _cards = cards;
         _repository = repository;
         _realTimeNotifier = realTimeNotifier;
         _pullRequests = pullRequests;
@@ -54,9 +56,24 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         await _repository.SaveChangesAsync(cancellationToken);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
+        await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
             await WriteTimelineAsync(plan, CorrectionPlanCreatedText(plan), actor, cancellationToken);
         return plan.ToResponse([], 0, now);
+    }
+
+    /// <summary>0037: o card já fica salvo no PRMake (registro + "últimos cards") ao nascer o plano. Best-effort.</summary>
+    private async Task EnsureCardRegisteredAsync(ExecutionPlan plan, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (_cards is null || actor.UserId is not { } userId) return;
+        try
+        {
+            await _cards.EnsureRegisteredAsync(plan.CardNumber, userId, cancellationToken);
+        }
+        catch
+        {
+            // O plano não depende disso: a gerar-prmake/save-pr-text salvam o card depois.
+        }
     }
 
     public Task<List<ExecutionPlanSummaryResponse>> GetByCardAsync(string cardNumber, CancellationToken cancellationToken) =>

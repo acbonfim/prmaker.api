@@ -57,6 +57,9 @@ public interface IExecutionPlanRepository
     Task<ExecutionNote?> GetNoteAsync(Guid planId, Guid noteId, CancellationToken cancellationToken);
     /// <summary>Comentários não removidos do card (todas as fases), pelo número.</summary>
     Task<List<ExecutionNote>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>A skill leu os comentários do card até <paramref name="number"/> (0037). True = avançou (era menor).</summary>
+    Task<bool> MarkNotesReadAsync(string cardNumber, int number, DateTimeOffset now, CancellationToken cancellationToken);
     Task<List<ExecutionArtifact>> GetNoteAttachmentsAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken);
     /// <summary>Anexo de comentário do card com esse conteúdo (sha256), se houver (0032).</summary>
     Task<ExecutionArtifact?> FindNoteAttachmentByShaAsync(string cardNumber, string sha256, CancellationToken cancellationToken);

@@ -47,7 +47,8 @@ public interface IExecutionPlanApplication
     Task<ExecutionNoteResponse> AddNoteAsync(Guid planId, string? text, string? stepKey, IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionNoteResponse> EditNoteAsync(Guid planId, Guid noteId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteNoteAsync(Guid planId, Guid noteId, ExecutionActor actor, CancellationToken cancellationToken);
-    Task<List<ExecutionNoteResponse>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <param name="fromExecutor">A skill está lendo: grava até qual comentário ela leu (0037).</param>
+    Task<List<ExecutionNoteResponse>> GetNotesByCardAsync(string cardNumber, CancellationToken cancellationToken, bool fromExecutor = false);
 
     /// <summary>Todos os arquivos do plano num .zip (uma pasta por tipo) e o nome sugerido.</summary>
     Task<(string FileName, byte[] Data)> BuildZipAsync(Guid planId, CancellationToken cancellationToken);

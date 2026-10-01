@@ -184,6 +184,11 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
             .OrderBy(n => n.Number).ThenBy(n => n.CreatedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<bool> MarkNotesReadAsync(string cardNumber, int number, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await _context.Plans
+            .Where(p => p.CardNumber == cardNumber && (p.NotesReadNumber == null || p.NotesReadNumber < number))
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.NotesReadNumber, number).SetProperty(p => p.NotesReadAt, now), cancellationToken) > 0;
+
     public Task<List<ExecutionArtifact>> GetNoteAttachmentsAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken) =>
         noteIds.Count == 0
             ? Task.FromResult(new List<ExecutionArtifact>())

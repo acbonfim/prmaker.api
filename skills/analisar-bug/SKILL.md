@@ -41,8 +41,11 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center:
   mesmo no chat e rode o vigia. **Nunca deixe a etapa `running` parada.** O vigia avisa `PENDENCIA RESOLVIDA` quando
   ele clica *Ja resolvi* (ou ele responde no chat) → `step <key> running` e tente de novo. Autorizar no PRMake **nao**
   libera comando no Claude Code: quem libera e a regra de permissao (`prmake-skills.sh permissions`).
-- **Card que depende de dados nao fecha sem o banco**: teste o acesso cedo (`sql-query.sh --ping`, passo 3); sem
-  acesso, `block` na `consultar-ambiente` e espere — nao conclua a analise, nao proponha solucoes como fato e nao
+- **Card que depende de dados nao fecha sem o banco**: o `contexto` mostra se ha credencial de banco nesta maquina;
+  teste o acesso cedo (`sql-query.sh --ping`, passo 3). Sem acesso, diga **claramente** no chat que esta sem acesso ao
+  banco do cliente e o que falta (permissao do Claude Code, VPN ou credencial); credencial o usuario cadastra **no
+  terminal dele** com `prmake-skills.sh db-credentials` — **nunca peca nem aceite senha no chat ou no PRMake**; `block`
+  na `consultar-ambiente` e espere — nao conclua a analise, nao proponha solucoes como fato e nao
   empurre a verificacao para o plano de correcao. So siga sem o banco se o usuario responder explicitamente que e
   para seguir assim (`ask`), e diga isso na analise. Detalhes: `references/consultas.md`.
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a

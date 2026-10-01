@@ -89,13 +89,27 @@ VPN/permissao aparece no comeco, nao no fim):
 ```bash
 bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> --ping
 ```
-Exit 0 = ok · 2 = sem conexao (**VPN desligada**, o mais comum) · 3 = login recusado (credencial) · 4 = sem
-`~/.claude/sqlserver-credentials.json`. **O Claude Code barrou o comando** (permissao/auto mode) = falta a regra de
+Exit 0 = ok · 2 = sem conexao (**VPN desligada**, o mais comum) · 3 = login recusado (credencial) · 4 = **sem
+credencial** nesta maquina (nenhum `~/.claude/sqlserver-credentials.json` ou nenhum servidor com aquele alias). O
+`contexto` ja mostra no inicio quais servidores tem credencial (`=== ACESSO AOS BANCOS DOS CLIENTES`). **O Claude Code barrou o comando** (permissao/auto mode) = falta a regra de
 permissao: a autorizacao dada no PRMake nao vale para o Claude Code. Em qualquer falha:
 `bash $PLAN block <card> consultar-ambiente "<o que fazer>"` — ex.: "Ligar a VPN e clicar em *Ja resolvi*", "Liberar
 no Claude Code a regra `Bash(bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh:*)` (ou rodar
 `bash ~/.claude/skills/.prmake/prmake-skills.sh permissions`) e clicar em *Ja resolvi*", sempre com a alternativa
 "ou rode `scripts/00_consulta.sql` e cole o resultado num comentario do plano". Diga o mesmo no chat e rode o vigia.
+
+**Sem credencial (exit 4) — diga claramente e oriente com seguranca.** No chat, sem rodeios: "**Estou sem acesso ao
+banco do cliente <cliente>** (nao ha credencial de leitura para o servidor <alias> nesta maquina) — sem isso a analise
+fica parada". Oriente:
+1. Pegar a credencial pelo canal oficial (gestor/infra, cofre de senhas) — de preferencia um usuario somente leitura.
+2. **No terminal dele, fora do chat**: `bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials` — pergunta o
+   servidor, o usuario e a senha (sem eco), grava so na maquina dele (`~/.claude/sqlserver-credentials.json`, acesso
+   restrito) e testa a conexao. Voce **nao** roda esse comando (ele recusa sem terminal interativo, de proposito).
+3. Clicar em *Ja resolvi* no PRMake (ou avisar no chat) — e voce testa com `--ping` de novo.
+Junte isso no `block` da `consultar-ambiente`. **Nunca peca a senha no chat, nem num comentario do PRMake.** Se o
+usuario colar uma senha na conversa: nao a use, nao a grave em arquivo e nao a repita; diga que ela ficou exposta,
+que o certo e trocar e cadastrar pelo comando acima. Para ver o que esta configurado sem senhas:
+`prmake-skills.sh db-credentials list`.
 
 **2. Consulte** — sempre com o **caminho literal** e **num comando so** (sem pipe, `&&`, `;` ou variavel antes): e
 assim que a regra de permissao do Claude Code casa e a consulta roda sem prompt. SQL com mais de uma linha vai em

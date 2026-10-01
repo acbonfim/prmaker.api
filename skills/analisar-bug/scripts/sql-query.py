@@ -36,12 +36,16 @@ FORBIDDEN = {
 }
 
 
+NO_CREDS_HINT = ("o usuario cadastra no terminal DELE (nunca no chat): "
+                 "bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials")
+
+
 def load_creds():
     for p in CREDS_PATHS:
         if p and os.path.isfile(p):
             with open(p) as f:
                 return json.load(f)
-    print("ERRO: credenciais nao encontradas (~/.claude/sqlserver-credentials.json ou env SQLSERVER_CREDENTIALS)", file=sys.stderr)
+    print("ERRO: sem credenciais de banco nesta maquina (~/.claude/sqlserver-credentials.json) — " + NO_CREDS_HINT, file=sys.stderr)
     sys.exit(4)
 
 
@@ -92,8 +96,9 @@ def resolve_server(creds, host):
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        known = ", ".join(s.get("alias", "?") for s in servers)
-        sys.exit(f"ERRO: host/alias '{host}' desconhecido. Disponiveis: {known}")
+        known = ", ".join(s.get("alias", "?") for s in servers) or "nenhum"
+        print(f"ERRO: sem credencial para o servidor '{host}' nesta maquina (cadastrados: {known}) — {NO_CREDS_HINT}", file=sys.stderr)
+        sys.exit(4)
     sys.exit(f"ERRO: host/alias '{host}' ambiguo; use o hostname completo ou o alias exato")
 
 
