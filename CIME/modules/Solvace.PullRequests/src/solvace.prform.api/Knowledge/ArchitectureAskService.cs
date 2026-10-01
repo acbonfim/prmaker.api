@@ -72,7 +72,8 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             response.Model = first.Model;
 
             // 2) candidatos no conteúdo
-            var candidates = await architecture.SearchAsync(q, Candidates, terms, boostProjects, boostSections, cancellationToken);
+            var candidates = await WithQuestionOnlyAsync(q, Candidates,
+                await architecture.SearchAsync(q, Candidates, terms, boostProjects, boostSections, cancellationToken), boostProjects, boostSections, cancellationToken);
             if (candidates.Count == 0)
             {
                 response.AiUsed = true;
@@ -97,7 +98,10 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             // 0040: o trecho de ~260 caracteres muitas vezes corta a resposta (ex.: a pergunta frequente acha o título mas
             // não a resposta) — as melhores seções vão com o bloco inteiro sob o título encontrado.
             var expanded = 0;
-            var blockTerms = solvace.knowledge.application.ArchitectureSearch.Terms(q, terms);
+            // As palavras da pergunta escolhem o bloco: os termos da IA trazem ruído (ex.: "alert", "TB_WCM_SITE" numa
+            // pergunta de Score Card) e diluíam a escolha.
+            var questionTerms = solvace.knowledge.application.ArchitectureSearch.Terms(q);
+            var blockTerms = questionTerms.Count > 0 ? questionTerms : solvace.knowledge.application.ArchitectureSearch.Terms(q, terms);
             for (var i = 0; i < candidates.Count; i++)
             {
                 var c = candidates[i];
@@ -164,7 +168,8 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             response.Model = model;
             var (terms, projects, kind) = ParsePlan(planContent);
             var (boostProjects, boostSections) = Boosts(kind, projects);
-            var candidates = await architecture.SearchAsync(q, 20, terms, boostProjects, boostSections, cancellationToken);
+            var candidates = await WithQuestionOnlyAsync(q, 20,
+                await architecture.SearchAsync(q, 20, terms, boostProjects, boostSections, cancellationToken), boostProjects, boostSections, cancellationToken);
 
             // Seções a ler inteiras: as que tiveram trechos, depois as dos projetos prováveis.
             var targets = candidates.Where(h => h.Type == "section" && h.ProjectKey is not null && h.SectionKey is not null)
@@ -254,6 +259,21 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
     }
 
     private const int ExpandedCandidates = 5;
+    private const int MinCandidates = 3;
+
+    /// <summary>
+    /// Termos demais da IA (frases, nomes técnicos de outros módulos) aumentam o denominador da cobertura mínima e a
+    /// busca pode voltar vazia mesmo com a resposta na base — com poucos candidatos, busca também só com a pergunta.
+    /// </summary>
+    private async Task<List<ArchitectureSearchHit>> WithQuestionOnlyAsync(string q, int limit, List<ArchitectureSearchHit> found,
+        IReadOnlyCollection<string> boostProjects, IReadOnlyCollection<string>? boostSections, CancellationToken cancellationToken)
+    {
+        if (found.Count >= MinCandidates) return found;
+        var plain = await architecture.SearchAsync(q, limit, null, boostProjects, boostSections, cancellationToken);
+        string Key(ArchitectureSearchHit h) => h.Type == "article" ? $"art:{h.ArticleNumber}" : $"{h.ProjectKey}/{h.SectionKey}";
+        var seen = found.Select(Key).ToHashSet();
+        return found.Concat(plain.Where(h => seen.Add(Key(h)))).Take(limit).ToList();
+    }
     private const int BlockChars = 1_800;
 
     /// <summary>O bloco da seção sob o título do trecho (até o próximo título do mesmo nível ou acima).</summary>
