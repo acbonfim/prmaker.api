@@ -94,11 +94,17 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
                 .AppendLine("PERGUNTA: " + q)
                 .AppendLine()
                 .AppendLine("TRECHOS:");
+            // 0040: o trecho de ~260 caracteres muitas vezes corta a resposta (ex.: a pergunta frequente acha o título mas
+            // não a resposta) — as melhores seções vão com o bloco inteiro sob o título encontrado.
+            var expanded = 0;
             for (var i = 0; i < candidates.Count; i++)
             {
                 var c = candidates[i];
                 pick.AppendLine($"[{i + 1}] {c.Title}{(c.Heading is null ? "" : " › " + c.Heading)}");
-                pick.AppendLine("    " + c.Snippet);
+                var block = expanded < ExpandedCandidates && c.Type == "section" && c.ProjectKey is not null && c.SectionKey is not null
+                    ? await BlockAsync(c, cancellationToken) : null;
+                if (block is not null) expanded++;
+                pick.AppendLine("    " + (block ?? c.Snippet).Replace("\n", "\n    "));
             }
             var second = await ai.GenerateContentAsync(pick.ToString(), cancellationToken);
             if (second is null || !string.IsNullOrWhiteSpace(second.Error) || string.IsNullOrWhiteSpace(second.Content))
@@ -244,6 +250,54 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         var hints = code is null ? null : string.Join("\n", code.Fields.Select(f => $"{f.Key}: {f.Value}").Append(code.Body)).Trim();
         response.NeedsCodeAnalysis = !string.IsNullOrWhiteSpace(hints) || response.Coverage == ArchitectureCoverage.NotFound;
         response.CodeHints = string.IsNullOrWhiteSpace(hints) ? null : hints;
+    }
+
+    private const int ExpandedCandidates = 5;
+    private const int BlockChars = 1_800;
+
+    /// <summary>O bloco da seção sob o título do trecho (até o próximo título do mesmo nível ou acima).</summary>
+    private async Task<string?> BlockAsync(ArchitectureSearchHit hit, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var section = await architecture.GetSectionAsync(hit.ProjectKey!, hit.SectionKey!, cancellationToken);
+            return ExtractBlock(section.Content, hit.Heading, BlockChars);
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { return null; }
+    }
+
+    public static string ExtractBlock(string content, string? heading, int max)
+    {
+        var lines = (content ?? string.Empty).Replace("\r\n", "\n").Split('\n');
+        var start = 0;
+        var level = 0;
+        if (!string.IsNullOrWhiteSpace(heading))
+        {
+            var target = solvace.knowledge.application.ArchitectureSearch.Normalize(heading).Trim();
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(lines[i], @"^(#{1,6})\s+(.+?)\s*#*\s*$");
+                if (m.Success && solvace.knowledge.application.ArchitectureSearch.Normalize(m.Groups[2].Value).Trim() == target)
+                {
+                    start = i;
+                    level = m.Groups[1].Value.Length;
+                    break;
+                }
+            }
+        }
+        var sb = new StringBuilder();
+        for (var i = start; i < lines.Length; i++)
+        {
+            if (i > start && level > 0)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(lines[i], @"^(#{1,6})\s");
+                if (m.Success && m.Groups[1].Value.Length <= level) break;
+            }
+            sb.AppendLine(lines[i]);
+            if (sb.Length >= max) break;
+        }
+        var text = sb.ToString().Trim();
+        return text.Length <= max ? text : text[..max] + "…";
     }
 
     private static (List<string> Terms, List<string> Projects, string Kind) ParsePlan(string content)
