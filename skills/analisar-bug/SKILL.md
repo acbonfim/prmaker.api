@@ -38,18 +38,29 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
 
-## Comandos do plano no dia a dia
-```bash
-bash $PLAN advance <card> <key> <proxima|-> "achado/resumo curto" [finding]   # conclui a etapa e inicia a proxima
-bash $PLAN step <card> <key> running|completed|cancelled ["motivo"]
-bash $PLAN log <card> <key> progress|finding|decision|warning "texto curto"
-bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}]'   ·   sync <card> <key>   ·   checkpoint <card> <key> "onde parei"
-bash $PLAN control <card>             # entre etapas: 0 segue · 10 pausado (wait em 2o plano) · 11 pare
-bash $PLAN watch <card>               # vigia, SEMPRE em segundo plano antes de encerrar a vez com algo pendente
-bash $PLAN block <card> <key> "o que o usuario faz"   # travada por permissao/VPN/credencial
-bash $PLAN ask <card> - <<< '[...]'   ·   wait-answers <card> 3600 (2o plano)   ·   answer <card> <n> "..."
-bash $PLAN status <card> completed "" <resumo.md>
-```
+## Comandos do plano no dia a dia — MCP primeiro
+Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
+Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
+`ToolSearch("select:mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan")`
+(as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
+
+| O que | MCP | Script (reserva) |
+|---|---|---|
+| concluir etapa e iniciar a proxima | `prmake_advance(card, from, to, message, kind)` | `advance <card> <key> <proxima\|-> "resumo" [finding]` |
+| mudar etapa / registrar andamento | `prmake_step(card, key, status, reason)` · `prmake_log(card, message, kind, stepKey)` | `step` · `log` |
+| criar/refinar etapas · onde parei | `prmake_steps(card, steps)` · `prmake_checkpoint(card, key, text)` | `steps` · `checkpoint` |
+| entre etapas (pausado? cancelado?) | `prmake_control(card)` (`action`: continue/wait/stop) | `control` (0/10/11) |
+| travada esperando o usuario | `prmake_block(card, key, text)` · `prmake_unblock` | `block` · `unblock` |
+| perguntar · resposta dada no chat | `prmake_ask(card, questions)` · `prmake_answer(card, n, text)` · `prmake_answers` | `ask` · `answer` · `answers` |
+| comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
+| estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
+| link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
+| configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
+| Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
+
+**Sempre pelo script** (arquivos locais, git, custo): `contexto` (inicio), `sync`/`upload`, `branches`, `worktree`,
+`pr-text`/`save-pr-text`/`open-pr`, `watch`/`wait` (fora do executor) e `status <card> completed|failed` ao concluir o
+plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o script: `bash $PLAN use <card> correction`.
 
 ## Regras que valem sempre
 - **Plano de execucao obrigatorio**: tudo o que voce produz vai para o plano em pedacos; `control` entre etapas;
@@ -59,13 +70,12 @@ bash $PLAN status <card> completed "" <resumo.md>
   `watch`/`wait`/`wait-answers` (saem com exit 12) nem pergunta no chat: o que depende de alguem vai para o plano
   (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir.
   Correcao sempre no worktree do card (o `branches` ja imprime os comandos com `$WT`). Detalhes: `$REF plano executor`.
-- **MCP do PRMake**: com as ferramentas `mcp__prmake__*` disponiveis, use-as no lugar do script para plano, etapas,
-  log, control, perguntas, comentarios, anexos (`prmake_attachment` ja devolve a imagem), Timeline e DevOps (menos
-  tokens). Continuam no script: `contexto`, `advance`, `block`, `sync`/`upload`, `branches`, `worktree`, `pr-text`/
-  `save-pr-text`/`open-pr`, `settings`, `devops <card> config` e a fila offline.
+- **MCP do PRMake primeiro** (tabela acima): plano, etapas, bloqueios, perguntas e respostas, comentarios, anexos,
+  links, correcao, configuracao, card e DevOps pelas ferramentas `mcp__prmake__*`; o script fica para arquivos locais,
+  git, o `contexto` e o `status` final — e para quando o MCP nao estiver na sessao.
 - **Pendencia do usuario sempre evidente no PRMake**: etapa sua travada por algo que so o usuario resolve (o Claude
   Code barrou o comando — permissao/auto mode —, VPN desligada, credencial ausente, acesso negado) → **na hora**
-  `bash $PLAN block <card> <key> "<o que ele precisa fazer: o que liberar, o comando exato e a alternativa>"`, diga o
+  `prmake_block` (ou `bash $PLAN block <card> <key> "..."`) com o que ele precisa fazer (o que liberar, o comando exato e a alternativa), diga o
   mesmo no chat e rode o vigia. **Nunca deixe a etapa `running` parada.** O vigia avisa `PENDENCIA RESOLVIDA` quando
   ele clica *Ja resolvi* (ou ele responde no chat) → `step <key> running` e tente de novo. Autorizar no PRMake **nao**
   libera comando no Claude Code: quem libera e a regra de permissao (`prmake-skills.sh permissions`).

@@ -20,6 +20,8 @@ public sealed class Runner(AgentConfig config)
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _recent = new();
     private WorkerState _state = new();
     private volatile bool _revoked;
+    /// <summary>0041: limite da conta do Claude — sem pegar pedidos até aqui (o PRMake também segura).</summary>
+    private DateTimeOffset _throttledUntil = DateTimeOffset.MinValue;
     private int _doctorRunning;
 
     public async Task<int> RunAsync(CancellationToken stopping)
@@ -52,6 +54,11 @@ public sealed class Runner(AgentConfig config)
             if (_revoked)
             {
                 await Delay(TimeSpan.FromMinutes(5), stopping);
+                continue;
+            }
+            if (DateTimeOffset.UtcNow < _throttledUntil)
+            {
+                await Delay(TimeSpan.FromSeconds(30), stopping);
                 continue;
             }
             if (_state.Status != "active" || _jobs.Count >= Math.Max(1, _state.MaxConcurrency))
@@ -102,6 +109,13 @@ public sealed class Runner(AgentConfig config)
             try
             {
                 await job.RunAsync(stopping);
+                if (job.ThrottledUntil is { } until && until > _throttledUntil)
+                {
+                    _throttledUntil = until;
+                    var local = until.ToLocalTime();
+                    Log.Warn($"limite de uso da conta do Claude — sem pegar pedidos até {local:dd/MM HH:mm}");
+                    Shell.Notify("PRMake", $"Limite da conta do Claude atingido — o executor volta às {local:HH:mm}");
+                }
             }
             catch (Exception e)
             {

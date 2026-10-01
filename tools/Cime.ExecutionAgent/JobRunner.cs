@@ -22,6 +22,11 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private JsonElement? _result;
     private string? _sessionFromStream;
+    /// <summary>Texto de limite da conta visto na saída (mensagem de erro sintética do Claude Code).</summary>
+    private string? _limitText;
+
+    /// <summary>0041: a conta do Claude bateu o limite — a máquina não pega pedidos até aqui.</summary>
+    public DateTimeOffset? ThrottledUntil { get; private set; }
 
     public Guid RequestId => claim.Request.Id;
     public string Card => claim.Request.CardNumber;
@@ -200,6 +205,14 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         if (_killReason is not null)
             return With(finish, "failed", null, $"Executor encerrado ({_killReason})", true);
 
+        // 0041: limite da conta visto na saída vale mesmo com o resultado marcado como sucesso (a resposta foi o aviso).
+        if (_limitText is not null && AccountLimit.RetryAt(_limitText, DateTimeOffset.UtcNow) is { } limitedUntil)
+        {
+            ThrottledUntil = limitedUntil;
+            finish.RetryAt = limitedUntil;
+            return With(finish, "failed", null, _limitText, true);
+        }
+
         var subtype = _result?.TryGetProperty("subtype", out var st) == true ? st.GetString() : null;
         var isError = _result?.TryGetProperty("is_error", out var ie) == true && ie.ValueKind == JsonValueKind.True;
         if (_result is not null && !isError && subtype == "success")
@@ -211,6 +224,15 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
         var detail = _result?.TryGetProperty("result", out var rt) == true ? rt.GetString() : null;
         var error = !string.IsNullOrWhiteSpace(detail) ? detail : LastStderrLine() ?? $"O Claude Code saiu com código {code}";
+
+        // 0041: limite de uso da conta — espera o reset em vez de gastar as tentativas.
+        var limitSource = string.Join("\n", new[] { _limitText, detail, StderrTail() }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        if (AccountLimit.RetryAt(limitSource, DateTimeOffset.UtcNow) is { } retryAt)
+        {
+            ThrottledUntil = retryAt;
+            finish.RetryAt = retryAt;
+            return With(finish, "failed", null, _limitText ?? error, true);
+        }
         // Login expirado/sem login não se resolve sozinho: não adianta tentar de novo.
         var retryable = !(error.Contains("login", StringComparison.OrdinalIgnoreCase) || error.Contains("auth", StringComparison.OrdinalIgnoreCase)
                           || error.Contains("credit", StringComparison.OrdinalIgnoreCase));
@@ -277,6 +299,9 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                     var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
                     if (type == "result")
                         _result = root.Clone();
+                    else if (type == "assistant" && line.Contains("limit", StringComparison.OrdinalIgnoreCase)
+                             && AccountLimit.RetryAt(line, DateTimeOffset.UtcNow) is not null)
+                        _limitText = ExtractText(root) ?? line;
                     else if (type == "system" && root.TryGetProperty("session_id", out var sid))
                         _sessionFromStream = sid.GetString();
                 }
@@ -290,6 +315,16 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         {
             Log.Warn($"card {Card}: leitura da saída do Claude falhou: {e.Message}");
         }
+    }
+
+    private static string? ExtractText(JsonElement root)
+    {
+        if (!root.TryGetProperty("message", out var m) || !m.TryGetProperty("content", out var c) || c.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var part in c.EnumerateArray())
+            if (part.TryGetProperty("type", out var t) && t.GetString() == "text" && part.TryGetProperty("text", out var text))
+                return text.GetString();
+        return null;
     }
 
     private async Task ReadStderrAsync(Process process)
