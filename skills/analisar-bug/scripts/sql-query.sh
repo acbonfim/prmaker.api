@@ -13,5 +13,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV="$DIR/../.venv/bin/python"
-[[ -x "$VENV" ]] || { echo "ERRO: venv nao encontrado em $VENV (recrie: python3 -m venv ~/.claude/skills/analisar-bug/.venv && ~/.claude/skills/analisar-bug/.venv/bin/pip install python-tds)" >&2; exit 1; }
+[[ -x "$VENV" ]] || [[ ! -x "$DIR/../.venv/Scripts/python.exe" ]] || VENV="$DIR/../.venv/Scripts/python.exe"  # Windows
+export PYTHONUTF8=1
+[[ -x "$VENV" ]] || { echo "ERRO: venv nao encontrado em $VENV (recrie: bash ~/.claude/skills/.prmake/prmake-skills.sh update --force analisar-bug)" >&2; exit 1; }
 exec "$VENV" "$DIR/sql-query.py" "$@"

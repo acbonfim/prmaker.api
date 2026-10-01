@@ -1,0 +1,39 @@
+{
+ "name": "Revamp — Survey",
+ "kind": "revamp",
+ "order": 145,
+ "repository": "https://github.com/electradv/revamp-Survey",
+ "repoDir": "kb-mirror/revamp-Survey",
+ "summary": "Módulo de Survey (pesquisas/questionários) do estate Revamp. 17 projetos (net8.0), 6 controllers/38 rotas, 28 casos de uso, 4 Lambdas; tabelas ParticipantUsers, QuestionTemplate, Survey, Type, Attachment.",
+ "keywords": [
+  "survey",
+  "revamp-Survey",
+  "Answer",
+  "Attachment",
+  "QuestionTemplate",
+  "Survey",
+  "Topic",
+  "Type",
+  "ParticipantUsers",
+  "Builder",
+  "GetAllTypes",
+  "GetAttachmentByReferenceKey",
+  "GetCountDistributionListGroupByLevel",
+  "GetDistributionListBySurveyId",
+  "GetEmployeeListAnswerPaginated"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila SURVEY_USER_EVENT_CREATED)",
+   "evidence": "revamp-Survey/Solvace.Survey/src/Lambda.Survey.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Survey/Solvace.Survey/src/Solvace.Survey.Application/UseCases/Survey/SendSurvey/SendSurveyCommandHandler.cs:100"
+  }
+ ]
+}

@@ -1,0 +1,51 @@
+{
+ "name": "Revamp — Quiz",
+ "kind": "revamp",
+ "order": 140,
+ "repository": "https://github.com/electradv/revamp-Quiz",
+ "repoDir": "kb-mirror/revamp-Quiz",
+ "summary": "Módulo de Quiz do estate Revamp. 15 projetos (net8.0), 6 controllers/32 rotas, 43 casos de uso, 4 Lambdas; tabelas TB_WCM_USER, TB_WCM_SITE, Type, Quiz, Status.",
+ "keywords": [
+  "quiz",
+  "revamp-Quiz",
+  "Report",
+  "Training",
+  "ApplicationFeed",
+  "QuizUserSession",
+  "Type",
+  "Quiz",
+  "TB_WCM_USER",
+  "TB_WCM_SITE",
+  "CardListQuiz",
+  "GetDistributionListByQuizId",
+  "GetExcelType",
+  "GetParticipationReport",
+  "GetParticipationReportAnalytic"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila QUIZ_USER_EVENT_CREATED)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Lambda.Quiz.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Application/UseCases/SendDistributionList/SendDistributionListCommandHandler.cs:132"
+  },
+  {
+   "target": "revamp-training",
+   "kind": "database",
+   "detail": "usa tabelas TB_TRN_* (ex.: TB_TRN_TRAINING)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Infra.Data.Global.SqlServer/Helpers/Training/Queries/TrainingQueries.cs:28"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Quiz/Solvace.Quiz/src/Solvace.Quiz.Infra.Data.Global.SqlServer/Queries/Helpers/UserHelperQueries.cs:39"
+  }
+ ]
+}

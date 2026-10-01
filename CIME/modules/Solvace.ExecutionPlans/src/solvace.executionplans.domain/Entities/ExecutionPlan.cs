@@ -43,6 +43,76 @@ public class ExecutionPlan
     /// <summary>Plano de análise que originou este plano de correção (0024).</summary>
     public Guid? ParentPlanId { get; private set; }
 
+    /// <summary>Sessões do Claude Code que trabalharam no plano (0033) — a última vista é a que se retoma.</summary>
+    public List<ExecutionSession> Sessions { get; private set; } = [];
+
+    /// <summary>Pedido de "continuar" feito na tela (0033): o vigia local retoma a sessão; a skill confirma ao pegar.</summary>
+    public DateTimeOffset? ResumeRequestedAt { get; private set; }
+    public string? ResumeRequestedBy { get; private set; }
+    public DateTimeOffset? ResumeHandledAt { get; private set; }
+
+    public const int MaxSessions = 50;
+
+    public ExecutionSession? CurrentSession => Sessions.OrderByDescending(s => s.LastSeenAt).FirstOrDefault();
+
+    public bool ResumePending => ResumeRequestedAt is { } requested && (ResumeHandledAt is null || ResumeHandledAt < requested);
+
+    /// <summary>A skill informa em qual sessão/máquina/pasta está trabalhando (no start, ao retomar e no heartbeat).</summary>
+    public ExecutionSession RegisterSession(string sessionId, string? host, string? cwd, DateTimeOffset now)
+    {
+        var id = Clean(sessionId, ExecutionSession.MaxSessionIdLength) ?? throw new DomainException("Informe o id da sessão do Claude Code.");
+        var session = Sessions.FirstOrDefault(s => s.SessionId == id);
+        if (session is null)
+        {
+            session = new ExecutionSession { SessionId = id, StartedAt = now };
+            Sessions.Add(session);
+            if (Sessions.Count > MaxSessions)
+                Sessions.Remove(Sessions.OrderBy(s => s.LastSeenAt).First());
+        }
+        session.Host = Clean(host, ExecutionSession.MaxHostLength) ?? session.Host;
+        session.Cwd = Clean(cwd, ExecutionSession.MaxCwdLength) ?? session.Cwd;
+        session.LastSeenAt = now;
+        return session;
+    }
+
+    /// <summary>Custo acumulado da sessão (a skill manda o total lido do transcript; o último valor vence).</summary>
+    public void RecordUsage(string sessionId, string? host, int turns, long input, long output, long cacheRead, long cacheWrite, string? model, DateTimeOffset now)
+    {
+        if (turns < 0 || input < 0 || output < 0 || cacheRead < 0 || cacheWrite < 0)
+            throw new DomainException("Valores de uso inválidos.");
+        var session = RegisterSession(sessionId, host, null, now);
+        session.Turns = turns;
+        session.InputTokens = input;
+        session.OutputTokens = output;
+        session.CacheReadTokens = cacheRead;
+        session.CacheWriteTokens = cacheWrite;
+        session.Model = Clean(model, 100) ?? session.Model;
+        session.UsageUpdatedAt = now;
+    }
+
+    public void RequestResume(string actor, DateTimeOffset now)
+    {
+        if (IsFinished) throw new DomainException("O plano já terminou — não há o que continuar.");
+        if (CurrentSession is null)
+            throw new DomainException("Nenhuma sessão do Claude registrada neste plano — retome com prmake-card no terminal.");
+        ResumeRequestedAt = now;
+        ResumeRequestedBy = actor;
+        UpdatedAt = now;
+    }
+
+    public void AcknowledgeResume(DateTimeOffset now)
+    {
+        ResumeHandledAt = now;
+        UpdatedAt = now;
+    }
+
+    private static string? Clean(string? value, int max)
+    {
+        var v = value?.Trim();
+        if (string.IsNullOrEmpty(v)) return null;
+        return v.Length <= max ? v : v[..max];
+    }
+
     protected ExecutionPlan() { }
 
     public ExecutionPlan(string cardNumber, string kind, string title, string? summary, Guid? userId, string userName, DateTimeOffset now,

@@ -7,10 +7,19 @@
 #   prmake-skills.sh update  [--quiet] [--force] [skill...]
 #                                                  atualiza o que mudou no PRMake (--quiet: só fala se atualizou)
 #   prmake-skills.sh status                        versão instalada × publicada
+#   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook)
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
+# Windows (0035): roda no Git Bash (o mesmo shell do Claude Code); rsync/unzip são opcionais e os atalhos
+# python3/jq ficam em ~/bin.
 set -uo pipefail
+
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;; *) WINDOWS=0 ;; esac
+if [[ $WINDOWS -eq 1 ]]; then export PATH="$HOME/bin:$PATH" PYTHONUTF8=1; else export PATH="$PATH:$HOME/.local/bin"; fi
+if [[ $WINDOWS -eq 1 && "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+  if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+fi
 
 TOOL_VERSION="__PRMAKE_TOOL_VERSION__"
 BASE="${PRMAKE_API_BASE:-__PRMAKE_API_BASE__}"
@@ -32,7 +41,7 @@ trap 'rm -rf "$TMP"; rmdir "$TOOL_DIR/.lock" 2>/dev/null' EXIT
 
 token() {
   if [[ -n "${PRMAKE_TOKEN:-}" ]]; then printf '%s' "$PRMAKE_TOKEN"; return; fi
-  [[ -f "$TOKEN_FILE" ]] && { tr -d '\n' < "$TOKEN_FILE"; return; }
+  [[ -f "$TOKEN_FILE" ]] && { tr -d '\r\n' < "$TOKEN_FILE"; return; }
   return 1
 }
 
@@ -46,8 +55,62 @@ get() {
 
 need() {
   local missing=()
-  for c in curl jq unzip rsync; do command -v "$c" >/dev/null || missing+=("$c"); done
-  [[ ${#missing[@]} -eq 0 ]] || die "instale antes: ${missing[*]}"
+  for c in curl jq; do command -v "$c" >/dev/null || missing+=("$c"); done
+  [[ ${#missing[@]} -eq 0 ]] || die "instale antes: ${missing[*]} (ou rode o instalador da tela Skills do PRMake, que instala as dependências)"
+}
+
+# Descompacta <zip> em <pasta>: unzip; senão bsdtar (tar do macOS e do Windows 10+) ou o zipfile do Python.
+extract() {
+  if command -v unzip >/dev/null; then unzip -q -o "$1" -d "$2"; return; fi
+  local bsdtar=""
+  if [[ $WINDOWS -eq 1 && -x "${SYSTEMROOT:-/c/Windows}/System32/tar.exe" ]]; then bsdtar="${SYSTEMROOT:-/c/Windows}/System32/tar.exe"
+  elif tar --version 2>/dev/null | grep -q bsdtar; then bsdtar=tar; fi
+  if [[ -n "$bsdtar" ]]; then (cd "$2" && "$bsdtar" -xf "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"); return; fi
+  command -v python3 >/dev/null && python3 -m zipfile -e "$1" "$2" && return
+  warn "não consigo descompactar: instale o unzip (ou o python3) e rode de novo"
+  return 1
+}
+
+# Copia <origem>/ para <destino>/ removendo o que saiu da skill; mantém o .venv e o manifesto. rsync se houver.
+sync_tree() {
+  local src="$1" dst="$2" rel
+  if command -v rsync >/dev/null; then
+    rsync -a --delete --exclude '.venv' --exclude "$MANIFEST" --exclude '.DS_Store' "$src/" "$dst/"
+    return
+  fi
+  (cd "$dst" && find . -path ./.venv -prune -o -type f ! -name "$MANIFEST" ! -name .DS_Store -print) | sed 's#^\./##' |
+    while IFS= read -r rel; do [[ -e "$src/$rel" ]] || rm -f "$dst/$rel"; done
+  find "$dst" -mindepth 1 -depth -type d -empty ! -path "$dst/.venv*" -exec rmdir {} + 2>/dev/null
+  cp -R "$src/." "$dst/"
+}
+
+# Windows (Git Bash): o "python3" da Microsoft Store não roda e o jq.exe escreve CRLF (quebra os scripts).
+# Cria atalhos em ~/bin que resolvem os dois; no ~/.bashrc, ~/bin no PATH e Python em UTF-8.
+windows_prepare() {
+  [[ $WINDOWS -eq 1 ]] || return 0
+  mkdir -p "$HOME/bin"
+  local real=""
+  if ! python3 -c 'import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+    if py -3 -c 'import sys' >/dev/null 2>&1; then real='py -3'
+    elif python -c 'import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then real='python'; fi
+    if [[ -n "$real" ]]; then
+      printf '#!/usr/bin/env bash\n# Skills do PRMake: python3 no Git Bash\nexport PYTHONUTF8=1\nexec %s "$@"\n' "$real" > "$HOME/bin/python3"
+      chmod +x "$HOME/bin/python3"
+      say "   atalho python3 → $real criado em ~/bin"
+    else
+      warn "Python 3 não encontrado — no PowerShell: winget install -e --id Python.Python.3.12 (algumas skills precisam dele)"
+    fi
+  fi
+  if command -v jq >/dev/null && [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    real="$(type -P jq.exe || type -P jq)"  # o .exe: ~/bin/jq (o atalho) não pode apontar para si mesmo
+    printf '#!/usr/bin/env bash\n# Skills do PRMake: jq sem CRLF no Git Bash\nexec "%s" -b "$@"\n' "$real" > "$HOME/bin/jq"
+    chmod +x "$HOME/bin/jq"
+    if [[ "$(jq -rn '"x"' 2>/dev/null)" == "x" ]]; then say "   atalho jq (sem CRLF) criado em ~/bin"; else rm -f "$HOME/bin/jq"; warn "o jq escreve CRLF — atualize: winget install -e --id jqlang.jq"; fi
+  fi
+  local rc="$HOME/.bashrc" line
+  for line in 'export PATH="$HOME/bin:$PATH"' 'export PYTHONUTF8=1'; do
+    grep -qsF "$line" "$rc" || printf '%s # Skills do PRMake\n' "$line" >> "$rc"
+  done
 }
 
 catalog() {
@@ -80,11 +143,11 @@ install_one() { # <nome> <versão> <modo: install|update>
 
   local code; code="$(get "/$name/package" "$TMP/$name.zip")"
   [[ "$code" == "200" ]] || { warn "não consegui baixar $name (HTTP $code)"; return 1; }
-  rm -rf "$TMP/$name" && mkdir -p "$TMP/$name" && unzip -q -o "$TMP/$name.zip" -d "$TMP/$name" || { warn "pacote inválido: $name"; return 1; }
+  rm -rf "$TMP/$name" && mkdir -p "$TMP/$name" && extract "$TMP/$name.zip" "$TMP/$name" && [[ -f "$TMP/$name/SKILL.md" ]] || { warn "pacote inválido: $name"; return 1; }
 
   mkdir -p "$dir"
   # Mantém o .venv (e o que a skill cria em execução); remove arquivos que saíram da skill.
-  rsync -a --delete --exclude '.venv' --exclude "$MANIFEST" --exclude '.DS_Store' "$TMP/$name/" "$dir/"
+  sync_tree "$TMP/$name" "$dir"
   find "$dir/scripts" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} + 2>/dev/null
 
   # Manifesto: versão + hash de cada arquivo (para detectar edição à mão).
@@ -97,19 +160,49 @@ install_one() { # <nome> <versão> <modo: install|update>
     '{name:$n, version:$v, installedAt:$at, files:$f}' > "$dir/$MANIFEST"
 
   run_setup "$name"
+  install_depends "$name"
   return 0
+}
+
+# Dependências declaradas no skill.json ("depends": ["base-solvace"]) — instaladas quando faltam (0033).
+install_depends() {
+  local dep v
+  for dep in $(jq -r '.depends[]? // empty' "$SKILLS_DIR/$1/skill.json" 2>/dev/null); do
+    [[ -f "$SKILLS_DIR/$dep/$MANIFEST" || -f "$SKILLS_DIR/$dep/SKILL.md" ]] && continue
+    v="$(jq -r --arg n "$dep" '.skills[] | select(.name == $n) | .version' "$TMP/catalog.json")"
+    [[ -n "$v" ]] || { warn "dependência $dep de $1 não está publicada"; continue; }
+    install_one "$dep" "$v" install && say "✔ $dep ($v) — dependência de $1"
+  done
+}
+
+# Espelho local da Base Solvace (0033): atualiza só quando o hash muda; silencioso sem rede.
+sync_kb() {
+  local kb="$SKILLS_DIR/base-solvace/scripts/kb.sh"
+  [[ -f "$kb" ]] || return 0
+  # No hook de sessao (--quiet): Knowledge Center -> PRMake (so com credencial local) e PRMake -> espelho em segundo
+  # plano, no maximo a cada 30 min — nao atrasa a abertura da sessao. Log: ~/.claude/solvace-kb-sync.log
+  if [[ $QUIET -eq 1 ]]; then (nohup bash "$kb" agendar run >/dev/null 2>&1 &) ; else bash "$kb" sync || true; fi
 }
 
 run_setup() {
   local dir="$SKILLS_DIR/$1" check runcmd
   [[ -f "$dir/skill.json" ]] || return 0
-  check="$(jq -r '.setup.check // empty' "$dir/skill.json")"
-  runcmd="$(jq -r '.setup.run // empty' "$dir/skill.json")"
+  # No Windows o venv usa .venv/Scripts/python.exe: skill.json pode trazer setup.windows (check/run).
+  local key='.setup'; [[ $WINDOWS -eq 1 ]] && key='(.setup.windows // .setup)'
+  check="$(jq -r "$key.check // empty" "$dir/skill.json")"
+  runcmd="$(jq -r "$key.run // empty" "$dir/skill.json")"
   [[ -n "$runcmd" ]] || return 0
   if [[ -n "$check" ]] && (cd "$dir" && bash -c "$check") >/dev/null 2>&1; then return 0; fi
   say "   preparando $1 (setup)…"
   (cd "$dir" && bash -c "$runcmd") >"$TMP/setup-$1.log" 2>&1 || warn "setup de $1 falhou (veja: $runcmd)"
 }
+
+# Windows: o hook roda no shell padrão dos hooks do Claude Code (Git Bash; "shell": "powershell" nem sempre é
+# respeitado). Caminhos absolutos entre aspas duplas funcionam no Git Bash e no cmd — e não caem no bash do WSL.
+if [[ $WINDOWS -eq 1 ]] && command -v cygpath >/dev/null; then
+  GIT_BASH="$(cygpath -m /)/bin/bash.exe"
+  [[ -f "$GIT_BASH" ]] && HOOK_CMD="\"$GIT_BASH\" \"$(cygpath -m "$TOOL_DIR/prmake-skills.sh")\" update --quiet"
+fi
 
 # Hook SessionStart do Claude Code: atualiza as skills a cada sessão (idempotente).
 ensure_hook() {
@@ -119,11 +212,17 @@ ensure_hook() {
     warn "$SETTINGS não é um JSON válido — não instalei o hook de atualização"
     return 0
   fi
-  if jq -e --arg c "$HOOK_CMD" '[.hooks.SessionStart[]?.hooks[]?.command] | index($c) != null' "$SETTINGS" >/dev/null; then
+  # Já está certo: exatamente um hook nosso, com o comando atual e sem "shell" (o de PowerShell da 0035 não rodava).
+  if jq -e --arg c "$HOOK_CMD" '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh"))]
+      | length == 1 and .[0].command == $c and .[0].shell == null' "$SETTINGS" >/dev/null; then
     return 0
   fi
   cp "$SETTINGS" "$SETTINGS.bak-prmake"
-  jq --arg c "$HOOK_CMD" '.hooks.SessionStart = ((.hooks.SessionStart // []) + [{"hooks": [{"type": "command", "command": $c, "timeout": 60}]}])' \
+  jq --arg c "$HOOK_CMD" '
+    .hooks.SessionStart = ([(.hooks.SessionStart // [])[]
+        | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-skills.sh")) | not)]
+        | select((.hooks | length) > 0)]
+      + [{"hooks": [{"type": "command", "command": $c, "timeout": 60}]}])' \
     "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
 }
@@ -188,10 +287,11 @@ done
 
 case "$cmd" in
   install)
+    windows_prepare
     need; lock
     token >/dev/null || die "sem token: rode com PRMAKE_TOKEN=<sua api-key do PRMake> ou crie $TOKEN_FILE"
     if [[ -n "${PRMAKE_TOKEN:-}" ]]; then
-      if [[ ! -f "$TOKEN_FILE" ]] || [[ "$(tr -d '\n' < "$TOKEN_FILE")" != "$PRMAKE_TOKEN" ]]; then
+      if [[ ! -f "$TOKEN_FILE" ]] || [[ "$(tr -d '\r\n' < "$TOKEN_FILE")" != "$PRMAKE_TOKEN" ]]; then
         [[ -f "$TOKEN_FILE" ]] && cp "$TOKEN_FILE" "$TOKEN_FILE.bak"
         printf '%s' "$PRMAKE_TOKEN" > "$TOKEN_FILE" && chmod 600 "$TOKEN_FILE"
         say "   token salvo em $TOKEN_FILE"
@@ -207,12 +307,14 @@ case "$cmd" in
     done
     ensure_hook
     ensure_permissions
+    sync_kb
     self_update
     say "Pronto. As skills estão em $SKILLS_DIR e se atualizam sozinhas a cada sessão do Claude Code."
     ;;
 
   update)
     command -v jq >/dev/null && command -v curl >/dev/null || exit 0
+    [[ $QUIET -eq 1 ]] && windows_prepare >/dev/null 2>&1 || windows_prepare
     lock
     # Sem rede/token: silencioso no modo --quiet (o hook não pode atrapalhar a sessão).
     catalog || { [[ $QUIET -eq 1 ]] && exit 0; die "não consegui ler o catálogo de skills em $BASE"; }
@@ -225,7 +327,13 @@ case "$cmd" in
       [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && continue
       install_one "$name" "$v" update && [[ "$(local_version "$name")" == "$v" ]] && updated+=("$name ${cur:-novo} → $v")
     done
+    # Skill já instalada e em dia pode ter ganhado dependência nova.
+    for name in $(selected ${ARGS[@]+"${ARGS[@]}"}); do
+      [[ -d "$SKILLS_DIR/$name" ]] && install_depends "$name"
+    done
+    ensure_hook
     ensure_permissions
+    sync_kb
     self_update
     if [[ ${#updated[@]} -gt 0 ]]; then
       # No hook SessionStart esta linha vai para o contexto do Claude: ele sabe que deve reler a SKILL.md.
@@ -246,5 +354,21 @@ case "$cmd" in
     echo "ferramenta: $TOOL_VERSION (publicada: $(jq -r '.toolVersion' "$TMP/catalog.json"))"
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status [--quiet] [--force] [skill...]" ;;
+  doctor)
+    # Diagnóstico (0035): o que as skills enxergam nesta máquina — cole a saída para o suporte.
+    ok() { printf '  %-28s %s\n' "$1" "$2"; }
+    echo "sistema:   $(uname -s 2>/dev/null) (windows=$WINDOWS)  bash $BASH_VERSION"
+    echo "HOME:      $HOME"
+    echo "skills:    $SKILLS_DIR"
+    for c in curl jq python3 py python unzip rsync git; do ok "$c" "$(type -P "$c" 2>/dev/null || echo '— não encontrado')"; done
+    ok "jq sem CRLF" "$([[ "$(jq -rn '"x"' 2>/dev/null)" == x ]] && echo ok || echo 'NÃO (rode: prmake-skills.sh update)')"
+    ok "python3 funciona" "$(python3 -c 'import sys; print(sys.version.split()[0])' 2>/dev/null | tr -d '\r' || echo NÃO)"
+    ok "token" "$(token >/dev/null && echo "ok ($TOKEN_FILE)" || echo 'NÃO — rode o instalador da tela Skills')"
+    ok "API ($BASE)" "HTTP $(get "" "$TMP/catalog.json")"
+    ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
+    ok "hook esperado" "$HOOK_CMD"
+    for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor [--quiet] [--force] [skill...]" ;;
 esac

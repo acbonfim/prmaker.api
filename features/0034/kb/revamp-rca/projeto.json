@@ -1,0 +1,86 @@
+{
+ "name": "Revamp — RCA",
+ "kind": "revamp",
+ "order": 141,
+ "repository": "https://github.com/electradv/revamp-RCA",
+ "repoDir": "kb-mirror/revamp-RCA",
+ "summary": "Módulo de Root Cause Analysis (RCA). 21 projetos (net8.0), 7 controllers/49 rotas, 13 casos de uso, 11 Lambdas; tabelas TB_SA3_A3, Attachment, ChecklistAnswer, Checklist, ChecklistVersion.",
+ "keywords": [
+  "rca",
+  "revamp-RCA",
+  "Report",
+  "Types",
+  "Template",
+  "ChecklistVersions",
+  "ScoreCards",
+  "RCAs",
+  "StepVersions",
+  "TB_SA3_A3",
+  "Attachment",
+  "ChecklistAnswer",
+  "Checklist",
+  "Base"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila RCA_USER_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "event",
+   "detail": "consome o tópico CENTERLINE (fila RCA_CENTERLINE_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Centerline/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "event",
+   "detail": "consome o tópico KAIZEN (fila RCA_KAIZEN_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Kaizen/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "event",
+   "detail": "consome o tópico CHECKLIST (fila RCA_CHECKLIST_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Checklist/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "event",
+   "detail": "consome o tópico DOCUMENTATION (fila RCA_DOCUMENTATION_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.Documentation/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "event",
+   "detail": "consome o tópico LPP (fila RCA_LPP_EVENT_CREATED)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Lambda.RCA.Schema.LPP/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application.Abstractions/Constants.cs:16"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application/Shared/RcaNotificationHelper.cs:28"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Application.Abstractions/Constants.cs:41"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MNT_* (ex.: TB_MNT_EQUIPAMENTO)",
+   "evidence": "revamp-RCA/Solvace.RCA/src/Solvace.RCA.Infra.Data.Global.SqlServer/Commands/EquipamentCommand.cs:47"
+  }
+ ]
+}

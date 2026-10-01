@@ -1,0 +1,13 @@
+{
+ "name": "Revamp infra — Audit Trail",
+ "kind": "infra",
+ "order": 105,
+ "repository": "https://github.com/electradv/revamp-AuditTrail",
+ "repoDir": "kb-mirror/revamp-AuditTrail",
+ "summary": "Repositório sem código de aplicação (só README/template ou documentação).",
+ "keywords": [
+  "audittrail",
+  "revamp-AuditTrail"
+ ],
+ "relations": []
+}

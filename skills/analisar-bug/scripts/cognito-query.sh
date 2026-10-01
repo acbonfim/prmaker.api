@@ -18,6 +18,16 @@
 #   AWS_REGION      = regiao (default us-east-1)
 #   AWS_PROFILE     = profile do AWS CLI (senao usa o default/credenciais do ambiente)
 set -euo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 
 REGION="${AWS_REGION:-us-east-1}"
 AWS=(aws --region "$REGION")

@@ -1,0 +1,25 @@
+{
+ "name": "Revamp — Project",
+ "kind": "revamp",
+ "order": 139,
+ "repository": "https://github.com/electradv/revamp-Project",
+ "repoDir": "kb-mirror/revamp-Project",
+ "summary": "5 projetos (net8.0), 2 controllers/4 rotas, 6 casos de uso, 0 Lambdas; tabelas TB_PJT_TYPE, TB_PJT_PROJECT, TB_PJT_STATUS, TB_PJT_PROJECT_MEMBER, TB_PJT_PROJECT_MEMBER_AREA.",
+ "keywords": [
+  "project",
+  "revamp-Project",
+  "Types",
+  "Projects",
+  "TB_PJT_TYPE",
+  "TB_PJT_PROJECT",
+  "TB_PJT_STATUS",
+  "TB_PJT_PROJECT_MEMBER",
+  "Builder",
+  "GetExcelProjects",
+  "GetPdfProjects",
+  "GetProjectsFiltered",
+  "GetTypeNames",
+  "Helpers"
+ ],
+ "relations": []
+}

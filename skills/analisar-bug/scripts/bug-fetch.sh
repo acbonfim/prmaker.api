@@ -8,6 +8,16 @@
 #   PRMAKE_TOKEN = sobrescreve o token (senao resolve via arquivos, igual ao gerar-prmake).
 #   OUTDIR       = diretorio de saida (default /tmp/bug-analysis)
 set -euo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 
 CARD="${1:?informe o numero do card}"
 BASE="${PRMAKE_BASE:-https://api.softhouse.app.br/api/v1}"
@@ -25,7 +35,7 @@ resolve_token() {
     "$(cd "$(dirname "$0")/../.." && pwd)/prmake-token.txt"
   )
   for f in "${candidates[@]}"; do
-    if [[ -f "$f" ]]; then tr -d '\n' < "$f"; return; fi
+    if [[ -f "$f" ]]; then tr -d '\r\n' < "$f"; return; fi
   done
   echo "ERRO: token nao encontrado (defina PRMAKE_TOKEN ou crie ~/.claude/prmake-token.txt)" >&2
   exit 1

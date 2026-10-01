@@ -1,0 +1,75 @@
+{
+ "name": "Revamp — Post",
+ "kind": "revamp",
+ "order": 137,
+ "repository": "https://github.com/electradv/revamp-Post",
+ "repoDir": "kb-mirror/revamp-Post",
+ "summary": "Módulo de feed social do estate Revamp, responsável pela criação de posts, interações (reações, comentários), reclamações, bloqueio de usuários e notificações em tempo real via SignalR. 14 projetos (net8.0), 10 controllers/24 rotas, 29 casos de uso, 2 Lambdas; tabelas ComplaintType, User, Complaint, DeletedPost, TB_SITES.",
+ "keywords": [
+  "post",
+  "revamp-Post",
+  "List",
+  "Notification",
+  "Translate",
+  "User",
+  "Post",
+  "Media",
+  "Complaint",
+  "ApplicationFeed",
+  "ComplaintType",
+  "DeletedPost",
+  "Builder",
+  "GetComplaintById",
+  "GetComplaintFitered"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila POST_USER_EVENT_CREATED)",
+   "evidence": "revamp-Post/Solvace.Post/src/Lambda.Post.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Application/UseCases/SendNotificationComplaint/SendNotificationComplaintCommandHandler.cs:18"
+  },
+  {
+   "target": "revamp-hashtag",
+   "kind": "queue",
+   "detail": "envia para a fila HASHTAG_WORKER_<amb>",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Application/UseCases/SendPostSqsMessageGeneric/SendPostSqsMessageGenericCommandHandler.cs:141"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:242"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "database",
+   "detail": "usa tabelas TB_LUP_* (ex.: TB_LUP_DOCUMENT)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:134"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:54"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_CATEGORIA_CUSTO)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/RegisterAsPost/RegisterAsPostQueries.cs:241"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Post/Solvace.Post/src/Solvace.Post.Infra.Data.Global.SqlServer/Helpers/Bookmark/Queries/UserUidQueries.cs:52"
+  }
+ ]
+}

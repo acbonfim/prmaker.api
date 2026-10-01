@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — Custom Field",
+ "kind": "revamp",
+ "order": 118,
+ "repository": "https://github.com/electradv/revamp-CustomField",
+ "repoDir": "kb-mirror/revamp-CustomField",
+ "summary": "Gerencia campos customizados no estate Revamp. 7 projetos (net8.0), 6 controllers/14 rotas, 9 casos de uso, 0 Lambdas; tabelas CustomField, CustomFieldList, CustomFieldListValue, Feature, CustomFieldType.",
+ "keywords": [
+  "customfield",
+  "revamp-CustomField",
+  "CustomFieldList",
+  "Template",
+  "CustomFieldLegacy",
+  "CustomFieldValue",
+  "CustomField",
+  "CustomFieldType",
+  "CustomFieldListValue",
+  "Feature",
+  "GetCustomField",
+  "GetCustomFieldList",
+  "GetCustomFieldType",
+  "GetCustomFieldValue",
+  "GetLegacyCustomFieldStatus"
+ ],
+ "relations": []
+}

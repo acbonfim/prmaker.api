@@ -1,0 +1,25 @@
+{
+ "name": "Revamp — White Board",
+ "kind": "revamp",
+ "order": 150,
+ "repository": "https://github.com/electradv/revamp-WhiteBoard",
+ "repoDir": "kb-mirror/revamp-WhiteBoard",
+ "summary": "Módulo WhiteBoard responsável por fornecer funcionalidades de quadro branco colaborativo, com suporte a armazenamento de arquivos via S3, acesso a dados com migrations e repositórios, validações de aplicação e integração com parâmetros globais e configurações  7 projetos (net8.0), 2 controllers/5 rotas, 4 casos de uso, 0 Lambdas; tabelas Attachment, Excalidraw, ExcalidrawVersion.",
+ "keywords": [
+  "whiteboard",
+  "revamp-WhiteBoard",
+  "Attachment",
+  "Excalidraw",
+  "ExcalidrawVersion",
+  "Exacalidraw",
+  "GetAttachmentFile"
+ ],
+ "relations": [
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_WORKER_<amb>",
+   "evidence": "revamp-WhiteBoard/Solvace.WhiteBoard/src/Solvace.WhiteBoard.Application.Abstractions/Responses/Constants.cs:16"
+  }
+ ]
+}

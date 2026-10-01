@@ -39,6 +39,26 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         return rows.Select(r => r.Plan.FillSummary(new ExecutionPlanSummaryResponse(), r.Total, r.Completed)).ToList();
     }
 
+    public async Task<List<(ExecutionPlan Plan, DateTimeOffset? AnsweredAt)>> GetResumeCandidatesAsync(Guid? userId, CancellationToken cancellationToken)
+    {
+        var active = new[] { ExecutionStatus.Pending, ExecutionStatus.Running, ExecutionStatus.Paused };
+        var rows = await _context.Plans
+            .AsNoTracking()
+            .Where(p => active.Contains(p.Status) && (userId == null || p.CreatedByUserId == userId))
+            .Select(p => new
+            {
+                Plan = p,
+                AnsweredAt = _context.Questions
+                    .Where(q => q.PlanId == p.Id && q.Status == ExecutionQuestionStatus.Answered && q.AnsweredVia == "prmake"
+                                && (p.LastActivityAt == null || q.AnsweredAt > p.LastActivityAt))
+                    .Max(q => q.AnsweredAt)
+            })
+            .Where(r => r.AnsweredAt != null || (r.Plan.ResumeRequestedAt != null
+                        && (r.Plan.ResumeHandledAt == null || r.Plan.ResumeHandledAt < r.Plan.ResumeRequestedAt)))
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => (r.Plan, r.AnsweredAt)).ToList();
+    }
+
     public Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
         _context.Plans
             .AsNoTracking()

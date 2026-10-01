@@ -229,8 +229,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             p.Touch(now, actor.IsExecutor);
         }, cancellationToken, actor);
 
-        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
-        await WriteTimelineAsync(plan, AnswerText(question), actor, cancellationToken);
+        // 0036: tempo real (relay externo) e Timeline em paralelo — independentes e sem o DbContext do plano; a
+        // resposta à tela sai assim que os dois terminam (antes eram duas viagens ao relay em sequência).
+        await Task.WhenAll(
+            NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken),
+            WriteTimelineAsync(plan, AnswerText(question), actor, cancellationToken));
         return question.ToResponse();
     }
 

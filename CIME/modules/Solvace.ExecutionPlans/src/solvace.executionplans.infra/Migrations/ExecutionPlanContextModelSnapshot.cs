@@ -310,6 +310,16 @@ namespace solvace.executionplans.infra.Migrations
                         .HasColumnType("character varying(20)")
                         .HasDefaultValue("analysis");
 
+                    b.Property<DateTimeOffset?>("ResumeHandledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ResumeRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResumeRequestedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -542,6 +552,55 @@ namespace solvace.executionplans.infra.Migrations
                         .WithMany()
                         .HasForeignKey("ParentPlanId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.OwnsMany("solvace.executionplans.domain.Entities.ExecutionSession", "Sessions", b1 =>
+                        {
+                            b1.Property<Guid>("ExecutionPlanId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<long>("CacheReadTokens");
+
+                            b1.Property<long>("CacheWriteTokens");
+
+                            b1.Property<string>("Cwd")
+                                .HasMaxLength(500);
+
+                            b1.Property<string>("Host")
+                                .HasMaxLength(200);
+
+                            b1.Property<long>("InputTokens");
+
+                            b1.Property<DateTimeOffset>("LastSeenAt");
+
+                            b1.Property<string>("Model");
+
+                            b1.Property<long>("OutputTokens");
+
+                            b1.Property<string>("SessionId")
+                                .IsRequired()
+                                .HasMaxLength(100);
+
+                            b1.Property<DateTimeOffset>("StartedAt");
+
+                            b1.Property<int>("Turns");
+
+                            b1.Property<DateTimeOffset?>("UsageUpdatedAt");
+
+                            b1.HasKey("ExecutionPlanId", "__synthesizedOrdinal");
+
+                            b1.ToTable("ExecutionPlans", "execution");
+
+                            b1
+                                .ToJson("Sessions")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ExecutionPlanId");
+                        });
+
+                    b.Navigation("Sessions");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionQuestion", b =>

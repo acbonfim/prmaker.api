@@ -1,0 +1,57 @@
+{
+ "name": "Revamp — Alert",
+ "kind": "revamp",
+ "order": 103,
+ "repository": "https://github.com/electradv/revamp-Alert",
+ "repoDir": "kb-mirror/revamp-Alert",
+ "summary": "Modulo responsavel pela criacao, gerenciamento e notificacao de alertas no estate Revamp. 19 projetos (net8.0), 5 controllers/25 rotas, 31 casos de uso, 9 Lambdas; tabelas TB_WCM_SITE, TB_WCM_USER, Alert, Attachment, Hashtag.",
+ "keywords": [
+  "alert",
+  "revamp-Alert",
+  "Alert",
+  "Attachment",
+  "ScoreCards",
+  "ApplicationFeed",
+  "AlertReport",
+  "TB_WCM_SITE",
+  "TB_WCM_USER",
+  "ActionPlansAlertIds",
+  "AlertById",
+  "AlertByUniqueId",
+  "AlertGroupByArea",
+  "AlertGroupByClassification",
+  "AlertGroupByDay"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila ALERT_USER_EVENT_CREATED)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Lambda.Alert.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Application/UseCases/SendNotification/SendNotificationCommandHandler.cs:28"
+  },
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Application/UseCases/DeleteAlert/Service/SendAlertDeletedToCommentService.cs:13"
+  },
+  {
+   "target": "revamp-masterdata",
+   "kind": "database",
+   "detail": "usa tabelas TB_MST_* (ex.: TB_MST_FALHAS)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Infra.Data.Global.SqlServer/Queries/AlertQueries.cs:43"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Alert/Solvace.Alert/src/Solvace.Alert.Infra.Data.Global.SqlServer/Queries/Helpers/User/Queries/UserHelperQueries.cs:39"
+  }
+ ]
+}

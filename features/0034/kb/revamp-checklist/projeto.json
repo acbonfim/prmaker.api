@@ -1,0 +1,26 @@
+{
+ "name": "Revamp — Checklist",
+ "kind": "revamp",
+ "order": 112,
+ "repository": "https://github.com/electradv/revamp-Checklist",
+ "repoDir": "kb-mirror/revamp-Checklist",
+ "summary": "6 projetos (net8.0), 4 controllers/10 rotas, 8 casos de uso, 0 Lambdas; tabelas TB_CHK_CHECKLIST_OWNER, TB_CHK_CHECKLIST_AREA_OWNER, TB_CHK_CHECKLIST_TEAM_OWNER, TB_SYS_USERGRUPOS, TB_CHK_CHECKLIST.",
+ "keywords": [
+  "checklist",
+  "revamp-Checklist",
+  "Counters",
+  "Analytics",
+  "Checklist",
+  "Legacy",
+  "TB_CHK_CHECKLIST_OWNER",
+  "TB_CHK_CHECKLIST_AREA_OWNER",
+  "TB_CHK_CHECKLIST_TEAM_OWNER",
+  "TB_SYS_USERGRUPOS",
+  "Events",
+  "ChecklistStatusAnalyticsBySubordinates",
+  "ChecklistStatusAnalyticsByUserId",
+  "ChecklistStatusAnalyticsByUserIdTypeDetail",
+  "ChecklistStatusCountersByUserId"
+ ],
+ "relations": []
+}

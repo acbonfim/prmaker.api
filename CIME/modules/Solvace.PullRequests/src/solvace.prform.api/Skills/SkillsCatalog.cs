@@ -20,7 +20,8 @@ public partial class SkillsCatalog
     private readonly Lazy<Loaded> _loaded;
 
     private record SkillEntry(SkillInfo Info, byte[] Package);
-    private record Loaded(IReadOnlyDictionary<string, SkillEntry> Skills, string ToolTemplate, string InstallTemplate, string ToolVersion);
+    private record Loaded(IReadOnlyDictionary<string, SkillEntry> Skills, string ToolTemplate, string InstallTemplate,
+        string InstallPowerShellTemplate, string ToolVersion);
 
     public SkillsCatalog(IConfiguration configuration, IWebHostEnvironment environment)
     {
@@ -38,6 +39,9 @@ public partial class SkillsCatalog
         _loaded.Value.ToolTemplate.Replace("__PRMAKE_API_BASE__", apiBase).Replace("__PRMAKE_TOOL_VERSION__", _loaded.Value.ToolVersion);
 
     public string Installer(string apiBase) => _loaded.Value.InstallTemplate.Replace("__PRMAKE_API_BASE__", apiBase);
+
+    /// <summary>Instalador do Windows (PowerShell, feature 0035): prepara Git Bash/jq/Python e roda o <see cref="Installer"/>.</summary>
+    public string InstallerPowerShell(string apiBase) => _loaded.Value.InstallPowerShellTemplate.Replace("__PRMAKE_API_BASE__", apiBase);
 
     /// <summary>Config <c>Skills:Directory</c>; senão <c>skills/</c> ao lado da API (imagem) ou subindo até a raiz do repositório (dev).</summary>
     private static string ResolveDirectory(IConfiguration configuration, IWebHostEnvironment environment)
@@ -58,7 +62,7 @@ public partial class SkillsCatalog
     private static Loaded Load(string root)
     {
         if (!Directory.Exists(root))
-            return new Loaded(new Dictionary<string, SkillEntry>(), "", "", "none");
+            return new Loaded(new Dictionary<string, SkillEntry>(), "", "", "", "none");
 
         var skills = new Dictionary<string, SkillEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.Ordinal))
@@ -101,8 +105,9 @@ public partial class SkillsCatalog
         var tooling = Path.Combine(root, ToolingFolder);
         var tool = ReadOrEmpty(Path.Combine(tooling, "prmake-skills.sh"));
         var install = ReadOrEmpty(Path.Combine(tooling, "install.sh"));
+        var installPowerShell = ReadOrEmpty(Path.Combine(tooling, "install.ps1"));
         var toolVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(tool)))[..12];
-        return new Loaded(skills, tool, install, toolVersion);
+        return new Loaded(skills, tool, install, installPowerShell, toolVersion);
     }
 
     private static bool IsIgnored(string rel)

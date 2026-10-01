@@ -1,0 +1,15 @@
+{
+  "requires": [
+    "curl",
+    "jq",
+    "python3"
+  ],
+  "setup": {
+    "check": "[ -x .venv/bin/python ] && .venv/bin/python -c 'import psycopg' 2>/dev/null",
+    "run": "python3 -m venv .venv && .venv/bin/pip install -q 'psycopg[binary]'",
+    "windows": {
+      "check": "[ -x .venv/Scripts/python.exe ] && .venv/Scripts/python.exe -c 'import psycopg' 2>/dev/null",
+      "run": "python3 -m venv .venv && .venv/Scripts/python.exe -m pip install -q 'psycopg[binary]'"
+    }
+  }
+}

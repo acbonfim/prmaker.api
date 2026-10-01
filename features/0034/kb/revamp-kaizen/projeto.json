@@ -1,0 +1,33 @@
+{
+ "name": "Revamp — Kaizen",
+ "kind": "revamp",
+ "order": 128,
+ "repository": "https://github.com/electradv/revamp-Kaizen",
+ "repoDir": "kb-mirror/revamp-Kaizen",
+ "summary": "6 projetos (net8.0), 6 controllers/15 rotas, 16 casos de uso, 0 Lambdas; tabelas TB_MLH_MELHORIAS, TB_MLH_MELHORIAS_CATEGORIA_CUSTO, TB_MLH_STATUS, TB_SITES, TB_MLH_TYPE.",
+ "keywords": [
+  "kaizen",
+  "revamp-Kaizen",
+  "Kaizen",
+  "Counter",
+  "ScoreCards",
+  "Legacy",
+  "Idea",
+  "Type",
+  "TB_MLH_MELHORIAS",
+  "TB_MLH_MELHORIAS_CATEGORIA_CUSTO",
+  "TB_MLH_STATUS",
+  "TB_SITES",
+  "DeleteKaizenComments",
+  "Events",
+  "Builder"
+ ],
+ "relations": [
+  {
+   "target": "revamp-commentmanager",
+   "kind": "queue",
+   "detail": "envia para a fila COMMENT_GROUP_DELETE_WORKER_<amb>",
+   "evidence": "revamp-Kaizen/Solvace.Kaizen/src/Solvace.Kaizen.Application/Commands/DeleteKaizenComments/DeleteKaizenCommentsCommandHandler.cs:26"
+  }
+ ]
+}

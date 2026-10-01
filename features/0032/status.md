@@ -8,11 +8,11 @@
 | F1 | Plano: esconder cópias, opções visíveis; placeholder da Timeline | ✅ concluída |
 | F2 | Minhas integrações (pick list + layout) | ✅ concluída |
 | F3 | Editor de plugins (admin) | ✅ concluída |
-| Q1 | Builds, teste local, PRs back + front | 🔄 PRs abertos — aguardando merge |
+| Q1 | Builds, teste local, PRs back + front | ✅ concluída (PRs #46 back e #27 front mesclados em 2026-09-30) |
 
 ## Notas
-- Dados do card 74775: cópias #11–#13 (análise) e #28–#30 (correção) continuam no banco; a tela as esconde. Remover
-  (DELETE do arquivo no plano) só com autorização do usuário.
+- Dados do card 74775: as 6 cópias (#11–#13 análise, #28–#30 correção) foram apagadas em produção em 2026-09-30,
+  com autorização do usuário (DELETE do arquivo no plano); ficaram só os anexos #5–#7.
 
 ## Teste local (2026-09-30, `.t0032/`: Postgres isolado 55434, auth falso, API 5083, front 4200, Chrome headless)
 - Upload da skill com o conteúdo de um anexo de comentário devolve o anexo (sem arquivo novo); `sync` envia 0,

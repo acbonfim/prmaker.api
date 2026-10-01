@@ -1,0 +1,21 @@
+{
+ "name": "Revamp — Incident",
+ "kind": "revamp",
+ "order": 127,
+ "repository": "https://github.com/electradv/revamp-Incident",
+ "repoDir": "kb-mirror/revamp-Incident",
+ "summary": "6 projetos (net8.0), 2 controllers/3 rotas, 3 casos de uso, 0 Lambdas; tabelas TB_ICD_INCIDENT, TB_WCM_USER_ROLE, TB_ICD_STATUS.",
+ "keywords": [
+  "incident",
+  "revamp-Incident",
+  "Counter",
+  "ScoreCards",
+  "TB_ICD_INCIDENT",
+  "TB_WCM_USER_ROLE",
+  "TB_ICD_STATUS",
+  "GetIncidentApprovalsCounter",
+  "GetKpiIncidentReported",
+  "GetKpiIncidentReportedItem"
+ ],
+ "relations": []
+}

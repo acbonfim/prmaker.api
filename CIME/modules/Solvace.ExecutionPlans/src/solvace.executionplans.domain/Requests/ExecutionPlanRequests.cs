@@ -144,3 +144,24 @@ public class EditExecutionNoteRequest
 {
     public string? Text { get; set; }
 }
+
+/// <summary>Sessão do Claude Code que está trabalhando no plano (0033).</summary>
+public class RegisterExecutionSessionRequest
+{
+    public string SessionId { get; set; } = string.Empty;
+    public string? Host { get; set; }
+    public string? Cwd { get; set; }
+}
+
+/// <summary>Custo acumulado de uma sessão (totais lidos do transcript pela skill).</summary>
+public class RecordExecutionUsageRequest
+{
+    public string SessionId { get; set; } = string.Empty;
+    public string? Host { get; set; }
+    public int Turns { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
+    public string? Model { get; set; }
+}

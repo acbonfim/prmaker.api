@@ -1,0 +1,24 @@
+{
+ "name": "Revamp — Notification",
+ "kind": "revamp",
+ "order": 136,
+ "repository": "https://github.com/electradv/revamp-Notification",
+ "repoDir": "kb-mirror/revamp-Notification",
+ "summary": "Serviço de notificações responsável por entregar notificações via e-mail (AWS Secrets Manager + Infra.Mail), push (Firebase/FirebaseAdmin), tempo real via SignalR (com Redis como backplane) e filas SQS (workers dedicados). 11 projetos (net8.0), 3 controllers/10 rotas, 13 casos de uso, 0 Lambdas; tabelas TB_WCM_SITE, Badge, Configuration, Notification, Recipient.",
+ "keywords": [
+  "notification",
+  "revamp-Notification",
+  "Notification",
+  "Broadcast",
+  "Configuration",
+  "TB_WCM_SITE",
+  "Badge",
+  "GetConfigurationsByApplication",
+  "GetConfigurationsByRule",
+  "GetConfigurationsByRuleAndReference",
+  "GetNotificationEnvironmentContext",
+  "GetNotificationsByUserId",
+  "GetWorkerNotificationEnvironmentContext"
+ ],
+ "relations": []
+}

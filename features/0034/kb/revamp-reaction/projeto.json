@@ -1,0 +1,62 @@
+{
+ "name": "Revamp — Reaction",
+ "kind": "revamp",
+ "order": 142,
+ "repository": "https://github.com/electradv/revamp-Reaction",
+ "repoDir": "kb-mirror/revamp-Reaction",
+ "summary": "Módulo responsável pelo gerenciamento de reações (emoji/like) em itens de conteúdo ao longo do estate Revamp. 9 projetos (net8.0), 2 controllers/2 rotas, 9 casos de uso, 1 Lambdas; tabelas TB_WCM_USER, TB_WCM_SITE, Reaction, RegistryReaction, RegistryReactionId.",
+ "keywords": [
+  "reaction",
+  "revamp-Reaction",
+  "CountersId",
+  "CountersUid",
+  "TB_WCM_USER",
+  "TB_WCM_SITE",
+  "Reaction",
+  "RegistryReaction",
+  "GetCountIdReactions",
+  "GetCountIdsReactions",
+  "GetCountUidReactions",
+  "GetCountUidsReactions",
+  "GetReactions",
+  "CreateRegistryIdCommand"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila REACTION_USER_EVENT_CREATED)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Lambda.Reaction.Schema.User/aws-lambda-tools-defaults.json"
+  },
+  {
+   "target": "revamp-post",
+   "kind": "queue",
+   "detail": "envia para a fila POST_INTERACTION_UPDATED_<amb>",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Application/Services/MessageBrokerService.cs:24"
+  },
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Application/Services/MessageBrokerService.cs:60"
+  },
+  {
+   "target": "revamp-users",
+   "kind": "database",
+   "detail": "usa tabelas TB_CAF_* (ex.: TB_CAF_FUNCIONARIO_CARGO)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Infra.Data.Global.SqlServer/Queries/UserHelperQuerie.cs:45"
+  },
+  {
+   "target": "ext:s3",
+   "kind": "external",
+   "detail": "AWS S3: https://solvacelabs-webcomponents.s3.amazonaws.com/ (S3BucketUrl)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.API/appsettings.json"
+  },
+  {
+   "target": "ext:s3",
+   "kind": "external",
+   "detail": "AWS S3: https://solvacelabs-webcomponents.s3.amazonaws.com/icons/ (código)",
+   "evidence": "revamp-Reaction/Solvace.Reaction/src/Solvace.Reaction.Infra.Data.Global.SqlServer/Migrations/20241209121109_UpdateSeed.cs:17"
+  }
+ ]
+}

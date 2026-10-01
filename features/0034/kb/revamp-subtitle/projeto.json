@@ -1,0 +1,141 @@
+{
+ "name": "Revamp — Subtitle",
+ "kind": "revamp",
+ "order": 144,
+ "repository": "https://github.com/electradv/revamp-Subtitle",
+ "repoDir": "kb-mirror/revamp-Subtitle",
+ "summary": "Módulo responsável por gerar, gerenciar e traduzir legendas para conteúdos de mídia, utilizando os serviços AWS Transcribe e AWS Translate por meio de BuildingBlocks dedicados. 8 projetos (net8.0), 6 controllers/12 rotas, 5 casos de uso, 1 Lambdas; tabelas Subtitle, SubtitleFeatureType, SubtitleStatus, TB_LUP_DOCUMENT, TB_CHK_INSPECTION.",
+ "keywords": [
+  "subtitle",
+  "revamp-Subtitle",
+  "SubtitleByReferenceUId",
+  "TranscriptionByReferenceId",
+  "Subtitles",
+  "TranscriptionByReferenceUId",
+  "SubtitleByReferenceId",
+  "Transcriptions",
+  "Subtitle",
+  "SubtitleFeatureType",
+  "SubtitleStatus",
+  "TB_LUP_DOCUMENT",
+  "CreateSubtitle",
+  "DeleteSubtitle",
+  "MessageBroker"
+ ],
+ "relations": [
+  {
+   "target": "revamp-notification",
+   "kind": "queue",
+   "detail": "envia para a fila NOTIFICATION_WORKER_<amb>",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Services/NotificationService.cs:26"
+  },
+  {
+   "target": "revamp-lpp",
+   "kind": "database",
+   "detail": "usa tabelas TB_LUP_* (ex.: TB_LUP_DOCUMENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:88"
+  },
+  {
+   "target": "revamp-checklist",
+   "kind": "database",
+   "detail": "usa tabelas TB_CHK_* (ex.: TB_CHK_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:181"
+  },
+  {
+   "target": "revamp-actionplan",
+   "kind": "database",
+   "detail": "usa tabelas TB_ACP_* (ex.: TB_ACP_PLAN)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:11"
+  },
+  {
+   "target": "revamp-defecttag",
+   "kind": "database",
+   "detail": "usa tabelas TB_DFT_* (ex.: TB_DFT_DEFECT_TAG)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:21"
+  },
+  {
+   "target": "revamp-nonconformity",
+   "kind": "database",
+   "detail": "usa tabelas TB_NCF_* (ex.: TB_NCF_NONCONFORMITY)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:31"
+  },
+  {
+   "target": "revamp-workpermit",
+   "kind": "database",
+   "detail": "usa tabelas TB_WRK_* (ex.: TB_WRK_WORK_PERMIT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:41"
+  },
+  {
+   "target": "revamp-unsafecondition",
+   "kind": "database",
+   "detail": "usa tabelas TB_UNC_* (ex.: TB_UNC_UNSAFE_CONDITION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:51"
+  },
+  {
+   "target": "revamp-kaizen",
+   "kind": "database",
+   "detail": "usa tabelas TB_MLH_* (ex.: TB_MLH_MELHORIAS)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:61"
+  },
+  {
+   "target": "revamp-digitalobeya",
+   "kind": "database",
+   "detail": "usa tabelas TB_DOB_* (ex.: TB_DOB_WIDGET)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:74"
+  },
+  {
+   "target": "revamp-rca",
+   "kind": "database",
+   "detail": "usa tabelas TB_SA3_* (ex.: TB_SA3_A3)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:109"
+  },
+  {
+   "target": "revamp-documentation",
+   "kind": "database",
+   "detail": "usa tabelas TB_GED_* (ex.: TB_GED_DOCUMENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:119"
+  },
+  {
+   "target": "revamp-project",
+   "kind": "database",
+   "detail": "usa tabelas TB_PJT_* (ex.: TB_PJT_PROJECT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:129"
+  },
+  {
+   "target": "revamp-complaint",
+   "kind": "database",
+   "detail": "usa tabelas TB_CMP_* (ex.: TB_CMP_COMPLAINT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:139"
+  },
+  {
+   "target": "revamp-incident",
+   "kind": "database",
+   "detail": "usa tabelas TB_ICD_* (ex.: TB_ICD_INCIDENT)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:149"
+  },
+  {
+   "target": "revamp-assessment",
+   "kind": "database",
+   "detail": "usa tabelas TB_AST_* (ex.: TB_AST_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:162"
+  },
+  {
+   "target": "revamp-cil",
+   "kind": "database",
+   "detail": "usa tabelas TB_LIL_* (ex.: TB_LIL_NINSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:209"
+  },
+  {
+   "target": "revamp-centerline",
+   "kind": "database",
+   "detail": "usa tabelas TB_CLN_* (ex.: TB_CLN_INSPECTION)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:228"
+  },
+  {
+   "target": "revamp-training",
+   "kind": "database",
+   "detail": "usa tabelas TB_TRN_* (ex.: TB_TRN_STUDENT_TRAINING)",
+   "evidence": "revamp-Subtitle/Solvace.Subtitle/src/Solvace.Subtitle.Application/Helpers/LegacyConfigurationsService.cs:256"
+  }
+ ]
+}

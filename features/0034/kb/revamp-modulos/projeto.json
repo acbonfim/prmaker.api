@@ -1,0 +1,24 @@
+{
+ "name": "Revamp — catálogo de módulos e padrão",
+ "kind": "revamp",
+ "order": 39,
+ "repository": "https://github.com/electradv",
+ "summary": "Padrão de todo módulo revamp (.NET 8, hexagonal + CQRS/MediatR, SQL Server Global/Local, ECS, pipelines por branch) e o catálogo dos 53 repositórios electradv/revamp-* (cada um tem projeto próprio nesta base, com dependências). O monorepo antigo electradv/revamp está obsoleto: vale o repo próprio. Infra: BuildingBlocks, ModuleIntegration, Datalake; revamp-wiki é a wiki mantida por LLM.",
+ "keywords": [
+  "revamp",
+  "módulo",
+  "hexagonal",
+  "MediatR",
+  "CQRS",
+  "BuildingBlocks",
+  "CodeArtifact",
+  "Global",
+  "Local",
+  "Corporate",
+  "ECS",
+  "Lambda",
+  "SNS",
+  "SQS",
+  "revamp-wiki"
+ ]
+}

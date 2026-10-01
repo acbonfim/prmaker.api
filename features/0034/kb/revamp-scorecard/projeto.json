@@ -1,0 +1,29 @@
+{
+ "name": "Revamp — Score Card",
+ "kind": "revamp",
+ "order": 143,
+ "repository": "https://github.com/electradv/revamp-ScoreCard",
+ "repoDir": "kb-mirror/revamp-ScoreCard",
+ "summary": "Módulo de ScoreCard/KPI do estate Revamp, responsável pelo gerenciamento de scorecards e indicadores de desempenho. 9 projetos (net8.0), 2 controllers/6 rotas, 7 casos de uso, 1 Lambdas; tabelas Group, KeyPerformanceIndicator, User, Vision, VisionKeyPerformanceIndicator.",
+ "keywords": [
+  "scorecard",
+  "revamp-ScoreCard",
+  "Vision",
+  "Kpi",
+  "Group",
+  "KeyPerformanceIndicator",
+  "User",
+  "KeyPerformanceByVisionId",
+  "KeyPerformanceByVisionIdBoard",
+  "CreateVision",
+  "DeleteVision"
+ ],
+ "relations": [
+  {
+   "target": "revamp-users",
+   "kind": "event",
+   "detail": "consome o tópico USER (fila SCC_USER_EVENT_CREATED)",
+   "evidence": "revamp-ScoreCard/Solvace.Scorecard/src/Lambda.Scorecard.Schema.User/aws-lambda-tools-defaults.json"
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+{
+ "name": "Revamp — Documents",
+ "kind": "revamp",
+ "order": 123,
+ "repository": "https://github.com/electradv/revamp-Documents",
+ "repoDir": "kb-mirror/revamp-Documents",
+ "summary": "9 projetos (net8.0), 2 controllers/9 rotas, 9 casos de uso, 0 Lambdas; tabelas TB_WCM_USER, TB_WCM_SITE, TB_SYS_APPLICATION, TB_WCM_ONLYOFFICE_UPLOAD_VERSION, Document.",
+ "keywords": [
+  "documents",
+  "revamp-Documents",
+  "Document",
+  "WebEditor",
+  "TB_WCM_USER",
+  "TB_WCM_SITE",
+  "TB_SYS_APPLICATION",
+  "TB_WCM_ONLYOFFICE_UPLOAD_VERSION",
+  "CreateNewEmptyFile",
+  "CreateNewEmptyFileFromUpload",
+  "CreateNewEmptyFileFromUploadId",
+  "UpdateReferenceId",
+  "WebEditorCallBack",
+  "WebEditorCallBackRevamp"
+ ],
+ "relations": []
+}

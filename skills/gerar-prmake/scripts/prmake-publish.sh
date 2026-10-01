@@ -11,6 +11,16 @@
 #   OPEN_GITHUB_PR = 1 para tambem abrir o PR no GitHub (exige TARGET_BRANCH; PR_TITLE e PR_DRAFT opcionais)
 #   PRMAKE_BASE    = URL base da API (default https://api.softhouse.app.br/api/v1)
 set -euo pipefail
+# Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
+  export PATH="$HOME/bin:$PATH" PYTHONUTF8=1
+  if [[ "$(jq -rn '"x"' 2>/dev/null)" == $'x\r' ]]; then
+    if [[ "$(command jq -b -rn '"x"' 2>/dev/null)" == x ]]; then jq() { command jq -b "$@"; }; else jq() { command jq "$@" | tr -d '\r'; }; fi
+  fi
+  if ! python3 -c '' >/dev/null 2>&1; then
+    if py -3 -c '' >/dev/null 2>&1; then python3() { py -3 "$@"; }; elif python -c '' >/dev/null 2>&1; then python3() { python "$@"; }; fi
+  fi ;;
+esac
 
 # --- resolve repo slug: arg $5 > git remote origin (nome do repo) > DefaultRepository do PRMake (Skills Configurations)
 resolve_repo() {
@@ -40,7 +50,7 @@ resolve_token() {
     "$(git rev-parse --show-toplevel 2>/dev/null)/.claude/prmake-token.txt"
     "$(cd "$(dirname "$0")/../.." && pwd)/prmake-token.txt"
   )
-  for f in "${candidates[@]}"; do [[ -f "$f" ]] && { tr -d '\n' < "$f"; return; }; done
+  for f in "${candidates[@]}"; do [[ -f "$f" ]] && { tr -d '\r\n' < "$f"; return; }; done
   echo "ERRO: token nao encontrado (defina PRMAKE_TOKEN ou crie ~/.claude/prmake-token.txt)" >&2; exit 1
 }
 TOKEN="$(resolve_token)"

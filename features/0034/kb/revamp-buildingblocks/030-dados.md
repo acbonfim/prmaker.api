@@ -1,0 +1,43 @@
+## Tabelas referenciadas (mais usadas primeiro)
+| Tabela | Ocorrências | Onde aparece |
+|---|---|---|
+| `TB_WCM_USER` | 75 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ActionPlan/Queries/ActionPlanListQuery.cs:73 |
+| `TB_WCM_USER_PREFERENCE` | 23 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ActionPlan/Queries/ActionPlanListQuery.cs:74 |
+| `TB_WCM_SITE` | 20 | Solvace.BuildingBlocks/tests/Solvace.BuildingBlocks.GetKpiScoreCardQuery.Tests/GetKpiScoreCardQueryTests.cs:35 |
+| `TB_WCM_USER_PICTURE` | 19 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ActionPlan/Queries/ActionPlanListQuery.cs:75 |
+| `TB_WCM_USER_AREA` | 16 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetUserInfoGlobalQuery/GetUserInfoGlobalQuery.cs:33 |
+| `TB_AST_INSPECTION_ITEM` | 14 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentTotalQuestionsByMonthQuery.cs:55 |
+| `TB_ACP_PLAN` | 13 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.LegacyData/Queries/ActionPlanQueries.cs:46 |
+| `TB_AST_INSPECTION` | 13 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentTotalQuestionsByMonthQuery.cs:53 |
+| `TB_WCM_ACCESS_LOG` | 13 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Administration/Queries/AdministrationTotalSingleAccessByDayQuery.cs:48 |
+| `TB_CHK_INSPECTION_ITEM` | 13 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:20 |
+| `TB_CHK_INSPECTION` | 13 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:90 |
+| `TB_CLN_INSPECTION` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineTotalTasksByWeekQuery.cs:53 |
+| `TB_CLN_VERSION` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineTotalTasksByWeekQuery.cs:54 |
+| `TB_CLN_CHECKLIST` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineTotalTasksByWeekQuery.cs:55 |
+| `TB_CLN_INSPECTION_ITEM` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineListQuery.cs:19 |
+| `TB_AST_ASSESSMENT` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentTotalQuestionsByMonthQuery.cs:54 |
+| `TB_MLH_MELHORIAS` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Kaizen/Queries/KaizenTotalSuggestedByHourQuery.cs:53 |
+| `TB_LIL_NINSPECTION` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalTasksByWeekQuery.cs:51 |
+| `TB_LIL_NVERSION` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalTasksByWeekQuery.cs:52 |
+| `TB_LIL_CHECKLIST` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalTasksByWeekQuery.cs:53 |
+| `TB_LIL_INSPECTION_ITEM` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.CleanInspectLubricate/Queries/CleanInspectLubricateTotalQuestionsByWeekQuery.cs:54 |
+| `TB_CHK_VERSION` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:89 |
+| `TB_CHK_CHECKLIST` | 12 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Checklist/Queries/ChecklistListWithTaskDetailQuery.cs:91 |
+| `TB_WRK_WORK_PERMIT` | 11 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.WorkPermit/Queries/WorkPermitTotalReleasedByWeekQuery.cs:52 |
+| `TB_PJT_PROJECT` | 11 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Project/Queries/ProjectListQuery.cs:59 |
+| `TB_GED_DOCUMENT` | 11 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Documentation/Queries/DocumentationTotalCreatedByDayQuery.cs:45 |
+| `TB_MOC_MOC` | 10 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.ModificationControl/Queries/ModificationControlListQuery.cs:68 |
+| `TB_WCM_SITE_PARAMETER_VALUE` | 9 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetSiteParameterValueGlobalQuery/GetSiteParameterValueGlobalOpenedQuery.cs:12 |
+| `TB_WCM_SITE_PARAMETER` | 9 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetSiteParameterValueGlobalQuery/GetSiteParameterValueGlobalOpenedQuery.cs:13 |
+| `TB_NCF_NONCONFORMITY` | 9 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.NonConformity/Queries/NonConformityTotalReportedByHourQuery.cs:53 |
+| `TB_CMP_COMPLAINT` | 8 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Complaints/Queries/ComplaintsListQuery.cs:14 |
+| `TB_ICD_INCIDENT` | 8 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Incidents/Queries/IncidentsTotalReportedByWeekQuery.cs:53 |
+| `TB_WCM_REQUEST_DOWNLOAD` | 6 | Solvace.BuildingBlocks/tests/Solvace.BuildingBlocks.RequestDownloadTracking.Tests/RequestDownloadTrackingCommandTests.cs:70 |
+| `TB_SITES` | 6 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetUserInfoGlobalQuery/GetUserInfoGlobalQuery_Avatar.cs:9 |
+| `TB_SYS_GRUPOS_TIPOS` | 6 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.GetUsersByTeamByIdsQuery/GetUsersByTeamByIdsQuery.cs:83 |
+| `TB_MST_FINISHED_PRODUCT` | 6 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Centerline/Queries/CenterlineListQuery.cs:15 |
+| `TB_WCM_REQUEST_DOWNLOAD_FILE_UPLOAD` | 5 | Solvace.BuildingBlocks/tests/Solvace.BuildingBlocks.PivotTableProducer.Tests/PivotTableRequestMessageTests.cs:104 |
+| `TB_WCM_TIMEZONE` | 5 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.TimezoneQueries/TimezoneQueries.cs:20 |
+| `TB_AST_TEMPLATE` | 5 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.Assessment/Queries/AssessmentListQuery.cs:84 |
+| `TB_NCF_TYPE` | 5 | Solvace.BuildingBlocks/src/Solvace.BuildingBlocks.ModuleIntegration.NonConformity/Queries/NonConformityQueryParameters.cs:25 |

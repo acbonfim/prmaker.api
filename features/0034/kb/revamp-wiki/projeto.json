@@ -1,0 +1,13 @@
+{
+ "name": "Revamp infra — wiki",
+ "kind": "infra",
+ "order": 153,
+ "repository": "https://github.com/electradv/revamp-wiki",
+ "repoDir": "kb-mirror/revamp-wiki",
+ "summary": "Wiki do revamp mantida por LLM (padrão LLM Wiki): uma página por módulo em wiki/modules (descrição, building blocks e versões, eventos) e por building block. Fonte da descrição dos módulos desta base; pode estar atrasada em relação ao código. Repositório sem código de aplicação (só README/template ou documentação).",
+ "keywords": [
+  "wiki",
+  "revamp-wiki"
+ ],
+ "relations": []
+}

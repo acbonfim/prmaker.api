@@ -1,0 +1,19 @@
+{
+ "name": "Revamp — Moc",
+ "kind": "revamp",
+ "order": 132,
+ "repository": "https://github.com/electradv/revamp-Moc",
+ "repoDir": "kb-mirror/revamp-Moc",
+ "summary": "Module of Change (MOC) — gerencia e controla mudanças em processos, equipamentos ou sistemas. 5 projetos (net8.0), 1 controllers/1 rotas, 1 casos de uso, 0 Lambdas; tabelas TB_MOC_TOPIC_WORKFLOW, TB_MOC_MOC_TOPIC_VERSION, TB_MOC_TOPIC_APPROVER, TB_MOC_STATUS, TB_MOC_TYPE.",
+ "keywords": [
+  "moc",
+  "revamp-Moc",
+  "Counter",
+  "TB_MOC_TOPIC_WORKFLOW",
+  "TB_MOC_MOC_TOPIC_VERSION",
+  "TB_MOC_TOPIC_APPROVER",
+  "TB_MOC_STATUS",
+  "GetMocApprovalsCounter"
+ ],
+ "relations": []
+}
