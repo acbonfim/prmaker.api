@@ -12,7 +12,7 @@
 | F1 | Front: botão + faixa do pedido | ✅ concluída |
 | F2 | Front: Meus executores | ✅ concluída |
 | Q1 | Teste ponta a ponta | ✅ concluído |
-| D1 | PRs, merge e deploy | ⏳ |
+| D1 | PRs, merge e deploy | 🚀 PRs abertos |
 
 ## Q1 — teste local (Postgres 18 isolado, auth falso, executor real com `claude` falso, Chrome headless)
 - Pedido pela tela sem executor: `queued`, motivo "Nenhuma máquina com o executor"; segundo clique devolve o mesmo pedido.
