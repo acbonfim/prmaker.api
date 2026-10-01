@@ -84,6 +84,19 @@ public static class ExecutionPhase
     public static readonly IReadOnlySet<string> All = new HashSet<string> { Analysis, Correction };
 }
 
+/// <summary>
+/// De quem a etapa "aguardando" depende (0037). <c>user</c> = ação do usuário (liberar permissão, ligar a VPN...) —
+/// vira pendência dele na tela; <c>answer</c> = perguntas abertas; <c>external</c> = chamado, merge, terceiros.
+/// </summary>
+public static class ExecutionWaitingOn
+{
+    public const string User = "user";
+    public const string Answer = "answer";
+    public const string External = "external";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { User, Answer, External };
+}
+
 /// <summary>Quem executa a etapa (0024).</summary>
 public static class ExecutionExecutor
 {

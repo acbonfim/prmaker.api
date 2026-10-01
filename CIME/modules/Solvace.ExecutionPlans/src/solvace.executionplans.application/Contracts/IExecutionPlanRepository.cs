@@ -18,6 +18,12 @@ public interface IExecutionPlanRepository
     /// </summary>
     Task<List<(ExecutionPlan Plan, DateTimeOffset? AnsweredAt)>> GetResumeCandidatesAsync(Guid? userId, CancellationToken cancellationToken);
 
+    /// <summary>Planos ativos (pendente, em andamento, pausado) criados pelo usuário, com as etapas, sem rastrear (0037).</summary>
+    Task<List<ExecutionPlan>> GetActivePlansByUserAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Perguntas abertas dos planos informados (0037).</summary>
+    Task<List<ExecutionQuestion>> GetOpenQuestionsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
+
     /// <summary>Plano mais recente do card (qualquer status).</summary>
     Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken);
 

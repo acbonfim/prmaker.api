@@ -32,6 +32,35 @@ public class ExecutionPlanSummaryResponse
     public DateTimeOffset? ResumeRequestedAt { get; set; }
     public string? ResumeRequestedBy { get; set; }
     public bool ResumePending { get; set; }
+
+    /// <summary>Quantas coisas dependem do usuário agora (0037): perguntas abertas + etapas dele + etapas travadas esperando ele.</summary>
+    public int UserPending { get; set; }
+}
+
+/// <summary>
+/// Uma pendência do usuário (0037). <c>question</c> = pergunta aberta; <c>step</c> = etapa do usuário pronta ou em
+/// andamento (concluir na tela); <c>unblock</c> = etapa travada esperando uma ação dele (o texto diz qual).
+/// </summary>
+public class ExecutionUserActionResponse
+{
+    public string Type { get; set; } = string.Empty;
+    public string? StepKey { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Text { get; set; }
+    public Guid? QuestionId { get; set; }
+    public DateTimeOffset? Since { get; set; }
+}
+
+/// <summary>Plano ativo do usuário com pendência dele (0037) — lista de recentes, título da aba.</summary>
+public class ExecutionUserPendingResponse
+{
+    public Guid PlanId { get; set; }
+    public string CardNumber { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Phase { get; set; } = ExecutionPhase.Analysis;
+    public string Status { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public List<ExecutionUserActionResponse> Actions { get; set; } = [];
 }
 
 public class ExecutionSessionResponse
@@ -77,6 +106,9 @@ public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
     public List<ExecutionQuestionResponse> Questions { get; set; } = [];
     public List<ExecutionLinkResponse> Links { get; set; } = [];
 
+    /// <summary>O que depende do usuário agora, na ordem do plano (0037).</summary>
+    public List<ExecutionUserActionResponse> UserActions { get; set; } = [];
+
     /// <summary>Comentários do card inteiro (análise e correção), com os anexos (0031).</summary>
     public List<ExecutionNoteResponse> Notes { get; set; } = [];
 
@@ -97,6 +129,8 @@ public class ExecutionStepResponse
     public string Status { get; set; } = string.Empty;
     public string? StatusReason { get; set; }
     public string? StatusChangedBy { get; set; }
+    /// <summary>Etapa "aguardando": user | answer | external (0037).</summary>
+    public string? WaitingOn { get; set; }
     public string? Activity { get; set; }
     public string? Checkpoint { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
@@ -204,6 +238,10 @@ public class ExecutionControlResponse
 
     /// <summary>Última mudança (novo, editado, removido) em comentário do usuário no card (0031).</summary>
     public DateTimeOffset? UserNotesChangedAt { get; set; }
+
+    /// <summary>Pendências do usuário (0037) — a skill diz no chat o que falta do lado dele.</summary>
+    public int UserPending { get; set; }
+    public List<ExecutionUserActionResponse> UserActions { get; set; } = [];
 }
 
 /// <summary>Comentário do plano (0031), com os anexos.</summary>
@@ -224,7 +262,7 @@ public class ExecutionNoteResponse
     public List<ExecutionArtifactResponse> Attachments { get; set; } = [];
 }
 
-public record ExecutionControlStep(string Key, string Status, string Executor);
+public record ExecutionControlStep(string Key, string Status, string Executor, string? WaitingOn = null, string? Reason = null, string? ChangedBy = null);
 
 public static class ExecutionPlanMappings
 {
@@ -238,12 +276,47 @@ public static class ExecutionPlanMappings
             Artifacts = artifacts.OrderBy(a => a.Kind).ThenBy(a => a.Name).Select(a => a.ToResponse()).ToList(),
             Questions = (questions ?? []).OrderBy(q => q.CreatedAt).ThenBy(q => q.Order).Select(q => q.ToResponse()).ToList(),
             Links = (links ?? []).OrderByDescending(l => l.CreatedAt).Select(l => l.ToResponse()).ToList(),
+            UserActions = plan.UserActions(questions ?? []),
             LastLogId = lastLogId,
             ServerTime = now,
             Notes = notes ?? []
         };
         plan.FillSummary(response, plan.Steps.Count, plan.Steps.Count(s => s.Status == ExecutionStatus.Completed));
+        response.UserPending = response.UserActions.Count;
         return response;
+    }
+
+    /// <summary>
+    /// Pendências do usuário (0037): perguntas abertas primeiro (na ordem em que foram feitas), depois as etapas na
+    /// ordem do plano. Etapa esperando só a resposta de uma pergunta não aparece duas vezes.
+    /// </summary>
+    public static List<ExecutionUserActionResponse> UserActions(this ExecutionPlan plan, IEnumerable<ExecutionQuestion> questions)
+    {
+        if (plan.IsFinished || plan.Status == ExecutionStatus.Failed)
+            return [];
+        var titles = plan.Steps.ToDictionary(s => s.Key, s => s.Title);
+        var actions = questions
+            .Where(q => q.Status == ExecutionQuestionStatus.Open)
+            .OrderBy(q => q.CreatedAt).ThenBy(q => q.Order)
+            .Select(q => new ExecutionUserActionResponse
+            {
+                Type = "question",
+                StepKey = q.StepKey,
+                Title = q.StepKey is not null && titles.TryGetValue(q.StepKey, out var t) ? t : "Pergunta",
+                Text = q.Text,
+                QuestionId = q.Id,
+                Since = q.CreatedAt
+            })
+            .ToList();
+        actions.AddRange(plan.StepsPendingForUser().Select(s => new ExecutionUserActionResponse
+        {
+            Type = s.Status == ExecutionStatus.Waiting ? "unblock" : "step",
+            StepKey = s.Key,
+            Title = s.Title,
+            Text = s.Status == ExecutionStatus.Waiting ? s.StatusReason : null,
+            Since = s.Status == ExecutionStatus.Pending ? null : s.UpdatedAt
+        }));
+        return actions;
     }
 
     public static T FillSummary<T>(this ExecutionPlan plan, T target, int stepsTotal, int stepsCompleted)
@@ -302,6 +375,7 @@ public static class ExecutionPlanMappings
         Status = step.Status,
         StatusReason = step.StatusReason,
         StatusChangedBy = step.StatusChangedBy,
+        WaitingOn = step.WaitingOn,
         Activity = step.Activity,
         Checkpoint = step.Checkpoint,
         StartedAt = step.StartedAt,

@@ -91,7 +91,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         var plan = await MutateAsync(planId, p =>
         {
             step = p.UpdateStep(stepKey, request.Status, request.Reason, request.Activity, request.Checkpoint,
-                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow);
+                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn);
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
@@ -133,8 +133,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             _ => "continue"
         };
 
-        var openQuestions = (await _repository.GetQuestionsAsync(plan.Id, cancellationToken))
-            .Count(q => q.Status == ExecutionQuestionStatus.Open);
+        var questions = await _repository.GetQuestionsAsync(plan.Id, cancellationToken);
+        var openQuestions = questions.Count(q => q.Status == ExecutionQuestionStatus.Open);
+        var userActions = plan.UserActions(questions);
         var (lastUserNote, userNotesChangedAt) = await _repository.GetUserNotesStateAsync(plan.CardNumber, cancellationToken);
 
         // Sem evento de tempo real: o heartbeat é frequente e a tela calcula "sem sinal" sozinha.
@@ -142,8 +143,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         {
             ReadySteps = plan.ReadySteps().Select(s => s.Key).ToList(),
             WaitingSteps = plan.Steps.Where(s => s.Status == ExecutionStatus.Waiting).OrderBy(s => s.Order).Select(s => s.Key).ToList(),
-            Steps = plan.Steps.OrderBy(s => s.Order).Select(s => new ExecutionControlStep(s.Key, s.Status, s.Executor)).ToList(),
+            Steps = plan.Steps.OrderBy(s => s.Order)
+                .Select(s => new ExecutionControlStep(s.Key, s.Status, s.Executor, s.WaitingOn, s.StatusReason, s.StatusChangedBy)).ToList(),
             OpenQuestions = openQuestions,
+            UserPending = userActions.Count,
+            UserActions = userActions,
             LastUserNoteNumber = lastUserNote,
             UserNotesChangedAt = userNotesChangedAt,
             PlanId = plan.Id,
@@ -181,6 +185,43 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return step.ToResponse();
     }
 
+    /// <summary>"Já resolvi" (0037): o usuário fez o que a etapa travada esperava; a skill tenta de novo.</summary>
+    public async Task<ExecutionStepResponse> ResolveStepAsync(Guid planId, string stepKey, string? note, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ExecutionStep? step = null;
+        var plan = await MutateAsync(planId, p => { step = p.ResolveStepByUser(stepKey, note, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken, actor);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        return step.ToResponse();
+    }
+
+    /// <summary>Planos ativos do usuário com alguma pendência dele (0037).</summary>
+    public async Task<List<ExecutionUserPendingResponse>> GetUserPendingAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var plans = await _repository.GetActivePlansByUserAsync(userId, cancellationToken);
+        if (plans.Count == 0)
+            return [];
+        var questions = await _repository.GetOpenQuestionsAsync(plans.Select(p => p.Id).ToList(), cancellationToken);
+        return plans
+            .Select(p =>
+            {
+                var actions = p.UserActions(questions.Where(q => q.PlanId == p.Id));
+                return new ExecutionUserPendingResponse
+                {
+                    PlanId = p.Id,
+                    CardNumber = p.CardNumber,
+                    Title = p.Title,
+                    Phase = p.Phase,
+                    Status = p.Status,
+                    Count = actions.Count,
+                    Actions = actions
+                };
+            })
+            .Where(r => r.Count > 0)
+            // Um card com análise e correção ativas aparece uma vez só (o plano mais recente vem primeiro).
+            .GroupBy(r => r.CardNumber).Select(g => g.First())
+            .ToList();
+    }
+
     // ── 0024: perguntas ───────────────────────────────────────────────────────────────────────────
 
     public async Task<List<ExecutionQuestionResponse>> AskAsync(Guid planId, AskExecutionQuestionsRequest request, ExecutionActor actor, CancellationToken cancellationToken)
@@ -205,7 +246,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 if (!p.Steps.Any(s => s.Key == key))
                     throw new DomainException($"Etapa não encontrada: '{key}'.");
                 var open = existing.Count(q => q.StepKey == key && q.Status == ExecutionQuestionStatus.Open) + created.Count(q => q.StepKey == key);
-                p.SetStepWaiting(key, open == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {open} respostas do usuário", actor.Name, now, actor.IsExecutor);
+                p.SetStepWaiting(key, open == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {open} respostas do usuário",
+                    ExecutionWaitingOn.Answer, actor.Name, now, actor.IsExecutor);
             }
             _repository.AddQuestions(created);
             p.Touch(now, actor.IsExecutor);
@@ -264,7 +306,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             plan.ResumeStepFromWait(stepKey, actor.Name, now, actor.IsExecutor);
         else if (plan.Steps.Any(s => s.Key == stepKey && s.Status == ExecutionStatus.Waiting))
             plan.SetStepWaiting(stepKey, stillOpen == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {stillOpen} respostas do usuário",
-                actor.Name, now, actor.IsExecutor);
+                ExecutionWaitingOn.Answer, actor.Name, now, actor.IsExecutor);
     }
 
     // ── 0024: links (chamados, PRs, documentos) ───────────────────────────────────────────────────
@@ -572,6 +614,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 ExecutionPlanRealTimeEvents.EventPlanUpdated,
                 new { cardNumber = plan.CardNumber, planId = plan.Id, action, stepKey, status = plan.Status },
                 cancellationToken);
+            // 0037: pendências do usuário fora do card (recentes, título da aba). Andamento não muda pendência.
+            if (action != ExecutionPlanRealTimeEvents.Actions.Log)
+                await _realTimeNotifier.NotifyGroupAsync(
+                    ExecutionPlanRealTimeEvents.PendingGroup,
+                    ExecutionPlanRealTimeEvents.EventPendingChanged,
+                    new { cardNumber = plan.CardNumber, planId = plan.Id, userId = plan.CreatedByUserId },
+                    cancellationToken);
         }
         catch
         {

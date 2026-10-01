@@ -10,3 +10,10 @@ Tambem essa falta de acesso ao banco deveria mostrar de maneira evidente. EM cas
 ![img_2.png](img_2.png)
 
 Entender como evitar esse tipo de situacao de falta de permissao, e quando tiver alguma pendencia ele deve evidenciar isso muito bem la no prmake.
+
+
+2. Observe esse item: 
+![img_3.png](img_3.png)
+![img_4.png](img_4.png)
+
+Ele deveria tratar isso como que o resumo ja eh a orientacao do cliente, e deveria concluir o plano

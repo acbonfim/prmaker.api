@@ -12,6 +12,14 @@ public static class ExecutionPlanRealTimeEvents
     /// <summary>Grupo por card: só quem está no card recebe.</summary>
     public static string Group(string cardNumber) => $"execplan:{cardNumber}";
 
+    /// <summary>
+    /// Grupo global das pendências do usuário (0037): sinal de que as pendências de um plano podem ter mudado.
+    /// Payload: { cardNumber, planId, userId } — o front só refaz <c>GET ExecutionPlan/pending</c> se o plano for dele.
+    /// </summary>
+    public const string PendingGroup = "execplan-pending";
+
+    public const string EventPendingChanged = "executionPlanPendingChanged";
+
     public static class Actions
     {
         public const string Created = "created";

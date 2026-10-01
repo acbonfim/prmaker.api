@@ -23,11 +23,11 @@ public partial class ExecutionPlanApplication
     private static readonly TimeSpan PullRequestSyncInterval = TimeSpan.FromSeconds(8);
     private static readonly ConcurrentDictionary<Guid, DateTimeOffset> LastPullRequestSync = new();
 
-    private record StepSnapshot(string Status, string? Reason);
+    private record StepSnapshot(string Status, string? Reason, string? WaitingOn);
     private record PlanSnapshot(string Status, IReadOnlyDictionary<string, StepSnapshot> Steps);
 
     private static PlanSnapshot Snapshot(ExecutionPlan plan) =>
-        new(plan.Status, plan.Steps.ToDictionary(s => s.Key, s => new StepSnapshot(s.Status, s.StatusReason)));
+        new(plan.Status, plan.Steps.ToDictionary(s => s.Key, s => new StepSnapshot(s.Status, s.StatusReason, s.WaitingOn)));
 
     /// <summary>
     /// Anexa às etapas de PR (uma por repositório) os PRs do card naquele repositório — abertos pela skill ou
@@ -142,7 +142,11 @@ public partial class ExecutionPlanApplication
     {
         if (plan.Phase != ExecutionPhase.Correction)
         {
-            if (headline is not null) await WriteTimelineAsync(plan, ReplaceStepKeys(plan, headline), actor, cancellationToken);
+            // Análise: só a abertura e as etapas que passaram a esperar uma ação do usuário (0037).
+            var analysisLines = new List<string>();
+            if (headline is not null) analysisLines.Add(ReplaceStepKeys(plan, headline));
+            analysisLines.AddRange(UserWaitLines(before, plan));
+            if (analysisLines.Count > 0) await WriteTimelineAsync(plan, string.Join("\n", analysisLines), actor, cancellationToken);
             return;
         }
 
@@ -156,6 +160,8 @@ public partial class ExecutionPlanApplication
             var reason = string.IsNullOrWhiteSpace(step.StatusReason) ? "" : $" — {step.StatusReason}";
             switch (step.Status)
             {
+                case ExecutionStatus.Waiting when step.WaitingOn == ExecutionWaitingOn.User:
+                    lines.Add(UserWaitLine(step)); break;
                 case ExecutionStatus.Completed: lines.Add($"✅ Etapa concluída: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Cancelled: lines.Add($"⛔ Etapa cancelada: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Failed: lines.Add($"❌ Etapa falhou: **{step.Title}**{reason}"); break;
@@ -190,6 +196,16 @@ public partial class ExecutionPlanApplication
         lines.Add(RemainingText(plan));
         await WriteTimelineAsync(plan, string.Join("\n", lines), actor, cancellationToken);
     }
+
+    /// <summary>Etapas que entraram em "aguardando o usuário" nesta alteração (0037).</summary>
+    private static IEnumerable<string> UserWaitLines(PlanSnapshot before, ExecutionPlan plan) =>
+        plan.Steps.OrderBy(s => s.Order)
+            .Where(s => s.Status == ExecutionStatus.Waiting && s.WaitingOn == ExecutionWaitingOn.User
+                        && !(before.Steps.TryGetValue(s.Key, out var old) && old.Status == s.Status && old.WaitingOn == s.WaitingOn && old.Reason == s.StatusReason))
+            .Select(UserWaitLine);
+
+    private static string UserWaitLine(ExecutionStep step) =>
+        $"⚠️ **Aguardando você** em *{step.Title}*: {step.StatusReason}";
 
     private static string CorrectionPlanCreatedText(ExecutionPlan plan)
     {

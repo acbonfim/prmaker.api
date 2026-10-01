@@ -59,4 +59,8 @@ public interface IExecutionPlanApplication
     Task AcknowledgeResumeAsync(Guid planId, CancellationToken cancellationToken);
     /// <summary>O que o vigia local desta máquina deve retomar (host = nome da máquina; null = qualquer).</summary>
     Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken);
+
+    // 0037: pendências do usuário
+    Task<ExecutionStepResponse> ResolveStepAsync(Guid planId, string stepKey, string? note, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<List<ExecutionUserPendingResponse>> GetUserPendingAsync(Guid userId, CancellationToken cancellationToken);
 }
