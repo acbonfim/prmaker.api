@@ -18,7 +18,8 @@ public static class Paths
     public static string Lock => Path.Combine(Root, "run.lock");
     public static string Bin => Path.Combine(Root, "bin", IsWindows ? "prmake-agent.exe" : "prmake-agent");
     public static string ClaudeSettings => Path.Combine(Root, "claude-settings.json");
-    public static string ClaudeHome => Path.Combine(Home, ".claude");
+    /// <summary>Pasta do Claude Code (CLAUDE_CONFIG_DIR, como o próprio Claude Code, ou ~/.claude).</summary>
+    public static string ClaudeHome => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } c ? c : Path.Combine(Home, ".claude");
     public static string UserTokenFile => Path.Combine(ClaudeHome, "prmake-token.txt");
     public static bool IsWindows => OperatingSystem.IsWindows();
     public static bool IsMac => OperatingSystem.IsMacOS();

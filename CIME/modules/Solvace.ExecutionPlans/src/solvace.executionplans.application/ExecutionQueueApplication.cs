@@ -651,7 +651,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     public static DateTimeOffset StartOfDay(DateTimeOffset now)
     {
         var local = TimeZoneInfo.ConvertTime(now, Brazil);
-        return new DateTimeOffset(local.Date, local.Offset);
+        // timestamptz no Npgsql só aceita offset 0.
+        return new DateTimeOffset(local.Date, local.Offset).ToUniversalTime();
     }
 
     private async Task<ExecutionRequestResponse> RespondAsync(ExecutionRequest request, CancellationToken cancellationToken)
