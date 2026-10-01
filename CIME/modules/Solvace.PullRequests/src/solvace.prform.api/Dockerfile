@@ -16,12 +16,20 @@ RUN RID=linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64) && \
     dotnet publish "CIME/modules/Solvace.PullRequests/src/solvace.prform.api/solvace.prform.api.csproj" \
       -c $BUILD_CONFIGURATION -r $RID --self-contained false --no-restore \
       -p:PublishReadyToRun=true -o /app/publish /p:UseAppHost=false
+# Executor do PRMake (0039): binário único por sistema (self-contained, trimmed), servido em
+# GET /api/v1/ExecutionWorker/agent/{rid}; version.txt = <Version> do csproj (o executor se atualiza por ele).
+RUN for RID in osx-arm64 osx-x64 win-x64 linux-x64 linux-arm64; do \
+      dotnet publish tools/Cime.ExecutionAgent/Cime.ExecutionAgent.csproj -c Release -r $RID -o /app/agent/$RID || exit 1; \
+    done && \
+    sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' tools/Cime.ExecutionAgent/Cime.ExecutionAgent.csproj > /app/agent/version.txt && \
+    test -s /app/agent/version.txt
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 # Skills do Claude Code servidas pela API (0024): GET /api/v1/Skills.
 COPY --from=build /src/skills ./skills
+COPY --from=build /app/agent ./agent
 # Cloud Run envia tráfego para $PORT (8080). O aspnet:10.0 já escuta em 8080 por padrão.
 EXPOSE 8080
 ENV ASPNETCORE_HTTP_PORTS=8080
