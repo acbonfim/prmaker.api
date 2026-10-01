@@ -71,6 +71,8 @@
 # Estado local: $CARDS_DIR/<card>/.prmake-plan.json (id do plano) e .prmake-outbox.jsonl (fila).
 # Nunca derruba a skill por falha de rede: o envio vai para a fila e e reenviado na proxima chamada.
 # Env: PRMAKE_TOKEN (token), PRMAKE_API_BASE (default https://api.softhouse.app.br/api/v1), CARDS_DIR.
+# Executor (0039): com PRMAKE_EXECUTOR=1 (sessao aberta pelo prmake-agent, sem terminal) wait/watch/wait-answers
+# saem na hora (exit 12): a skill registra o que espera e encerra a vez — o PRMake retoma sozinho quando a pessoa agir.
 set -uo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -377,6 +379,13 @@ print_questions() { # perguntas do plano em $TMP/resp, numeradas
       + "\n   id: \(.value.id)"' "$TMP/resp"
 }
 
+executor_mode() { [[ "${PRMAKE_EXECUTOR:-0}" == 1 ]]; }
+executor_exit() { # <o que esperaria>
+  echo "MODO EXECUTOR: nao espere ($1). Registre no plano o que falta (etapa waiting/pergunta) e ENCERRE A VEZ —"
+  echo "o PRMake retoma esta sessao sozinho quando a pessoa responder, concluir a etapa ou o PR for mesclado."
+  exit 12
+}
+
 case "$CMD" in
   start)
     TITLE=""; STEPS_ARG=""; FORCE_NEW=0
@@ -639,7 +648,14 @@ case "$CMD" in
     ;;
 
   wait)
-    require_plan; MAX="${1:-540}"; waited=0; delay=5
+    require_plan
+    if executor_mode; then
+      api POST "/$PLAN/control"
+      [[ "$CODE" =~ ^2 ]] && [[ "$(jq -r '.action' "$TMP/resp")" == continue ]] && { echo "continue"; exit 0; }
+      [[ "$CODE" =~ ^2 ]] && [[ "$(jq -r '.action' "$TMP/resp")" == stop ]] && { echo "stop — plano $(jq -r '.status' "$TMP/resp")"; exit 11; }
+      executor_exit "plano pausado — o 'Continuar' da tela retoma"
+    fi
+    MAX="${1:-540}"; waited=0; delay=5
     while [[ $waited -lt $MAX ]]; do
       api POST "/$PLAN/control"
       if [[ "$CODE" =~ ^2 ]]; then
@@ -660,7 +676,9 @@ case "$CMD" in
   watch)
     # O PRMake nao consegue chamar esta sessao: quem acorda o Claude e este comando, rodando em segundo plano.
     # Cada consulta ao control tambem sincroniza os PRs com o GitHub. Termina quando o estado muda.
-    require_plan; MAX="${1:-28800}"; waited=0
+    require_plan
+    executor_mode && executor_exit "vigia em segundo plano"
+    MAX="${1:-28800}"; waited=0
     fingerprint() { jq -c '{s:.status, q:(.openQuestions // 0), n:(.lastUserNoteNumber // 0), nc:(.userNotesChangedAt // ""), steps:[(.steps // [])[] | [.key, .status, (.waitingOn // "")]]}' "$TMP/resp"; }
     api POST "/$PLAN/control"
     [[ "$CODE" =~ ^2 ]] || { sleep 20; api POST "/$PLAN/control"; }
@@ -772,7 +790,15 @@ case "$CMD" in
     ;;
 
   wait-answers)
-    require_plan; MAX="${1:-540}"; waited=0; delay=5
+    require_plan
+    if executor_mode; then
+      api GET "/$PLAN"
+      if [[ "$CODE" == "200" ]] && jq -e '[.questions[]? | select(.status == "open")] | length == 0' "$TMP/resp" >/dev/null; then
+        echo "RESPOSTAS:"; print_questions; exit 0
+      fi
+      executor_exit "respostas pela tela"
+    fi
+    MAX="${1:-540}"; waited=0; delay=5
     while [[ $waited -lt $MAX ]]; do
       api POST "/$PLAN/control"
       if [[ "$CODE" =~ ^2 ]] && jq -e '.action == "stop"' "$TMP/resp" >/dev/null; then echo "stop — plano $(jq -r '.status' "$TMP/resp")"; exit 11; fi
@@ -995,14 +1021,16 @@ case "$CMD" in
     echo "branch-correcao=$FIX"
     [[ -n "$COMMIT_PATTERN" ]] && echo "commit=\"$(fill_pattern "$COMMIT_PATTERN")\""
     echo "prs:"
-    PUSH="$FIX"; CMDS=()
+    PUSH="$FIX"; CMDS=(); G="git"
+    # Executor (0039): um worktree por card — dois cards em paralelo nunca dividem o mesmo checkout.
+    if executor_mode || [[ "${PRMAKE_WORKTREE:-0}" == 1 ]]; then G='git -C "$WT"'; fi
     while IFS='|' read -r SUFFIX FROM TARGET; do
       TARGET="${TARGET//\{base\}/$BASE_BRANCH}"; FROM="${FROM//\{base\}/$BASE_BRANCH}"
       BR="$FIX$SUFFIX"
       TITLE="$(fill_pattern "${TITLE_PATTERN:-{card\} {TARGET\}}" "$TARGET")"
       if [[ -n "$SUFFIX" && -n "$FROM" ]]; then
         echo "  $BR (de origin/$FROM + cherry-pick da correcao) -> $TARGET  titulo \"$TITLE\""
-        CMDS+=("git checkout -b $BR origin/$FROM && git cherry-pick <sha(s)>"); PUSH="$PUSH $BR"
+        CMDS+=("$G checkout -b $BR origin/$FROM && $G cherry-pick <sha(s)>"); PUSH="$PUSH $BR"
       else
         echo "  $BR -> $TARGET  titulo \"$TITLE\""
       fi
@@ -1010,14 +1038,38 @@ case "$CMD" in
     done < <(jq -r '.prs // [] | .[] | "\(.suffix // "")|\(.from // "")|\(.target)"' "$TMP/rule")
     echo "comandos:"
     echo "  git fetch origin"
-    echo "  git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+    if [[ "$G" != git ]]; then
+      echo "  WT=\"\$(bash \$PLAN worktree $CARD <pasta-do-repo> $FIX $BASE_BRANCH)\"    # corrija em \$WT${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+    else
+      echo "  git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+    fi
     for C in "${CMDS[@]}"; do [[ "$C" == \#open-pr* ]] || echo "  $C"; done
-    echo "  git push -u origin $PUSH"
+    echo "  $G push -u origin $PUSH"
     for C in "${CMDS[@]}"; do
       [[ "$C" == \#open-pr* ]] || continue
       read -r _ BR TG REST <<< "$C"
       echo "  bash \$PLAN open-pr $CARD $REPO $BR $TG $REST \$CARD_DIR/pr/$REPO/desc.md"
     done
+    ;;
+
+  worktree)
+    # worktree <card> <pasta-do-repo> <branch> <base>: cria (ou reaproveita) <pasta-do-repo>/../.prmake-wt/<card>/<repo>
+    # com a branch de correcao a partir de origin/<base> e imprime o caminho. O executor limpa depois que o plano termina.
+    REPO_DIR="${1:?pasta do repositorio}"; BR="${2:?branch de correcao}"; BASE_BR="${3:?branch base}"
+    [[ -d "$REPO_DIR/.git" || -f "$REPO_DIR/.git" ]] || die "nao e um repositorio git: $REPO_DIR"
+    REPO_DIR="$(cd "$REPO_DIR" && pwd)"
+    WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD/$(basename "$REPO_DIR")"
+    if [[ -e "$WT/.git" ]]; then
+      echo "$WT"; exit 0
+    fi
+    mkdir -p "$(dirname "$WT")"
+    git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
+    if git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$BR"; then
+      git -C "$REPO_DIR" worktree add "$WT" "$BR" >&2 || die "nao consegui criar o worktree em $WT"
+    else
+      git -C "$REPO_DIR" worktree add -b "$BR" "$WT" "origin/$BASE_BR" >&2 || die "nao consegui criar o worktree em $WT"
+    fi
+    echo "$WT"
     ;;
 
   notes)

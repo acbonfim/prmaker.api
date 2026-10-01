@@ -24,6 +24,12 @@ public interface IAzureService
     /// </summary>
     Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Ids dos work items que casam com a consulta WIQL (0039: regra automática da fila), do projeto configurado, no
+    /// máximo <paramref name="top"/>. Erro do DevOps vira exceção com a mensagem dele.
+    /// </summary>
+    Task<IReadOnlyList<int>> QueryWorkItemIdsAsync(string wiql, int top, CancellationToken cancellationToken = default);
+
     /// <summary>Nomes dos campos do work item conforme o "AzureDevOps Configurations" (feature 0030).</summary>
     Task<solvace.azure.domain.Options.AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default);
 }

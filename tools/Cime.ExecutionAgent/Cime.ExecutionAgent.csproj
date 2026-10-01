@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+      Executor do PRMake (feature 0039): pega os pedidos da fila e roda o Claude Code sem terminal.
+      Publicado como binário único por sistema (self-contained, trimmed) na imagem da API:
+        dotnet publish -c Release -r osx-arm64 -o out/osx-arm64
+    -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>Cime.ExecutionAgent</RootNamespace>
+        <AssemblyName>prmake-agent</AssemblyName>
+        <Version>1.0.0</Version>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+        <SelfContained>true</SelfContained>
+        <PublishSingleFile>true</PublishSingleFile>
+        <PublishTrimmed>true</PublishTrimmed>
+        <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+        <DebugType>none</DebugType>
+        <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    </PropertyGroup>
+
+</Project>

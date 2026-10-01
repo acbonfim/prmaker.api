@@ -123,7 +123,10 @@ public partial class ExecutionPlanApplication
             () => merged.Count == 0 ? null : string.Join("\n", merged.Select(l => $"🔀 **PR mesclado**: [{l.DisplayName}]({l.Url})")));
 
         if (changed)
+        {
             await NotifyAsync(plan, domain.RealTime.ExecutionPlanRealTimeEvents.Actions.Link, null, cancellationToken);
+            await TriggerResumeAsync(plan, SystemActor, ExecutionRequestSource.PullRequest, cancellationToken);
+        }
     }
 
     /// <summary>"*chave*" no texto vira "*Título da etapa*".</summary>

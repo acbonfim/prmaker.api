@@ -21,6 +21,12 @@ public static class ExecutionPlanModuleExtensions
         services.AddScoped<IExecutionPlanRepository, ExecutionPlanRepository>();
         services.AddScoped<IExecutionPlanApplication, ExecutionPlanApplication>();
 
+        // 0039: fila de execução e executores; o mesmo objeto atende o gatilho de retomada do plano.
+        services.AddScoped<IExecutionQueueRepository, ExecutionQueueRepository>();
+        services.AddScoped<ExecutionQueueApplication>();
+        services.AddScoped<IExecutionQueueApplication>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+        services.AddScoped<IExecutionResumeTrigger>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+
         return services;
     }
 }

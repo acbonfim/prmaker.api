@@ -22,11 +22,14 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IExecutionPullRequestSource _pullRequests;
     private readonly IExecutionTimelineWriter _timeline;
     private readonly IExecutionCardRegistrar? _cards;
+    private readonly IExecutionResumeTrigger? _resumeTrigger;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
-        IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null)
+        IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
+        IExecutionResumeTrigger? resumeTrigger = null)
     {
         _cards = cards;
+        _resumeTrigger = resumeTrigger;
         _repository = repository;
         _realTimeNotifier = realTimeNotifier;
         _pullRequests = pullRequests;
@@ -125,6 +128,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step.ToResponse();
     }
 
@@ -135,6 +139,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
+        if (plan.Status == ExecutionStatus.Running)
+            await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Resume, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
 
@@ -199,6 +205,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             step = p.CompleteStepByUser(stepKey, why, actor.Name, DateTimeOffset.UtcNow);
         }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step.ToResponse();
     }
 
@@ -208,6 +215,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         ExecutionStep? step = null;
         var plan = await MutateAsync(planId, p => { step = p.ResolveStepByUser(stepKey, note, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step.ToResponse();
     }
 
@@ -293,6 +301,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         await Task.WhenAll(
             NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken),
             WriteTimelineAsync(plan, AnswerText(question), actor, cancellationToken));
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Answers, cancellationToken);
         return question.ToResponse();
     }
 
@@ -310,6 +319,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return question.ToResponse();
     }
 
@@ -396,6 +406,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             : null);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, link!.StepKey, cancellationToken);
+        if (statusChanged)
+            await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return link.ToResponse();
     }
 
@@ -421,6 +433,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Link, key, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
     }
 
     private static void EnsureAcceptsChanges(ExecutionPlan plan)
@@ -617,6 +630,26 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
         var notes = await GetNotesByCardAsync(plan.CardNumber, cancellationToken);
         return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow, questions, links, notes);
+    }
+
+    /// <summary>
+    /// 0039: uma ação de fora do Claude pode retomar o card no executor do dono (sem terminal). Best-effort: nunca
+    /// quebra a operação da tela.
+    /// </summary>
+    private async Task<ExecutionRequest?> TriggerResumeAsync(ExecutionPlan plan, ExecutionActor actor, string source,
+        CancellationToken cancellationToken, bool explicitRequest = false)
+    {
+        if (_resumeTrigger is null || actor.IsExecutor)
+            return null;
+        try
+        {
+            return await _resumeTrigger.PlanChangedAsync(plan, source, actor, explicitRequest, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _repository.ClearTracking();
+            return null;
+        }
     }
 
     /// <summary>

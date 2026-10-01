@@ -66,6 +66,7 @@ public partial class ExecutionPlanApplication
         }, cancellationToken, actor, () => NoteTimelineText(note!, attachments));
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Note, note!.StepKey, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Note, cancellationToken);
         return note.ToResponse(plan.Phase, attachments);
     }
 

@@ -40,6 +40,21 @@ public partial class ExecutionPlanApplication
 
     public async Task<ExecutionPlanSummaryResponse> RequestResumeAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // 0039: dono com executor → o pedido vai para a fila (também sem sessão registrada: começa uma nova que retoma o plano).
+        if (_resumeTrigger is not null)
+        {
+            var current = await LoadAsync(planId, cancellationToken);
+            if (!current.IsFinished && current.CreatedByUserId is { } owner
+                && (await _resumeTrigger.OwnersWithWorkersAsync([owner], cancellationToken)).Count > 0)
+            {
+                var request = await _resumeTrigger.PlanChangedAsync(current, ExecutionRequestSource.Resume, actor, true, cancellationToken)
+                              ?? throw new DomainException("O Claude já está trabalhando neste card — acompanhe por aqui.");
+                return current.FillSummary(new ExecutionPlanSummaryResponse(), current.Steps.Count,
+                    current.Steps.Count(s => s.Status == ExecutionStatus.Completed));
+            }
+            _repository.ClearTracking();
+        }
+
         var plan = await MutateAsync(planId, p => p.RequestResume(actor.Name, DateTimeOffset.UtcNow), cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
         return plan.FillSummary(new ExecutionPlanSummaryResponse(), plan.Steps.Count, plan.Steps.Count(s => s.Status == ExecutionStatus.Completed));
@@ -59,7 +74,12 @@ public partial class ExecutionPlanApplication
     public async Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken)
     {
         var wanted = string.IsNullOrWhiteSpace(host) ? null : host.Trim();
-        return (await _repository.GetResumeCandidatesAsync(userId, cancellationToken))
+        var rows = await _repository.GetResumeCandidatesAsync(userId, cancellationToken);
+        // 0039: quem tem executor é atendido pela fila — o vigia antigo não retoma (senão rodariam dois).
+        var owners = rows.Where(r => r.Plan.CreatedByUserId is not null).Select(r => r.Plan.CreatedByUserId!.Value).Distinct().ToList();
+        var withWorkers = _resumeTrigger is null ? [] : await _resumeTrigger.OwnersWithWorkersAsync(owners, cancellationToken);
+        return rows
+            .Where(r => r.Plan.CreatedByUserId is not { } o || !withWorkers.Contains(o))
             .Where(r => r.Plan.CurrentSession is { } s && (wanted is null || string.Equals(s.Host, wanted, StringComparison.OrdinalIgnoreCase)))
             .Select(r =>
             {

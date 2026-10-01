@@ -5,11 +5,11 @@
 #   prmake-card.sh <card> [--bg]      volta para a sessao do Claude Code que trabalhou no card (claude --resume) nesta
 #                                     maquina, na mesma pasta; sem sessao aqui, abre uma nova: /analisar-bug <card>.
 #                                     --bg: continua em segundo plano (acompanhe no PRMake ou com: claude attach <id>)
-#   prmake-card.sh agent run          VIGIA (opcional, por pessoa): a cada minuto pergunta ao PRMake o que retomar nesta
-#                                     maquina (pedido de "Continuar" na tela ou respostas dadas pela tela) e continua a
-#                                     sessao em segundo plano. So segue ate a proxima pergunta/PR — nunca faz merge.
-#   prmake-card.sh agent install|uninstall|status
-#                                     liga/desliga o vigia no login do macOS (LaunchAgent); desligado por padrao
+#   prmake-card.sh agent ...          SUBSTITUIDO pelo executor do PRMake (0039): fila no PRMake, botao "Analisar com
+#                                     Claude", macOS/Windows/Linux — bash ~/.claude/skills/.prmake/prmake-skills.sh agent install
+#                                     ('agent uninstall' continua desligando o vigia antigo).
+#
+# Com o executor rodando o card agora, abrir no terminal pergunta: esperar terminar ou assumir (cancela o executor).
 #
 # Env: PRMAKE_TOKEN (ou ~/.claude/prmake-token.txt), PRMAKE_API_BASE, PRMAKE_AGENT_INTERVAL (segundos, padrao 60).
 set -uo pipefail
@@ -41,8 +41,37 @@ resume_prompt() { # <card>
   printf '%s' "Retomando o card $1 pelo PRMake. Antes de continuar: rode prmake-plan.sh resume-info $1 e prmake-plan.sh notes $1 (o que mudou na tela enquanto voce estava parado: respostas, comentarios, pausa, etapas) e siga de onde parou, conforme a skill analisar-bug."
 }
 
+# 0039: o executor esta rodando este card agora? Nunca dois processos na mesma sessao.
+guard_executor() { # <card> [--bg]
+  local card="$1" bg="${2:-}" q id st who answer
+  q="$(curl -s --max-time 20 -H "x-api-key: $TK" -H 'accept: application/json' "$BASE/ExecutionQueue/card/$card" 2>/dev/null)" || return 0
+  id="$(jq -r '.active.id // empty' <<<"$q" 2>/dev/null)"; st="$(jq -r '.active.status // empty' <<<"$q" 2>/dev/null)"
+  [[ -n "$id" ]] || return 0
+  who="$(jq -r '.active.workerName // "o executor"' <<<"$q")"
+  if [[ "$st" == queued ]]; then
+    echo "Ha um pedido na fila do executor para o card $card ($(jq -r '.active.waitReason // "aguardando"' <<<"$q"))."
+  else
+    echo "O executor em $who esta rodando o card $card agora."
+  fi
+  if [[ "$bg" == "--bg" || ! -t 0 ]]; then
+    die "o executor ja cuida deste card — acompanhe no PRMake (ou rode sem --bg para assumir)"
+  fi
+  read -r -p "[e]sperar terminar, [a]ssumir aqui (cancela o pedido do executor) ou [s]air? " answer
+  case "$answer" in
+    a|A)
+      curl -s --max-time 20 -o /dev/null -X POST -H "x-api-key: $TK" -H 'content-type: application/json' \
+        --data '{"reason":"Assumido no terminal"}' "$BASE/ExecutionQueue/$id/cancel"
+      echo "Pedido cancelado — aguardando o executor encerrar a sessao..."; sleep 8 ;;
+    e|E)
+      echo "Esperando o executor terminar (Ctrl+C para sair)..."
+      while jq -e '.active != null' <<<"$(curl -s --max-time 20 -H "x-api-key: $TK" "$BASE/ExecutionQueue/card/$card")" >/dev/null 2>&1; do sleep 15; done ;;
+    *) exit 0 ;;
+  esac
+}
+
 open_card() { # <card> [--bg]
   local card="$1" bg="${2:-}" plans sid cwd
+  guard_executor "$card" "$bg"
   plans="$(get "/card/$card")"
   # Plano mais recente que ainda nao terminou (senao o mais recente) com sessao registrada NESTA maquina.
   IFS=$'\t' read -r sid cwd < <(jq -r --arg h "$HOST" '
@@ -82,23 +111,14 @@ agent_once() {
 case "${1:-}" in
   agent)
     case "${2:-}" in
+      install)
+        echo "O vigia foi substituido pelo executor do PRMake (0039) — fila no PRMake, botao \"Analisar com Claude\"."
+        echo "Instale: bash ~/.claude/skills/.prmake/prmake-skills.sh agent install"
+        exit 1 ;;
       run)
+        # Vigia antigo ainda instalado: continua (o PRMake nao manda para ele os cards de quem ja tem executor).
         echo "$(date '+%F %T') vigia iniciado em $HOST" >> "$LOG"
         while true; do agent_once; sleep "${PRMAKE_AGENT_INTERVAL:-60}"; done ;;
-      install)
-        mkdir -p "$(dirname "$PLIST")"
-        cat > "$PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>br.app.softhouse.prmake-agent</string>
-  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$SELF</string><string>agent</string><string>run</string></array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string></dict>
-  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
-  <key>StandardErrorPath</key><string>$LOG</string>
-</dict></plist>
-EOF
-        launchctl unload "$PLIST" 2>/dev/null; launchctl load "$PLIST" && echo "Vigia ligado (log: $LOG). Desligar: prmake-card.sh agent uninstall" ;;
       uninstall)
         launchctl unload "$PLIST" 2>/dev/null; rm -f "$PLIST"; echo "Vigia desligado." ;;
       status)

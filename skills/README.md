@@ -33,3 +33,9 @@ Arquivo alterado à mão numa skill instalada não é sobrescrito — `prmake-sk
 
 **Mudar uma skill** = mudar aqui e fazer o deploy da API. A versão de cada skill é o hash do conteúdo (muda sozinha).
 `skill.json`: `requires` (comandos necessários) e `setup` (`check`/`run`, ex.: o `.venv` do `python-tds` da `analisar-bug`).
+
+**Executor e MCP (0039)**: `prmake-skills.sh agent install` baixa o executor (`prmake-agent`, binário publicado pela API em
+`GET /api/v1/ExecutionWorker/agent/<rid>`), registra a máquina e liga o serviço do usuário — o PRMake passa a rodar a
+`analisar-bug` pela tela ("Analisar com Claude", respostas, "Continuar") sem terminal. O instalador também registra no
+Claude Code o MCP remoto do PRMake (`<api>/mcp`, header `x-api-key`); `prmake-skills.sh mcp` refaz, `mcp remove` tira.
+Instalar já com o executor: `... | PRMAKE_TOKEN=<api-key> PRMAKE_AGENT=1 bash`. Fonte do executor: `tools/Cime.ExecutionAgent`.

@@ -84,6 +84,22 @@ public class AzureService : IAzureService
         return client;
     }
 
+    public async Task<IReadOnlyList<int>> QueryWorkItemIdsAsync(string wiql, int top, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
+        var url = $"{GetAzureBaseUrl()}/wit/wiql?api-version={apiVersion}&$top={Math.Clamp(top, 1, 200)}";
+        var body = new StringContent(JsonSerializer.Serialize(new { query = wiql }), Encoding.UTF8, "application/json");
+        var response = await CreateClient().PostAsync(url, body, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Azure DevOps (WIQL) respondeu {(int)response.StatusCode}: {content[..Math.Min(content.Length, 500)]}");
+        using var doc = JsonDocument.Parse(content);
+        return doc.RootElement.TryGetProperty("workItems", out var items) && items.ValueKind == JsonValueKind.Array
+            ? items.EnumerateArray().Select(i => i.GetProperty("id").GetInt32()).ToList()
+            : [];
+    }
+
     public async Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);

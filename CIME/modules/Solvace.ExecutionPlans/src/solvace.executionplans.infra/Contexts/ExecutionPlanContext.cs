@@ -18,6 +18,9 @@ public class ExecutionPlanContext : DbContext
     public DbSet<ExecutionQuestion> Questions { get; set; }
     public DbSet<ExecutionLink> Links { get; set; }
     public DbSet<ExecutionNote> Notes { get; set; }
+    public DbSet<ExecutionRequest> Requests { get; set; }
+    public DbSet<ExecutionWorker> Workers { get; set; }
+    public DbSet<ExecutionUserSettings> UserSettings { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -186,6 +189,76 @@ public class ExecutionPlanContext : DbContext
             entity.ToTable("ExecutionArtifactContents");
             entity.HasKey(e => e.ArtifactId);
             entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
+        });
+
+        // 0039: fila de execução, executores e configurações do usuário.
+        modelBuilder.Entity<ExecutionRequest>(entity =>
+        {
+            entity.ToTable("ExecutionRequests");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.SessionId).HasMaxLength(ExecutionSession.MaxSessionIdLength);
+            entity.Property(e => e.SessionHost).HasMaxLength(ExecutionSession.MaxHostLength);
+            entity.Property(e => e.SessionCwd).HasMaxLength(ExecutionSession.MaxCwdLength);
+            entity.Property(e => e.OwnerName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.RequestedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.WorkerName).HasMaxLength(ExecutionWorker.MaxNameLength);
+            entity.Property(e => e.Note).HasMaxLength(ExecutionRequest.MaxNoteLength);
+            entity.Property(e => e.WaitReason).HasMaxLength(500);
+            entity.Property(e => e.LastError).HasMaxLength(ExecutionRequest.MaxErrorLength);
+            entity.Property(e => e.StderrTail).HasColumnType("text");
+            entity.Property(e => e.FinishedReason).HasMaxLength(ExecutionRequest.MaxErrorLength);
+            entity.Property(e => e.FinishedBy).HasMaxLength(200);
+            entity.Property(e => e.CostUsd).HasPrecision(12, 4);
+            entity.Property(e => e.Version).IsRowVersion();
+            entity.Ignore(e => e.IsActive);
+            entity.Ignore(e => e.IsFinished);
+
+            // Um pedido ativo por card: dois cliques (ou tela + regra) não abrem duas sessões.
+            entity.HasIndex(e => e.CardNumber)
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running')")
+                .HasDatabaseName("IX_ExecutionRequests_ActiveCard");
+            entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
+            entity.HasIndex(e => new { e.OwnerUserId, e.Status });
+            entity.HasIndex(e => new { e.WorkerId, e.Status });
+        });
+
+        modelBuilder.Entity<ExecutionWorker>(entity =>
+        {
+            entity.ToTable("ExecutionWorkers");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.OwnerName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(ExecutionWorker.MaxNameLength);
+            entity.Property(e => e.Host).IsRequired().HasMaxLength(ExecutionWorker.MaxNameLength);
+            entity.Property(e => e.Os).HasMaxLength(100);
+            entity.Property(e => e.AgentVersion).HasMaxLength(50);
+            entity.Property(e => e.ClaudeVersion).HasMaxLength(100);
+            entity.Property(e => e.SkillsVersion).HasMaxLength(100);
+            entity.Property(e => e.Workspace).HasMaxLength(500);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Capabilities).HasColumnType("jsonb");
+            entity.Property(e => e.Doctor).HasColumnType("jsonb");
+            entity.Property(e => e.RevokedBy).HasMaxLength(200);
+            entity.Property(e => e.Version).IsRowVersion();
+            entity.Ignore(e => e.IsRevoked);
+
+            entity.HasIndex(e => new { e.OwnerUserId, e.Host });
+        });
+
+        modelBuilder.Entity<ExecutionUserSettings>(entity =>
+        {
+            entity.ToTable("ExecutionUserSettings");
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.UserId).ValueGeneratedNever();
+            entity.Property(e => e.DailyBudgetUsd).HasPrecision(12, 4);
+            entity.Property(e => e.AutoAssignedTo).HasMaxLength(200);
+            entity.Property(e => e.AutoLastError).HasMaxLength(1000);
         });
     }
 }

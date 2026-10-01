@@ -40,6 +40,20 @@ builder.Services.AddScoped<solvace.timeline.application.Contracts.IUserRepositor
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionPullRequestSource, ExecutionPlanPullRequestSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionTimelineWriter, ExecutionPlanTimelineWriter>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardRegistrar, ExecutionPlanCardRegistrar>();
+// Fila de execução e executores (0039): credencial do executor, binários publicados e a regra automática (WIQL).
+builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
+builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
+builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
+builder.Services.AddMemoryCache();
+// MCP remoto do PRMake (0039): /mcp, Streamable HTTP sem sessão (Cloud Run), autenticado pela x-api-key.
+builder.Services.AddMcpServer(o =>
+    {
+        o.ServerInfo = new ModelContextProtocol.Protocol.Implementation { Name = "prmake", Version = "1.0.0" };
+        o.ServerInstructions = solvace.prform.Execution.PrmakeMcpTools.Instructions;
+    })
+    .WithHttpTransport(o => o.Stateless = true)
+    .WithTools<solvace.prform.Execution.PrmakeMcpTools>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
@@ -136,13 +150,16 @@ if (args.Contains("--migrate"))
 app.UseHttpsRedirection()
     .UseSwaggerConfig(projectName!)
     .UseCors("CorsPolicy")
-    .UseMiddleware<ExceptionHandlerMiddleware>();
+    .UseMiddleware<ExceptionHandlerMiddleware>()
+    // 0039: credencial do executor só na fila/plano/skills/MCP e revogável na hora.
+    .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>();
 
 // Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware
 // rode cedo no pipeline (antes da execução dos endpoints).
 app.UseRealTimeService();
 
 app.MapControllers();
+app.MapMcp("/mcp").RequireAuthorization();
 app.AddHealthCheckEndpoint(projectName!);
 
 app.Run();

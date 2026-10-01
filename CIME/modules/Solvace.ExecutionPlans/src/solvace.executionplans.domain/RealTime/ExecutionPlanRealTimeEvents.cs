@@ -20,6 +20,12 @@ public static class ExecutionPlanRealTimeEvents
 
     public const string EventPendingChanged = "executionPlanPendingChanged";
 
+    /// <summary>
+    /// Executores ou pedidos de um usuário mudaram (0039), no grupo <see cref="PendingGroup"/>. Payload: { userId } —
+    /// a tela "Meus executores" só recarrega se for dela.
+    /// </summary>
+    public const string EventWorkersChanged = "executionWorkersChanged";
+
     public static class Actions
     {
         public const string Created = "created";
@@ -31,5 +37,7 @@ public static class ExecutionPlanRealTimeEvents
         public const string Question = "question";
         public const string Link = "link";
         public const string Note = "note";
+        /// <summary>Pedido de execução do card mudou (0039).</summary>
+        public const string Request = "request";
     }
 }

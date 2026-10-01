@@ -10,6 +10,9 @@
 #   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
 #   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
 #   prmake-skills.sh db-credentials [list]         cadastra (no SEU terminal) as credenciais de leitura dos bancos
+#   prmake-skills.sh mcp [remove]                  registra no Claude Code o MCP remoto do PRMake (0039)
+#   prmake-skills.sh agent [install|update|status|uninstall]
+#                                                  executor do PRMake (0039): roda a analise pela tela, sem terminal
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -394,6 +397,42 @@ for a in "$@"; do
   esac
 done
 
+# MCP remoto do PRMake (0039): ferramentas do plano direto no Claude Code (menos tokens que o script).
+MCP_URL="${BASE%/api/v*}/mcp"
+CLAUDE_BIN="$(type -P claude 2>/dev/null || true)"
+[[ -z "$CLAUDE_BIN" && -x "$HOME/.local/bin/claude" ]] && CLAUDE_BIN="$HOME/.local/bin/claude"
+
+ensure_mcp() { # [force]
+  [[ "${PRMAKE_SKIP_MCP:-0}" == 1 || -z "$CLAUDE_BIN" ]] && return 0
+  local tk; tk="$(token)" || return 0
+  if [[ "${1:-}" != force ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1; then return 0; fi
+  "$CLAUDE_BIN" mcp remove --scope user prmake >/dev/null 2>&1
+  if "$CLAUDE_BIN" mcp add --transport http --scope user prmake "$MCP_URL" --header "x-api-key: $tk" >/dev/null 2>&1; then
+    say "   MCP do PRMake registrado no Claude Code ($MCP_URL)"
+  else
+    warn "não consegui registrar o MCP do PRMake (rode depois: prmake-skills.sh mcp)"
+  fi
+}
+
+# Executor do PRMake (0039): binário único publicado pela API para o sistema desta máquina.
+AGENT_HOME="${PRMAKE_AGENT_HOME:-$HOME/.prmake-agent}"
+agent_rid() {
+  local arch; arch="$(uname -m 2>/dev/null)"; [[ "$arch" == arm64 || "$arch" == aarch64 ]] && arch=arm64 || arch=x64
+  case "$(uname -s 2>/dev/null)" in Darwin) echo "osx-$arch" ;; Linux) echo "linux-$arch" ;; *) echo "win-x64" ;; esac
+}
+agent_bin() { [[ $WINDOWS -eq 1 ]] && echo "$AGENT_HOME/bin/prmake-agent.exe" || echo "$AGENT_HOME/bin/prmake-agent"; }
+agent_download() {
+  local tk rid bin code; tk="$(token)" || die "sem token (PRMAKE_TOKEN ou $TOKEN_FILE)"
+  rid="$(agent_rid)"; bin="$(agent_bin)"; mkdir -p "$(dirname "$bin")"
+  code="$(curl -s --max-time 300 -o "$TMP/agent" -w '%{http_code}' -H "x-api-key: $tk" "$BASE/ExecutionWorker/agent/$rid" 2>/dev/null)"
+  [[ "$code" == 200 ]] || die "não consegui baixar o executor para $rid (HTTP $code)"
+  chmod +x "$TMP/agent"
+  [[ "$(uname -s)" == Darwin ]] && { xattr -d com.apple.quarantine "$TMP/agent" 2>/dev/null; codesign --force --sign - "$TMP/agent" >/dev/null 2>&1; }
+  "$TMP/agent" version >/dev/null 2>&1 || die "o executor baixado não rodou nesta máquina ($rid)"
+  [[ -f "$bin" ]] && mv -f "$bin" "$bin.old" 2>/dev/null
+  mv -f "$TMP/agent" "$bin" && say "   executor $("$bin" version) em $bin"
+}
+
 case "$cmd" in
   install)
     windows_prepare
@@ -416,9 +455,16 @@ case "$cmd" in
     done
     ensure_hook
     ensure_permissions
+    ensure_mcp force
     sync_kb
     self_update
     say "Pronto. As skills estão em $SKILLS_DIR e se atualizam sozinhas a cada sessão do Claude Code."
+    if [[ "${PRMAKE_AGENT:-0}" == 1 ]]; then
+      bash "$TOOL_DIR/prmake-skills.sh" agent install
+    elif [[ ! -x "$(agent_bin)" ]]; then
+      say "Dica: para o PRMake rodar a análise sozinho (botão \"Analisar com Claude\", sem abrir o terminal):"
+      say "   bash $TOOL_DIR/prmake-skills.sh agent install"
+    fi
     ;;
 
   update)
@@ -442,6 +488,8 @@ case "$cmd" in
     done
     ensure_hook
     ensure_permissions
+    # MCP do PRMake: uma vez por máquina (quem removeu de propósito não ganha de volta).
+    [[ -f "$TOOL_DIR/.mcp-registered" ]] || { ensure_mcp && touch "$TOOL_DIR/.mcp-registered"; }
     sync_kb
     self_update
     if [[ ${#updated[@]} -gt 0 ]]; then
@@ -478,6 +526,8 @@ case "$cmd" in
     ok "hook esperado" "$HOOK_CMD"
     permissions_report
     creds_report
+ ok "MCP do PRMake" "$([[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1 && echo "ok ($MCP_URL)" || echo 'NÃO — rode: prmake-skills.sh mcp')"
+    ok "executor" "$([[ -x "$(agent_bin)" ]] && "$(agent_bin)" status 2>/dev/null | head -1 || echo 'não instalado (opcional: prmake-skills.sh agent install)')"
     for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
     ;;
 
@@ -491,5 +541,29 @@ case "$cmd" in
     db_credentials ${ARGS[@]+"${ARGS[@]}"}
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials [--quiet] [--force] [skill...]" ;;
+  mcp)
+    [[ -n "$CLAUDE_BIN" ]] || die "Claude Code (claude) não encontrado no PATH"
+    if [[ "${ARGS[0]:-}" == remove ]]; then
+      "$CLAUDE_BIN" mcp remove --scope user prmake && touch "$TOOL_DIR/.mcp-registered" && say "MCP do PRMake removido"
+    else
+      ensure_mcp force && touch "$TOOL_DIR/.mcp-registered"
+    fi
+    ;;
+
+  agent)
+    case "${ARGS[0]:-install}" in
+      install)
+        agent_download
+        "$(agent_bin)" register || die "registro da máquina falhou"
+        "$(agent_bin)" install || die "não consegui ligar o serviço do executor"
+        "$(agent_bin)" doctor || warn "o doctor encontrou problemas — veja acima (também aparecem em \"Meus executores\" no PRMake)"
+        ;;
+      update) agent_download && "$(agent_bin)" install ;;
+      status) [[ -x "$(agent_bin)" ]] && "$(agent_bin)" status || echo "executor não instalado (prmake-skills.sh agent install)" ;;
+      uninstall) [[ -x "$(agent_bin)" ]] && "$(agent_bin)" uninstall ;;
+      *) die "uso: prmake-skills.sh agent install|update|status|uninstall" ;;
+    esac
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|mcp|agent [--quiet] [--force] [skill...]" ;;
 esac

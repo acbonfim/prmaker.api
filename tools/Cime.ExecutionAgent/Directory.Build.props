@@ -1,0 +1,3 @@
+<Project>
+    <!-- O executor (0039) é um binário pequeno e autônomo: não herda as referências do Directory.Build.props da raiz. -->
+</Project>
