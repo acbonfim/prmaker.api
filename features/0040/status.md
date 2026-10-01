@@ -6,13 +6,13 @@ Branch `feature/0040` em `prform.api-0040` (backend + skills) e `prform-app-0040
 |---|---|---|---|
 | B1 | Registro de perguntas | ✅ concluída | 642311d |
 | B2 | Pergunte de operação (kind, reforço, passo a passo, templates) | ✅ concluída | 642311d |
-| K1 | Projeto `operacao-plataforma` | ⏳ | |
+| K1 | Projeto `operacao-plataforma` | ✅ concluída | produção |
 | S1 | `mapear.py operacao` | ✅ concluída | 0592f5c |
 | S2 | Skill: mapear operação + resolver perguntas | ✅ concluída | 0592f5c |
 | F1 | Painel "Perguntas sem resposta" | ✅ concluída | front 76dec2e |
-| Q1 | Bateria de 40 perguntas (antes/depois) | 🔄 linha de base feita | |
-| P1 | Piloto em 3 módulos + transversal | ⏳ | |
-| G1 | Geração em massa | 🔄 autorizada (o usuário liberou aplicar, mesclar e publicar tudo) | |
+| Q1 | Bateria de 40 perguntas (antes/depois) | ✅ 10 → 39 de 40 | `bateria/` |
+| P1 | Piloto em 3 módulos + transversal | ✅ feito junto com o G1 | |
+| G1 | Geração em massa | ✅ concluída | produção |
 
 ## Log
 - 2026-10-01 — spec, análise e plano (0039 já estava em uso por outra feature — "Analisar pelo PRMake sem abrir o
@@ -26,3 +26,19 @@ Branch `feature/0040` em `prform.api-0040` (backend + skills) e `prform-app-0040
 - 2026-10-01 — F1 (front 76dec2e): painel "Perguntas" do admin e aviso no Pergunte. Teste local: mesma pergunta com
   acento/caixa diferentes soma no mesmo registro (2×, kind operacao), resolver grava seção e autor, `arch.sh perguntas` ok.
 - 2026-10-01 — usuário liberou: aplicar tudo, mesclar e publicar sem pedir permissão.
+- 2026-10-01 — PRs #62 (back) e prmakerweb#36 (front) mesclados juntos e publicados; depois #63, #64 e #66 (Pergunte:
+  bloco inteiro das melhores seções, bloco que mais casa com a pergunta, palavras da pergunta e nova busca com poucos
+  candidatos).
+- 2026-10-01 — K1/G1 em produção: projeto `operacao-plataforma` (técnica `operacao` levantada do código, `catalogo-modulos`
+  e `parametros` do catálogo; Guia `guia-o-que-e`, `guia-como-configurar`, `guia-perguntas` com as perguntas como títulos);
+  seção `operacao` (catálogo: telas, papéis, parâmetros) em 32 módulos; Guia `guia-como-configurar` gerado pela IA do
+  PRMake nos 32; procedimentos levantados do código (subagentes) em 15 módulos — Plano de Ação, Defect Tag, Incidentes,
+  Checklist, CIL, MOC, Permissão de Trabalho, Treinamento, RCA, Condição Insegura, Usuários (times), Digital Obeya,
+  Pesquisa, Score Card, Campos personalizados — na seção técnica e como "Perguntas frequentes de configuração" no Guia.
+- 2026-10-01 — Bateria (produção, 40 perguntas): linha de base 10/5/25 (respondidas/parciais/sem resposta) → após
+  publicar 16/10/14 → bloco inteiro 21/6/12 → procedimentos 36/0/4 → termos da pergunta **39 respondidas + 1 timeout**
+  (refeita: respondida). Variação entre execuções vem dos termos da IA; arquivos em `bateria/*.jsonl`.
+- Achados a tratar fora da base: ART-23 do KC diz que o tipo de plano de ação é cadastrado em Settings (não existe);
+  endpoints protegidos só pelo menu (`PUT /Modules`, Users, Survey, CustomField, ScoreCard, Times `Save`); cache de
+  parâmetros não invalidado ao salvar (`PUT /ClientFuncionality`, `PUT /Parameter/site`); provedor OpenAI do Solvace.AI
+  quebrado (`Openai` × `OpenAI`).
