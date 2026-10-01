@@ -24,6 +24,7 @@ public class ArchitectureGuideService(IAIService ai, IArchitectureApplication ar
     private const int PerSection = 12_000;
     private const int PerArticle = 3_500;
     private const int MaxInstructions = 2_000;
+    private const int MaxWordsPerSection = 280;
 
     public async Task<ArchitectureGuideResponse> GenerateAsync(string projectKey, ArchitectureGuideRequest request, CancellationToken cancellationToken)
     {
@@ -38,6 +39,8 @@ public class ArchitectureGuideService(IAIService ai, IArchitectureApplication ar
             .AppendLine("Você escreve o Guia da Base Solvace: a documentação de um sistema da Solvace (plataforma de melhoria contínua para manufatura) para pessoas que não programam.")
             .AppendLine(ArchitectureGuideTemplate.WritingRules)
             .AppendLine("Use SÓ o material abaixo (documentação técnica, relações e artigos do Knowledge Center). Traduza o técnico para o que o usuário vê e faz.")
+            // O provedor tem teto de saída (ex.: 8000 tokens no Claude): 6 seções longas não cabem e a resposta é cortada.
+            .AppendLine($"Seja conciso: no máximo {MaxWordsPerSection} palavras por seção, só o essencial; sem tabelas longas.")
             .AppendLine()
             .AppendLine("Devolva, nesta ordem e sem texto fora dos blocos:")
             .AppendLine("1) um bloco de dados do projeto:")

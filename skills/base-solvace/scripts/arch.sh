@@ -46,7 +46,7 @@ if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.cla
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/arch.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 
 api() { # <METHOD> <path> [body-file]
-  local args=(-s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -X "$1" "$BASE/Architecture$2" -H "x-api-key: $TK" -H 'accept: application/json')
+  local args=(-s --max-time "${ARCH_TIMEOUT:-60}" -o "$TMP/resp" -w '%{http_code}' -X "$1" "$BASE/Architecture$2" -H "x-api-key: $TK" -H 'accept: application/json')
   [[ -n "${3:-}" ]] && args+=(-H 'content-type: application/json' --data-binary "@$3")
   CODE="$(curl "${args[@]}" 2>/dev/null)"; CODE="${CODE:-000}"
 }
@@ -147,8 +147,8 @@ case "$CMD" in
   learn)
     CARD="${1:?card}"; shift
     jq -n --arg c "$CARD" --arg i "$(opt --instructions "" "$@")" '{cardNumber:$c, instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
-    echo "lendo o card $CARD no PRMake (DevOps, PR/RCA, Timeline, planos) — pode levar ~1 min..." >&2
-    api POST /learn-from-card "$TMP/body"; check
+    echo "lendo o card $CARD no PRMake (DevOps, PR/RCA, Timeline, planos) — pode levar alguns minutos..." >&2
+    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST /learn-from-card "$TMP/body"; check
     cp "$TMP/resp" "$TMP/learn.json"
     jq -r '"Card \(.cardNumber): \(.cardTitle // "-")",
       "Fontes: \([.sources[] | "\(if .ok then "✓" else "✗" end) \(.label)\(if .detail then " (\(.detail))" else "" end)"] | join(" · "))",
@@ -169,8 +169,8 @@ case "$CMD" in
   guia)
     KEY="${1:?chave}"; OUT="${2:?pasta}"; shift 2
     jq -n --arg i "$(opt --instructions "" "$@")" '{instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
-    echo "gerando o Guia de $KEY com a IA do PRMake..." >&2
-    api POST "/projects/$KEY/guide" "$TMP/body"; check
+    echo "gerando o Guia de $KEY com a IA do PRMake (projeto grande leva alguns minutos)..." >&2
+    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST "/projects/$KEY/guide" "$TMP/body"; check
     mkdir -p "$OUT/$KEY"
     jq '{displayName, tagline, businessArea, notes}' "$TMP/resp" > "$OUT/$KEY/guia.json"
     jq -r '.sections[] | @base64' "$TMP/resp" | while read -r row; do
