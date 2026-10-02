@@ -65,7 +65,7 @@ public static class TranscriptUsage
             // O Claude Code grava a mesma resposta em várias linhas (streaming): vale a última.
             var key = Str(message, "id") ?? Str(root, "uuid") ?? Guid.NewGuid().ToString();
             usage[key] = u.Clone();
-            model = Str(message, "model") ?? model;
+            if (Str(message, "model") is { Length: > 0 } current && current != "<synthetic>") model = current;
             // 0047: cada resposta no modelo que a gerou ("<synthetic>" = mensagem local do Claude Code, sem custo).
             if (Str(message, "model") is { Length: > 0 } m && m != "<synthetic>") modelOf[key] = m;
         }
