@@ -27,5 +27,7 @@ Branch `feature/0049` em `prform.api-0049` (API, skill) e `prform-app-0049` (fro
   sem linha de base (análise só com a dela); comentário → `gathering` + 204 no `next`; 2º comentário empurra; Continuar
   limpa; retomada seguinte continua a sessão nova. Card antigo (correção herdou a sessão da análise) → sessão nova;
   `ExecutorCorrectionNewSession=false` → retoma como antes. `contexto-correcao` mostra resumo, respostas e comentários.
-- Limitação: a skill tem `model: opus` (0047) — na sessão nova da correção a primeira resposta (a que invoca a skill)
-  sai no Opus; as seguintes no modelo da correção.
+- 2026-10-02 — Fix (card 75067): a correção em sessão nova rodou inteira no Opus. No `claude -p` a execução toda é uma
+  vez só, e o `model: opus` da skill invocada por `/analisar-bug` vale por cima do `--model sonnet` até o fim (testado
+  com skill de teste `model: haiku` + `--model sonnet`: 7/7 respostas no Haiku; lendo a SKILL.md com Read/cat: 6/6 no
+  Sonnet). O prompt da correção agora manda ler a SKILL.md (`cat`) e não invocar a skill.
