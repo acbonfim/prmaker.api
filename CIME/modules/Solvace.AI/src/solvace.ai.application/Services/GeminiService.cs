@@ -83,7 +83,9 @@ public class GeminiService : IAIService
                 Content = text,
                 Provider = ProviderName,
                 Model = _options.Model,
-                TokensUsed = geminiResponse?.UsageMetadata?.TotalTokenCount
+                TokensUsed = geminiResponse?.UsageMetadata?.TotalTokenCount,
+                InputTokens = geminiResponse?.UsageMetadata?.PromptTokenCount,
+                OutputTokens = geminiResponse?.UsageMetadata?.CandidatesTokenCount
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

@@ -22,8 +22,10 @@ aparece. Leia só a parte que vai usar.
    "Configuração e operação" --order 85` (o `operacao-plataforma` precisa existir: `arch.sh project` com
    `--kind business-rules`). Aplicação nova sem projeto → entra no catálogo; com projeto → acrescente o alias em
    `ALIAS_TO_PROJECT` (`operacao.py`).
-3. Guia: com a seção `operacao` publicada, `arch.sh guia <projeto> <pasta> --instructions "Gere SOMENTE a seção
-   guia-como-configurar ..."` e publique o `545-guia-como-configurar.md` com `--audience human`.
+3. Guia: com a seção `operacao` publicada, escreva aqui o `545-guia-como-configurar.md` (passo a passo em linguagem
+   simples, a partir da seção técnica) e publique com `--audience human`. Vários módulos → subagentes, nunca a IA do
+   PRMake em lote (`arch.sh guia` cobra créditos de API do perfil; use só num projeto pontual, com
+   `--instructions "Gere SOMENTE a seção guia-como-configurar ..."`).
 4. O que o catálogo não diz (o que cada tela faz, regras de permissão no código, notificações por evento): leia o
    código apontado pela rota (`Angular <app> <rota>` → `edv-solvace-apps/projects/<app>`; legado `.asp`/core) com um
    subagente e acrescente na seção `operacao` com `arquivo:linha`.

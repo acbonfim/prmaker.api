@@ -13,6 +13,8 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     public DbSet<HandoverRegister> Handovers { get; set; }
     public DbSet<PullRequestGithub> PullRequestsGithub { get; set; }
     public DbSet<UserPluginConfiguration> UserPluginConfigurations { get; set; }
+    /// <summary>Consumo de IA por chamada (0042).</summary>
+    public DbSet<AiUsageRecord> AiUsageRecords { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
     public const string Schema = "prform";
@@ -28,6 +30,22 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.HasDefaultSchema(Schema);
+
+        // 0042: consumo de IA por chamada (custo por ação, por usuário).
+        modelBuilder.Entity<AiUsageRecord>(b =>
+        {
+            b.ToTable("AiUsageRecords");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.UserName).IsRequired().HasMaxLength(AiUsageRecord.MaxUserNameLength);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(AiUsageRecord.MaxActionLength);
+            b.Property(x => x.Route).IsRequired().HasMaxLength(AiUsageRecord.MaxRouteLength);
+            b.Property(x => x.Provider).IsRequired().HasMaxLength(AiUsageRecord.MaxProviderLength);
+            b.Property(x => x.Model).HasMaxLength(AiUsageRecord.MaxModelLength);
+            b.Property(x => x.CostUsd).HasPrecision(14, 6);
+            b.Property(x => x.Error).HasMaxLength(AiUsageRecord.MaxErrorLength);
+            b.HasIndex(x => new { x.UserExternalId, x.CreatedAt });
+            b.HasIndex(x => x.CreatedAt);
+        });
 
         // Handover nasce público. O default no banco garante que os registros já existentes
         // permaneçam públicos após a criação da coluna, até serem alterados manualmente.

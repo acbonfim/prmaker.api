@@ -37,7 +37,9 @@ Como escrever: frases curtas, listas e passo a passo; sem nomes de tabelas, clas
 pelo nome que o usuário vê); termo técnico inevitável explicado numa frase; mermaid pequeno com rótulos em português só
 se ajudar; não invente ("a confirmar"). Também: `displayName` (nome que o usuário usa, ex. "Plano de Ação"), `tagline`
 (uma frase) e `businessArea` (área que junta legado + revamp + front do mesmo módulo) no `projeto.json`.
-Gerar com a IA do PRMake: `arch.sh guia <chave> <pasta>` (revise e publique com `publicar-pasta` ou `section --audience human`).
+Escreva o Guia aqui no Claude Code (subagentes, sem custo de API) e publique com `publicar-pasta` ou `section --audience human`.
+`arch.sh guia <chave> <pasta>` usa a IA do PRMake com a chave de API do perfil (créditos pagos; o custo aparece no fim):
+só para um projeto pontual — nunca em lote sem o ok do usuário.
 
 ## Resumo do índice (`--summary-file`, até 2000 caracteres, vai inteiro para o INDEX.md)
 3–6 linhas: responsabilidade, tecnologia, pastas de entrada, tabelas/schemas principais, com quem integra. Escreva

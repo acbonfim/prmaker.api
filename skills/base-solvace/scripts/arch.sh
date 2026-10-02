@@ -23,6 +23,8 @@
 #                                           IA propoe aprendizados; --send envia as propostas escolhidas para a fila
 #   guia <chave> <pasta> [--instructions T] GUIA COM A IA (admin, 0038): grava a proposta em <pasta>/<chave>/5NN-guia-*.md +
 #                                           guia.json (nome/frase/area) para revisar e publicar com publicar-pasta
+#                                           learn e guia CUSTAM creditos de API do perfil de quem chama (0042: o custo
+#                                           aparece no fim); em massa, escreva no Claude Code e publique com section
 #   lacunas                                 sugestoes do tipo gap pendentes (admin): perguntas que a base nao cobre — analise o
 #                                           codigo, publique a secao e rode: resolver <id> applied
 #   resolver <id> applied|dismissed [nota]  resolve uma sugestao da fila (admin)
@@ -50,10 +52,19 @@ if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.cla
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/arch.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
 
 api() { # <METHOD> <path> [body-file]
-  local args=(-s --max-time "${ARCH_TIMEOUT:-60}" -o "$TMP/resp" -w '%{http_code}' -X "$1" "$BASE/Architecture$2" -H "x-api-key: $TK" -H 'accept: application/json')
+  local args=(-s --max-time "${ARCH_TIMEOUT:-60}" -o "$TMP/resp" -D "$TMP/headers" -w '%{http_code}' -X "$1" "$BASE/Architecture$2" -H "x-api-key: $TK" -H 'accept: application/json')
   [[ -n "${3:-}" ]] && args+=(-H 'content-type: application/json' --data-binary "@$3")
   CODE="$(curl "${args[@]}" 2>/dev/null)"; CODE="${CODE:-000}"
 }
+# Consumo de IA da chamada (0042): o PRMake devolve X-AI-Usage (calls;in;out;cost;model) quando a acao usou IA.
+ai_cost() {
+  local h; h="$(tr -d '\r' < "$TMP/headers" 2>/dev/null | sed -n 's/^[Xx]-[Aa][Ii]-[Uu]sage: *//p' | tail -1)"
+  [[ -n "$h" ]] || return 0
+  awk -v h="$h" 'BEGIN { n = split(h, kv, ";"); for (i = 1; i <= n; i++) { split(kv[i], p, "="); v[p[1]] = p[2] }
+    c = (v["cost"] == "") ? "custo desconhecido (modelo fora da tabela)" : sprintf("~ US$ %.4f", v["cost"])
+    printf "IA: %d chamada(s), %d tokens de entrada + %d de saida, %s (%s) - creditos de API de quem chamou\n", v["calls"], v["in"], v["out"], c, v["model"] }' >&2
+}
+AI_WARN="ATENCAO: usa a IA do PRMake com a chave de API do SEU perfil (creditos pagos, nao a assinatura do Claude Code). Para gerar em massa, escreva o conteudo no Claude Code e publique com 'section'/'publicar-pasta'."
 check() { [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE: $(jq -r '.error // .title // .' "$TMP/resp" 2>/dev/null | head -c 300)"; }
 opt() { # <nome> <padrao> <args...>
   local name="$1" def="$2"; shift 2
@@ -153,8 +164,9 @@ case "$CMD" in
   learn)
     CARD="${1:?card}"; shift
     jq -n --arg c "$CARD" --arg i "$(opt --instructions "" "$@")" '{cardNumber:$c, instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
+    echo "$AI_WARN" >&2
     echo "lendo o card $CARD no PRMake (DevOps, PR/RCA, Timeline, planos) — pode levar alguns minutos..." >&2
-    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST /learn-from-card "$TMP/body"; check
+    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST /learn-from-card "$TMP/body"; ai_cost; check
     cp "$TMP/resp" "$TMP/learn.json"
     jq -r '"Card \(.cardNumber): \(.cardTitle // "-")",
       "Fontes: \([.sources[] | "\(if .ok then "✓" else "✗" end) \(.label)\(if .detail then " (\(.detail))" else "" end)"] | join(" · "))",
@@ -175,8 +187,9 @@ case "$CMD" in
   guia)
     KEY="${1:?chave}"; OUT="${2:?pasta}"; shift 2
     jq -n --arg i "$(opt --instructions "" "$@")" '{instructions:(if $i == "" then null else $i end)}' > "$TMP/body"
+    echo "$AI_WARN" >&2
     echo "gerando o Guia de $KEY com a IA do PRMake (projeto grande leva alguns minutos)..." >&2
-    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST "/projects/$KEY/guide" "$TMP/body"; check
+    ARCH_TIMEOUT="${ARCH_TIMEOUT:-300}" api POST "/projects/$KEY/guide" "$TMP/body"; ai_cost; check
     mkdir -p "$OUT/$KEY"
     jq '{displayName, tagline, businessArea, notes}' "$TMP/resp" > "$OUT/$KEY/guia.json"
     jq -r '.sections[] | @base64' "$TMP/resp" | while read -r row; do
