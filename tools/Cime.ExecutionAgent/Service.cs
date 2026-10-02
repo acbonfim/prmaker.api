@@ -166,7 +166,8 @@ public static class Service
 
     /// <summary>Variáveis que as skills usam e que o serviço não herdaria do terminal.</summary>
     private static IEnumerable<(string Key, string Value)> ExtraEnv() =>
-        new[] { "EDV_SOLVACE_DIR", "REVAMP_DIR", "PRMAKE_API_BASE", "PRMAKE_WORKSPACE", "CLAUDE_CODE_GIT_BASH_PATH", "AWS_PROFILE", "SQLSERVER_CREDENTIALS" }
+        new[] { "EDV_SOLVACE_DIR", "REVAMP_DIR", "PRMAKE_API_BASE", "PRMAKE_WORKSPACE", "CLAUDE_CODE_GIT_BASH_PATH", "AWS_PROFILE", "SQLSERVER_CREDENTIALS",
+                "PRMAKE_HOME", "PRMAKE_REPOS_ROOTS", "CARDS_DIR" }
             .Select(k => (k, Environment.GetEnvironmentVariable(k) ?? ""))
             .Where(kv => kv.Item2.Length > 0);
 

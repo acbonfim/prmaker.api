@@ -101,6 +101,8 @@ migrate_card_dir() { # <raiz> <card>
   fi
 }
 CARDS_ROOT="${CARDS_DIR:-$HOME/.prmake/cards}"
+# 0048: ferramenta das skills (mapa de repositorios da maquina: repos path).
+SKILLS_TOOL="${PRMAKE_SKILLS_TOOL:-$HOME/.claude/skills/.prmake/prmake-skills.sh}"
 CMD="${1:-}"; shift || true
 CARD="${1:-}"; shift || true
 
@@ -1078,6 +1080,14 @@ case "$CMD" in
       BASE_BRANCH="$RULE_BASE"
     fi
     echo "repositorio=$REPO tipo=$KIND fluxo=$FLOW base=$BASE_BRANCH"
+    # 0048: pasta do repositorio pelo mapa da maquina (prmake-skills.sh repos path: 0 pasta, 2 fora do mapa, 3 ambiguo).
+    REPO_DIR=""; PATH_RC=0
+    if [[ -f "$SKILLS_TOOL" ]]; then REPO_DIR="$(bash "$SKILLS_TOOL" repos path "$REPO" 2>"$TMP/repo-path.err")"; PATH_RC=$?; else PATH_RC=1; fi
+    case "$PATH_RC" in
+      0) echo "pasta=$REPO_DIR" ;;
+      2|3) echo "pasta=PERGUNTAR ($(head -1 "$TMP/repo-path.err" | sed 's/^ERRO: //'))"; sed -n '2,$p' "$TMP/repo-path.err" ;;
+      *) REPO_DIR=""; echo "pasta=? (sem o mapa de repositorios — use revamp-repos.sh where $REPO)" ;;
+    esac
     echo "branch-correcao=$FIX"
     [[ -n "$COMMIT_PATTERN" ]] && echo "commit=\"$(fill_pattern "$COMMIT_PATTERN")\""
     echo "prs:"
@@ -1099,9 +1109,9 @@ case "$CMD" in
     echo "comandos:"
     echo "  git fetch origin"
     if [[ "$G" != git ]]; then
-      echo "  WT=\"\$(bash \$PLAN worktree $CARD <pasta-do-repo> $FIX $BASE_BRANCH)\"    # corrija em \$WT${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+      echo "  WT=\"\$(bash \$PLAN worktree $CARD ${REPO_DIR:-<pasta-do-repo>} $FIX $BASE_BRANCH)\"    # corrija em \$WT${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
     else
-      echo "  git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
+      echo "  ${REPO_DIR:+cd \"$REPO_DIR\" && }git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
     fi
     for C in "${CMDS[@]}"; do [[ "$C" == \#open-pr* ]] || echo "  $C"; done
     echo "  $G push -u origin $PUSH"
@@ -1110,12 +1120,22 @@ case "$CMD" in
       read -r _ BR TG REST <<< "$C"
       echo "  bash \$PLAN open-pr $CARD $REPO $BR $TG $REST \$CARD_DIR/pr/$REPO/desc.md"
     done
+    # Pasta desconhecida (fora do mapa ou mais de um clone): pergunte ao usuario e fixe com
+    # prmake-skills.sh repos set <repo> <pasta> antes de corrigir.
+    if [[ $PATH_RC -eq 2 || $PATH_RC -eq 3 ]]; then
+      echo "PERGUNTAR: em que pasta esta o clone de $REPO nesta maquina? Depois: bash $SKILLS_TOOL repos set $REPO <pasta>"
+      exit 4
+    fi
     ;;
 
   worktree)
     # worktree <card> <pasta-do-repo> <branch> <base>: cria (ou reaproveita) <pasta-do-repo>/../.prmake-wt/<card>/<repo>
     # com a branch de correcao a partir de origin/<base> e imprime o caminho. O executor limpa depois que o plano termina.
     REPO_DIR="${1:?pasta do repositorio}"; BR="${2:?branch de correcao}"; BASE_BR="${3:?branch base}"
+    # 0048: aceita o nome do repositorio no lugar da pasta (resolvido pelo mapa da maquina).
+    if [[ ! -d "$REPO_DIR" && -f "$SKILLS_TOOL" ]]; then
+      REPO_DIR="$(bash "$SKILLS_TOOL" repos path "$REPO_DIR")" || die "pasta do repositorio desconhecida — pergunte ao usuario e fixe com: bash $SKILLS_TOOL repos set <repo> <pasta>"
+    fi
     [[ -d "$REPO_DIR/.git" || -f "$REPO_DIR/.git" ]] || die "nao e um repositorio git: $REPO_DIR"
     REPO_DIR="$(cd "$REPO_DIR" && pwd)"
     WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD/$(basename "$REPO_DIR")"

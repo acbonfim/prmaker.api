@@ -68,6 +68,9 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
         if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
             args.AddRange(["--add-dir", workspace]);
+        // 0048: repositórios do mapa fora do workspace (em dontAsk o Claude não lê fora das pastas liberadas).
+        foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))
+            args.AddRange(["--add-dir", dir]);
         // 0047: o PRMake escolhe o modelo pela fase do card (Opus na análise, Sonnet na correção); retomar a mesma sessão
         // com outro modelo é suportado pelo Claude Code.
         if (!string.IsNullOrWhiteSpace(claim.Model))

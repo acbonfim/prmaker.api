@@ -12,7 +12,8 @@
 #                                           grava a secao (conteudo igual nao cria versao); human = Guia para pessoas, fica
 #                                           fora do espelho das skills (secao guia-* ja nasce human)
 #   get <chave> [secao]                     metadados do projeto ou o conteudo de uma secao
-#   stale <chave> <repo-dir>                o que mudou no repositorio desde o commit mapeado (para atualizar)
+#   stale <chave> <repo-dir|repo>           o que mudou no repositorio desde o commit mapeado (para atualizar); aceita o
+#                                           nome do repositorio (pasta pelo mapa da maquina — 0048)
 #   publicar-pasta <pasta-kb> [projeto...]  publica cada <pasta-kb>/<chave>/ (projeto.json com relations + NNN-secao.md);
 #                                           repoDir relativo a SOLVACE_REPOS (padrao ~/repos/solvace) grava o commit
 #   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence|gap] [--card N]
@@ -47,6 +48,7 @@ esac
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 CMD="${1:-}"; shift || true
 die() { echo "ERRO: $*" >&2; exit 1; }
+SKILLS_TOOL="${PRMAKE_SKILLS_TOOL:-$HOME/.claude/skills/.prmake/prmake-skills.sh}"
 command -v jq >/dev/null || die "jq nao encontrado"
 if [[ -n "${PRMAKE_TOKEN:-}" ]]; then TK="$PRMAKE_TOKEN"; elif [[ -f "$HOME/.claude/prmake-token.txt" ]]; then TK="$(tr -d '\r\n' < "$HOME/.claude/prmake-token.txt")"; else die "token do PRMake nao encontrado"; fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/arch.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
@@ -110,7 +112,9 @@ case "$CMD" in
     if [[ -n "${2:-}" ]]; then api GET "/projects/$KEY/sections/$2"; check; jq -r '.content' "$TMP/resp"
     else api GET "/projects/$KEY"; check; jq -r '"\(.name) (\(.key), \(.kind)) commit \(.sourceCommit // "-") em \(.sourceMappedAt // "-")\n\(.summary // "")\nsecoes: \([.sections[] | "\(.key) v\(.version)"] | join(", "))"' "$TMP/resp"; fi ;;
   stale)
-    KEY="${1:?chave}"; RD="${2:?repo-dir}"
+    KEY="${1:?chave}"; RD="${2:?repo-dir (ou o nome do repositorio)}"
+    # 0048: aceita o nome do repositorio (pasta pelo mapa da maquina).
+    if [[ ! -d "$RD" && -f "$SKILLS_TOOL" ]]; then RD="$(bash "$SKILLS_TOOL" repos path "$RD")" || die "repositorio fora do mapa desta maquina: ${2}"; fi
     api GET "/projects/$KEY"; check
     C="$(jq -r '.sourceCommit // empty' "$TMP/resp")"
     [[ -n "$C" ]] || { echo "projeto sem commit registrado — mapeie do zero"; exit 0; }
@@ -152,7 +156,11 @@ case "$CMD" in
       for f in displayName:--display-name tagline:--tagline businessArea:--area; do
         v="$(jq -r --arg k "${f%%:*}" '.[$k] // empty' "$meta")"; [[ -n "$v" ]] && args+=("${f#*:}" "$v")
       done
-      dir="$(jq -r '.repoDir // empty' "$meta")"; [[ -n "$dir" && -d "$REPOS/$dir/.git" ]] && args+=(--repo-dir "$REPOS/$dir")
+      dir="$(jq -r '.repoDir // empty' "$meta")"
+      if [[ -n "$dir" && -d "$REPOS/$dir/.git" ]]; then args+=(--repo-dir "$REPOS/$dir")
+      elif [[ -n "$dir" && -f "$SKILLS_TOOL" ]] && rd="$(bash "$SKILLS_TOOL" repos path "$(basename "$dir")" 2>/dev/null)"; then
+        args+=(--repo-dir "$rd")  # 0048: fora de SOLVACE_REPOS, pelo mapa da maquina
+      fi
       bash "$SELF" project "$key" "${args[@]}" || continue
       for f in "$KB/$key"/[0-9][0-9][0-9]-*.md; do
         [[ -f "$f" ]] || continue

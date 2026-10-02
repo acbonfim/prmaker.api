@@ -7,30 +7,39 @@ codigo fora da Base Solvace (3a), Cognito (3b) ou o banco (3c).
 
 > **Onde o codigo pode estar — legado vs. revamp.** O Solvace tem dois mundos de codigo, e o bug pode
 > estar em qualquer um:
-> - **Legado — `edv-solvace`** (este repo, quando a skill roda daqui): modulos **.NET Core** e **ASP
->   Classic**. E o ponto de partida natural.
-> - **Revamp — `~/repos/solvace/revamp_separado`**: reescrita dos modulos legados. **Cada modulo e um
->   repositorio git proprio** (micro-monolito, clean architecture: `Domain`/`Application`/`Infra.Data`/
->   `API`), ex.: `revamp-BOS`, `revamp-CIL`, `revamp-Complaint`, `revamp-ActionPlan`... Os **building
->   blocks compartilhados** vem como pacotes NuGet `Solvace.BuildingBlocks.*` (CodeArtifact) — o fonte
->   deles nao fica nesse diretorio.
+> - **Legado — `edv-solvace`**: modulos **.NET Core** e **ASP Classic**. E o ponto de partida natural
+>   (a API de integracoes `edv-solvace-api` tambem conta como legado nas buscas).
+> - **Revamp — `revamp-<modulo>`**: reescrita dos modulos legados. **Cada modulo e um repositorio git
+>   proprio** (micro-monolito, clean architecture: `Domain`/`Application`/`Infra.Data`/`API`), ex.:
+>   `revamp-BOS`, `revamp-CIL`, `revamp-Complaint`, `revamp-ActionPlan`... Os **building blocks
+>   compartilhados** vem como pacotes NuGet `Solvace.BuildingBlocks.*` (CodeArtifact) — o fonte deles nao
+>   fica na maquina.
 >
-> Se o card for de um modulo ja migrado (ou voce nao achar o codigo no legado), **procure tambem no
-> revamp** com o script `revamp-repos.sh`:
+> **Onde estao na maquina (0048)**: cada pessoa clona onde quer. As pastas vem do **mapa da maquina**
+> (`~/.prmake/repos.json`: nome do repositorio pelo remote → pasta), montado pela ferramenta das skills
+> (`prmake-skills.sh repos scan`, sozinho na instalacao/atualizacao). O nome da pasta pode nao ser o do
+> repositorio (ex.: `Solvace.Users` = `revamp-Users`) — use sempre o nome do repositorio:
 > ```bash
-> # listar repos disponiveis (legado + cada modulo revamp, com branch atual)
+> # repositorios da maquina (tipo, nome, branch atual, pasta) + ambiguos e sem clone
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh list
 >
-> # caminho de um modulo revamp (aceita 'BOS' ou 'revamp-BOS')
+> # pasta de um repositorio (aceita 'revamp-BOS', 'BOS' ou o nome da pasta)
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh where BOS
 >
-> # buscar um padrao no codigo — escopo: all (default) | revamp | legacy | <modulo>
+> # buscar um padrao no codigo — escopo: all (default) | revamp | legacy | <repo>
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh grep "NomeDaClasseOuMetodo" revamp
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh grep "PhysicalLayout" BOS
 > ```
-> Ao achar o modulo certo, use Grep/Glob/Read direto no caminho dele (`revamp-repos.sh where <mod>`)
-> para aprofundar. Diga na analise **em qual repo/mundo** (legado ou revamp-<modulo>) esta o codigo.
-> Caminhos default sobrescreviveis por env `REVAMP_DIR` e `EDV_SOLVACE_DIR`.
+> Ao achar o repositorio certo, use Grep/Glob/Read direto na pasta dele (`where <repo>`) para aprofundar.
+> Diga na analise **em qual repo/mundo** (legado ou revamp-<modulo>) esta o codigo.
+>
+> **Repositorio fora do mapa ou com mais de um clone** (`where` sai com 2 ou 3; `branches` com 4): nao
+> procure pela home inteira nem siga sem o codigo. Pergunte ao usuario em que pasta esta o clone (no
+> modo executor, `ask`/`block` no plano; no terminal, no chat) e fixe:
+> `bash ~/.claude/skills/.prmake/prmake-skills.sh repos set <repo> <pasta>` (valida o remote). Se ele nao tiver o
+> repositorio clonado, peca para clonar e rodar `prmake-skills.sh repos scan`. So siga sem o codigo se ele
+> disser explicitamente que pode — e diga isso na analise. Variaveis `EDV_SOLVACE_DIR` e `REVAMP_DIR`
+> continuam valendo por cima do mapa.
 
 > **Foco no bug do card (regra padrao).** Cada card e um ticket aberto pelo cliente, e tratamos
 > **somente ele**. As sugestoes de solucao (correcao de dados, scripts, mudanca de codigo) miram

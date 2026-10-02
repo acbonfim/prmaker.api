@@ -13,6 +13,8 @@
 #   prmake-skills.sh mcp [remove]                  registra no Claude Code o MCP remoto do PRMake (0039)
 #   prmake-skills.sh agent [install|update|status|uninstall]
 #                                                  executor do PRMake (0039): roda a analise pela tela, sem terminal
+#   prmake-skills.sh repos [scan [--quiet] | set <repo> <pasta> | unset <repo> | path <repo>]
+#                                                  repositórios desta máquina (0048): mapa remote → pasta em ~/.prmake/repos.json
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -42,7 +44,9 @@ warn() { echo "AVISO: $*" >&2; }
 die()  { echo "ERRO: $*" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/prmake-skills.XXXXXX")"
-trap 'rm -rf "$TMP"; rmdir "$TOOL_DIR/.lock" 2>/dev/null' EXIT
+LOCKED=0
+# Só quem criou a trava a remove (0048: o repos scan em segundo plano não pode soltar a trava de outro update).
+trap 'rm -rf "$TMP"; [[ $LOCKED -eq 1 ]] && rmdir "$TOOL_DIR/.lock" 2>/dev/null' EXIT
 
 token() {
   if [[ -n "${PRMAKE_TOKEN:-}" ]]; then printf '%s' "$PRMAKE_TOKEN"; return; fi
@@ -408,8 +412,9 @@ self_update() {
 lock() {
   mkdir -p "$TOOL_DIR"
   local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do mkdir "$TOOL_DIR/.lock" 2>/dev/null && return 0; sleep 1; done
+  for i in 1 2 3 4 5 6 7 8 9 10; do mkdir "$TOOL_DIR/.lock" 2>/dev/null && { LOCKED=1; return 0; }; sleep 1; done
   # Trava antiga (execução interrompida): assume.
+  LOCKED=1
   return 0
 }
 
@@ -475,6 +480,307 @@ agent_download() {
   mv -f "$TMP/agent" "$bin" && say "   executor $("$bin" version) em $bin"
 }
 
+# Repositórios desta máquina (0048): mapa nome-do-repositório (pelo remote) → pasta em ~/.prmake/repos.json, lido pelas
+# skills (revamp-repos.sh, prmake-plan.sh, arch.sh) e pelo executor. Os repositórios que interessam são os das regras de
+# BranchStrategy.repositories (Skills Configurations) — nada fixo aqui. Variáveis (EDV_SOLVACE_DIR, REVAMP_DIR) valem por
+# cima do mapa. A busca nunca sobrescreve o que foi fixado à mão (repos set) ou veio de variável.
+PRMAKE_HOME="${PRMAKE_HOME:-$HOME/.prmake}"
+REPOS_FILE="$PRMAKE_HOME/repos.json"
+RULES_CACHE="$PRMAKE_HOME/.skills-config.json"
+REPOS_PRUNE=(node_modules bin obj Library .prmake-wt dist packages kb-mirror)
+REPOS_CMD="bash ~/.claude/skills/.prmake/prmake-skills.sh repos"
+
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# Caminho como fica gravado: no Windows C:/... (o bash e o executor .NET entendem); sem barra no fim.
+norm_path() { local p="${1%/}"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -m "$p")"; printf '%s' "$p"; }
+# Nome do repositório pelo remote origin (último segmento, sem .git); vazio se não houver.
+repo_name_of() {
+  local url; url="$(git -C "$1" config --get remote.origin.url 2>/dev/null | tr -d '\r')"
+  url="${url%/}"; url="${url##*/}"; url="${url##*:}"; printf '%s' "${url%.git}"
+}
+# Regras (match<TAB>kind) do /Skills/config; sem rede usa a última salva. Sem nenhuma: 1.
+repo_rules() {
+  mkdir -p "$PRMAKE_HOME"
+  if [[ "$(get "/config" "$TMP/skills-config.json")" =~ ^2 ]] && jq -e '.available' "$TMP/skills-config.json" >/dev/null 2>&1; then
+    cp "$TMP/skills-config.json" "$RULES_CACHE"
+  fi
+  [[ -s "$RULES_CACHE" ]] || return 1
+  jq -r '.settings.BranchStrategy // empty | (if type == "string" then (fromjson? // {}) else . end)
+         | .repositories // [] | .[] | select(.match) | "\(.match)\t\(.kind // "")"' "$RULES_CACHE" 2>/dev/null
+}
+# kind da primeira regra que casa com o nome (glob, sem diferenciar maiúsculas); 1 se nenhuma.
+kind_of() { # <nome> <arquivo de regras>
+  local n; n="$(lc "$1")"
+  local pat k
+  while IFS=$'\t' read -r pat k; do
+    [[ -z "$pat" ]] && continue
+    # shellcheck disable=SC2053
+    [[ "$n" == $(lc "$pat") ]] && { printf '%s' "$k"; return 0; }
+  done < "$2"
+  return 1
+}
+repos_map() { if [[ -s "$REPOS_FILE" ]] && jq -e '.version == 1' "$REPOS_FILE" >/dev/null 2>&1; then cat "$REPOS_FILE"; else echo '{"version":1,"repos":{},"ambiguous":{},"missing":[]}'; fi; }
+repos_write() { # stdin = mapa novo
+  mkdir -p "$PRMAKE_HOME"
+  cat > "$REPOS_FILE.tmp.$$" && jq -e . "$REPOS_FILE.tmp.$$" >/dev/null && mv -f "$REPOS_FILE.tmp.$$" "$REPOS_FILE" || { rm -f "$REPOS_FILE.tmp.$$"; return 1; }
+}
+# Padrões das regras sem nenhum repositório no mapa (ex.: revamp-* sem módulo clonado).
+repos_missing_json() { # <arquivo de regras> (mapa no stdin)
+  local pats; pats="$(cut -f1 "$1" | jq -R . | jq -s -c .)"
+  local names; names="$(jq -c '[(.repos // {} | keys[]), (.ambiguous // {} | keys[]) | ascii_downcase]')"
+  local out=() p n hit
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    hit=0
+    while IFS= read -r n; do
+      # shellcheck disable=SC2053
+      [[ "$n" == $(lc "$p") ]] && { hit=1; break; }
+    done < <(jq -r '.[]' <<<"$names")
+    [[ $hit -eq 1 ]] || out+=("$p")
+  done < <(jq -r '.[]' <<<"$pats")
+  printf '%s\n' ${out[@]+"${out[@]}"} | jq -R 'select(length > 0)' | jq -s -c .
+}
+
+# Raízes da busca: PRMAKE_REPOS_ROOTS, ou as pastas comuns que existirem + pais do que já está no mapa + workspace do
+# executor + pais das variáveis. macOS: Documents/Desktop/Downloads ficam de fora (pedem permissão do sistema — TCC —,
+# inclusive para o serviço do executor); informe em PRMAKE_REPOS_ROOTS se os repositórios estiverem lá.
+repos_roots() {
+  local r list=()
+  if [[ -n "${PRMAKE_REPOS_ROOTS:-}" ]]; then
+    IFS=':;' read -r -a list <<< "$PRMAKE_REPOS_ROOTS"
+  else
+    for r in repos source src dev projects code git workspace work; do list+=("$HOME/$r"); done
+    [[ "$(uname -s)" != Darwin ]] && list+=("$HOME/Documents")
+    [[ $WINDOWS -eq 1 ]] && list+=(/c/repos /c/dev /c/projects /c/src /c/git /d/repos /d/dev /d/projects)
+    [[ -n "${EDV_SOLVACE_DIR:-}" ]] && list+=("$(dirname "$EDV_SOLVACE_DIR")")
+    [[ -n "${REVAMP_DIR:-}" ]] && list+=("$REVAMP_DIR")
+    local ws; ws="$(jq -r '.workspace // empty' "$AGENT_HOME/config.json" 2>/dev/null)"; [[ -n "$ws" ]] && list+=("$ws")
+    while IFS= read -r r; do [[ -n "$r" ]] && list+=("$(dirname "$r")"); done < <(repos_map | jq -r '.repos[].path // empty')
+  fi
+  # A home (e o que está acima dela) nunca é raiz: seria varrer tudo — o repositório direto na home tem busca própria.
+  local home; home="$(cd "$HOME" && pwd -P)"
+  for r in "${list[@]}"; do [[ -d "$r" ]] && (cd "$r" && pwd -P); done | awk '!seen[$0]++' \
+    | while IFS= read -r r; do [[ "$home" == "$r" || "$home" == "$r"/* ]] || printf '%s\n' "$r"; done
+}
+
+# Busca: pastas com .git DIRETÓRIO (worktree tem .git arquivo — fica de fora) até 4 níveis abaixo de cada raiz (e 1 na
+# home), sem entrar em ocultas, dependências/build, worktrees do executor e clones de leitura da Base Solvace. Repositório
+# dentro de repositório também conta.
+repos_find() { # <arquivo de saída>
+  local out="$1" r prune=() n
+  for n in "${REPOS_PRUNE[@]}"; do prune+=(-name "$n" -o); done
+  prune+=(\( -name '.*' ! -name .git \))
+  : > "$out"
+  {
+    while IFS= read -r r; do
+      find "$r" -mindepth 1 -maxdepth 5 \( "${prune[@]}" \) -prune -o -type d -name .git -print -prune 2>/dev/null
+    done < <(repos_roots)
+    # Repositório direto na home (~/edv-solvace).
+    find "$HOME" -mindepth 2 -maxdepth 2 -type d -name .git 2>/dev/null
+  } | sed 's#/\.git$##' | awk '!seen[$0]++' > "$out"
+}
+
+repos_scan() { # [--quiet]
+  local quiet=0; [[ "${1:-}" == --quiet ]] && quiet=1
+  command -v git >/dev/null || { warn "git não encontrado — não dá para mapear os repositórios"; return 1; }
+  repo_rules > "$TMP/rules.tsv" 2>/dev/null && [[ -s "$TMP/rules.tsv" ]] \
+    || { [[ $quiet -eq 1 ]] || warn "sem as regras de repositório do PRMake (BranchStrategy) — sem token/rede? Nada mudou."; return 1; }
+  local limit="${PRMAKE_REPOS_SCAN_TIMEOUT:-60}" pid waited=0 timed_out=0
+  repos_find "$TMP/found.txt" & pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 0.2; waited=$((waited + 1))
+    if (( waited >= limit * 5 )); then pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null; timed_out=1; break; fi
+  done
+  wait "$pid" 2>/dev/null
+  # Repositório dentro de outro conta (ex.: revamp_separado é um repositório e tem os módulos dentro).
+  sort "$TMP/found.txt" > "$TMP/found.sorted"
+  local d name kind found='[]' env='[]' gone='[]' p
+  while IFS= read -r d; do
+    name="$(repo_name_of "$d")"; [[ -n "$name" ]] || continue
+    kind="$(kind_of "$name" "$TMP/rules.tsv")" || continue
+    found="$(jq -c --arg n "$name" --arg p "$(norm_path "$d")" --arg k "$kind" '. + [{name:$n, path:$p, kind:$k}]' <<<"$found")"
+  done < "$TMP/found.sorted"
+  # Variáveis viram entradas "env" (o serviço do executor não herda as variáveis do terminal).
+  local envdirs=()
+  [[ -n "${EDV_SOLVACE_DIR:-}" && -d "${EDV_SOLVACE_DIR:-}/.git" ]] && envdirs+=("$EDV_SOLVACE_DIR")
+  if [[ -n "${REVAMP_DIR:-}" && -d "${REVAMP_DIR:-}" ]]; then
+    for d in "$REVAMP_DIR"/*/; do [[ -d "${d}.git" ]] && envdirs+=("${d%/}"); done
+  fi
+  for d in ${envdirs[@]+"${envdirs[@]}"}; do
+    name="$(repo_name_of "$d")"; [[ -n "$name" ]] || continue
+    kind="$(kind_of "$name" "$TMP/rules.tsv")" || continue
+    env="$(jq -c --arg n "$name" --arg p "$(norm_path "$d")" --arg k "$kind" '. + [{name:$n, path:$p, kind:$k}]' <<<"$env")"
+  done
+  while IFS= read -r p; do [[ -n "$p" && ! -d "$p" ]] && gone="$(jq -c --arg p "$p" '. + [$p]' <<<"$gone")"; done \
+    < <(repos_map | jq -r '.repos[] | select(.source == "scan") | .path')
+  # Busca completa: as entradas "scan" antigas saem (são refeitas pelo que foi achado agora). Interrompida pelo tempo:
+  # mantém as antigas cuja pasta ainda existe.
+  repos_map | jq --argjson found "$found" --argjson env "$env" --argjson gone "$gone" --argjson complete "$([[ $timed_out -eq 0 ]] && echo true || echo false)" \
+      --arg now "$(date +%Y-%m-%dT%H:%M:%S%z)" --argjson roots "$(repos_roots | jq -R . | jq -s -c .)" '
+    def lc: ascii_downcase;
+    def pick($n): map(select((.key | lc) == ($n | lc))) | first;
+    def drop($n): map(select((.key | lc) != ($n | lc)));
+    ((.repos // {}) | to_entries
+      | map(select(.value.source != "scan" or ($complete | not) and (.value.path as $p | $gone | index($p) | not)))) as $kept
+    | (reduce $env[] as $e ($kept;
+        pick($e.name) as $cur
+        | if ($cur.value.source // "") == "manual" then .
+          else drop($e.name) + [{key: $e.name, value: {path: $e.path, kind: $e.kind, source: "env", confirmed: true}}] end)) as $entries
+    | (reduce ($found | group_by(.name | lc))[] as $g ({entries: $entries, amb: {}};
+        ($g[0].name) as $n | (.entries | pick($n)) as $cur
+        | if (($cur.value.source // "") | IN("manual", "env")) then .
+          elif ($g | length) == 1 then
+            .entries = (.entries | drop($n)) + [{key: $n, value: {path: $g[0].path, kind: $g[0].kind, source: "scan",
+              confirmed: ((($cur.value.path // "") == $g[0].path) and ($cur.value.confirmed // false))}}]
+          else .amb[$n] = ($g | map(.path) | unique) | .entries = (.entries | drop($n)) end)) as $r
+    | {version: 1, updatedAt: $now, roots: $roots, repos: ($r.entries | sort_by(.key | lc) | from_entries), ambiguous: $r.amb}' \
+    > "$TMP/map.json" || return 1
+  jq --argjson m "$(repos_missing_json "$TMP/rules.tsv" < "$TMP/map.json")" '.missing = $m' "$TMP/map.json" | repos_write || return 1
+  [[ $timed_out -eq 1 ]] && warn "a busca passou de ${limit}s e parou — gravei o que achei (PRMAKE_REPOS_SCAN_TIMEOUT aumenta; PRMAKE_REPOS_ROOTS limita as pastas)"
+  [[ $quiet -eq 1 ]] || { repos_show; [[ -t 0 && -t 1 ]] && repos_interactive; }
+  return 0
+}
+
+# Uma linha: "N mapeados, A ambíguos, F sem clone (padrões)".
+repos_summary() {
+  [[ -s "$REPOS_FILE" ]] || { echo "sem mapa — rode: $REPOS_CMD scan"; return 1; }
+  jq -r '"\(.repos | length) mapeados"
+    + (if (.ambiguous // {} | length) > 0 then ", \(.ambiguous | length) ambíguo(s): \(.ambiguous | keys | join(", "))" else "" end)
+    + (if (.missing // [] | length) > 0 then ", sem clone: \(.missing | join(", "))" else "" end)' "$REPOS_FILE"
+}
+repos_pending() { [[ -s "$REPOS_FILE" ]] && jq -e '((.ambiguous // {}) | length) + ((.missing // []) | length) > 0' "$REPOS_FILE" >/dev/null 2>&1; }
+
+repos_show() {
+  [[ -s "$REPOS_FILE" ]] || { echo "Nenhum mapa ainda ($REPOS_FILE). Rode: $REPOS_CMD scan"; return 0; }
+  echo "Repositórios desta máquina ($REPOS_FILE):"
+  local name path kind src conf br
+  while IFS=$'\t' read -r name path kind src conf; do
+    br="$(git -C "$path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+    printf '  %-28s %-16s %-22s %s%s\n' "$name" "${kind:--}" "$br" "$path" \
+      "$([[ "$src" == scan && "$conf" != true ]] && echo '  (busca)' || { [[ "$src" == env ]] && echo '  (variável)'; } || true)"
+  done < <(jq -r '.repos | to_entries[] | [.key, .value.path, (.value.kind // ""), (.value.source // ""), ((.value.confirmed // false) | tostring)] | @tsv' "$REPOS_FILE")
+  jq -r '(.ambiguous // {}) | to_entries[] | "  AMBÍGUO \(.key): \(.value | join("  |  "))"' "$REPOS_FILE"
+  jq -r '(.missing // []) | if length > 0 then "  sem clone nesta máquina: \(join(", "))" else empty end' "$REPOS_FILE"
+  if repos_pending; then
+    echo "Resolver: $REPOS_CMD set <repo> <pasta>   (ou PRMAKE_REPOS_ROOTS=<pastas> $REPOS_CMD scan)"
+  fi
+}
+
+# Terminal interativo: escolhe entre os ambíguos, informa a pasta do que não foi achado e confirma o resto.
+repos_interactive() {
+  local name i choice cands=() p ans
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    cands=(); while IFS= read -r p; do cands+=("$p"); done < <(jq -r --arg n "$name" '.ambiguous[$n][]' "$REPOS_FILE")
+    echo "Qual pasta é o seu clone de trabalho de $name?"
+    for i in "${!cands[@]}"; do echo "  $((i + 1))) ${cands[$i]}"; done
+    read -rp "Número (Enter = decidir depois): " choice < /dev/tty
+    [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#cands[@]} )) && repos_set "$name" "${cands[$((choice - 1))]}"
+  done < <(jq -r '(.ambiguous // {}) | keys[]' "$REPOS_FILE")
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    read -rp "Pasta de um clone de $p (Enter = não tenho/pular): " ans < /dev/tty
+    [[ -n "$ans" ]] || continue
+    ans="${ans/#\~/$HOME}"
+    local n; n="$(repo_name_of "$ans")"
+    # shellcheck disable=SC2053
+    if [[ -z "$n" ]]; then warn "$ans não é um repositório git com remote origin — pulei"
+    elif [[ "$(lc "$n")" != $(lc "$p") ]]; then warn "o remote de $ans é '$n', não casa com '$p' — pulei"
+    else repos_set "$n" "$ans"; fi
+  done < <(jq -r '(.missing // [])[]' "$REPOS_FILE")
+  if jq -e '[.repos[] | select(.source == "scan" and (.confirmed | not))] | length > 0' "$REPOS_FILE" >/dev/null; then
+    read -rp "Confirmar os demais repositórios achados pela busca? [S/n] " ans < /dev/tty
+    [[ "$ans" =~ ^[nN] ]] || jq '.repos |= map_values(if .source == "scan" then .confirmed = true else . end)' "$REPOS_FILE" | repos_write
+  fi
+  repos_summary
+}
+
+repos_set() { # <repo> <pasta>
+  local want="${1:?uso: repos set <repo> <pasta>}" dir="${2:?uso: repos set <repo> <pasta>}" name kind=""
+  dir="${dir/#\~/$HOME}"
+  [[ -d "$dir/.git" || -f "$dir/.git" ]] || die "não é um repositório git: $dir"
+  dir="$(cd "$dir" && pwd -P)"
+  name="$(repo_name_of "$dir")"
+  [[ -n "$name" ]] || die "$dir não tem remote origin"
+  [[ "$(lc "$name")" == "$(lc "$want")" || "$(lc "$name")" == "revamp-$(lc "$want")" ]] || die "o remote de $dir é '$name', não '$want'"
+  repo_rules > "$TMP/rules.tsv" 2>/dev/null && kind="$(kind_of "$name" "$TMP/rules.tsv")"
+  [[ -n "$kind" ]] || kind="$(repos_map | jq -r --arg n "$(lc "$name")" '[.repos | to_entries[] | select((.key | ascii_downcase) == $n) | .value.kind][0] // ""')"
+  repos_map | jq --arg n "$name" --arg p "$(norm_path "$dir")" --arg k "$kind" '
+      .repos = ((.repos // {}) | with_entries(select((.key | ascii_downcase) != ($n | ascii_downcase))) + {($n): {path: $p, kind: $k, source: "manual", confirmed: true}})
+      | .ambiguous = ((.ambiguous // {}) | with_entries(select((.key | ascii_downcase) != ($n | ascii_downcase))))' > "$TMP/map.json"
+  if [[ -s "$TMP/rules.tsv" ]]; then
+    jq --argjson m "$(repos_missing_json "$TMP/rules.tsv" < "$TMP/map.json")" '.missing = $m' "$TMP/map.json" | repos_write
+  else repos_write < "$TMP/map.json"; fi
+  say "✔ $name → $(norm_path "$dir")"
+}
+
+repos_unset() { # <repo>
+  local want; want="$(lc "${1:?uso: repos unset <repo>}")"
+  repos_map | jq --arg n "$want" '.repos |= with_entries(select((.key | ascii_downcase) != $n)) | .ambiguous |= with_entries(select((.key | ascii_downcase) != $n))' | repos_write
+  say "removido do mapa: $1 (a próxima busca pode achá-lo de novo)"
+}
+
+# Pasta de um repositório (contrato 0048): stdout = pasta, exit 0 · 2 = não está no mapa · 3 = ambíguo (candidatos no
+# stderr). Ordem: variável → mapa (nome do remote, forma curta revamp-, nome da pasta, trecho único) → caminho padrão.
+repos_path() { # <repo>
+  local q; q="$(lc "${1:?uso: repos path <repo>}")"; q="${q%/}"
+  local d n
+  if [[ -n "${EDV_SOLVACE_DIR:-}" && -d "${EDV_SOLVACE_DIR:-}" ]]; then
+    n="$(lc "$(repo_name_of "$EDV_SOLVACE_DIR")")"; [[ -n "$n" ]] || n=edv-solvace
+    [[ "$q" == "$n" ]] && { norm_path "$EDV_SOLVACE_DIR"; echo; return 0; }
+  fi
+  if [[ -n "${REVAMP_DIR:-}" && -d "${REVAMP_DIR:-}" ]]; then
+    for d in "$REVAMP_DIR"/*/; do
+      [[ -d "${d}.git" ]] || continue
+      n="$(lc "$(repo_name_of "$d")")"
+      [[ "$q" == "$n" || "revamp-$q" == "$n" || "$q" == "$(lc "$(basename "$d")")" ]] && { norm_path "$d"; echo; return 0; }
+    done
+  fi
+  if [[ -s "$REPOS_FILE" ]]; then
+    local hits
+    # 1) nome exato  2) revamp-<q>  3) nome da pasta  4) trecho do nome (só se único)
+    hits="$(jq -r --arg q "$q" '
+      (.repos | to_entries) as $e
+      | ([$e[] | select((.key | ascii_downcase) == $q)]) as $a
+      | ([$e[] | select((.key | ascii_downcase) == ("revamp-" + $q))]) as $b
+      | ([$e[] | select((.value.path | split("/") | last | ascii_downcase) == $q)]) as $c
+      | ([$e[] | select(.key | ascii_downcase | contains($q))]) as $d
+      | (if ($a | length) > 0 then $a elif ($b | length) > 0 then $b elif ($c | length) > 0 then $c else $d end)
+      | .[] | .value.path' "$REPOS_FILE")"
+    if [[ -n "$hits" && "$(wc -l <<<"$hits" | tr -d ' ')" == 1 ]]; then printf '%s\n' "$hits"; return 0; fi
+    if [[ -n "$hits" ]]; then echo "ERRO: '$1' casa com mais de um repositório:" >&2; sed 's/^/  /' <<<"$hits" >&2; return 3; fi
+    local amb
+    amb="$(jq -r --arg q "$q" '(.ambiguous // {}) | to_entries[] | select((.key | ascii_downcase) == $q or (.key | ascii_downcase) == ("revamp-" + $q)) | .value[]' "$REPOS_FILE")"
+    if [[ -n "$amb" ]]; then
+      echo "ERRO: '$1' tem mais de um clone nesta máquina — escolha com: $REPOS_CMD set $1 <pasta>" >&2
+      sed 's/^/  /' <<<"$amb" >&2; return 3
+    fi
+  fi
+  # Caminhos padrão de antes da 0048.
+  for d in "$HOME/repos/solvace/$q" "$HOME/repos/solvace/revamp_separado"/*/; do
+    [[ -d "${d%/}/.git" ]] || continue
+    n="$(lc "$(repo_name_of "$d")")"
+    [[ "$q" == "$n" || "revamp-$q" == "$n" ]] && { norm_path "$d"; echo; return 0; }
+  done
+  echo "ERRO: repositório '$1' não está no mapa desta máquina — informe a pasta: $REPOS_CMD set $1 <pasta>" >&2
+  return 2
+}
+
+# Migração de quem já instalou (.repos-v1): monta o mapa em segundo plano no update do hook; avisa na sessão seguinte se
+# houver pendência (só quando o resumo muda, para não repetir a cada sessão).
+ensure_repos_map() {
+  [[ "${PRMAKE_SKIP_REPOS:-0}" == 1 ]] && return 0
+  if [[ ! -f "$TOOL_DIR/.repos-v1" ]]; then
+    (nohup bash "$TOOL_DIR/prmake-skills.sh" repos scan --quiet --mark >/dev/null 2>&1 &)
+    return 0
+  fi
+  repos_pending || return 0
+  local s; s="$(repos_summary)"
+  [[ "$(cat "$TOOL_DIR/.repos-notified" 2>/dev/null)" == "$s" ]] && return 0
+  printf '%s' "$s" > "$TOOL_DIR/.repos-notified"
+  echo "PRMake: repositórios desta máquina — $s. Confira com: $REPOS_CMD"
+}
+
 case "$cmd" in
   install)
     windows_prepare
@@ -500,6 +806,9 @@ case "$cmd" in
     ensure_mcp force
     sync_kb
     self_update
+    # 0048: onde estão os repositórios nesta máquina (com terminal, confirma/corrige).
+    say "Procurando os repositórios desta máquina…"
+    repos_scan $([[ $QUIET -eq 1 ]] && echo --quiet) && { : > "$TOOL_DIR/.repos-v1"; } || warn "não mapeei os repositórios agora — depois: $REPOS_CMD scan"
     say "Pronto. As skills estão em $SKILLS_DIR e se atualizam sozinhas a cada sessão do Claude Code."
     if [[ "${PRMAKE_AGENT:-0}" == 1 ]]; then
       bash "$TOOL_DIR/prmake-skills.sh" agent install
@@ -534,6 +843,7 @@ case "$cmd" in
     [[ -f "$TOOL_DIR/.mcp-registered" ]] || { ensure_mcp && touch "$TOOL_DIR/.mcp-registered"; }
     sync_kb
     self_update
+    ensure_repos_map
     if [[ ${#updated[@]} -gt 0 ]]; then
       # No hook SessionStart esta linha vai para o contexto do Claude: ele sabe que deve reler a SKILL.md.
       echo "Skills do PRMake atualizadas: ${updated[*]}. Releia a SKILL.md antes de usar."
@@ -551,6 +861,7 @@ case "$cmd" in
         "$([[ "$cur" == "$v" ]] && echo "ok" || echo "desatualizada")$([[ "$mod" != "0" ]] && echo " ($mod arquivo(s) alterado(s) à mão)")"
     done
     echo "ferramenta: $TOOL_VERSION (publicada: $(jq -r '.toolVersion' "$TMP/catalog.json"))"
+    echo "repositórios: $(repos_summary)"
     ;;
 
   doctor)
@@ -570,6 +881,7 @@ case "$cmd" in
     creds_report
  ok "MCP do PRMake" "$([[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1 && echo "ok ($MCP_URL)" || echo 'NÃO — rode: prmake-skills.sh mcp')"
     ok "executor" "$([[ -x "$(agent_bin)" ]] && "$(agent_bin)" status 2>/dev/null | head -1 || echo 'não instalado (opcional: prmake-skills.sh agent install)')"
+    ok "repositórios" "$(repos_summary) ($REPOS_FILE)"
     for d in "$SKILLS_DIR"/*/; do [[ -f "$d/$MANIFEST" ]] && ok "$(basename "$d")" "$(jq -r '.version' "$d/$MANIFEST")$([[ -x "$d/.venv/bin/python" || -x "$d/.venv/Scripts/python.exe" ]] && echo ' (venv ok)')"; done
     ;;
 
@@ -596,6 +908,9 @@ case "$cmd" in
     case "${ARGS[0]:-install}" in
       install)
         agent_download
+        # 0048: o executor acha os repositórios pelo mapa (pasta onde abre o Claude e --add-dir de cada um).
+        [[ -s "$REPOS_FILE" ]] || { say "Procurando os repositórios desta máquina…"; repos_scan && : > "$TOOL_DIR/.repos-v1"; } \
+          || warn "não mapeei os repositórios — depois: $REPOS_CMD scan"
         "$(agent_bin)" register || die "registro da máquina falhou"
         "$(agent_bin)" install || die "não consegui ligar o serviço do executor"
         "$(agent_bin)" doctor || warn "o doctor encontrou problemas — veja acima (também aparecem em \"Meus executores\" no PRMake)"
@@ -607,5 +922,21 @@ case "$cmd" in
     esac
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|mcp|agent [--quiet] [--force] [skill...]" ;;
+  repos)
+    command -v jq >/dev/null || die "precisa do jq"
+    case "${ARGS[0]:-show}" in
+      show) repos_show ;;
+      scan)
+        repos_scan $([[ $QUIET -eq 1 ]] && echo --quiet) || exit 1
+        if [[ " ${ARGS[*]} " == *" --mark "* ]]; then mkdir -p "$TOOL_DIR"; : > "$TOOL_DIR/.repos-v1"; fi
+        ;;
+      set) repos_set "${ARGS[1]:-}" "${ARGS[2]:-}" ;;
+      unset) repos_unset "${ARGS[1]:-}" ;;
+      path) repos_path "${ARGS[1]:-}" ;;
+      summary) repos_summary ;;
+      *) die "uso: prmake-skills.sh repos [show | scan [--quiet] | set <repo> <pasta> | unset <repo> | path <repo> | summary]" ;;
+    esac
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|mcp|agent|repos [--quiet] [--force] [skill...]" ;;
 esac
