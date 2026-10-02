@@ -31,9 +31,13 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Referencias so por secao, so na hora**: `bash $REF <arquivo> <secao>` (tabela no fim). **Nunca** `cat`/Read de
   um arquivo inteiro de `references/`, nunca varios de uma vez, nunca "para ja ter". Esta SKILL.md ja esta no
   contexto — nao a releia (so se o passo 0 disser que atualizou).
-- **Base Solvace antes do codigo**: projeto do `contexto` → `kb.sh show <projeto> <secao>` → so os arquivos que ela
-  aponta. Outro modulo: `kb.sh index <termos>` (filtrado). Nada de grep no repositorio inteiro; varredura ampla
-  inevitavel → subagente `Explore` (volta so o resumo).
+- **Base Solvace antes do codigo (obrigatorio, economiza turnos)**: a PRIMEIRA consulta sobre o codigo e a base:
+  `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
+  ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
+  `kb.sh index <termos>`; nao sabe o mundo: `kb.sh show edv-solvace modulos` (glossario de siglas → projeto). Base sem o
+  caso → busca **so na pasta do modulo** (nunca `grep -r` em `~/repos/solvace` inteiro) e, ao achar, registre a lacuna
+  (`arch.sh suggest <projeto> modulos lacuna.md --kind gap --card <card>`); varredura ampla inevitavel → subagente
+  `Explore` (volta so o resumo). Diga no `advance` de `investigar-codigo` qual secao da base usou.
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
@@ -90,15 +94,15 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
   plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
-  ("imagem 2", "#12", "print.png") → `bash $PLAN attachment <card> "<ref>"` e abra com Read; comentario →
-  `bash $PLAN notes <card> <n>`. Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
+  ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
+  abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
   `imagens/`/`anexos/` — o `sync` duplicaria). Nunca diga que nao consegue ver um anexo sem tentar.
 - **Regra de negocio: consulte o Knowledge Center antes de perguntar** ao usuario ou concluir o comportamento
   "esperado" (`bash $KC search ...` / `article <n>`); cite o **ART-n** na analise, no RCA e no handover. Sem artigo
   sobre a regra: diga isso (lacuna) — nao invente.
 - **Quem grava e o PRMake — sempre** (root cause, resumo, classificacao, estimativa, mover o card, PRs, Timeline):
   voce gera os textos; nada direto no Azure DevOps/GitHub. Falta endpoint → pare e avise.
-- **Configuracao vem do PRMake** (`bash $PLAN settings <card>`, `branches`, `devops <card> config`): nunca escreva de
+- **Configuracao vem do PRMake** (`prmake_config` · `prmake_devops_config` — acoes e classificacoes; sem MCP: `bash $PLAN settings <card>`, `devops <card> config|classifications`; `branches` sempre pelo script): nunca escreva de
   memoria estados, areas, branches, titulos. Faltou regra → pergunte e sugira configurar no PRMake.
 - **Ready for QA so com autorizacao**: com a correcao em QA, mova para Dev Test in QA (`devops <card> dev-test-in-qa`,
   sem perguntar); `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano ou
@@ -148,8 +152,8 @@ causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo 
 ## Retomar um card
 Sessao do Claude Code fica registrada no plano. Para voltar exatamente a esta conversa depois (outro card no
 meio, sessao fechada): `bash ~/.claude/skills/analisar-bug/scripts/prmake-card.sh <card>` (o botao "Retomar no
-Claude" do PRMake copia esse comando). Ao ser retomado, rode `resume-info` e `notes` (o que mudou na tela enquanto
-estava parado) e siga de onde parou. Para o PRMake rodar e retomar sozinho (botao "Analisar com Claude", respostas
+Claude" do PRMake copia esse comando). Ao ser retomado, veja o que mudou na tela enquanto estava parado — `prmake_plan` + `prmake_notes` + `prmake_answers` (MCP; sem MCP: `resume-info`, `notes`,
+`answers`) — e siga de onde parou. Para o PRMake rodar e retomar sozinho (botao "Analisar com Claude", respostas
 pela tela) sem terminal: executor do PRMake — `bash ~/.claude/skills/.prmake/prmake-skills.sh agent install`.
 
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)

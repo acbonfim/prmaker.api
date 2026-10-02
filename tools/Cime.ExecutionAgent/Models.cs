@@ -160,6 +160,8 @@ public sealed class SessionUsage
     public string? Model { get; set; }
     public int? McpCalls { get; set; }
     public int? ScriptCalls { get; set; }
+    public int? KbCalls { get; set; }
+    public int? SearchCalls { get; set; }
 }
 
 public sealed class PlanPending

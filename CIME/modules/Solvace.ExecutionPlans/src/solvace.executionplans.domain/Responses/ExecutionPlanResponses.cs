@@ -90,6 +90,9 @@ public class ExecutionUsageResponse
     public int ScriptCalls { get; set; }
     /// <summary>0044: modelo da sessão (custo estimado na tela pela tabela de preços).</summary>
     public string? Model { get; set; }
+    /// <summary>0045: consultas à Base Solvace e buscas no código (somadas das sessões que informaram).</summary>
+    public int KbCalls { get; set; }
+    public int SearchCalls { get; set; }
 }
 
 /// <summary>Consumo médio por plano, com MCP × sem MCP (0041).</summary>
@@ -121,6 +124,9 @@ public class ExecutionUsageReportRow
     public string? Model { get; set; }
     public double AvgMcpCalls { get; set; }
     public double AvgScriptCalls { get; set; }
+    /// <summary>0045: consultas à Base Solvace e buscas no código, em média por plano.</summary>
+    public double AvgKbCalls { get; set; }
+    public double AvgSearchCalls { get; set; }
 }
 
 /// <summary>Plano que o vigia local deve retomar (0033): pedido de "continuar" ou respostas chegadas pela tela.</summary>
@@ -392,6 +398,8 @@ public static class ExecutionPlanMappings
             UpdatedAt = plan.Sessions.Max(s => s.UsageUpdatedAt),
             McpCalls = plan.Sessions.Sum(s => s.NetMcpCalls()),
             ScriptCalls = plan.Sessions.Sum(s => s.NetScriptCalls()),
+            KbCalls = plan.Sessions.Sum(s => s.NetKbCalls()),
+            SearchCalls = plan.Sessions.Sum(s => s.NetSearchCalls()),
             Model = plan.UsageModel
         };
         target.ResumeRequestedAt = plan.ResumeRequestedAt;

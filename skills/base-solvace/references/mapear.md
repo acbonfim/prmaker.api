@@ -34,6 +34,15 @@ Passos avulsos: `mapear.py fatos <repo>` (JSON do repo), `mapear.py relacoes <pa
    `bash $ARCH section <chave> visao-geral visao-geral.md --title "Visão geral" --order 10 --note "mapeamento inicial"`
    Relações: `[{"target":"revamp-users","kind":"event|queue|database|http|package|external|frontend|other","detail":"...","evidence":"arquivo:linha"}]`.
 
+## Legado por módulo (`legado-*`, 0045)
+O monólito `edv-solvace` é mapeado por módulo de negócio: projeto `legado-<modulo>` (kind `legacy`, `repoDir`
+`edv-solvace`, `businessArea` igual ao do `revamp-<modulo>`, relação `kind: other` "versão nova (revamp) do mesmo
+módulo" — é ela que faz o `kb.sh index` mostrar o par) com `020-modulos` (Onde está · Telas → arquivos · Fluxos · Como
+achar rápido), `030-dados` e, se houver, `090-armadilhas`. O glossário sigla/pasta → projeto fica em
+`edv-solvace/020-modulos`. Gerar em massa: subagentes aqui no Claude Code (um por grupo de módulos), cada um gravando
+`<pasta>/<chave>/projeto.json` + `NNN-secao.md`; revisar e `bash $ARCH publicar-pasta <pasta>`. Nomes de tela: o
+catálogo `operacao-plataforma/090-catalogo-modulos` e a `085-operacao` do revamp equivalente (telas da versão legada).
+
 ## Atualizar (incremental)
 1. `bash $ARCH stale <chave> <pasta-do-repo>` — commits e pastas alteradas desde o commit mapeado.
 2. Revamp: `git pull` no kb-mirror e rode o passo 2–4 do parque inteiro (idempotente).

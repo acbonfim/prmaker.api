@@ -856,9 +856,11 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     }
 
     private static string ResumePrompt(ExecutionRequest r) =>
-        $"Retomando o card {r.CardNumber} pelo PRMake ({SourceText(r)}). Antes de continuar: rode prmake-plan.sh resume-info {r.CardNumber} e " +
-        $"prmake-plan.sh notes {r.CardNumber} (o que mudou na tela enquanto voce estava parado: respostas, comentarios, pausa, etapas) e siga " +
-        "de onde parou, conforme a skill analisar-bug." + ExecutorSuffix(r);
+        // 0045: MCP primeiro (menos tokens que o script); o script fica de reserva quando o MCP nao esta na sessao.
+        $"Retomando o card {r.CardNumber} pelo PRMake ({SourceText(r)}). Antes de continuar, veja o que mudou na tela enquanto voce estava " +
+        $"parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card {r.CardNumber}) " +
+        $"— sem o MCP na sessao: prmake-plan.sh resume-info/notes/answers {r.CardNumber} — e siga de onde parou, conforme a skill analisar-bug." +
+        ExecutorSuffix(r);
 
     private static string ExecutorSuffix(ExecutionRequest r)
     {

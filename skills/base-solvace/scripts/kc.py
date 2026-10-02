@@ -340,7 +340,8 @@ def cmd_search(args):
     # palavras genericas (titulo de card em ingles/portugues) so trazem ruido; nada de artigo por "be"/"the"/"user"
     stop = set("""the and for with from that this when into have has not cannot can could should be is are was added
     add account error erro bug card user users usuario usuarios para com sem uma que nao dos das nos nas pelo pela
-    solvace production producao""".split())
+    solvace production producao filter filtro option opcao select selecionar selecting advanced avancado screen tela
+    modal open abrir click clicar page pagina when quando after depois error erro 500 shows aparece""".split())
     words = [w for w in dict.fromkeys(re.findall(r"[a-z0-9_]{3,}", normalize(term))) if w not in stop]
     arts = mirror_articles()
     if arts is None:
@@ -350,11 +351,18 @@ def cmd_search(args):
         if not res:
             print("nenhum artigo encontrado")
         return 0
+    # 0045: palavra inteira (nada de "age" casar "manage") e cobertura minima da pergunta — artigo que casa uma palavra
+    # solta e ruido no contexto da analise (antes vinham artigos sem relacao com o bug).
+    def has(w, t): return re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", t) is not None
+    need = max(1, -(-len(words) * 2 // 5)) if len(words) > 2 else len(words)
     scored = []
     for a in arts:
         text = normalize(a["text"])
         title = normalize(a["title"])
-        score = sum((5 if w in title else 0) + (1 if w in text else 0) for w in words) if words else 1
+        hits = [w for w in words if has(w, title) or has(w, text)] if words else ["*"]
+        if len(hits) < need:
+            continue
+        score = sum((5 if has(w, title) else 0) + (1 if has(w, text) else 0) for w in words) if words else 1
         if score:
             scored.append((score, a))
     scored.sort(key=lambda x: (-x[0], x[1]["articleNumber"]))

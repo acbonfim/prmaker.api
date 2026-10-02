@@ -20,6 +20,11 @@ ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | p
    `bash $KB show <projeto>` (ficha: resumo,
    **depende de / usado por** com evidencia arquivo:linha) e `bash $KB show <projeto> <secao>`. So depois va ao
    codigo, direto nas pastas/arquivos apontados (nada de grep no repositorio inteiro).
+   **Dois mundos (0045)**: cada modulo tem o legado (`legado-<modulo>`: `edv-solvace` — `solvace-asp/systems/<sigla>`
+   e `solvace-core/<modulo>`, telas → `.asp`/controller → service/SP → tabelas) e o revamp (`revamp-<modulo>`). O
+   `index` mostra o par do outro mundo (↳). Nao sabe o mundo ou a sigla: `bash $KB show edv-solvace modulos`
+   (glossario sigla/pasta → projeto). Base sem o caso → busque so na pasta do modulo e proponha a lacuna
+   (`arch.sh suggest <projeto> modulos lacuna.md --kind gap --card <card>`).
 2. **Impacto entre modulos**: mexeu em tabela `TB_<SIGLA>_*`, fila, topico SNS ou evento? Veja o "Usado por" da
    ficha do dono (e `bash $KB show ecossistema integracoes` para os hubs: Users, Notification, Post, CommentManager,
    MasterData) e cite os modulos afetados na analise.

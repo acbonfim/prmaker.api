@@ -84,7 +84,7 @@ public class ExecutionPlan
 
     /// <summary>Custo acumulado da sessão (a skill manda o total lido do transcript; o último valor vence).</summary>
     public void RecordUsage(string sessionId, string? host, int turns, long input, long output, long cacheRead, long cacheWrite, string? model, DateTimeOffset now,
-        int? mcpCalls = null, int? scriptCalls = null)
+        int? mcpCalls = null, int? scriptCalls = null, int? kbCalls = null, int? searchCalls = null)
     {
         if (turns < 0 || input < 0 || output < 0 || cacheRead < 0 || cacheWrite < 0)
             throw new DomainException("Valores de uso inválidos.");
@@ -97,6 +97,8 @@ public class ExecutionPlan
         session.Model = Clean(model, 100) ?? session.Model;
         if (mcpCalls is >= 0) session.McpCalls = mcpCalls;
         if (scriptCalls is >= 0) session.ScriptCalls = scriptCalls;
+        if (kbCalls is >= 0) session.KbCalls = kbCalls;
+        if (searchCalls is >= 0) session.SearchCalls = searchCalls;
         session.UsageUpdatedAt = now;
     }
 
@@ -117,6 +119,8 @@ public class ExecutionPlan
         session.BaseCacheWriteTokens = fromParent.CacheWriteTokens;
         session.BaseMcpCalls = fromParent.McpCalls ?? 0;
         session.BaseScriptCalls = fromParent.ScriptCalls ?? 0;
+        session.BaseKbCalls = fromParent.KbCalls ?? 0;
+        session.BaseSearchCalls = fromParent.SearchCalls ?? 0;
     }
 
     /// <summary>Modelo da sessão mais recente que informou consumo (para estimar o custo na tela).</summary>
