@@ -20,4 +20,8 @@ public static class SkillsConfigurationKeys
     public const string ExecutorAnalysisModel = "ExecutorAnalysisModel";
     /// <summary>0047: modelo do Claude Code na correção pelo executor.</summary>
     public const string ExecutorCorrectionModel = "ExecutorCorrectionModel";
+    /// <summary>0049: a correção abre uma sessão nova do Claude (só o resumo da análise) em vez de retomar a da análise.</summary>
+    public const string ExecutorCorrectionNewSession = "ExecutorCorrectionNewSession";
+    /// <summary>0049: segundos de espera depois de um comentário antes de retomar o card (0 = na hora).</summary>
+    public const string ExecutorNoteDelaySeconds = "ExecutorNoteDelaySeconds";
 }

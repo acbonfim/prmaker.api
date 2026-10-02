@@ -116,6 +116,14 @@ public class ExecutionRequest
     public string? Model { get; private set; }
     public int? Turns { get; private set; }
 
+    /// <summary>0049: fase do card quando o executor pegou o pedido (analysis/correction).</summary>
+    public string? Phase { get; private set; }
+    /// <summary>
+    /// 0049: a correção começou numa sessão nova do Claude em vez de retomar a da análise — cada resposta relê o
+    /// contexto inteiro, e o da análise não serve à correção (que lê só o resumo deixado no plano).
+    /// </summary>
+    public bool NewSession { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? ClaimedAt { get; private set; }
@@ -167,11 +175,12 @@ public class ExecutionRequest
         && (TargetWorkerId is null || TargetWorkerId == worker.Id)
         && (NotBefore is null || NotBefore <= now);
 
-    public void Claim(ExecutionWorker worker, DateTimeOffset now)
+    public void Claim(ExecutionWorker worker, DateTimeOffset now, string? phase = null)
     {
         if (!CanBeClaimedBy(worker, now))
             throw new DomainException("Este pedido não está disponível para este executor.");
         Status = ExecutionRequestStatus.Claimed;
+        Phase = Clean(phase, MaxPhaseLength) ?? Phase;
         WorkerId = worker.Id;
         WorkerName = worker.Name;
         ClaimedAt = now;
@@ -180,6 +189,41 @@ public class ExecutionRequest
         WaitReason = null;
         LastHeartbeatAt = now;
         UpdatedAt = now;
+    }
+
+    public const int MaxPhaseLength = 20;
+
+    /// <summary>0049: não retoma a sessão registrada — o executor abre uma nova (e informa o id dela no início).</summary>
+    public void StartInNewSession(DateTimeOffset now)
+    {
+        if (Status != ExecutionRequestStatus.Claimed) return;
+        SessionId = null;
+        SessionCwd = null;
+        NewSession = true;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// 0049: espera antes de começar (comentários em sequência viram uma retomada só). Só pedido na fila; nunca
+    /// antecipa uma espera maior (nova tentativa, limite da conta).
+    /// </summary>
+    public bool Delay(DateTimeOffset until, string reason, DateTimeOffset now)
+    {
+        if (Status != ExecutionRequestStatus.Queued || (NotBefore is { } nb && nb >= until)) return false;
+        NotBefore = until;
+        WaitReason = Clean(reason, 500);
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>0049: "Continuar" pela tela não espera os comentários seguintes — começa assim que uma máquina pegar.</summary>
+    public bool RunNow(DateTimeOffset now)
+    {
+        if (Status != ExecutionRequestStatus.Queued || Attempts > 0 || NotBefore is not { } nb || nb <= now) return false;
+        NotBefore = null;
+        WaitReason = null;
+        UpdatedAt = now;
+        return true;
     }
 
     /// <summary>O executor subiu o processo do Claude.</summary>

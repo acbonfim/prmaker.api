@@ -42,11 +42,14 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
+- **Analise → correcao sem carregar a analise (0049)**: a analise termina deixando o **resumo para a correcao** no
+  checkpoint de `propor-solucoes` (`$REF correcao 6`). No executor a correcao comeca numa **sessao nova** so com ele
+  (`contexto-correcao`) — nao rele a conversa da analise a cada resposta.
 
 ## Comandos do plano no dia a dia — MCP primeiro
 Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
 Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
-`ToolSearch("select:mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan")`
+`ToolSearch("select:mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
 (as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
 
 | O que | MCP | Script (reserva) |
@@ -74,7 +77,8 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   O PRMake escreve sozinho os marcos na Timeline — nao duplique.
 - **Modo executor (`PRMAKE_EXECUTOR=1`: sessao aberta pelo PRMake, sem terminal)**: ninguem le esta sessao. Nada de
   `watch`/`wait`/`wait-answers` (saem com exit 12) nem pergunta no chat: o que depende de alguem vai para o plano
-  (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir.
+  (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir
+  (a correcao, numa sessao nova: o prompt pede `contexto-correcao`).
   Correcao sempre no worktree do card (o `branches` ja imprime os comandos com `$WT`). Detalhes: `$REF plano executor`.
 - **MCP do PRMake primeiro** (tabela acima): plano, etapas, bloqueios, perguntas e respostas, comentarios, anexos,
   links, correcao, configuracao, card e DevOps pelas ferramentas `mcp__prmake__*`; o script fica para arquivos locais,
@@ -95,12 +99,12 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
   plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
-- **Arquivos do card sempre no plano (0046)**: a pasta do card e a que o `contexto` imprime (`$CARD_DIR`, padrao
-  `~/.prmake/cards/<card>` — **nunca** grave em `~/.claude/...`: o Claude Code protege essa pasta e nega a gravacao).
-  Todo script (`.sql` com rollback), analise e **texto do chamado** que o usuario precisa ver vai para os arquivos do
-  plano: grave em `$CARD_DIR` e rode `sync`, ou direto com `prmake_file(card, "01_nome.sql", conteudo, "script", key)`.
-  Se a gravacao local falhar, use `prmake_file` e siga — **nunca** trave a etapa nem peca ao usuario para liberar
-  permissao por causa disso.
+- **Arquivos do card sempre no plano (0046/0049)**: todo script (`.sql` com rollback), analise e **texto do chamado**
+  que o usuario precisa ver vai para os arquivos do plano. **No executor: direto com
+  `prmake_file(card, "01_nome.sql", conteudo, "script", key)`** — uma chamada, sem gravar local antes nem `sync`. No
+  terminal: grave em `$CARD_DIR` (a pasta que o `contexto` imprime, padrao `~/.prmake/cards/<card>` — **nunca**
+  `~/.claude/...`, que o Claude Code protege) e rode `sync`, ou use `prmake_file`. Gravacao local negada → `prmake_file`
+  na hora e siga — **nunca** trave a etapa, `block` nem peca permissao ao usuario por causa de arquivo.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
@@ -132,6 +136,8 @@ se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 refazer), mostra os campos do card e os repro steps (inteiros em `$CARD_DIR/dados/`), lista comentarios/anexos novos
 (abra cada anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
 Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas** (`steps`) para este caso concreto.
+**Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
+`contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
 
 **3. Investigar** — comece pela secao da Base Solvace do modulo que o `contexto` mostrou (`bash $KB show <projeto>
 <secao>`; nenhum casou → `bash $KB index <modulo/tela>`), depois o codigo apontado; regra de negocio → KC. Reconstrua

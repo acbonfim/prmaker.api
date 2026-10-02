@@ -56,6 +56,22 @@ public interface IExecutionResumeTrigger
 
     /// <summary>Dos usuários informados, quais têm executor (o vigia antigo da 0033 ignora os planos deles).</summary>
     Task<HashSet<Guid>> OwnersWithWorkersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+
+    /// <summary>0049: sessão do Claude que o executor está rodando agora no card (null = nenhuma).</summary>
+    Task<ExecutionSession?> RunningSessionAsync(string cardNumber, CancellationToken cancellationToken);
+}
+
+/// <summary>0049: configurações da fila no PRMake ("Skills Configurations") — implementado no host.</summary>
+public interface IExecutionQueueSettings
+{
+    Task<ExecutionQueueOptions> GetAsync(CancellationToken cancellationToken);
+}
+
+/// <param name="CorrectionInNewSession">A correção abre uma sessão nova do Claude em vez de retomar a da análise.</param>
+/// <param name="NoteDelay">Espera depois de um comentário antes de retomar (comentários em sequência = uma retomada).</param>
+public record ExecutionQueueOptions(bool CorrectionInNewSession, TimeSpan NoteDelay)
+{
+    public static readonly ExecutionQueueOptions Default = new(true, TimeSpan.FromSeconds(120));
 }
 
 /// <summary>Itens do Azure DevOps que casam com a regra automática do usuário (0039) — implementado no host (WIQL).</summary>

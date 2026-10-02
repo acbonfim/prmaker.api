@@ -37,15 +37,33 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     private readonly IRealTimeNotifier _realTime;
     private readonly IExecutionWorkItemSource? _workItems;
     private readonly IExecutionAgentInfo? _agentInfo;
+    private readonly IExecutionQueueSettings? _settings;
+    private ExecutionQueueOptions? _options;
 
     public ExecutionQueueApplication(IExecutionQueueRepository queue, IExecutionPlanRepository plans, IRealTimeNotifier realTime,
-        IExecutionWorkItemSource? workItems = null, IExecutionAgentInfo? agentInfo = null)
+        IExecutionWorkItemSource? workItems = null, IExecutionAgentInfo? agentInfo = null, IExecutionQueueSettings? settings = null)
     {
         _queue = queue;
         _plans = plans;
         _realTime = realTime;
         _workItems = workItems;
         _agentInfo = agentInfo;
+        _settings = settings;
+    }
+
+    /// <summary>0049: configurações da fila (uma leitura por request; falha → padrão).</summary>
+    private async Task<ExecutionQueueOptions> OptionsAsync(CancellationToken cancellationToken)
+    {
+        if (_options is not null) return _options;
+        try
+        {
+            _options = _settings is null ? ExecutionQueueOptions.Default : await _settings.GetAsync(cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _options = ExecutionQueueOptions.Default;
+        }
+        return _options;
     }
 
     // ── Tela ─────────────────────────────────────────────────────────────────────────────────────
@@ -60,10 +78,19 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
         if (await _queue.GetActiveRequestForCardAsync(card, cancellationToken) is { } existing)
         {
+            var changed = false;
             if (request.Force && existing.Status == ExecutionRequestStatus.Queued && existing.OwnerUserId == owner && !existing.Force)
             {
                 existing.AllowOverBudget(now);
+                changed = true;
+            }
+            // 0049: "Continuar com Claude" com o pedido esperando mais comentários → começa já.
+            if (existing.OwnerUserId == owner && existing.Source == ExecutionRequestSource.Note && existing.RunNow(now))
+                changed = true;
+            if (changed)
+            {
                 await _queue.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(existing, cancellationToken);
                 Pulse(owner);
             }
             return await RespondAsync(existing, cancellationToken);
@@ -419,12 +446,12 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         var workers = (await _queue.GetWorkersByOwnerAsync(owner, cancellationToken)).Where(w => !w.IsRevoked).ToList();
         if (workers.Count == 0)
             return null;
-        if (await _queue.GetActiveRequestForCardAsync(plan.CardNumber, cancellationToken) is not null)
-            return null;
+        var now = DateTimeOffset.UtcNow;
+        if (await _queue.GetActiveRequestForCardAsync(plan.CardNumber, cancellationToken) is { } active)
+            return await GatherIntoAsync(active, source, explicitRequest, now, cancellationToken);
         if (!explicitRequest && !HasWorkForClaude(plan, source))
             return null;
 
-        var now = DateTimeOffset.UtcNow;
         var lastFinished = await _queue.GetLastFinishedAtAsync(plan.CardNumber, cancellationToken);
         var alive = plan.LastActivityAt is { } last && now - last < AliveWindow && (lastFinished is null || lastFinished < last);
         if (alive)
@@ -436,6 +463,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             : null;
         var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, plan.CreatedBy,
             actor.UserId, actor.Name, plan.Id, session, target, null, false, now);
+        // 0049: comentário espera um pouco — quem comenta costuma mandar vários em sequência; cada retomada relê o contexto.
+        if (source == ExecutionRequestSource.Note && !explicitRequest && (await OptionsAsync(cancellationToken)).NoteDelay is { } delay && delay > TimeSpan.Zero)
+            request.Delay(now + delay, GatheringText(now + delay), now);
         var saved = await AddRequestAsync(request, cancellationToken);
         if (saved is not null && saved.Id == request.Id)
             await UpdateWaitReasonsAsync(owner, now, cancellationToken);
@@ -444,6 +474,55 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     public Task<HashSet<Guid>> OwnersWithWorkersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
         userIds.Count == 0 ? Task.FromResult(new HashSet<Guid>()) : _queue.GetOwnersWithWorkersAsync(userIds, cancellationToken);
+
+    /// <summary>
+    /// 0049: já há pedido no card. Na fila esperando comentários: um comentário novo empurra a espera (até 3× o
+    /// intervalo desde o pedido) e o "Continuar" pela tela começa já. Retorna o pedido só no pedido explícito com ele
+    /// ainda na fila (rodando → null: "o Claude já está trabalhando").
+    /// </summary>
+    private async Task<ExecutionRequest?> GatherIntoAsync(ExecutionRequest active, string source, bool explicitRequest, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (active.Status != ExecutionRequestStatus.Queued)
+            return null;
+        var changed = false;
+        if (explicitRequest || (source != ExecutionRequestSource.Note && active.Source == ExecutionRequestSource.Note))
+            // "Continuar" ou outra ação do usuário (respondeu, "Já resolvi"...) não espera mais comentários.
+            changed = active.RunNow(now);
+        else if (source == ExecutionRequestSource.Note && active.Attempts == 0 && active.NotBefore is { } nb && nb > now)
+        {
+            var delay = (await OptionsAsync(cancellationToken)).NoteDelay;
+            var until = new[] { now + delay, active.CreatedAt + 3 * delay }.Min();
+            changed = active.Delay(until, GatheringText(until), now);
+        }
+        if (changed)
+        {
+            try
+            {
+                await _queue.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(active, cancellationToken);
+                Pulse(active.OwnerUserId);
+            }
+            catch (ExecutionPlanConcurrencyException)
+            {
+                // O executor pegou o pedido ao mesmo tempo — segue com o que ele já tem.
+                _queue.ClearTracking();
+            }
+        }
+        return explicitRequest ? active : null;
+    }
+
+    private static string GatheringText(DateTimeOffset until) =>
+        $"Esperando mais comentários para retomar uma vez só — o Claude começa às {LocalTime(until)} (\"Continuar\" começa já)";
+
+    public async Task<ExecutionSession?> RunningSessionAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        if (await _queue.GetActiveRequestForCardAsync(cardNumber.Trim(), cancellationToken) is not { Status: ExecutionRequestStatus.Running } r
+            || string.IsNullOrEmpty(r.SessionId))
+            return null;
+        var host = r.WorkerId is { } workerId ? (await _queue.GetWorkerAsync(workerId, cancellationToken))?.Host : null;
+        return new ExecutionSession { SessionId = r.SessionId, Host = host };
+    }
 
     /// <summary>Tem algo para o Claude fazer agora: etapa dele em andamento ou pronta (ou um comentário novo do usuário).</summary>
     private static bool HasWorkForClaude(ExecutionPlan plan, string source)
@@ -477,7 +556,10 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         {
             if (!request.CanBeClaimedBy(worker, now) || (overBudget && !request.Force))
                 continue;
-            request.Claim(worker, now);
+            var (phase, newSession) = await PhaseOfAsync(request, cancellationToken);
+            request.Claim(worker, now, phase);
+            if (newSession)
+                request.StartInNewSession(now);
             try
             {
                 await _queue.SaveChangesAsync(cancellationToken);
@@ -492,9 +574,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             {
                 Request = request.ToResponse(),
                 ResumePrompt = ResumePrompt(request),
-                FreshPrompt = FreshPrompt(request),
+                FreshPrompt = FreshPrompt(request, phase),
                 RemainingBudgetUsd = budget is { } limit && !request.Force ? Math.Max(0, limit - spent) : null,
-                Phase = await PhaseOfAsync(request.CardNumber, cancellationToken)
+                Phase = phase
             };
         }
         return null;
@@ -583,7 +665,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         if (throttled.Count == candidates.Count)
             return ("throttled", $"Limite de uso da conta do Claude atingido — continua às {LocalTime(throttled.Min(w => w.ThrottledUntil!.Value))}");
         if (r.NotBefore is { } nb && nb > now)
-            return ("retry", r.WaitReason ?? "Aguardando a próxima tentativa");
+            return r.Attempts == 0 && r.Source == ExecutionRequestSource.Note
+                ? ("gathering", r.WaitReason ?? GatheringText(nb))
+                : ("retry", r.WaitReason ?? "Aguardando a próxima tentativa");
         var online = candidates.Where(w => w.IsOnline(now)).ToList();
         if (online.Count == 0)
             return ("offline", candidates.Count == 1
@@ -852,30 +936,57 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     /// 0047: fase do card para escolher o modelo — correção quando o plano aberto é o de correção ou quando as perguntas
     /// de <c>propor-solucoes</c> da análise já foram respondidas (a próxima execução já é a correção); senão, análise.
     /// </summary>
-    private async Task<string> PhaseOfAsync(string card, CancellationToken cancellationToken)
+    private async Task<(string Phase, bool NewSession)> PhaseOfAsync(ExecutionRequest request, CancellationToken cancellationToken)
     {
-        if (await _plans.GetCurrentPlanIdAsync(card, cancellationToken) is not { } planId
+        if (await _plans.GetCurrentPlanIdAsync(request.CardNumber, cancellationToken) is not { } planId
             || await _plans.GetPlanWithStepsAsync(planId, cancellationToken) is not { } plan)
-            return ExecutionPhase.Analysis;
-        if (plan.Phase == ExecutionPhase.Correction)
-            return ExecutionPhase.Correction;
-        if (plan.Steps.Any(s => s.Key == ProposeSolutionsStep && s.Status == ExecutionStatus.Completed))
-            return ExecutionPhase.Correction;
-        var proposal = (await _plans.GetQuestionsAsync(plan.Id, cancellationToken))
-            .Where(q => q.StepKey == ProposeSolutionsStep && q.Status != ExecutionQuestionStatus.Cancelled)
-            .ToList();
-        return proposal.Count > 0 && proposal.All(q => q.Status == ExecutionQuestionStatus.Answered)
-            ? ExecutionPhase.Correction
-            : ExecutionPhase.Analysis;
+            return (ExecutionPhase.Analysis, false);
+        var correction = plan.Phase == ExecutionPhase.Correction
+                         || plan.Steps.Any(s => s.Key == ProposeSolutionsStep && s.Status == ExecutionStatus.Completed);
+        if (!correction)
+        {
+            var proposal = (await _plans.GetQuestionsAsync(plan.Id, cancellationToken))
+                .Where(q => q.StepKey == ProposeSolutionsStep && q.Status != ExecutionQuestionStatus.Cancelled)
+                .ToList();
+            correction = proposal.Count > 0 && proposal.All(q => q.Status == ExecutionQuestionStatus.Answered);
+        }
+        if (!correction)
+            return (ExecutionPhase.Analysis, false);
+        var analysisPlanId = plan.Phase == ExecutionPhase.Correction ? plan.ParentPlanId : plan.Id;
+        return (ExecutionPhase.Correction, await IsAnalysisSessionAsync(request.SessionId, analysisPlanId, cancellationToken)
+                                           && (await OptionsAsync(cancellationToken)).CorrectionInNewSession);
+    }
+
+    /// <summary>
+    /// 0049: a sessão a retomar é a da análise? Quem a começou diz (pedido da fase de análise); sessão aberta fora do
+    /// executor ou antes da 0049 → está entre as sessões do plano de análise.
+    /// </summary>
+    private async Task<bool> IsAnalysisSessionAsync(string? sessionId, Guid? analysisPlanId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return false;
+        if (await _queue.GetSessionStarterAsync(sessionId, cancellationToken) is { Phase: { } startedIn })
+            return startedIn == ExecutionPhase.Analysis;
+        return analysisPlanId is { } id
+               && (await _plans.GetSessionsAsync([id], cancellationToken)).TryGetValue(id, out var sessions)
+               && sessions.Any(s => s.SessionId == sessionId);
     }
 
     /// <summary>Etapa da skill em que as soluções são propostas ao usuário (fim da análise).</summary>
     private const string ProposeSolutionsStep = "propor-solucoes";
 
-    private static string FreshPrompt(ExecutionRequest r)
+    private static string FreshPrompt(ExecutionRequest r, string phase)
     {
         var prompt = $"/analisar-bug {r.CardNumber}";
-        if (r.Kind == ExecutionRequestKind.Resume)
+        if (phase == ExecutionPhase.Correction)
+            // 0049: a correção não carrega a conversa da análise — só o resumo que a análise deixou no plano.
+            prompt += "\n\nFASE DE CORRECAO numa sessao nova: a analise deste card rodou em outra sessao e o contexto dela nao esta " +
+                      "aqui de proposito (cada resposta relia a analise inteira). Em vez do passo 2, comece com " +
+                      $"`bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh contexto-correcao {r.CardNumber}`: ele retoma o plano e mostra " +
+                      "o resumo para a correcao, as respostas, os comentarios e os arquivos. Nao refaca a investigacao — confie no resumo e " +
+                      "na analise publicada; leia codigo/banco so no que a correcao precisar. Siga do passo 7 (sem plano de correcao) ou da " +
+                      "primeira etapa pronta do plano de correcao.";
+        else if (r.Kind == ExecutionRequestKind.Resume)
             prompt += "\n\nEste card ja tem plano no PRMake: retome de onde parou (o contexto do plano mostra o que ja foi feito).";
         return prompt + ExecutorSuffix(r);
     }

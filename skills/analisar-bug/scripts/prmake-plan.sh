@@ -55,6 +55,8 @@
 #   resume-info <card>                                   etapas, checkpoints e arquivos do plano atual
 #   pull        <card>                                   baixa os arquivos do plano para a pasta do card
 #   flush       <card>                                   reenvia a fila local (envios que falharam)
+#   contexto-correcao <card>                             0049: correcao numa sessao nova (executor) — resumo da analise,
+#                                                        respostas, comentarios e arquivos (sem a conversa da analise)
 #   contexto    <card> [titulo]                          CONTEXTO INICIAL NUM COMANDO (0033): card + repro steps, plano
 #                                                        criado/retomado, comentarios/anexos novos, sync do KC e da Base
 #                                                        Solvace e os projetos/artigos relacionados ao card (campos do card
@@ -427,6 +429,20 @@ print_questions() { # perguntas do plano em $TMP/resp, numeradas
       + "\n   id: \(.value.id)"' "$TMP/resp"
 }
 
+# Baixa para a pasta do card os arquivos da skill de um plano (anexos de comentario ficam em anexos-prmake/ — comando notes).
+pull_plan() { # <planId>
+  api GET "/$1"
+  [[ "$CODE" == "200" ]] || die "HTTP $CODE: $(resp_error)"
+  jq -r '.artifacts[] | select(.noteId == null) | "\(.id)\t\(.kind)\t\(.name)\t\(.sha256)"' "$TMP/resp" > "$TMP/list"
+  while IFS=$'\t' read -r aid kind name sha; do
+    case "$kind" in script) d=scripts;; analysis) d=analises;; data) d=dados;; image) d=imagens;; *) d=anexos;; esac
+    mkdir -p "$CARD_DIR/$d"; target="$CARD_DIR/$d/$name"
+    [[ -f "$target" && "$(sha256 "$target")" == "$sha" ]] && continue
+    curl -s --max-time 120 -H "x-api-key: $TOKEN" -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$aid/content?download=true" \
+      && echo "   baixado: $d/$name"
+  done < "$TMP/list"
+}
+
 executor_mode() { [[ "${PRMAKE_EXECUTOR:-0}" == 1 ]]; }
 executor_exit() { # <o que esperaria>
   echo "MODO EXECUTOR: nao espere ($1). Registre no plano o que falta (etapa waiting/pergunta) e ENCERRE A VEZ —"
@@ -673,6 +689,42 @@ case "$CMD" in
     fi
     ;;
 
+  contexto-correcao)
+    # 0049: correcao numa sessao nova (executor) — so o que a correcao precisa, sem a conversa da analise: o resumo que
+    # a analise deixou no checkpoint de propor-solucoes, as respostas, os comentarios e os arquivos dos planos.
+    SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
+    CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
+    echo "=== CARD $CARD (pasta: $CARD_DIR) — FASE DE CORRECAO"
+    MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
+    grep -E "^(workItemType|fluxo|state|area|title)=" <<<"$MANIFEST_OUT"
+    echo "(campos e repro steps inteiros em $CARD_DIR/dados/ — abra so se a correcao precisar)"
+    echo; echo "=== PLANO"
+    bash "$SELF" start "$CARD" 2>&1
+    ANALYSIS="$(state_get analysisPlanId)"
+    if [[ -n "$ANALYSIS" ]]; then
+      pull_plan "$ANALYSIS" >/dev/null 2>&1 || true
+      api GET "/$ANALYSIS"
+      if [[ "$CODE" == "200" ]]; then
+        echo; echo "=== RESUMO PARA A CORRECAO (deixado pela analise — base desta sessao; nao refaca a investigacao)"
+        jq -r '[.steps[] | select(.key == "propor-solucoes")][0].checkpoint // empty' "$TMP/resp" > "$TMP/handoff"
+        if [[ -s "$TMP/handoff" ]]; then cat "$TMP/handoff"
+        else
+          echo "(a analise nao deixou o resumo — use as conclusoes abaixo e, so se faltar algo, os arquivos:"
+          echo " $CARD_DIR/analises/analise-inicial.md e analises/solucoes.md — leia so a secao que precisar)"
+          jq -r '.steps[] | select(.status == "completed" and .checkpoint) | "  \(.key): \(.checkpoint | gsub("\n"; " | ") | .[0:600])"' "$TMP/resp"
+        fi
+        echo; echo "=== PERGUNTAS DA ANALISE E RESPOSTAS"
+        print_questions
+      fi
+    fi
+    CURRENT="$(plan_id)"
+    [[ -n "$CURRENT" && "$CURRENT" != "$ANALYSIS" ]] && { pull_plan "$CURRENT" >/dev/null 2>&1 || true; }
+    echo; echo "=== ARQUIVOS NA PASTA DO CARD (dos planos)"
+    (cd "$CARD_DIR" && find analises scripts -maxdepth 1 -type f 2>/dev/null | sort | head -30) || true
+    echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
+    bash "$SELF" notes "$CARD" 2>&1
+    ;;
+
   control)
     require_plan; flush_quiet
     api POST "/$PLAN/control"
@@ -775,17 +827,7 @@ case "$CMD" in
 
   pull)
     require_plan
-    api GET "/$PLAN"
-    [[ "$CODE" == "200" ]] || die "HTTP $CODE: $(resp_error)"
-    # Anexos de comentario ficam em anexos-prmake/ (comando notes) — aqui so os arquivos da skill.
-    jq -r '.artifacts[] | select(.noteId == null) | "\(.id)\t\(.kind)\t\(.name)\t\(.sha256)"' "$TMP/resp" > "$TMP/list"
-    while IFS=$'\t' read -r aid kind name sha; do
-      case "$kind" in script) d=scripts;; analysis) d=analises;; data) d=dados;; image) d=imagens;; *) d=anexos;; esac
-      mkdir -p "$CARD_DIR/$d"; target="$CARD_DIR/$d/$name"
-      [[ -f "$target" && "$(sha256 "$target")" == "$sha" ]] && continue
-      curl -s --max-time 120 -H "x-api-key: $TOKEN" -o "$target" "$BASE/ExecutionPlan/$PLAN/artifacts/$aid/content?download=true" \
-        && echo "   baixado: $d/$name"
-    done < "$TMP/list"
+    pull_plan "$PLAN"
     echo "OK pull"
     ;;
 
