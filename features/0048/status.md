@@ -47,3 +47,4 @@ Branch `feature/0048` em `prform.api-0048` (API, ferramenta das skills, skills, 
   do repositório; textos da `analisar-bug` (pergunta e `repos set`, nunca seguir sem o código) e README.
 - 2026-10-02 — T1: instalação completa pelo `install.sh` da API local numa home nova → skills + hook + mapa (6
   repositórios, 1 ambíguo) + `.repos-v1`, sem perguntar.
+- 2026-10-02 — PRs abertos (sem merge): back acbonfim/prmaker.api#78, front acbonfim/prmakerweb#45.
