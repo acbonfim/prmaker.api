@@ -26,6 +26,9 @@ public class ExecutionSession
     /// <summary>Chamadas ao PRMake pelo MCP (<c>mcp__prmake__*</c>) e pelo script (<c>prmake-plan.sh</c>) na sessão (0041) — medição.</summary>
     public int? McpCalls { get; set; }
     public int? ScriptCalls { get; set; }
+    /// <summary>0045: consultas à Base Solvace e buscas no código na sessão (a base deve vir antes das buscas).</summary>
+    public int? KbCalls { get; set; }
+    public int? SearchCalls { get; set; }
     public DateTimeOffset? UsageUpdatedAt { get; set; }
 
     /// <summary>
@@ -40,6 +43,8 @@ public class ExecutionSession
     public long BaseCacheWriteTokens { get; set; }
     public int BaseMcpCalls { get; set; }
     public int BaseScriptCalls { get; set; }
+    public int BaseKbCalls { get; set; }
+    public int BaseSearchCalls { get; set; }
 
     public int NetTurns() => Math.Max(0, Turns - BaseTurns);
     public long NetInputTokens() => Math.Max(0, InputTokens - BaseInputTokens);
@@ -48,4 +53,6 @@ public class ExecutionSession
     public long NetCacheWriteTokens() => Math.Max(0, CacheWriteTokens - BaseCacheWriteTokens);
     public int NetMcpCalls() => Math.Max(0, (McpCalls ?? 0) - BaseMcpCalls);
     public int NetScriptCalls() => Math.Max(0, (ScriptCalls ?? 0) - BaseScriptCalls);
+    public int NetKbCalls() => Math.Max(0, (KbCalls ?? 0) - BaseKbCalls);
+    public int NetSearchCalls() => Math.Max(0, (SearchCalls ?? 0) - BaseSearchCalls);
 }

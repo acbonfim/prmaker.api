@@ -173,4 +173,7 @@ public class RecordExecutionUsageRequest
     /// <summary>0041: chamadas pelo MCP e pelo script na sessão (medição).</summary>
     public int? McpCalls { get; set; }
     public int? ScriptCalls { get; set; }
+    /// <summary>0045: consultas à Base Solvace (kb.sh / espelho) e buscas no código (grep/find/Grep/Glob) na sessão.</summary>
+    public int? KbCalls { get; set; }
+    public int? SearchCalls { get; set; }
 }

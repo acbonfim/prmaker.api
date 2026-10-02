@@ -97,9 +97,10 @@ index_view() {
     shift
   done
   if [[ $full -eq 1 ]]; then cat "$KB/INDEX.md"; return; fi
-  python3 - "$KB/INDEX.md" "$max" "${terms[*]:-}" <<'PY'
-import re, sys, unicodedata
+  python3 - "$KB/INDEX.md" "$max" "${terms[*]:-}" "$KB/graph.json" <<'PY'
+import json, os, re, sys, unicodedata
 path, mx, terms = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+graph = sys.argv[4] if len(sys.argv) > 4 else ""
 def norm(t): return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
 PROJ = re.compile(r"^- \*\*(.+?)\*\* `([^`]+)` — (.*)$")
 ART = re.compile(r"^- (ART-\d+) (.*)$")
@@ -147,6 +148,25 @@ def best(items, n):
     return [l for s, l in items if s >= 0.4 * items[0][0]][:n] if items else []
 ps = best([(sum(6 * score(norm(p["key"]), w) + 4 * score(norm(p["title"]), w) + 3 * score(norm(p["kw"]), w)
                 + score(norm(p["desc"]), w) for w in words), p["line"][:420]) for p in projects], mx)
+# 0045: os dois mundos do mesmo modulo — casou o revamp, mostra o legado (e vice-versa): o bug pode estar em qualquer um.
+pairs = {}
+try:
+    for e in json.load(open(graph, encoding="utf-8")).get("edges", []) if graph and os.path.exists(graph) else []:
+        a, b = e.get("source", ""), e.get("target", "")
+        if e.get("kind") == "other" and {a.split("-")[0], b.split("-")[0]} == {"legado", "revamp"}:
+            pairs.setdefault(a, []).append(b); pairs.setdefault(b, []).append(a)
+except Exception:
+    pairs = {}
+by_line = {p["line"][:420]: p for p in projects}
+by_key = {p["key"]: p for p in projects}
+chosen = {by_line[l]["key"] for l in ps if l in by_line}
+extra = []
+for l in list(ps):
+    for k in pairs.get(by_line.get(l, {}).get("key", ""), []):
+        if k in by_key and k not in chosen and len(extra) < 3:
+            chosen.add(k)
+            extra.append("  ↳ mesmo modulo no outro mundo: " + by_key[k]["line"][:420])
+ps = ps + extra
 arts = best([(sum(score(norm(a["title"]), w) for w in words), a["line"][:160]) for a in articles], 3)
 ps = [l for l in ps if l]; arts = [l for l in arts if l]
 if not ps and not arts:

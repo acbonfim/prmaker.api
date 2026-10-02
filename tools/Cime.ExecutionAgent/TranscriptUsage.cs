@@ -30,6 +30,8 @@ public static class TranscriptUsage
         var usage = new Dictionary<string, JsonElement>();
         var mcp = new HashSet<string>();
         var script = new HashSet<string>();
+        var kb = new HashSet<string>();
+        var search = new HashSet<string>();
         string? model = null;
         foreach (var line in lines)
         {
@@ -50,6 +52,12 @@ public static class TranscriptUsage
                     else if (name == "Bash" && part.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object
                              && (Str(input, "command") ?? string.Empty).Contains("prmake-plan.sh", StringComparison.Ordinal))
                         script.Add(id);
+                    // 0045: a Base Solvace veio antes das buscas no código? (mesma regra do usage da skill)
+                    switch (Classify(name, part))
+                    {
+                        case "kb": kb.Add(id); break;
+                        case "search": search.Add(id); break;
+                    }
                 }
 
             if (!message.TryGetProperty("usage", out var u) || u.ValueKind != JsonValueKind.Object) continue;
@@ -70,8 +78,31 @@ public static class TranscriptUsage
             CacheWriteTokens = Sum("cache_creation_input_tokens"),
             Model = model,
             McpCalls = mcp.Count,
-            ScriptCalls = script.Count
+            ScriptCalls = script.Count,
+            KbCalls = kb.Count,
+            SearchCalls = search.Count
         };
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex SearchCommand =
+        new(@"(^|[\s|;&(])(grep|rg|ag|find|ack)\s", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>kb = consulta à Base Solvace (kb.sh ou o espelho); search = busca no código (Grep/Glob ou grep/rg/find no Bash).</summary>
+    public static string? Classify(string name, JsonElement part)
+    {
+        var input = part.TryGetProperty("input", out var i) && i.ValueKind == JsonValueKind.Object ? i : default;
+        string Get(string n) => input.ValueKind == JsonValueKind.Object ? Str(input, n) ?? string.Empty : string.Empty;
+        var command = Get("command");
+        var path = Get("file_path") + Get("path");
+        if (command.Contains("kb.sh", StringComparison.Ordinal) || command.Contains("solvace-kb", StringComparison.Ordinal)
+            || path.Contains("solvace-kb", StringComparison.Ordinal))
+            return command.Contains("contexto", StringComparison.Ordinal) ? null : "kb";
+        if (name is "Grep" or "Glob")
+            return path.Contains("/.claude/", StringComparison.Ordinal) ? null : "search";
+        if (name == "Bash" && SearchCommand.IsMatch(command) && !command.Contains("/.claude/", StringComparison.Ordinal)
+            && !command.Contains("prmake-", StringComparison.Ordinal))
+            return "search";
+        return null;
     }
 
     private static string? Str(JsonElement e, string name) =>

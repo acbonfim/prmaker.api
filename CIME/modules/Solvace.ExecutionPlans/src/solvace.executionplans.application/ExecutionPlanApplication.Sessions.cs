@@ -33,7 +33,8 @@ public partial class ExecutionPlanApplication
             var now = DateTimeOffset.UtcNow;
             await EnsureBaselineAsync(p, request.SessionId, now, cancellationToken);
             p.RecordUsage(request.SessionId, request.Host, request.Turns, request.InputTokens, request.OutputTokens,
-                request.CacheReadTokens, request.CacheWriteTokens, request.Model, now, request.McpCalls, request.ScriptCalls);
+                request.CacheReadTokens, request.CacheWriteTokens, request.Model, now, request.McpCalls, request.ScriptCalls,
+                request.KbCalls, request.SearchCalls);
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
@@ -116,6 +117,7 @@ public partial class ExecutionPlanApplication
                         copy.BaseTurns = from.Turns; copy.BaseInputTokens = from.InputTokens; copy.BaseOutputTokens = from.OutputTokens;
                         copy.BaseCacheReadTokens = from.CacheReadTokens; copy.BaseCacheWriteTokens = from.CacheWriteTokens;
                         copy.BaseMcpCalls = from.McpCalls ?? 0; copy.BaseScriptCalls = from.ScriptCalls ?? 0;
+                        copy.BaseKbCalls = from.KbCalls ?? 0; copy.BaseSearchCalls = from.SearchCalls ?? 0;
                     }
                     return copy;
                 }).ToList();
@@ -129,13 +131,15 @@ public partial class ExecutionPlanApplication
                     Output = sessions.Sum(s => s.NetOutputTokens()),
                     Mcp = sessions.Sum(s => s.NetMcpCalls()),
                     Script = sessions.Sum(s => s.NetScriptCalls()),
+                    Kb = sessions.Sum(s => s.NetKbCalls()),
+                    Search = sessions.Sum(s => s.NetSearchCalls()),
                     Model = p.UsageModel
                 };
             })
             .Where(x => x.Turns > 0)
             .Select(x => new
             {
-                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Model,
+                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Kb, x.Search, x.Model,
                 Input = x.Fresh + x.CacheRead + x.CacheWrite,
                 Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script"
             })
@@ -161,7 +165,9 @@ public partial class ExecutionPlanApplication
                 Model = group.Where(g => g.Model != null).GroupBy(g => g.Model).OrderByDescending(m => m.Sum(g => g.Input + g.Output))
                     .Select(m => m.Key).FirstOrDefault(),
                 AvgMcpCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Mcp), 1),
-                AvgScriptCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Script), 1)
+                AvgScriptCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Script), 1),
+                AvgKbCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Kb), 1),
+                AvgSearchCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Search), 1)
             });
         }
         return result;
@@ -172,6 +178,7 @@ public partial class ExecutionPlanApplication
         SessionId = s.SessionId, Host = s.Host, Cwd = s.Cwd, StartedAt = s.StartedAt, LastSeenAt = s.LastSeenAt,
         Turns = s.Turns, InputTokens = s.InputTokens, OutputTokens = s.OutputTokens, CacheReadTokens = s.CacheReadTokens,
         CacheWriteTokens = s.CacheWriteTokens, Model = s.Model, McpCalls = s.McpCalls, ScriptCalls = s.ScriptCalls,
+        KbCalls = s.KbCalls, SearchCalls = s.SearchCalls,
         UsageUpdatedAt = s.UsageUpdatedAt
     };
 

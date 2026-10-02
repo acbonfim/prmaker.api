@@ -38,7 +38,7 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
      "pelo Claude") e siga — o comando em segundo plano termina sozinho.
    - Se o usuario disser que respondeu no PRMake (ou voce voltar a sessao depois): rode `answers <card>`.
    - Resposta que cita anexo/comentario ("ver imagem 2", "como no print") → `attachment`/`notes` e abra antes de
-     seguir. Rode `notes <card>` ao receber as respostas: o usuario pode ter anexado algo junto.
+     seguir. Rode `prmake_notes` (sem MCP: `notes <card>`) ao receber as respostas: o usuario pode ter anexado algo junto.
    - Exit 10 (1 h sem todas as respostas): avise e pare — o `start` retoma depois.
    Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
    (fim do plano de **analise**).

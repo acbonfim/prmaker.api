@@ -105,7 +105,7 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   (arrastando, colando com Ctrl+V ou pelo icone de anexo) e arquivos (logs, planilhas, PDFs). Cada comentario e
   cada arquivo tem um **numero por card** (`comentario #3`, `anexo #12`), o mesmo nas abas Analise e Correcao.
   **Isso e entrada da analise, com o mesmo peso dos repro steps**:
-  - Rode `notes <card>` logo depois do `start` (antes de investigar), sempre que o vigia (`watch`) ou o
+  - Rode `prmake_notes` (MCP; sem MCP: `notes <card>`) logo depois do `start` (antes de investigar), sempre que o vigia (`watch`) ou o
     `wait-answers`/`control` avisar que os comentarios mudaram, e antes de propor solucoes ou montar o plano de
     correcao. Ele imprime os comentarios (marca os **novos**) e **baixa os anexos** para
     `$CARD_DIR/anexos-prmake/`, mostrando o caminho local de cada um.

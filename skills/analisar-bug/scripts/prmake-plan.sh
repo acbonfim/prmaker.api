@@ -165,7 +165,19 @@ send_usage() { # [--quiet]
   python3 - "$transcript" "${since:-}" "$sid" "$SESSION_HOST" > "$TMP/usage.json" <<'PY' || return 0
 import json, sys
 path, since, sid, host = sys.argv[1:5]
-seen = {}; model = None; mcp = set(); script = set()
+import re
+seen = {}; model = None; mcp = set(); script = set(); kb = set(); search = set()
+SEARCH = re.compile(r"(^|[\s|;&(])(grep|rg|ag|find|ack)\s")
+def classify(name, inp):
+    # 0045: a Base Solvace veio antes das buscas no codigo? (mesma regra do executor)
+    cmd = str(inp.get("command", "")); path = str(inp.get("file_path", "")) + str(inp.get("path", ""))
+    if "kb.sh" in cmd or "solvace-kb" in cmd or "solvace-kb" in path:
+        return None if "contexto" in cmd else "kb"
+    if name in ("Grep", "Glob"):
+        return None if "/.claude/" in path else "search"
+    if name == "Bash" and SEARCH.search(cmd) and "/.claude/" not in cmd and "prmake-" not in cmd:
+        return "search"
+    return None
 for line in open(path, encoding="utf-8"):
     try: d = json.loads(line)
     except Exception: continue
@@ -177,6 +189,9 @@ for line in open(path, encoding="utf-8"):
         name = part.get("name") or ""
         if name.startswith("mcp__prmake__"): mcp.add(part.get("id"))
         elif name == "Bash" and "prmake-plan.sh" in str((part.get("input") or {}).get("command", "")): script.add(part.get("id"))
+        c = classify(name, part.get("input") or {})
+        if c == "kb": kb.add(part.get("id"))
+        elif c == "search": search.add(part.get("id"))
     u = m.get("usage")
     if not isinstance(u, dict): continue
     seen[m.get("id") or d.get("uuid")] = u
@@ -185,7 +200,7 @@ tot = lambda k: sum(int(u.get(k) or 0) for u in seen.values())
 print(json.dumps({"sessionId": sid, "host": host, "turns": len(seen), "inputTokens": tot("input_tokens"),
                   "outputTokens": tot("output_tokens"), "cacheReadTokens": tot("cache_read_input_tokens"),
                   "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model,
-                  "mcpCalls": len(mcp), "scriptCalls": len(script)}))
+                  "mcpCalls": len(mcp), "scriptCalls": len(script), "kbCalls": len(kb), "searchCalls": len(search)}))
 PY
   local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/usage" \
     -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/usage.json" 2>/dev/null)"
@@ -610,8 +625,9 @@ case "$CMD" in
     if [[ -f "$SK/kb.sh" ]]; then
       bash "$SK/kc.sh" sync --quiet 2>/dev/null || true
       bash "$SK/kb.sh" sync --quiet 2>/dev/null || true
-      echo "=== BASE SOLVACE (projetos ligados ao card — ficha: kb.sh show <projeto> · secao: kb.sh show <projeto> <secao> · outros: kb.sh index <termos>)"
+      echo "=== BASE SOLVACE (projetos ligados ao card — legado edv-solvace = legado-*, nova = revamp-* · ficha: kb.sh show <projeto> · secao: kb.sh show <projeto> <secao> · outros: kb.sh index <termos>)"
       bash "$SK/kb.sh" index "${CTITLE:-${1:-}} $CMOD" --max 3 2>/dev/null || echo "(indice indisponivel)"
+      echo "(ANTES de qualquer busca no codigo: kb.sh show <projeto do mundo certo> modulos — telas → arquivos. Base sem o caso → busca so na pasta do modulo e registre a lacuna)"
       echo; echo "=== KNOWLEDGE CENTER (regras de negocio relacionadas — kc.sh article <n> para o texto inteiro)"
       bash "$SK/kc.sh" search "${CTITLE:-${1:-$CARD}} $CMOD" --limit 3 2>/dev/null || echo "(KC indisponivel)"
     else
