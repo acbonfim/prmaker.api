@@ -65,6 +65,8 @@ public class ExecutionWorkerResponse
     public DateTimeOffset? DoctorAt { get; set; }
     /// <summary>Diagnóstico pedido pela tela e ainda não recebido.</summary>
     public bool DoctorPending { get; set; }
+    /// <summary>Limite de uso da conta do Claude atingido até este horário (null = livre).</summary>
+    public DateTimeOffset? ThrottledUntil { get; set; }
     /// <summary>Checagens do doctor que falharam (resumo para a tela).</summary>
     public int DoctorProblems { get; set; }
     public int Running { get; set; }
@@ -199,6 +201,7 @@ public static class ExecutionQueueResponseExtensions
             Doctor = doctor,
             DoctorAt = w.DoctorAt,
             DoctorPending = w.DoctorPending,
+            ThrottledUntil = w.IsThrottled(now) ? w.ThrottledUntil : null,
             DoctorProblems = doctor is { ValueKind: JsonValueKind.Array } arr
                 ? arr.EnumerateArray().Count(c => c.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
                 : 0,

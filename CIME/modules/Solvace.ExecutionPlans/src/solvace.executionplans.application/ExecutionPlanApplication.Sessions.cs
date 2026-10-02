@@ -31,7 +31,7 @@ public partial class ExecutionPlanApplication
         {
             var now = DateTimeOffset.UtcNow;
             p.RecordUsage(request.SessionId, request.Host, request.Turns, request.InputTokens, request.OutputTokens,
-                request.CacheReadTokens, request.CacheWriteTokens, request.Model, now);
+                request.CacheReadTokens, request.CacheWriteTokens, request.Model, now, request.McpCalls, request.ScriptCalls);
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
@@ -69,6 +69,48 @@ public partial class ExecutionPlanApplication
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Consumo médio por plano nos últimos <paramref name="days"/> dias (0041), "com MCP" (a maioria das chamadas ao
+    /// PRMake pelo MCP) × "sem MCP". Só entram planos com custo enviado pela skill.
+    /// </summary>
+    public async Task<ExecutionUsageReportResponse> GetUsageReportAsync(Guid? userId, int days, CancellationToken cancellationToken)
+    {
+        days = Math.Clamp(days, 1, 365);
+        var plans = await _repository.GetPlansWithUsageSinceAsync(userId, DateTimeOffset.UtcNow.AddDays(-days), cancellationToken);
+        var rows = plans
+            .Select(p => new
+            {
+                p.Phase,
+                Turns = p.Sessions.Sum(s => s.Turns),
+                Input = p.Sessions.Sum(s => s.InputTokens + s.CacheReadTokens + s.CacheWriteTokens),
+                Output = p.Sessions.Sum(s => s.OutputTokens),
+                Mcp = p.Sessions.Sum(s => s.McpCalls ?? 0),
+                Script = p.Sessions.Sum(s => s.ScriptCalls ?? 0)
+            })
+            .Where(x => x.Turns > 0)
+            .Select(x => new { x.Phase, x.Turns, x.Input, x.Output, x.Mcp, x.Script, Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script" })
+            .ToList();
+
+        var result = new ExecutionUsageReportResponse { Days = days, AllUsers = userId is null };
+        foreach (var channel in new[] { "mcp", "script" })
+        foreach (var phase in new[] { "all", ExecutionPhase.Analysis, ExecutionPhase.Correction })
+        {
+            var group = rows.Where(r => r.Channel == channel && (phase == "all" || r.Phase == phase)).ToList();
+            result.Rows.Add(new ExecutionUsageReportRow
+            {
+                Channel = channel,
+                Phase = phase,
+                Plans = group.Count,
+                AvgTurns = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Turns), 1),
+                AvgInputTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.Input)),
+                AvgOutputTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.Output)),
+                AvgMcpCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Mcp), 1),
+                AvgScriptCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Script), 1)
+            });
+        }
+        return result;
     }
 
     public async Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken)

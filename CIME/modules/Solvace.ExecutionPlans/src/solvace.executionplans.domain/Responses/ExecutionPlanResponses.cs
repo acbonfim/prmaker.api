@@ -85,6 +85,32 @@ public class ExecutionUsageResponse
     public long CacheReadTokens { get; set; }
     public long CacheWriteTokens { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    /// <summary>0041: chamadas pelo MCP e pelo script (somadas das sessões que informaram).</summary>
+    public int McpCalls { get; set; }
+    public int ScriptCalls { get; set; }
+}
+
+/// <summary>Consumo médio por plano, com MCP × sem MCP (0041).</summary>
+public class ExecutionUsageReportResponse
+{
+    public int Days { get; set; }
+    public bool AllUsers { get; set; }
+    public List<ExecutionUsageReportRow> Rows { get; set; } = [];
+}
+
+public class ExecutionUsageReportRow
+{
+    /// <summary>mcp | script.</summary>
+    public string Channel { get; set; } = string.Empty;
+    /// <summary>analysis | correction | all.</summary>
+    public string Phase { get; set; } = string.Empty;
+    public int Plans { get; set; }
+    public double AvgTurns { get; set; }
+    /// <summary>Entrada + cache lido + cache escrito.</summary>
+    public double AvgInputTokens { get; set; }
+    public double AvgOutputTokens { get; set; }
+    public double AvgMcpCalls { get; set; }
+    public double AvgScriptCalls { get; set; }
 }
 
 /// <summary>Plano que o vigia local deve retomar (0033): pedido de "continuar" ou respostas chegadas pela tela.</summary>
@@ -352,7 +378,9 @@ public static class ExecutionPlanMappings
             OutputTokens = plan.Sessions.Sum(s => s.OutputTokens),
             CacheReadTokens = plan.Sessions.Sum(s => s.CacheReadTokens),
             CacheWriteTokens = plan.Sessions.Sum(s => s.CacheWriteTokens),
-            UpdatedAt = plan.Sessions.Max(s => s.UsageUpdatedAt)
+            UpdatedAt = plan.Sessions.Max(s => s.UsageUpdatedAt),
+            McpCalls = plan.Sessions.Sum(s => s.McpCalls ?? 0),
+            ScriptCalls = plan.Sessions.Sum(s => s.ScriptCalls ?? 0)
         };
         target.ResumeRequestedAt = plan.ResumeRequestedAt;
         target.ResumeRequestedBy = plan.ResumeRequestedBy;

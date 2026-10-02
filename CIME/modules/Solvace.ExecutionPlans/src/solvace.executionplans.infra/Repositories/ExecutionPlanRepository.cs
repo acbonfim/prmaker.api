@@ -80,6 +80,15 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         return rows.Select(r => (r.Plan, r.AnsweredAt)).ToList();
     }
 
+    public async Task<List<ExecutionPlan>> GetPlansWithUsageSinceAsync(Guid? userId, DateTimeOffset since, CancellationToken cancellationToken) =>
+        (await _context.Plans.AsNoTracking()
+            .Where(p => p.UpdatedAt >= since && (userId == null || p.CreatedByUserId == userId))
+            .OrderByDescending(p => p.UpdatedAt)
+            .Take(5000)
+            .ToListAsync(cancellationToken))
+        .Where(p => p.Sessions.Any(s => s.UsageUpdatedAt != null))
+        .ToList();
+
     public Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
         _context.Plans
             .AsNoTracking()

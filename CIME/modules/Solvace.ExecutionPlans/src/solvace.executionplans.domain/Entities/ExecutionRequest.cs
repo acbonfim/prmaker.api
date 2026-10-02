@@ -240,6 +240,25 @@ public class ExecutionRequest
         Finish(ExecutionRequestStatus.Failed, LastError, null, now);
     }
 
+    /// <summary>
+    /// Limite de uso da conta do Claude (0041): volta para a fila até o reset, sem gastar tentativa — tentar antes só
+    /// queimaria as tentativas.
+    /// </summary>
+    public void Throttle(Guid workerId, DateTimeOffset retryAt, string reason, string? stderrTail, DateTimeOffset now)
+    {
+        EnsureWorker(workerId);
+        if (!IsActive) return;
+        Status = ExecutionRequestStatus.Queued;
+        Attempts = Math.Max(0, Attempts - 1);
+        NotBefore = retryAt;
+        LeaseUntil = null;
+        Pid = null;
+        LastError = Clean(reason, MaxErrorLength);
+        WaitReason = Clean(reason, 500);
+        if (stderrTail is not null) StderrTail = Tail(stderrTail, MaxStderrLength);
+        UpdatedAt = now;
+    }
+
     /// <summary>Trava vencida: o executor sumiu (máquina desligou, processo morreu).</summary>
     public bool ExpireLease(DateTimeOffset now)
     {

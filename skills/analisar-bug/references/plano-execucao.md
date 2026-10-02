@@ -140,6 +140,9 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
 - **Worktree por card**: `WT="$(bash $PLAN worktree <card> <pasta-do-repo> <branch> <base>)"` cria
   `<pasta-do-repo>/../.prmake-wt/<card>/<repo>`; trabalhe com `git -C "$WT" ...` e caminhos absolutos dentro de `$WT`.
   O executor remove o worktree 7 dias depois que o plano termina. Fora do executor: `PRMAKE_WORKTREE=1` faz o mesmo.
-- **MCP** (`mcp__prmake__*`): `prmake_plan`, `prmake_steps`, `prmake_step`, `prmake_log`, `prmake_control`,
-  `prmake_plan_status`, `prmake_ask`, `prmake_answers`, `prmake_notes`, `prmake_attachment`, `prmake_timeline`,
-  `prmake_devops`, `prmake_queue`. Mesmo efeito do script no PRMake; `phase` escolhe analise/correcao.
+- **MCP** (`mcp__prmake__*`, 0039/0041): `prmake_plan`, `prmake_steps`, `prmake_step`, `prmake_advance`, `prmake_log`,
+  `prmake_checkpoint`, `prmake_control`, `prmake_block`/`prmake_unblock`, `prmake_ask`/`prmake_answer`/`prmake_answers`,
+  `prmake_notes`, `prmake_attachment`, `prmake_link`, `prmake_correction`, `prmake_plan_status`, `prmake_config`,
+  `prmake_devops_config`, `prmake_card`, `prmake_devops` (registra na Timeline; `classify`), `prmake_timeline`,
+  `prmake_queue`. Mesmo efeito do script no PRMake; `phase` escolhe analise/correcao (padrao: o plano aberto mais
+  recente). O custo da sessao vai pelo `status` do script (ele conta as chamadas MCP × script para o comparativo).

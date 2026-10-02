@@ -136,6 +136,7 @@ public sealed class FinishRequest
     public long? InputTokens { get; set; }
     public long? OutputTokens { get; set; }
     public int? Turns { get; set; }
+    public DateTimeOffset? RetryAt { get; set; }
 }
 
 public sealed class PlanPending

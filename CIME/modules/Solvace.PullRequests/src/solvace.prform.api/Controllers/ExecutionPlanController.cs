@@ -281,6 +281,22 @@ public class ExecutionPlanController : ControllerBase
             return Ok(await _application.GetResumeCandidatesAsync(userId, host, ct));
         });
 
+    /// <summary>
+    /// 0041: consumo médio por plano com MCP × sem MCP. Só os planos do usuário; admin com <c>all=true</c> vê de todos.
+    /// </summary>
+    [HttpGet("usage-report")]
+    public Task<ActionResult<ExecutionUsageReportResponse>> UsageReport([FromQuery] int days = 30, [FromQuery] bool all = false, CancellationToken ct = default) =>
+        Run<ExecutionUsageReportResponse>(async () =>
+        {
+            var claim = User.FindFirst("ExternalId")?.Value;
+            Guid? userId = Guid.TryParse(claim, out var id) ? id : null;
+            if (all && !User.IsInRole("admin"))
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Só o admin vê o consumo de todos." });
+            if (!all && userId is null)
+                return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.GetUsageReportAsync(all ? null : userId, days, ct));
+        });
+
     private bool IsExecutorRequest() =>
         string.Equals(Request.Headers[ExecutorHeader].ToString(), "skill", StringComparison.OrdinalIgnoreCase);
 

@@ -217,6 +217,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     public async Task<ExecutionRequestResponse> FinishAsync(Guid requestId, Guid workerId, FinishExecutionRequestRequest request, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
+        DateTimeOffset? throttledUntil = null;
         var outcome = (request.Outcome ?? string.Empty).Trim().ToLowerInvariant();
         if (outcome is not ("done" or "failed"))
             throw new DomainException("outcome deve ser done ou failed.");
@@ -225,12 +226,22 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         {
             if (!x.IsActive || x.WorkerId != workerId) return;
             x.RecordUsage(request.CostUsd, request.InputTokens, request.OutputTokens, request.Turns);
-            if (outcome == "done")
+            if (outcome == "failed" && request.RetryAt is { } retryAt)
+            {
+                // 0041: limite da conta do Claude — espera o reset (no máximo 24 h) sem gastar tentativa.
+                var until = retryAt < now ? now.AddMinutes(5) : retryAt > now.AddHours(24) ? now.AddHours(24) : retryAt;
+                x.Throttle(workerId, until, $"Limite de uso da conta do Claude atingido — continua às {LocalTime(until)}", request.StderrTail, now);
+                throttledUntil = until;
+            }
+            else if (outcome == "done")
                 x.Complete(workerId, request.ExitCode, request.Reason, now);
             else
                 x.Fail(workerId, request.Error ?? request.Reason ?? "O processo do Claude terminou com erro", request.ExitCode, request.StderrTail, request.Retryable, now);
         }, cancellationToken);
-        await TouchWorkerAsync(workerId, now, cancellationToken);
+        if (throttledUntil is { } t)
+            await MutateWorkerAsync(workerId, (w, at) => { w.Seen(at); w.Throttle(t, at); }, cancellationToken);
+        else
+            await TouchWorkerAsync(workerId, now, cancellationToken);
         await NotifyAsync(r, cancellationToken);
         if (r.Status == ExecutionRequestStatus.Queued) Pulse(r.OwnerUserId);
         return r.ToResponse();
@@ -431,7 +442,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     private async Task<ExecutionClaimResponse?> TryClaimAsync(ExecutionWorker worker, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (worker.Status != ExecutionWorkerStatus.Active)
+        if (worker.Status != ExecutionWorkerStatus.Active || worker.IsThrottled(now))
             return null;
         var counts = await _queue.CountActiveByWorkerAsync(worker.OwnerUserId, cancellationToken);
         if (counts.GetValueOrDefault(worker.Id) >= worker.MaxConcurrency)
@@ -548,6 +559,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         var candidates = r.TargetWorkerId is { } target ? live.Where(w => w.Id == target).ToList() : live;
         if (candidates.Count == 0)
             return ("no-worker", "A máquina escolhida foi revogada — cancele e peça de novo");
+        var throttled = candidates.Where(w => w.IsThrottled(now)).ToList();
+        if (throttled.Count == candidates.Count)
+            return ("throttled", $"Limite de uso da conta do Claude atingido — continua às {LocalTime(throttled.Min(w => w.ThrottledUntil!.Value))}");
         if (r.NotBefore is { } nb && nb > now)
             return ("retry", r.WaitReason ?? "Aguardando a próxima tentativa");
         var online = candidates.Where(w => w.IsOnline(now)).ToList();
@@ -649,6 +663,14 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         {
             return TimeZoneInfo.CreateCustomTimeZone("BRT", TimeSpan.FromHours(-3), "BRT", "BRT");
         }
+    }
+
+    /// <summary>Hora no horário de Brasília (HH:mm; com a data quando não é hoje).</summary>
+    private static string LocalTime(DateTimeOffset at)
+    {
+        var local = TimeZoneInfo.ConvertTime(at, Brazil);
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Brazil).Date;
+        return local.Date == today ? local.ToString("HH:mm") : local.ToString("dd/MM HH:mm");
     }
 
     /// <summary>Meia-noite de hoje no horário de Brasília (o "dia" do orçamento e da regra automática).</summary>

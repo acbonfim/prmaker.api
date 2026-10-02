@@ -22,5 +22,9 @@ public class ExecutionSession
     public long CacheReadTokens { get; set; }
     public long CacheWriteTokens { get; set; }
     public string? Model { get; set; }
+
+    /// <summary>Chamadas ao PRMake pelo MCP (<c>mcp__prmake__*</c>) e pelo script (<c>prmake-plan.sh</c>) na sessão (0041) — medição.</summary>
+    public int? McpCalls { get; set; }
+    public int? ScriptCalls { get; set; }
     public DateTimeOffset? UsageUpdatedAt { get; set; }
 }

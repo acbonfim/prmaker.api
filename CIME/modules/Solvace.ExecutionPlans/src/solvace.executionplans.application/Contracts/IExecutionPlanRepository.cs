@@ -24,6 +24,9 @@ public interface IExecutionPlanRepository
     /// <summary>Perguntas abertas dos planos informados (0037).</summary>
     Task<List<ExecutionQuestion>> GetOpenQuestionsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
 
+    /// <summary>Planos (sem etapas, sem rastrear) atualizados desde <paramref name="since"/> — do usuário ou de todos (0041).</summary>
+    Task<List<ExecutionPlan>> GetPlansWithUsageSinceAsync(Guid? userId, DateTimeOffset since, CancellationToken cancellationToken);
+
     /// <summary>Plano mais recente do card (qualquer status).</summary>
     Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken);
 

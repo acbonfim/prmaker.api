@@ -160,17 +160,23 @@ send_usage() { # [--quiet]
   local sid="${CLAUDE_CODE_SESSION_ID:-}" mark="$CARD_DIR/.session-${PLAN:-x}" since transcript
   [[ -n "$sid" ]] || { [[ "${1:-}" == "--quiet" ]] || echo "(fora de uma sessao do Claude Code — sem custo para enviar)"; return 0; }
   since="$( [[ -f "$mark" ]] && cut -d'|' -f2 "$mark")"
-  transcript="$(find "$HOME/.claude/projects" -maxdepth 2 -name "$sid.jsonl" 2>/dev/null | head -1)"
+  transcript="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -maxdepth 2 -name "$sid.jsonl" 2>/dev/null | head -1)"
   [[ -n "$transcript" ]] || { [[ "${1:-}" == "--quiet" ]] || echo "(transcript da sessao nao encontrado)"; return 0; }
   python3 - "$transcript" "${since:-}" "$sid" "$SESSION_HOST" > "$TMP/usage.json" <<'PY' || return 0
 import json, sys
 path, since, sid, host = sys.argv[1:5]
-seen = {}; model = None
+seen = {}; model = None; mcp = set(); script = set()
 for line in open(path, encoding="utf-8"):
     try: d = json.loads(line)
     except Exception: continue
     if d.get("type") != "assistant" or (since and (d.get("timestamp") or "") < since): continue
     m = d.get("message") or {}
+    # 0041: chamadas ao PRMake pelo MCP x pelo script (comparativo de consumo no PRMake).
+    for part in m.get("content") or []:
+        if not isinstance(part, dict) or part.get("type") != "tool_use": continue
+        name = part.get("name") or ""
+        if name.startswith("mcp__prmake__"): mcp.add(part.get("id"))
+        elif name == "Bash" and "prmake-plan.sh" in str((part.get("input") or {}).get("command", "")): script.add(part.get("id"))
     u = m.get("usage")
     if not isinstance(u, dict): continue
     seen[m.get("id") or d.get("uuid")] = u
@@ -178,7 +184,8 @@ for line in open(path, encoding="utf-8"):
 tot = lambda k: sum(int(u.get(k) or 0) for u in seen.values())
 print(json.dumps({"sessionId": sid, "host": host, "turns": len(seen), "inputTokens": tot("input_tokens"),
                   "outputTokens": tot("output_tokens"), "cacheReadTokens": tot("cache_read_input_tokens"),
-                  "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model}))
+                  "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model,
+                  "mcpCalls": len(mcp), "scriptCalls": len(script)}))
 PY
   local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/usage" \
     -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/usage.json" 2>/dev/null)"
@@ -765,6 +772,17 @@ case "$CMD" in
       correction|correcao) ID="$(state_get correctionPlanId)" ;;
       *) die "use: analysis ou correction" ;;
     esac
+    if [[ -z "$ID" ]]; then
+      # 0041: plano criado pelo MCP (prmake_correction) nao passa pelo estado local — busca no PRMake.
+      PH="$([[ "$WHICH" == correction || "$WHICH" == correcao ]] && echo correction || echo analysis)"
+      api GET "/card/$CARD"
+      [[ "$CODE" == "200" ]] && ID="$(jq -r --arg p "$PH" '[.[] | select(.phase == $p)][0].id // empty' "$TMP/resp")"
+      if [[ -n "$ID" ]]; then
+        A="$(state_get analysisPlanId)"; C="$(state_get correctionPlanId)"
+        [[ "$PH" == correction ]] && C="$ID" || A="$ID"
+        save_state "$ID" "$A" "$C"; echo "plano ativo: $WHICH ($ID)"; exit 0
+      fi
+    fi
     [[ -n "$ID" ]] || die "este card ainda nao tem plano de $WHICH"
     save_state "$ID" "$(state_get analysisPlanId)" "$(state_get correctionPlanId)"
     echo "plano ativo: $WHICH ($ID)"

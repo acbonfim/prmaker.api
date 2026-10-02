@@ -170,4 +170,7 @@ public class RecordExecutionUsageRequest
     public long CacheReadTokens { get; set; }
     public long CacheWriteTokens { get; set; }
     public string? Model { get; set; }
+    /// <summary>0041: chamadas pelo MCP e pelo script na sessão (medição).</summary>
+    public int? McpCalls { get; set; }
+    public int? ScriptCalls { get; set; }
 }
