@@ -123,6 +123,8 @@ public class ClaudeService : IAIService
 
         var text = string.Concat(message.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
         var tokens = (int)Math.Min(int.MaxValue, message.Usage.InputTokens + message.Usage.OutputTokens);
+        _lastInput = (int)Math.Min(int.MaxValue, message.Usage.InputTokens);
+        _lastOutput = (int)Math.Min(int.MaxValue, message.Usage.OutputTokens);
 
         if (message.StopReason == "refusal")
             return Failure("O Claude recusou gerar este conteúdo", model, tokens);
@@ -137,6 +139,8 @@ public class ClaudeService : IAIService
             Provider = ProviderName,
             Model = model,
             TokensUsed = tokens,
+            InputTokens = _lastInput,
+            OutputTokens = _lastOutput,
         };
     }
 
@@ -170,6 +174,11 @@ public class ClaudeService : IAIService
         return effort is not null;
     }
 
-    private static AIGenerateResponse Failure(string error, string? model = null, int? tokens = null) =>
-        new() { Error = error, Provider = ProviderName, Model = model, TokensUsed = tokens };
+    // Tokens da última resposta (também nas falhas pagas: recusa, corte em max_tokens, sem texto) — 0042.
+    private int? _lastInput;
+    private int? _lastOutput;
+
+    private AIGenerateResponse Failure(string error, string? model = null, int? tokens = null) =>
+        new() { Error = error, Provider = ProviderName, Model = model, TokensUsed = tokens,
+            InputTokens = tokens is null ? null : _lastInput, OutputTokens = tokens is null ? null : _lastOutput };
 }

@@ -113,6 +113,8 @@ var connString = builder.Configuration.GetConnectionString("PrformDatabase");
 
 // Auditoria automática (CreatedBy/UpdatedBy) a partir do usuário autenticado.
 builder.Services.AddHttpContextAccessor();
+// Consumo de IA por ação (0042): o PluginAIService chama o recorder a cada geração.
+builder.Services.AddScoped<solvace.ai.application.Contract.IAIUsageRecorder, solvace.prform.AiUsage.AiUsageRecorder>();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 
 builder.Services.AddDbContext<DefaultContext>((sp, x) => x

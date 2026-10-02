@@ -17,11 +17,13 @@ public class PluginAIService : IAIService
 
     private readonly IPluginConfigurationResolver _resolver;
     private readonly AIServiceFactory _factory;
+    private readonly IAIUsageRecorder? _usage;
 
-    public PluginAIService(IPluginConfigurationResolver resolver, AIServiceFactory factory)
+    public PluginAIService(IPluginConfigurationResolver resolver, AIServiceFactory factory, IAIUsageRecorder? usage = null)
     {
         _resolver = resolver;
         _factory = factory;
+        _usage = usage;
     }
 
     public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default)
@@ -45,6 +47,14 @@ public class PluginAIService : IAIService
             return new AIGenerateResponse { Error = e.Message, Provider = providerName };
         }
 
-        return await provider.GenerateContentAsync(prompt, cancellationToken);
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var result = await provider.GenerateContentAsync(prompt, cancellationToken);
+        if (result is not null && _usage is not null)
+        {
+            if (string.IsNullOrEmpty(result.Provider)) result.Provider = providerName;
+            try { await _usage.RecordAsync(result, started.Elapsed, CancellationToken.None); }
+            catch { /* o registro de consumo nunca derruba a chamada de IA */ }
+        }
+        return result;
     }
 }

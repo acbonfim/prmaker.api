@@ -7,5 +7,8 @@ public class AIGenerateResponse
     public string Provider { get; set; } = string.Empty;
     public string? Model { get; set; }
     public int? TokensUsed { get; set; }
+    /// <summary>Tokens de entrada (prompt) e de saída (resposta) — para o custo por ação (0042).</summary>
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
 }
 

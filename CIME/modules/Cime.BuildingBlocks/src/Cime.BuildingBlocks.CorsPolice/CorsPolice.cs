@@ -15,7 +15,9 @@ namespace Cime.BuildingBlocks.CorsPolice
                     options.AddPolicy("CorsPolicy", builder => builder
                     .AllowAnyOrigin()
                     .AllowAnyMethod()
-                    .AllowAnyHeader());
+                    .AllowAnyHeader()
+                    // Consumo de IA da requisição (0042): o front lê para mostrar tokens/custo depois da ação.
+                    .WithExposedHeaders("X-AI-Usage"));
                 });
 
             return services;

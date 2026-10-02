@@ -43,9 +43,16 @@ ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | p
 - Sessao com o banco sempre somente leitura. Nunca imprima a credencial.
 
 ## Guia, aprender com um card e lacunas (0038)
+> **Custo (0042):** `guia`, `learn` e as telas de IA do PRMake (Pergunte, Analisar a fundo, Gerar guia, Aprender com
+> card, Gerar com IA) rodam no servidor com a **chave de API do perfil de quem chama** (créditos pagos, não a assinatura
+> do Claude Code) — o `arch.sh` avisa antes e mostra os tokens e o custo estimado no fim; na tela, "Meu consumo de IA".
+> Conteúdo **em massa** (guias de vários projetos, seções, procedimentos): escreva aqui no Claude Code (subagentes) e só
+> publique com `section`/`publicar-pasta`. Chamar a IA do PRMake mais de 1–2 vezes seguidas → peça ok ao usuário antes,
+> com a estimativa (Pergunte ≈ US$ 0,01; Analisar a fundo/Guia/Aprender ≈ US$ 0,03–0,05 com Haiku 4.5).
 - **Guia** (seções `guia-*`, público `human`): a mesma base em linguagem simples para QA/gestores, só na tela do
   PRMake — **não** vem no espelho nem no índice (a análise não lê). Template e tom: `references/template-secoes.md`.
-  Gerar com a IA: `bash $ARCH guia <chave> <pasta>` (admin) → revisar → publicar.
+  Escrever aqui (preferido, sem custo de API) seguindo o template, ou um projeto pontual com a IA do PRMake:
+  `bash $ARCH guia <chave> <pasta>` (admin, custa créditos) → revisar → publicar.
 - **Aprender com um card** que não virou sugestão sozinho: `bash $ARCH learn <card>` (o PRMake junta DevOps, PR/RCA,
   Timeline e planos; a IA propõe) → `--send 1,2|all` envia para a fila. Na tela: botão "Aprender com um card".
 - **Lacunas** (`gap`): perguntas do "Pergunte" que a base não cobre. Admin: `bash $ARCH lacunas` → analise o código

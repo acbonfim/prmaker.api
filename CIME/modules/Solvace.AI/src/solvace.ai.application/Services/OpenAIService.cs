@@ -76,7 +76,9 @@ public class OpenAIService : IAIService
                 Content = text,
                 Provider = "OpenAI",
                 Model = _options.Model,
-                TokensUsed = tokensUsed
+                TokensUsed = tokensUsed,
+                InputTokens = openAIResponse?.Usage?.PromptTokens,
+                OutputTokens = openAIResponse?.Usage?.CompletionTokens
             };
         }
         catch (Exception ex)
