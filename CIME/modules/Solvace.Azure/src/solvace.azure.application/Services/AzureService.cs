@@ -100,6 +100,55 @@ public class AzureService : IAzureService
             : [];
     }
 
+    public async Task<IReadOnlyList<AzureCardSummaryResponse>> GetCardsSummaryAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
+    {
+        var distinct = ids.Where(i => i > 0).Distinct().Take(200).ToList();
+        if (distinct.Count == 0) return [];
+        await EnsureConfigAsync(cancellationToken);
+
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
+        var url = $"{GetAzureBaseUrl()}/wit/workitemsbatch?api-version={apiVersion}";
+        var payload = new
+        {
+            ids = distinct,
+            fields = new[] { "System.Id", "System.Title", "System.State", "System.BoardColumn", "System.WorkItemType", "System.AssignedTo", "System.ChangedDate" },
+            // Card apagado ou de outro projeto não derruba a lista inteira.
+            errorPolicy = "omit"
+        };
+        var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var response = await CreateClient().PostAsync(url, body, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Azure DevOps (workitemsbatch) respondeu {(int)response.StatusCode}: {content[..Math.Min(content.Length, 500)]}");
+
+        using var doc = JsonDocument.Parse(content);
+        if (!doc.RootElement.TryGetProperty("value", out var items) || items.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var result = new List<AzureCardSummaryResponse>();
+        foreach (var item in items.EnumerateArray())
+        {
+            // errorPolicy=omit devolve null no lugar do card que falhou.
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("fields", out var fields)) continue;
+            var workItem = JsonSerializer.Deserialize<AzureWorkItem>(item.GetRawText());
+            if (workItem is null) continue;
+            var f = workItem.Fields;
+            result.Add(new AzureCardSummaryResponse
+            {
+                Id = workItem.Id,
+                Title = f.Title,
+                State = f.State,
+                BoardColumn = f.BoardColumn,
+                WorkItemType = f.WorkItemType,
+                AssignedTo = f.AssignedTo?.DisplayName,
+                AssignedToImageUrl = f.AssignedTo?.ImageUrl,
+                ChangedDate = f.ChangedDate,
+                Url = GetWorkItemBrowserUrl(workItem.Id.ToString()),
+            });
+        }
+        return result;
+    }
+
     public async Task<AzureWorkItem?> GetCardAsync(string id, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);

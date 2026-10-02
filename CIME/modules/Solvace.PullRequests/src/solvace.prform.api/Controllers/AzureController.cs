@@ -43,6 +43,28 @@ public class AzureController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Resumo (título, estado, coluna, responsável, link) de vários cards numa chamada (home, 0051). É enfeite da
+    /// lista: sem integração configurada ou com o DevOps fora, responde vazio em vez de erro.
+    /// </summary>
+    [HttpPost("cards/summary")]
+    public async Task<ActionResult<IReadOnlyList<AzureCardSummaryResponse>>> GetCardsSummary([FromBody] List<string>? cards, CancellationToken cancellationToken)
+    {
+        var ids = (cards ?? [])
+            .Select(c => int.TryParse(c?.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToList();
+        try
+        {
+            return Ok(await _azureService.GetCardsSummaryAsync(ids, cancellationToken));
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning(e, "Resumo dos cards no DevOps indisponível");
+            return Ok(Array.Empty<AzureCardSummaryResponse>());
+        }
+    }
+
     [HttpPost("card/{id}/rootcause")]
     [Consumes("application/json", "text/plain", "text/html", "text/markdown")]
     public async Task<IActionResult> UpdateRootCause([FromRoute] string id,[FromBody] UpdateRootCauseRequest body, CancellationToken cancellationToken)

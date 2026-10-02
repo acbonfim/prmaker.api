@@ -30,6 +30,12 @@ public interface IAzureService
     /// </summary>
     Task<IReadOnlyList<int>> QueryWorkItemIdsAsync(string wiql, int top, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Resumo de vários cards numa chamada só (<c>workitemsbatch</c>, 0051): cards inexistentes ou sem acesso ficam de
+    /// fora. No máximo 200 ids.
+    /// </summary>
+    Task<IReadOnlyList<AzureCardSummaryResponse>> GetCardsSummaryAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+
     /// <summary>Nomes dos campos do work item conforme o "AzureDevOps Configurations" (feature 0030).</summary>
     Task<solvace.azure.domain.Options.AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default);
 }
