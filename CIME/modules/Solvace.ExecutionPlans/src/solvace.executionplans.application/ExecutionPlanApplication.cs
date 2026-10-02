@@ -55,9 +55,14 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
             request.Phase, request.ParentPlanId);
         // 0041: a correção é a mesma conversa do Claude que fez a análise — herda a sessão (o executor retoma por ela;
-        // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão).
+        // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão). 0049: no executor a correção roda numa
+        // sessão nova — o plano fica com a sessão que está rodando agora, não com a da análise.
         if (parentSession is not null)
-            plan.RegisterSession(parentSession.SessionId, parentSession.Host, parentSession.Cwd, now);
+        {
+            var running = await RunningSessionAsync(request.CardNumber!, cancellationToken);
+            var session = running ?? parentSession;
+            plan.RegisterSession(session.SessionId, session.Host, running is null ? parentSession.Cwd : null, now);
+        }
         if (request.Steps.Count > 0)
             plan.UpsertSteps(request.Steps, now);
 
@@ -636,6 +641,20 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
         var notes = await GetNotesByCardAsync(plan.CardNumber, cancellationToken);
         return plan.ToResponse(artifacts, lastLogId, DateTimeOffset.UtcNow, questions, links, notes);
+    }
+
+    /// <summary>0049: sessão que o executor está rodando no card agora (best-effort).</summary>
+    private async Task<ExecutionSession?> RunningSessionAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        if (_resumeTrigger is null) return null;
+        try
+        {
+            return await _resumeTrigger.RunningSessionAsync(cardNumber, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

@@ -26,7 +26,7 @@ public partial class ExecutionPlanApplication
         return session!.ToResponse();
     }
 
-    public async Task<ExecutionUsageResponse> RecordUsageAsync(Guid planId, RecordExecutionUsageRequest request, CancellationToken cancellationToken)
+    public async Task<ExecutionUsageResponse> RecordUsageAsync(Guid planId, RecordExecutionUsageRequest request, CancellationToken cancellationToken, bool sessionEnded = false)
     {
         var plan = await MutateAsync(planId, async p =>
         {
@@ -39,7 +39,7 @@ public partial class ExecutionPlanApplication
                     Model = m.Model, Turns = m.Turns, InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
                     CacheReadTokens = m.CacheReadTokens, CacheWriteTokens = m.CacheWriteTokens
                 }).ToList());
-            p.Touch(now, fromExecutor: true);
+            p.Touch(now, fromExecutor: !sessionEnded);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
         return plan.FillSummary(new ExecutionPlanSummaryResponse(), 0, 0).Usage!;

@@ -166,7 +166,7 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
                 try
                 {
                     if (await queue.ResolvePlanIdAsync(id, usage.SessionId, ct) is { } planId)
-                        await plans.RecordUsageAsync(planId, usage, ct);
+                        await plans.RecordUsageAsync(planId, usage, ct, sessionEnded: true);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {

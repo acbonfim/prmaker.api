@@ -45,6 +45,7 @@ builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
 builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionQueueSettings, solvace.prform.Execution.ExecutionQueueSettings>();
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();

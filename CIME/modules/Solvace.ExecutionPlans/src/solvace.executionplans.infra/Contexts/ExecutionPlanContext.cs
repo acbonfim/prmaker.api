@@ -219,6 +219,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.CostUsd).HasPrecision(12, 4);
             entity.Property(e => e.SessionCostUsd).HasPrecision(12, 4);
             entity.Property(e => e.Model).HasMaxLength(ExecutionRequest.MaxModelLength);
+            entity.Property(e => e.Phase).HasMaxLength(ExecutionRequest.MaxPhaseLength);
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.IsActive);
             entity.Ignore(e => e.IsFinished);

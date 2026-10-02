@@ -134,6 +134,13 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   motivo) e termine. `watch`, `wait` e `wait-answers` nao esperam (exit 12) — o PRMake cria o proximo pedido e retoma
   esta sessao (`claude --resume`) quando houver trabalho. Pausa pela tela por mais de 10 min encerra o processo; o
   "Continuar" retoma. Cancelar pela tela mata o processo na hora.
+- **Correcao numa sessao nova (0049)**: quando o card passa para a correcao (respostas de `propor-solucoes` dadas ou
+  plano de correcao aberto), o executor nao retoma a sessao da analise — abre outra, com o prompt pedindo
+  `contexto-correcao <card>` (resumo deixado no checkpoint de `propor-solucoes`, respostas, comentarios, arquivos). As
+  retomadas seguintes da correcao continuam essa sessao nova. "Skills Configurations" → `ExecutorCorrectionNewSession`.
+- **Comentarios em sequencia = uma retomada (0049)**: um comentario espera `ExecutorNoteDelaySeconds` (padrao 120 s)
+  antes de retomar o card; outro comentario nesse meio empurra a espera (ate 3×). "Continuar" ou outra acao do usuario
+  comeca na hora. Leia **todos** os comentarios novos (`prmake_notes`) e atenda-os juntos.
 - **Sem prompt de permissao**: merge/aprovacao de PR, push forcado ou em branch protegida, escrita em banco/Cognito sao
   bloqueados pelo executor (o comando volta com "Bloqueado pelo executor do PRMake") — registre no plano o que precisa
   de uma pessoa e siga.

@@ -25,7 +25,7 @@ public class ExecutionRequestResponse
     public int MaxAttempts { get; set; }
     public DateTimeOffset? NotBefore { get; set; }
     public string? WaitReason { get; set; }
-    /// <summary>Código do motivo de espera para a tela: no-worker | offline | paused | busy | budget | retry | null.</summary>
+    /// <summary>Código do motivo de espera para a tela: no-worker | offline | paused | busy | budget | retry | gathering | null.</summary>
     public string? WaitCode { get; set; }
     public string? LastError { get; set; }
     public string? StderrTail { get; set; }
@@ -43,6 +43,10 @@ public class ExecutionRequestResponse
     public long? CacheWriteTokens { get; set; }
     public string? Model { get; set; }
     public int? Turns { get; set; }
+    /// <summary>0049: fase do card quando a máquina pegou o pedido (analysis | correction).</summary>
+    public string? Phase { get; set; }
+    /// <summary>0049: a correção começou numa sessão nova (não retomou a da análise).</summary>
+    public bool NewSession { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? ClaimedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
@@ -188,6 +192,8 @@ public static class ExecutionQueueResponseExtensions
         CacheWriteTokens = r.CacheWriteTokens,
         Model = r.Model,
         Turns = r.Turns,
+        Phase = r.Phase,
+        NewSession = r.NewSession,
         CreatedAt = r.CreatedAt,
         ClaimedAt = r.ClaimedAt,
         StartedAt = r.StartedAt,

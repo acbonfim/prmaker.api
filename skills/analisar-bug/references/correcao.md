@@ -6,7 +6,8 @@ Leia so a secao do passo em que esta (`bash ~/.claude/skills/analisar-bug/script
 Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** e **decida com o usuario**.
 1. `step propor-solucoes running`. Escreva `$CARD_DIR/analises/solucoes.md`: 1 a 3 opcoes, cada uma com o que
    muda (repositorios/arquivos), riscos, se precisa de script de dados (chamado) e o esforco; marque a
-   recomendada. `sync <card> propor-solucoes` e `log ... decision` com o resumo.
+   recomendada. `sync <card> propor-solucoes` (no executor: `prmake_file(card, "solucoes.md", conteudo, "analysis",
+   "propor-solucoes")`) e `log ... decision` com o resumo.
 2. **Pergunte** (`ask`) tudo o que decide o plano — a etapa fica *aguardando* e o PRMake mostra as perguntas
    em destaque. Sempre que se aplicar:
    - Qual solucao seguir (opcoes das solucoes, com a recomendada).
@@ -28,6 +29,13 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal. **O `label` de cada opcao e o
    texto que o usuario le no botao e o que vai para a Timeline** — escreva a opcao em si ("Corrigir no backend
    (recomendada)", "Script de dados via chamado"), nunca "Opcao 1"/"A"; detalhes vao em `description`.
+   **Resumo para a correcao (obrigatorio, junto com as perguntas)** — `prmake_checkpoint(card, "propor-solucoes",
+   texto)` (sem MCP: `checkpoint <card> propor-solucoes "..."`), ate ~3.000 caracteres, **autossuficiente**: no
+   executor a correcao roda numa sessao nova que le **so isto** (+ respostas, comentarios e arquivos), sem esta
+   conversa. Inclua: causa raiz e a evidencia (ids, consultas, host/banco usados); onde mexer em cada opcao — repo
+   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha`, funcao/SP; scripts prontos (nomes nos arquivos do
+   plano); branches levantadas pelo `branches`; riscos; o que o usuario pediu nos comentarios. Sem repetir a analise
+   inteira — ela continua na Timeline e em `analises/`.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
    - Rode `bash $PLAN wait-answers <card> 3600` **em segundo plano** (ferramenta Bash com
      `run_in_background: true`) e so entao mostre as perguntas no terminal e encerre a sua vez esperando o chat.
