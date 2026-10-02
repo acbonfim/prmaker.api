@@ -8,10 +8,11 @@ Plano: etapa `causa-raiz` (log `finding` por hipotese, com o porque) e depois `m
 a analise e os scripts na pasta do card, rode `sync <card> montar-analise` — o usuario le a analise e baixa os
 `.sql` direto na tela do card.
 Monte a analise em `$CARD_DIR/analises/analise-inicial.md` (a pasta do passo 1b) seguindo esta
-estrutura (Markdown, objetivo e claro, em portugues). Se gerar scripts (ex.: SQL de correcao),
-salve-os em `$CARD_DIR/scripts/` — quando a **ordem de execucao importa**, prefixe `01_nome.sql`,
-`02_nome.sql`, ...; use `99_rollback_*.sql` para rollback (ou embuta o rollback como bloco comentado
-no proprio script). Evidencias/saidas de consulta vao em `$CARD_DIR/dados/`.
+estrutura (Markdown, objetivo e claro, em portugues). Na analise, os scripts sao so as **consultas somente
+leitura** que levaram ao problema: `$CARD_DIR/scripts/00_consulta-<assunto>.sql`, com um comentario no topo dizendo
+o que cada uma mostrou (0050). **Script que altera dados (SQL de correcao) nao e da analise** — ele e o texto do
+chamado vao no plano de correcao, na etapa do chamado (`ref.sh correcao 7`); aqui so descreva o que ele fara.
+Evidencias/saidas de consulta vao em `$CARD_DIR/dados/`.
 
 ```markdown
 **Analise inicial — Card <card>: <titulo>**

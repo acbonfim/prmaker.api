@@ -105,12 +105,21 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
   plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
-- **Arquivos do card sempre no plano (0046/0049)**: todo script (`.sql` com rollback), analise e **texto do chamado**
-  que o usuario precisa ver vai para os arquivos do plano. **No executor: direto com
-  `prmake_file(card, "01_nome.sql", conteudo, "script", key)`** — uma chamada, sem gravar local antes nem `sync`. No
-  terminal: grave em `$CARD_DIR` (a pasta que o `contexto` imprime, padrao `~/.prmake/cards/<card>` — **nunca**
-  `~/.claude/...`, que o Claude Code protege) e rode `sync`, ou use `prmake_file`. Gravacao local negada → `prmake_file`
-  na hora e siga — **nunca** trave a etapa, `block` nem peca permissao ao usuario por causa de arquivo.
+- **Arquivos do card sempre no plano (0046/0049), cada um na sua fase (0050)**: todo script, analise e **texto do
+  chamado** que o usuario precisa ver vai para os arquivos do plano — **no plano da fase certa**:
+  - **Analise** (`phase: "analysis"`): so as **consultas somente leitura** que levaram ao problema
+    (`00_consulta-<assunto>.sql`, com um comentario no topo dizendo o que cada uma mostrou), a analise `.md` e os dados.
+  - **Correcao** (`phase: "correction"`): o **script que altera dados** (`01_<nome>.sql` com rollback), a consulta de
+    validacao e o **texto do chamado** (`chamado-<nome>.md`, kind `ticket`), com `key` = a etapa do chamado. Rodar o
+    script e execucao: **nunca** grave script de alteracao nem chamado na analise — a API recusa (mensagem de regra).
+  **No executor: direto com `prmake_file(card, "01_nome.sql", conteudo, "script", key, phase: "correction")`** — uma
+  chamada, sem gravar local antes nem `sync`. No terminal: grave em `$CARD_DIR` (a pasta que o `contexto` imprime,
+  padrao `~/.prmake/cards/<card>` — **nunca** `~/.claude/...`, que o Claude Code protege) e rode `sync`, ou use
+  `prmake_file`. Gravacao local negada → `prmake_file` na hora e siga — **nunca** trave a etapa, `block` nem peca
+  permissao ao usuario por causa de arquivo.
+  **Diga o que anexou, pelo nome** (0050): na descricao da etapa, na mensagem final da vez e na Timeline —
+  "Anexei ao plano de correcao: `01_x.sql` (script + rollback), `chamado-x.md` (texto do chamado)"; na analise, o
+  mesmo para as consultas. O usuario nao deve ter que procurar no rodape para saber que o arquivo existe.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
