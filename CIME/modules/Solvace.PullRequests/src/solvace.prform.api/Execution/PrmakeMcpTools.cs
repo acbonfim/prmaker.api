@@ -260,7 +260,18 @@ public partial class PrmakeMcpTools(
     public Task<string> Card(string card, [Description("Quantos comentarios (do mais recente), padrao 10")] int comments = 10,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var full = await azure.GetCardFullAsync(card.Trim(), ct) ?? throw new McpException($"Card {card} nao encontrado no Azure DevOps.");
+        AzureCardFullResponse? full;
+        try
+        {
+            full = await azure.GetCardFullAsync(card.Trim(), ct);
+        }
+        catch (Exception e) when (e is not (OperationCanceledException or McpException or InvalidOperationException
+                                            or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException))
+        {
+            // O DevOps respondeu erro (card inexistente, PAT sem acesso): a mensagem dele vai para o Claude.
+            throw new McpException($"Azure DevOps: {e.Message}", e);
+        }
+        if (full is null) throw new McpException($"Card {card} nao encontrado no Azure DevOps.");
         if (!string.IsNullOrEmpty(full.Error)) throw new McpException(full.Error);
         string? F(string key, int max = 4000)
         {
@@ -422,8 +433,11 @@ public partial class PrmakeMcpTools(
             return await body();
         }
         catch (Exception e) when (e is DomainException or ExecutionPlanNotFoundException or ExecutionForbiddenException
-                                       or ExecutionPlanConcurrencyException or solvace.azure.domain.Exceptions.DevOpsActionException)
+                                       or ExecutionPlanConcurrencyException or solvace.azure.domain.Exceptions.DevOpsActionException
+                                       or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException
+                                       or InvalidOperationException)
         {
+            // InvalidOperation: integração do Azure ausente ("Plugin ... não encontrado") — a mensagem diz o que configurar.
             throw new McpException(e.Message, e);
         }
     }
