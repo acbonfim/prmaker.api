@@ -11,9 +11,14 @@ namespace Cime.ExecutionAgent;
 public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResponse claim)
 {
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(30);
+    /// <summary>0050: atividade nova vai na hora, mas no máximo um envio a cada 5 s.</summary>
+    private static readonly TimeSpan ActivityMinInterval = TimeSpan.FromSeconds(5);
     private const int StderrLines = 60;
 
     private readonly Queue<string> _stderr = new();
+    private readonly ActivityTracker _activity = new();
+    private IReadOnlyList<RepoMapEntry> _repos = [];
+    private string _workspace = string.Empty;
     private readonly CancellationTokenSource _kill = new();
     private string? _killReason;
     private bool _killedByServer;
@@ -57,6 +62,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         }
 
         var workspace = ConfigStore.ResolveWorkspace(config);
+        _workspace = workspace;
+        _repos = RepoMap.Load()?.Repos ?? [];
         var resume = r.Kind == "resume" && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
         var sessionId = resume ? r.SessionId! : Guid.NewGuid().ToString();
         _sessionId = sessionId;
@@ -125,10 +132,15 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(stopping, _kill.Token);
         var exit = process.WaitForExitAsync(CancellationToken.None);
+        var lastBeat = DateTimeOffset.UtcNow;
         while (!exit.IsCompleted)
         {
-            var tick = Task.Delay(HeartbeatEvery, stop.Token);
-            await Task.WhenAny(exit, tick);
+            // 0050: heartbeat a cada 30 s, ou antes quando o Claude começa outra atividade (mínimo 5 s entre envios).
+            var due = lastBeat + HeartbeatEvery;
+            if (_activity.Dirty && lastBeat + ActivityMinInterval < due) due = lastBeat + ActivityMinInterval;
+            var wait = due - DateTimeOffset.UtcNow;
+            var tick = Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, stop.Token);
+            await Task.WhenAny(exit, tick, _activity.Changed());
             if (exit.IsCompleted) break;
 
             if (stop.IsCancellationRequested)
@@ -136,6 +148,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                 KillTree(process);
                 break;
             }
+            if (!tick.IsCompleted) continue; // atividade nova: recalcula quando mandar
 
             if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes)))
             {
@@ -146,7 +159,12 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
             try
             {
-                var hb = await client.HeartbeatAsync(r.Id, new HeartbeatRequest { Pid = process.Id, StderrTail = StderrTail() }, stopping);
+                var (current, recent) = _activity.Take();
+                lastBeat = DateTimeOffset.UtcNow;
+                var hb = await client.HeartbeatAsync(r.Id, new HeartbeatRequest
+                {
+                    Pid = process.Id, StderrTail = StderrTail(), Activity = current, Recent = recent
+                }, stopping);
                 if (hb.Action == "cancel")
                 {
                     Log.Info($"card {r.CardNumber}: cancelado pelo PRMake ({hb.Reason}) — encerrando o Claude");
@@ -328,6 +346,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                     var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
                     if (type == "result")
                         _result = root.Clone();
+                    else if (type == "assistant" && line.Contains("\"tool_use\"", StringComparison.Ordinal))
+                        TrackTools(root);
                     else if (type == "assistant" && line.Contains("limit", StringComparison.OrdinalIgnoreCase)
                              && AccountLimit.RetryAt(line, DateTimeOffset.UtcNow) is not null)
                         _limitText = ExtractText(root) ?? line;
@@ -346,6 +366,25 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         catch (Exception e)
         {
             Log.Warn($"card {Card}: leitura da saída do Claude falhou: {e.Message}");
+        }
+    }
+
+    /// <summary>0050: cada ferramenta usada vira um rótulo para a tela (nunca o comando).</summary>
+    private void TrackTools(JsonElement root)
+    {
+        if (!root.TryGetProperty("message", out var m) || !m.TryGetProperty("content", out var c) || c.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var part in c.EnumerateArray())
+        {
+            if (!part.TryGetProperty("type", out var t) || t.GetString() != "tool_use") continue;
+            try
+            {
+                if (ActivityLabel.From(part, _repos, _workspace) is { } item) _activity.Add(item);
+            }
+            catch
+            {
+                // rótulo é cortesia: nunca atrapalha a execução
+            }
         }
     }
 

@@ -117,6 +117,9 @@ public sealed class HeartbeatRequest
 {
     public int? Pid { get; set; }
     public string? StderrTail { get; set; }
+    /// <summary>0050: o que o Claude está fazendo agora e as últimas atividades (rótulos, nunca o comando).</summary>
+    public ActivityItem? Activity { get; set; }
+    public List<ActivityItem>? Recent { get; set; }
 }
 
 public sealed class HeartbeatResponse
