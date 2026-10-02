@@ -27,7 +27,7 @@ máquina saber onde cada um está.
 2. **Descoberta automática pelo remote**: uma busca acha os clones de trabalho e guarda os que casam com
    `BranchStrategy.repositories` (nada fixo no script — os padrões vêm do `GET /Skills/config`).
 3. **Instalação nova**: `install` e `agent install` fazem a busca, mostram o resultado e deixam confirmar/corrigir
-   (com terminal interativo). O workspace do executor sai do mapa.
+   (com terminal interativo). O workspace do executor sai do mapa a cada execução (não é gravado no `register`).
 4. **Quem já instalou**: migração única (`.repos-v1`) no `update --quiet` do hook — monta o mapa sozinha, em segundo
    plano, sem perguntar, e avisa numa linha. O executor novo também monta o mapa se ele não existir.
 5. **Uso pelas skills**: `revamp-repos.sh` (`list`/`where`/`grep`) e o fluxo de correção (`branches`/`worktree`) usam o
@@ -49,7 +49,8 @@ máquina saber onde cada um está.
     "edv-solvace":  { "path": "/Users/x/repos/solvace/edv-solvace", "kind": "legacy", "source": "env", "confirmed": true },
     "revamp-Users": { "path": "/Users/x/repos/solvace/revamp_separado/Solvace.Users", "kind": "revamp-backend", "source": "scan", "confirmed": false }
   },
-  "ambiguous": { "revamp-BOS": ["/Users/x/a/revamp-BOS", "/Users/x/b/BOS"] }
+  "ambiguous": { "revamp-BOS": ["/Users/x/a/revamp-BOS", "/Users/x/b/BOS"] },
+  "missing": ["edv-solvace-api"]
 }
 ```
 - `source`: `env` (veio de variável), `scan` (busca), `manual` (`repos set` ou confirmação). A busca **nunca** sobrescreve
@@ -60,14 +61,22 @@ máquina saber onde cada um está.
 - Gravação atômica (arquivo temporário + `mv`), com `jq`; scripts com o bloco "Windows/Git Bash (0035)".
 
 ### Busca (`prmake-skills.sh repos scan`)
-- Raízes: `PRMAKE_REPOS_ROOTS` (separadas por `:`/`;`) ou, por padrão, as que existirem entre `~/repos`,
-  `~/source/repos`, `~/dev`, `~/projects`, `~/code`, `~/git`, `~/Documents` + o pai de cada caminho já no mapa e o
-  workspace configurado do executor. Não varre a home inteira (lento no Windows e no macOS com `Library`).
-- Profundidade máxima 4 abaixo da raiz; não desce em `node_modules`, `bin`, `obj`, `.git`, `Library`, `.prmake-wt`,
-  `dist`, `packages`, nem dentro de um repositório já encontrado. Tempo limite (padrão 60 s); estourou → grava o que
-  achou e avisa.
+- Raízes: `PRMAKE_REPOS_ROOTS` (separadas por `:`/`;`) ou, por padrão, as que existirem entre `~/repos`, `~/source`,
+  `~/src`, `~/dev`, `~/projects`, `~/code`, `~/git`, `~/workspace`, `~/work`, `~/Documents` (fora do macOS) e, no
+  Windows, `C:/repos`, `C:/dev`, `C:/projects`, `C:/src`, `C:/git`, `D:/repos`… + o pai de cada caminho já no mapa,
+  o workspace configurado do executor e os pais das variáveis. A home (e o que está acima dela) nunca é raiz — só um
+  nível dela (repositório direto em `~/edv-solvace`). Não varre a home inteira (lento no Windows e no macOS com
+  `Library`).
+- macOS: `Documents`/`Desktop`/`Downloads` ficam fora da busca padrão — listar essas pastas pede permissão do sistema
+  (TCC), inclusive ao serviço do executor. Repositório lá: `repos set` ou `PRMAKE_REPOS_ROOTS`.
+- Profundidade máxima 4 abaixo da raiz; não desce em ocultas, `node_modules`, `bin`, `obj`, `Library`, `.prmake-wt`,
+  `dist`, `packages`, `kb-mirror`. Repositório dentro de repositório **conta** (na máquina do autor,
+  `revamp_separado` é um repositório git com os módulos dentro). Tempo limite (padrão 60 s); estourou → grava o que
+  achou, mantém as entradas antigas e avisa. Busca completa → as entradas `scan` antigas que não foram achadas saem.
 - Ignora: **worktrees** (`.git` é arquivo — inclui os `.prmake-wt/<card>/...` do executor e worktrees de feature) e os
   clones de leitura da Base Solvace (`kb-mirror`, mapear.md — "nunca nas cópias de trabalho do usuário").
+- `missing`: padrões das regras sem nenhum clone no mapa nem nos ambíguos — gravado no arquivo (o executor não
+  precisa das regras para mostrar).
 - Guarda só repositórios cujo nome pelo remote casa com `BranchStrategy.repositories` (glob, sem diferenciar
   maiúsculas). Sem acesso ao `/Skills/config` (sem token/rede) → não grava nada e tenta de novo na próxima vez.
 - Dois clones de trabalho do mesmo remote → `ambiguous` com os candidatos (sem escolher sozinho, salvo se um deles já

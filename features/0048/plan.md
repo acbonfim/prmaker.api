@@ -84,8 +84,9 @@ Arquivo: `CIME/modules/Solvace.PullRequests/src/solvace.prform.infra/Migrations/
 - Interativo (`-t 0`): no fim de `repos scan`, `install` e `agent install` — lista, pergunta pelos ambíguos (número do
   candidato) e oferece informar pasta de padrão sem clone; confirmado → `confirmed:true`, `source:manual` no que o
   usuário digitou.
-- `agent install`: depois do `repos scan`, passa `--workspace <ancestral comum>` ao `register` se o usuário não tiver
-  `PRMAKE_WORKSPACE`/workspace configurado e o ancestral não for a home.
+- `agent install`: faz o `repos scan` (se ainda não houver mapa) antes do `register`. **Não** passa `--workspace`: o
+  executor calcula a pasta pelo mapa a cada execução (gravar congelaria a pasta e um clone novo em outro lugar ficaria
+  de fora).
 - Migração `.repos-v1` no `update` (inclusive `--quiet`): sem a marca, `( repos_scan --quiet && : > marca ) &`
   desacoplado (`nohup`/`disown`; no Git Bash, `&` simples). Pendências → uma linha no stdout (mensagem da spec).
 - `status`/`doctor`: linha "repositórios: N mapeados, A ambíguos, F faltando (prmake-skills.sh repos)".
