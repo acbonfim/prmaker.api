@@ -100,6 +100,28 @@ public class ExecutionPlan
         session.UsageUpdatedAt = now;
     }
 
+    /// <summary>
+    /// 0044: linha de base da sessão = o que ela já registrava no plano pai (análise → correção na mesma sessão).
+    /// Só a primeira vez; sessão que não veio do pai fica com base zero.
+    /// </summary>
+    public void SetSessionBaseline(string sessionId, ExecutionSession? fromParent, DateTimeOffset now)
+    {
+        var session = RegisterSession(sessionId, null, null, now);
+        if (session.BaselineSet) return;
+        session.BaselineSet = true;
+        if (fromParent is null) return;
+        session.BaseTurns = fromParent.Turns;
+        session.BaseInputTokens = fromParent.InputTokens;
+        session.BaseOutputTokens = fromParent.OutputTokens;
+        session.BaseCacheReadTokens = fromParent.CacheReadTokens;
+        session.BaseCacheWriteTokens = fromParent.CacheWriteTokens;
+        session.BaseMcpCalls = fromParent.McpCalls ?? 0;
+        session.BaseScriptCalls = fromParent.ScriptCalls ?? 0;
+    }
+
+    /// <summary>Modelo da sessão mais recente que informou consumo (para estimar o custo na tela).</summary>
+    public string? UsageModel => Sessions.Where(s => s.Model != null).OrderByDescending(s => s.UsageUpdatedAt ?? s.LastSeenAt).FirstOrDefault()?.Model;
+
     public void RequestResume(string actor, DateTimeOffset now)
     {
         if (IsFinished) throw new DomainException("O plano já terminou — não há o que continuar.");

@@ -222,10 +222,19 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         if (outcome is not ("done" or "failed"))
             throw new DomainException("outcome deve ser done ou failed.");
 
+        // 0044: o Claude Code informa o custo ACUMULADO da sessão retomada — a base é o acumulado do pedido anterior dela.
+        var current = await RequireRequestAsync(requestId, cancellationToken);
+        var sessionId = current.SessionId ?? request.SessionId;
+        var previousCost = request.CostUsd is not null && !string.IsNullOrEmpty(sessionId)
+            ? await _queue.GetLastSessionCostAsync(sessionId, requestId, cancellationToken)
+            : null;
+        _queue.ClearTracking();
+
         var r = await MutateRequestAsync(requestId, x =>
         {
             if (!x.IsActive || x.WorkerId != workerId) return;
-            x.RecordUsage(request.CostUsd, request.InputTokens, request.OutputTokens, request.Turns);
+            x.RecordUsage(request.CostUsd, previousCost, request.InputTokens, request.OutputTokens, request.Turns,
+                request.FreshInputTokens, request.CacheReadTokens, request.CacheWriteTokens, request.Model);
             if (outcome == "failed" && request.RetryAt is { } retryAt)
             {
                 // 0041: limite da conta do Claude — espera o reset (no máximo 24 h) sem gastar tentativa.
@@ -245,6 +254,16 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         await NotifyAsync(r, cancellationToken);
         if (r.Status == ExecutionRequestStatus.Queued) Pulse(r.OwnerUserId);
         return r.ToResponse();
+    }
+
+    public async Task<Guid?> ResolvePlanIdAsync(Guid requestId, string sessionId, CancellationToken cancellationToken)
+    {
+        var r = await RequireRequestAsync(requestId, cancellationToken);
+        if (await _plans.GetCurrentPlanIdAsync(r.CardNumber, cancellationToken) is { } currentId && currentId != r.PlanId
+            && (await _plans.GetSessionsAsync([currentId], cancellationToken)).TryGetValue(currentId, out var sessions)
+            && sessions.Any(s => s.SessionId == sessionId))
+            return currentId;
+        return (await FindPlanAsync(r, cancellationToken))?.Id;
     }
 
     // ── Executores ───────────────────────────────────────────────────────────────────────────────

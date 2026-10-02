@@ -81,10 +81,20 @@ public class FinishExecutionRequestRequest
     public string? StderrTail { get; set; }
     /// <summary>Falha passageira (rede, processo morto): volta para a fila com espera.</summary>
     public bool Retryable { get; set; } = true;
+    /// <summary>total_cost_usd do Claude Code — ACUMULADO da sessão quando ela é retomada (o PRMake grava a diferença).</summary>
     public decimal? CostUsd { get; set; }
+    /// <summary>Entrada total (nova + cache lido + cache escrito) desta execução.</summary>
     public long? InputTokens { get; set; }
     public long? OutputTokens { get; set; }
     public int? Turns { get; set; }
+    /// <summary>0044 (executor 1.0.3+): as partes da entrada desta execução e o modelo.</summary>
+    public long? FreshInputTokens { get; set; }
+    public long? CacheReadTokens { get; set; }
+    public long? CacheWriteTokens { get; set; }
+    public string? Model { get; set; }
+    /// <summary>0044: sessão e consumo final dela lido do transcript (o mesmo cálculo da skill) — vai para o plano.</summary>
+    public string? SessionId { get; set; }
+    public RecordExecutionUsageRequest? SessionUsage { get; set; }
     /// <summary>0041: limite de uso da conta do Claude — o pedido espera até aqui sem gastar tentativa.</summary>
     public DateTimeOffset? RetryAt { get; set; }
 }

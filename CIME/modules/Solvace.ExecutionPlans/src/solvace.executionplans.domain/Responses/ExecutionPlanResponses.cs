@@ -88,6 +88,8 @@ public class ExecutionUsageResponse
     /// <summary>0041: chamadas pelo MCP e pelo script (somadas das sessões que informaram).</summary>
     public int McpCalls { get; set; }
     public int ScriptCalls { get; set; }
+    /// <summary>0044: modelo da sessão (custo estimado na tela pela tabela de preços).</summary>
+    public string? Model { get; set; }
 }
 
 /// <summary>Consumo médio por plano, com MCP × sem MCP (0041).</summary>
@@ -109,6 +111,14 @@ public class ExecutionUsageReportRow
     /// <summary>Entrada + cache lido + cache escrito.</summary>
     public double AvgInputTokens { get; set; }
     public double AvgOutputTokens { get; set; }
+    /// <summary>0044: as partes da entrada — nova (preço cheio), cache lido (com desconto) e cache escrito.</summary>
+    public double AvgFreshInputTokens { get; set; }
+    public double AvgCacheReadTokens { get; set; }
+    public double AvgCacheWriteTokens { get; set; }
+    /// <summary>Entrada (as três partes) + saída.</summary>
+    public double AvgTotalTokens { get; set; }
+    /// <summary>Modelo que mais gastou no grupo (custo estimado na tela).</summary>
+    public string? Model { get; set; }
     public double AvgMcpCalls { get; set; }
     public double AvgScriptCalls { get; set; }
 }
@@ -373,14 +383,16 @@ public static class ExecutionPlanMappings
         target.Usage = plan.Sessions.Count == 0 ? null : new ExecutionUsageResponse
         {
             Sessions = plan.Sessions.Count,
-            Turns = plan.Sessions.Sum(s => s.Turns),
-            InputTokens = plan.Sessions.Sum(s => s.InputTokens),
-            OutputTokens = plan.Sessions.Sum(s => s.OutputTokens),
-            CacheReadTokens = plan.Sessions.Sum(s => s.CacheReadTokens),
-            CacheWriteTokens = plan.Sessions.Sum(s => s.CacheWriteTokens),
+            // 0044: líquido da linha de base (sessão que veio da análise não soma o que já foi gasto lá).
+            Turns = plan.Sessions.Sum(s => s.NetTurns()),
+            InputTokens = plan.Sessions.Sum(s => s.NetInputTokens()),
+            OutputTokens = plan.Sessions.Sum(s => s.NetOutputTokens()),
+            CacheReadTokens = plan.Sessions.Sum(s => s.NetCacheReadTokens()),
+            CacheWriteTokens = plan.Sessions.Sum(s => s.NetCacheWriteTokens()),
             UpdatedAt = plan.Sessions.Max(s => s.UsageUpdatedAt),
-            McpCalls = plan.Sessions.Sum(s => s.McpCalls ?? 0),
-            ScriptCalls = plan.Sessions.Sum(s => s.ScriptCalls ?? 0)
+            McpCalls = plan.Sessions.Sum(s => s.NetMcpCalls()),
+            ScriptCalls = plan.Sessions.Sum(s => s.NetScriptCalls()),
+            Model = plan.UsageModel
         };
         target.ResumeRequestedAt = plan.ResumeRequestedAt;
         target.ResumeRequestedBy = plan.ResumeRequestedBy;

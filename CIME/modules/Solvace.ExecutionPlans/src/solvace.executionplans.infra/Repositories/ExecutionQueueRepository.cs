@@ -69,6 +69,11 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .Where(r => r.OwnerUserId == ownerUserId && r.CostUsd != null && (r.FinishedAt ?? r.UpdatedAt) >= since)
             .SumAsync(r => r.CostUsd ?? 0, cancellationToken);
 
+    public Task<decimal?> GetLastSessionCostAsync(string sessionId, Guid exceptRequestId, CancellationToken cancellationToken) =>
+        _context.Requests.AsNoTracking()
+            .Where(r => r.SessionId == sessionId && r.Id != exceptRequestId && r.SessionCostUsd != null)
+            .MaxAsync(r => r.SessionCostUsd, cancellationToken);
+
     public Task<int> CountBySourceSinceAsync(Guid ownerUserId, string source, DateTimeOffset since, CancellationToken cancellationToken) =>
         _context.Requests.AsNoTracking()
             .CountAsync(r => r.OwnerUserId == ownerUserId && r.Source == source && r.CreatedAt >= since, cancellationToken);

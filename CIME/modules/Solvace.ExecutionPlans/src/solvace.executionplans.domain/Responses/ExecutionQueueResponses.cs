@@ -32,9 +32,16 @@ public class ExecutionRequestResponse
     public int? ExitCode { get; set; }
     public string? FinishedReason { get; set; }
     public string? FinishedBy { get; set; }
+    /// <summary>Custo deste pedido (0044: já sem o acumulado das execuções anteriores da mesma sessão).</summary>
     public decimal? CostUsd { get; set; }
+    /// <summary>Acumulado da sessão no fim do pedido (como o Claude Code informa).</summary>
+    public decimal? SessionCostUsd { get; set; }
     public long? InputTokens { get; set; }
     public long? OutputTokens { get; set; }
+    public long? FreshInputTokens { get; set; }
+    public long? CacheReadTokens { get; set; }
+    public long? CacheWriteTokens { get; set; }
+    public string? Model { get; set; }
     public int? Turns { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? ClaimedAt { get; set; }
@@ -167,8 +174,13 @@ public static class ExecutionQueueResponseExtensions
         FinishedReason = r.FinishedReason,
         FinishedBy = r.FinishedBy,
         CostUsd = r.CostUsd,
+        SessionCostUsd = r.SessionCostUsd,
         InputTokens = r.InputTokens,
         OutputTokens = r.OutputTokens,
+        FreshInputTokens = r.FreshInputTokens,
+        CacheReadTokens = r.CacheReadTokens,
+        CacheWriteTokens = r.CacheWriteTokens,
+        Model = r.Model,
         Turns = r.Turns,
         CreatedAt = r.CreatedAt,
         ClaimedAt = r.ClaimedAt,

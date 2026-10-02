@@ -52,8 +52,11 @@ public partial class AiUsageRecorder(IHttpContextAccessor http, IServiceScopeFac
         if (context is not null) Accumulate(context, input, output, cost, response.Model);
     }
 
+    private Task<IReadOnlyDictionary<string, AiUsagePricing.Price>> PricesAsync(CancellationToken cancellationToken) =>
+        LoadPricesAsync(plugins, cancellationToken);
+
     /// <summary>Preços da configuração GLOBAL do plugin (vale mesmo que ele seja pessoal — o preço não é do usuário).</summary>
-    private async Task<IReadOnlyDictionary<string, AiUsagePricing.Price>> PricesAsync(CancellationToken cancellationToken)
+    public static async Task<IReadOnlyDictionary<string, AiUsagePricing.Price>> LoadPricesAsync(IPluginCacheManager plugins, CancellationToken cancellationToken)
     {
         try
         {

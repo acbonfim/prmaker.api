@@ -15,10 +15,11 @@ public partial class ExecutionPlanApplication
     public async Task<ExecutionSessionResponse> RegisterSessionAsync(Guid planId, RegisterExecutionSessionRequest request, CancellationToken cancellationToken)
     {
         ExecutionSession? session = null;
-        var plan = await MutateAsync(planId, p =>
+        var plan = await MutateAsync(planId, async p =>
         {
             var now = DateTimeOffset.UtcNow;
             session = p.RegisterSession(request.SessionId, request.Host, request.Cwd, now);
+            await EnsureBaselineAsync(p, request.SessionId, now, cancellationToken);
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
@@ -27,15 +28,31 @@ public partial class ExecutionPlanApplication
 
     public async Task<ExecutionUsageResponse> RecordUsageAsync(Guid planId, RecordExecutionUsageRequest request, CancellationToken cancellationToken)
     {
-        var plan = await MutateAsync(planId, p =>
+        var plan = await MutateAsync(planId, async p =>
         {
             var now = DateTimeOffset.UtcNow;
+            await EnsureBaselineAsync(p, request.SessionId, now, cancellationToken);
             p.RecordUsage(request.SessionId, request.Host, request.Turns, request.InputTokens, request.OutputTokens,
                 request.CacheReadTokens, request.CacheWriteTokens, request.Model, now, request.McpCalls, request.ScriptCalls);
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
         return plan.FillSummary(new ExecutionPlanSummaryResponse(), 0, 0).Usage!;
+    }
+
+    /// <summary>
+    /// 0044: correção que continua a sessão da análise — o que a sessão já registrava no plano pai vira a linha de base
+    /// (o transcript é acumulado; sem isso a correção mostraria também o custo da análise).
+    /// </summary>
+    private async Task EnsureBaselineAsync(ExecutionPlan plan, string sessionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var id = sessionId?.Trim();
+        if (string.IsNullOrEmpty(id) || plan.Sessions.FirstOrDefault(s => s.SessionId == id) is { BaselineSet: true }) return;
+        ExecutionSession? fromParent = null;
+        if (plan.ParentPlanId is { } parentId
+            && (await _repository.GetSessionsAsync([parentId], cancellationToken)).TryGetValue(parentId, out var sessions))
+            fromParent = sessions.FirstOrDefault(s => s.SessionId == id && s.UsageUpdatedAt != null);
+        plan.SetSessionBaseline(id, fromParent, now);
     }
 
     public async Task<ExecutionPlanSummaryResponse> RequestResumeAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken)
@@ -79,18 +96,49 @@ public partial class ExecutionPlanApplication
     {
         days = Math.Clamp(days, 1, 365);
         var plans = await _repository.GetPlansWithUsageSinceAsync(userId, DateTimeOffset.UtcNow.AddDays(-days), cancellationToken);
+
+        // 0044: correção antiga (sem linha de base gravada) que continuou a sessão da análise — desconta o que a sessão
+        // já tinha no plano pai, senão a correção leva também o custo da análise.
+        var parentIds = plans.Where(p => p.ParentPlanId is not null && p.Sessions.Any(s => !s.BaselineSet))
+            .Select(p => p.ParentPlanId!.Value).Distinct().ToList();
+        var parents = await _repository.GetSessionsAsync(parentIds, cancellationToken);
+
         var rows = plans
-            .Select(p => new
+            .Select(p =>
             {
-                p.Phase,
-                Turns = p.Sessions.Sum(s => s.Turns),
-                Input = p.Sessions.Sum(s => s.InputTokens + s.CacheReadTokens + s.CacheWriteTokens),
-                Output = p.Sessions.Sum(s => s.OutputTokens),
-                Mcp = p.Sessions.Sum(s => s.McpCalls ?? 0),
-                Script = p.Sessions.Sum(s => s.ScriptCalls ?? 0)
+                var sessions = p.Sessions.Select(s =>
+                {
+                    if (s.BaselineSet || p.ParentPlanId is not { } pid || !parents.TryGetValue(pid, out var ps)) return s;
+                    var copy = Clone(s);
+                    copy.BaselineSet = true;
+                    if (ps.FirstOrDefault(x => x.SessionId == s.SessionId && x.UsageUpdatedAt != null) is { } from)
+                    {
+                        copy.BaseTurns = from.Turns; copy.BaseInputTokens = from.InputTokens; copy.BaseOutputTokens = from.OutputTokens;
+                        copy.BaseCacheReadTokens = from.CacheReadTokens; copy.BaseCacheWriteTokens = from.CacheWriteTokens;
+                        copy.BaseMcpCalls = from.McpCalls ?? 0; copy.BaseScriptCalls = from.ScriptCalls ?? 0;
+                    }
+                    return copy;
+                }).ToList();
+                return new
+                {
+                    p.Phase,
+                    Turns = sessions.Sum(s => s.NetTurns()),
+                    Fresh = sessions.Sum(s => s.NetInputTokens()),
+                    CacheRead = sessions.Sum(s => s.NetCacheReadTokens()),
+                    CacheWrite = sessions.Sum(s => s.NetCacheWriteTokens()),
+                    Output = sessions.Sum(s => s.NetOutputTokens()),
+                    Mcp = sessions.Sum(s => s.NetMcpCalls()),
+                    Script = sessions.Sum(s => s.NetScriptCalls()),
+                    Model = p.UsageModel
+                };
             })
             .Where(x => x.Turns > 0)
-            .Select(x => new { x.Phase, x.Turns, x.Input, x.Output, x.Mcp, x.Script, Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script" })
+            .Select(x => new
+            {
+                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Model,
+                Input = x.Fresh + x.CacheRead + x.CacheWrite,
+                Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script"
+            })
             .ToList();
 
         var result = new ExecutionUsageReportResponse { Days = days, AllUsers = userId is null };
@@ -106,12 +154,26 @@ public partial class ExecutionPlanApplication
                 AvgTurns = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Turns), 1),
                 AvgInputTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.Input)),
                 AvgOutputTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.Output)),
+                AvgFreshInputTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.Fresh)),
+                AvgCacheReadTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.CacheRead)),
+                AvgCacheWriteTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)g.CacheWrite)),
+                AvgTotalTokens = group.Count == 0 ? 0 : Math.Round(group.Average(g => (double)(g.Input + g.Output))),
+                Model = group.Where(g => g.Model != null).GroupBy(g => g.Model).OrderByDescending(m => m.Sum(g => g.Input + g.Output))
+                    .Select(m => m.Key).FirstOrDefault(),
                 AvgMcpCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Mcp), 1),
                 AvgScriptCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Script), 1)
             });
         }
         return result;
     }
+
+    private static ExecutionSession Clone(ExecutionSession s) => new()
+    {
+        SessionId = s.SessionId, Host = s.Host, Cwd = s.Cwd, StartedAt = s.StartedAt, LastSeenAt = s.LastSeenAt,
+        Turns = s.Turns, InputTokens = s.InputTokens, OutputTokens = s.OutputTokens, CacheReadTokens = s.CacheReadTokens,
+        CacheWriteTokens = s.CacheWriteTokens, Model = s.Model, McpCalls = s.McpCalls, ScriptCalls = s.ScriptCalls,
+        UsageUpdatedAt = s.UsageUpdatedAt
+    };
 
     public async Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken)
     {
