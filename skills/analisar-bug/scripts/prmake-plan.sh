@@ -86,7 +86,21 @@ case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
 esac
 
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
-CARDS_ROOT="${CARDS_DIR:-$HOME/.claude/cards}"
+# 0046: a pasta dos cards saiu de ~/.claude/cards — o Claude Code protege ~/.claude e nega gravar ali (o executor, em
+# dontAsk, nao conseguia salvar scripts/analises; nem regra Write(~/.claude/cards/**) libera). Sem CARDS_DIR, o card
+# que ainda estiver na pasta antiga vem para a nova (mv; se as duas existirem, copia o que falta sem sobrescrever).
+LEGACY_CARDS_ROOT="$HOME/.claude/cards"
+migrate_card_dir() { # <raiz> <card>
+  local root="$1" card="$2" old="$LEGACY_CARDS_ROOT/$2"
+  [[ -z "${CARDS_DIR:-}" && -d "$old" && "$root/$card" != "$old" ]] || return 0
+  mkdir -p "$root"
+  if [[ ! -e "$root/$card" ]]; then
+    mv "$old" "$root/$card" 2>/dev/null || cp -R "$old" "$root/$card"
+  else
+    cp -R -n "$old/." "$root/$card/" 2>/dev/null || true
+  fi
+}
+CARDS_ROOT="${CARDS_DIR:-$HOME/.prmake/cards}"
 CMD="${1:-}"; shift || true
 CARD="${1:-}"; shift || true
 
@@ -97,6 +111,7 @@ warn() { echo "AVISO: $*" >&2; }
 command -v jq >/dev/null || die "jq nao encontrado"
 
 CARD_DIR="$CARDS_ROOT/$CARD"
+migrate_card_dir "$CARDS_ROOT" "$CARD"
 mkdir -p "$CARD_DIR"
 STATE="$CARD_DIR/.prmake-plan.json"
 OUTBOX="$CARD_DIR/.prmake-outbox.jsonl"
