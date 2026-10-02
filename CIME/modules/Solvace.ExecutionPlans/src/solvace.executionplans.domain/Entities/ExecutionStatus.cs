@@ -50,9 +50,14 @@ public static class ExecutionArtifactKind
     public const string Data = "data";
     public const string Image = "image";
     public const string Attachment = "attachment";
+    /// <summary>
+    /// 0050: texto do chamado (<c>chamado-&lt;nome&gt;.md</c>) — botão próprio no rodapé e bloco "Texto do chamado" na
+    /// etapa <c>ticket</c>. Só no plano de correção.
+    /// </summary>
+    public const string Ticket = "ticket";
 
     public static readonly IReadOnlySet<string> All =
-        new HashSet<string> { Script, Analysis, Data, Image, Attachment };
+        new HashSet<string> { Script, Analysis, Data, Image, Attachment, Ticket };
 
     private static readonly HashSet<string> ScriptExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".sql", ".sh", ".py", ".ps1", ".cs", ".js", ".ts", ".bash" };
@@ -68,7 +73,8 @@ public static class ExecutionArtifactKind
     {
         var ext = Path.GetExtension(fileName);
         if (ScriptExtensions.Contains(ext)) return Script;
-        if (ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) return Analysis;
+        if (ext.Equals(".md", StringComparison.OrdinalIgnoreCase))
+            return Path.GetFileName(fileName).StartsWith("chamado", StringComparison.OrdinalIgnoreCase) ? Ticket : Analysis;
         if (ImageExtensions.Contains(ext)) return Image;
         if (DataExtensions.Contains(ext)) return Data;
         return Attachment;

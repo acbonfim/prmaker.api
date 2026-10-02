@@ -131,6 +131,13 @@ public class ExecutionRequest
     public DateTimeOffset? FinishedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
 
+    /// <summary>0050: o que o Claude está fazendo agora (rótulo curto montado pelo executor, nunca o comando).</summary>
+    public string? CurrentActivity { get; private set; }
+    public string? CurrentActivityTool { get; private set; }
+    public DateTimeOffset? CurrentActivityAt { get; private set; }
+    /// <summary>0050: últimas atividades (JSON de <see cref="ExecutionActivity"/>, máx. <see cref="ExecutionActivity.MaxRecent"/>).</summary>
+    public string? RecentActivities { get; private set; }
+
     /// <summary>xmin: claim, heartbeat e cancelamento simultâneos não se atropelam.</summary>
     public uint Version { get; private set; }
 
@@ -254,6 +261,45 @@ public class ExecutionRequest
         UpdatedAt = now;
     }
 
+    /// <summary>
+    /// 0050: atividade do Claude informada pelo executor (no heartbeat). Não mexe na trava nem em
+    /// <c>LastActivityAt</c> do plano — é só o que a tela mostra. Devolve se a atividade atual mudou.
+    /// </summary>
+    public bool RecordActivity(Guid workerId, ExecutionActivity? current, IEnumerable<ExecutionActivity>? recent)
+    {
+        EnsureWorker(workerId);
+        if (Status is not (ExecutionRequestStatus.Claimed or ExecutionRequestStatus.Running) || (current is null && recent is null))
+            return false;
+        var changed = false;
+        if (current?.Normalize() is { } c && (c.Label != CurrentActivity || c.At != CurrentActivityAt))
+        {
+            CurrentActivity = c.Label;
+            CurrentActivityTool = c.Tool;
+            CurrentActivityAt = c.At;
+            changed = true;
+        }
+        if (recent is not null)
+        {
+            var list = recent.Select(a => a.Normalize()).OfType<ExecutionActivity>()
+                .OrderByDescending(a => a.At).Take(ExecutionActivity.MaxRecent).ToList();
+            var json = list.Count == 0 ? null : ExecutionActivity.Serialize(list);
+            if (json != RecentActivities)
+            {
+                RecentActivities = json;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private void ClearActivity()
+    {
+        CurrentActivity = null;
+        CurrentActivityTool = null;
+        CurrentActivityAt = null;
+        RecentActivities = null;
+    }
+
     public const int MaxModelLength = 100;
 
     /// <summary>
@@ -305,6 +351,7 @@ public class ExecutionRequest
             NotBefore = now + Backoff[Math.Clamp(Attempts - 1, 0, Backoff.Length - 1)];
             LeaseUntil = null;
             Pid = null;
+            ClearActivity();
             WaitReason = $"Nova tentativa ({Attempts + 1}/{MaxAttempts}) depois de: {LastError}";
             UpdatedAt = now;
             return;
@@ -327,6 +374,7 @@ public class ExecutionRequest
         Pid = null;
         LastError = Clean(reason, MaxErrorLength);
         WaitReason = Clean(reason, 500);
+        ClearActivity();
         if (stderrTail is not null) StderrTail = Tail(stderrTail, MaxStderrLength);
         UpdatedAt = now;
     }
@@ -382,6 +430,7 @@ public class ExecutionRequest
         FinishedReason = reason;
         FinishedBy = actor;
         FinishedAt = now;
+        ClearActivity();
         LeaseUntil = null;
         NotBefore = null;
         WaitReason = null;

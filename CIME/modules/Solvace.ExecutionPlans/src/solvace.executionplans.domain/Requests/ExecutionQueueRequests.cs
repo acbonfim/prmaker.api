@@ -69,6 +69,16 @@ public class ExecutionRequestHeartbeatRequest
 {
     public int? Pid { get; set; }
     public string? StderrTail { get; set; }
+    /// <summary>0050 (executor 1.0.8+): o que o Claude está fazendo agora e as últimas atividades (rótulos, nunca comandos).</summary>
+    public ExecutionActivityRequest? Activity { get; set; }
+    public List<ExecutionActivityRequest>? Recent { get; set; }
+}
+
+public class ExecutionActivityRequest
+{
+    public string? Label { get; set; }
+    public string? Tool { get; set; }
+    public DateTimeOffset? At { get; set; }
 }
 
 public class FinishExecutionRequestRequest

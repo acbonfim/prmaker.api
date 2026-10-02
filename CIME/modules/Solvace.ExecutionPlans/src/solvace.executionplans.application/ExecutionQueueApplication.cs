@@ -228,8 +228,14 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         if (r.Status == ExecutionRequestStatus.Queued)
             return new ExecutionHeartbeatResponse { Action = "cancel", RequestStatus = r.Status, Reason = "A trava venceu e o pedido voltou para a fila." };
 
-        r = await MutateRequestAsync(requestId, x => x.Heartbeat(workerId, request.Pid, request.StderrTail, now), cancellationToken);
+        var activityChanged = false;
+        r = await MutateRequestAsync(requestId, x =>
+        {
+            x.Heartbeat(workerId, request.Pid, request.StderrTail, now);
+            activityChanged = x.RecordActivity(workerId, ToActivity(request.Activity, now), request.Recent?.Select(a => ToActivity(a, now)).OfType<ExecutionActivity>());
+        }, cancellationToken);
         await TouchWorkerAsync(workerId, now, cancellationToken);
+        if (activityChanged) await NotifyActivityAsync(r, cancellationToken);
 
         var plan = await FindPlanAsync(r, cancellationToken);
         if (plan is not null && plan.Status == ExecutionStatus.Cancelled && plan.UpdatedAt >= (r.StartedAt ?? r.CreatedAt))
@@ -640,14 +646,14 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         }
     }
 
-    private record WaitContext(List<ExecutionWorker> Workers, Dictionary<Guid, int> Busy, decimal? Budget, decimal Spent);
+    private record WaitContext(List<ExecutionWorker> Workers, Dictionary<Guid, int> Busy, decimal? Budget, decimal Spent, string? LatestAgentVersion = null);
 
     private async Task<WaitContext> WaitContextAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var workers = (await _queue.GetWorkersByOwnerAsync(owner, cancellationToken)).ToList();
         var busy = await _queue.CountActiveByWorkerAsync(owner, cancellationToken);
         var (budget, spent) = await BudgetAsync(owner, now, cancellationToken);
-        return new WaitContext(workers, busy, budget, spent);
+        return new WaitContext(workers, busy, budget, spent, _agentInfo?.LatestVersion);
     }
 
     /// <summary>(código, texto) do motivo de espera; (null, null) = vai começar assim que um executor perguntar.</summary>
@@ -680,8 +686,17 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             return ("budget", $"Orçamento do dia atingido (US$ {ctx.Spent:0.00} de US$ {budget:0.00}) — libere o pedido ou aumente o orçamento");
         if (active.All(w => ctx.Busy.GetValueOrDefault(w.Id) >= w.MaxConcurrency))
             return ("busy", active.Count == 1 ? $"Aguardando {active[0].Name} terminar outro pedido" : "Suas máquinas estão ocupadas com outros pedidos");
+        // 0050: executor livre e desatualizado se atualiza no próximo sinal de vida (até 1 min) antes de pegar pedidos.
+        var free = active.Where(w => ctx.Busy.GetValueOrDefault(w.Id) < w.MaxConcurrency).ToList();
+        if (ctx.LatestAgentVersion is { Length: > 0 } latest && free.Count > 0 && free.All(w => IsOlder(w.AgentVersion, latest)))
+            return ("updating", free.Count == 1
+                ? $"O executor de {free[0].Name} está se atualizando para a {latest} — o pedido começa logo em seguida"
+                : $"Os executores estão se atualizando para a {latest} — o pedido começa logo em seguida");
         return (null, null);
     }
+
+    private static bool IsOlder(string? version, string latest) =>
+        Version.TryParse(version?.Split('-', '+')[0], out var v) && Version.TryParse(latest.Split('-', '+')[0], out var l) && v < l;
 
     private async Task EvaluateRuleAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -1034,6 +1049,34 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             // Tempo real é best-effort; a tela também consulta enquanto há pedido ativo.
         }
     }
+
+    /// <summary>0050: atividade nova — a tela atualiza a linha "agora" com o payload (sem refazer o GET).</summary>
+    private async Task NotifyActivityAsync(ExecutionRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = request.ToResponse();
+            await _realTime.NotifyGroupAsync(
+                ExecutionPlanRealTimeEvents.Group(request.CardNumber),
+                ExecutionPlanRealTimeEvents.EventPlanUpdated,
+                new
+                {
+                    cardNumber = request.CardNumber, planId = request.PlanId, action = ExecutionPlanRealTimeEvents.Actions.Activity,
+                    requestId = request.Id, status = request.Status, activity = response.CurrentActivity, recent = response.RecentActivities
+                },
+                cancellationToken);
+        }
+        catch
+        {
+            // best-effort: a tela pega no próximo GET
+        }
+    }
+
+    private static ExecutionActivity? ToActivity(ExecutionActivityRequest? a, DateTimeOffset now) =>
+        a is null || string.IsNullOrWhiteSpace(a.Label)
+            ? null
+            // relógio da máquina adiantado não põe a atividade no futuro
+            : new ExecutionActivity { Label = a.Label, Tool = a.Tool, At = a.At is { } at && at <= now ? at : now };
 
     private async Task NotifyWorkersAsync(Guid owner, CancellationToken cancellationToken)
     {

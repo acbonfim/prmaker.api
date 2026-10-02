@@ -606,7 +606,7 @@ case "$CMD" in
     [[ "$CODE" == "200" ]] && jq -r '.artifacts[] | "\(.kind)/\(.name) \(.sha256)"' "$TMP/resp" > "$TMP/remote" || : > "$TMP/remote"
     # Anexos que o usuario pos nos comentarios (qualquer plano do card) nunca sobem de novo como arquivo da skill.
     [[ "$CODE" == "200" ]] && jq -r '[.notes[]?.attachments[]?.sha256] | .[]' "$TMP/resp" > "$TMP/user-shas" || : > "$TMP/user-shas"
-    count=0
+    count=0; skipped=0
     for pair in "scripts:script" "analises:analysis" "dados:data" "imagens:image" "anexos:attachment"; do
       dir="$CARD_DIR/${pair%%:*}"; kind="${pair##*:}"
       [[ -d "$dir" ]] || continue
@@ -614,15 +614,22 @@ case "$CMD" in
         name="$(basename "$f")"
         # Imagem dentro de outra pasta continua sendo imagem (a tela mostra a previa).
         k="$kind"; case "$(printf '%s' "${name##*.}" | tr 'A-Z' 'a-z')" in png|jpg|jpeg|gif|webp|bmp|svg) k="image";; esac
+        # 0050: texto do chamado tem tipo proprio (so no plano de correcao).
+        [[ "$k" == "analysis" && "$(printf '%s' "$name" | tr 'A-Z' 'a-z')" == chamado*.md ]] && k="ticket"
         remote_sha=$(awk -v n="$k/$name" '$1 == n {print $2}' "$TMP/remote")
         local_sha="$(sha256 "$f")"
         [[ "$remote_sha" == "$local_sha" ]] && continue
         grep -qx "$local_sha" "$TMP/user-shas" && continue
-        upload_or_queue "$f" "$k" "$KEY" ""
+        # 0050: arquivo recusado pela regra (ex.: script que altera dados no plano de analise) nao para o sync.
+        if ! ( upload_or_queue "$f" "$k" "$KEY" "" ); then
+          skipped=$((skipped + 1)); continue
+        fi
         count=$((count + 1))
       done < <(find "$dir" -maxdepth 1 -type f ! -name '.*' -print0 | sort -z)
     done
     echo "OK sync ($count arquivo(s) enviado(s))"
+    [[ $skipped -gt 0 ]] && warn "$skipped arquivo(s) recusado(s) neste plano — veja o motivo acima (script de alteracao e chamado vao no plano de correcao)"
+    :
     ;;
 
   status)

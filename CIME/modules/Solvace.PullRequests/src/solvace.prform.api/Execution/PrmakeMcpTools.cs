@@ -301,13 +301,21 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_queue", ReadOnly = true)]
-    [Description("Pedido do executor no card (na fila, rodando, falhou) e os ultimos pedidos.")]
+    [Description("Pedido do executor no card (na fila, rodando, falhou), o que o Claude esta fazendo agora (activity) e os ultimos pedidos.")]
     public Task<string> Queue(string card, CancellationToken ct = default) => Safe(async () =>
     {
         var state = await queue.GetCardAsync(card.Trim(), null, ct);
         return Serialize(new
         {
-            active = state.Active is { } a ? new { a.Id, a.Kind, a.Status, a.WorkerName, a.Attempts, a.WaitReason, a.LastError } : null,
+            active = state.Active is { } a
+                ? new
+                {
+                    a.Id, a.Kind, a.Status, a.WorkerName, a.Attempts, a.MaxAttempts, a.WaitCode, a.WaitReason, a.LastError, a.CreatedAt, a.StartedAt,
+                    // 0050: o que o Claude está fazendo agora (rótulo do executor) e as últimas atividades
+                    activity = a.CurrentActivity,
+                    recentActivities = a.RecentActivities
+                }
+                : null,
             recent = state.Recent.Select(r => new { r.Id, r.Kind, r.Status, r.FinishedReason, r.LastError, r.CostUsd })
         });
     });
@@ -392,14 +400,17 @@ public partial class PrmakeMcpTools(
     [McpServerTool(Name = "prmake_file")]
     [Description("Grava um arquivo de texto nos arquivos do plano (script .sql com rollback, analise .md, texto do chamado, dados .csv/.json) " +
                  "direto pelo PRMake, sem depender da pasta local do card. Mesmo nome + tipo substitui a versao anterior. " +
-                 "Use para todo script/analise/chamado que o usuario precisa ver no plano.")]
+                 "Use para todo script/analise/chamado que o usuario precisa ver no plano. " +
+                 "Analise (phase analysis): so consultas somente leitura (00_consulta-<assunto>.sql), analise .md e dados. " +
+                 "Correcao (phase correction): script que altera dados (com rollback), validacao e o texto do chamado " +
+                 "(chamado-<nome>.md, kind ticket), com key = a etapa do chamado.")]
     public Task<string> SaveFile(string card,
         [Description("Nome do arquivo com extensao, ex.: 01_mover_usuario.sql, analise-inicial.md, chamado.md")] string name,
         [Description("Conteudo completo do arquivo (texto UTF-8)")] string content,
-        [Description("script | analysis | data | image | attachment (padrao: pela extensao)")] string? kind = null,
+        [Description("script | analysis | data | image | attachment | ticket (padrao: pela extensao; chamado*.md = ticket)")] string? kind = null,
         [Description("Chave da etapa a que o arquivo pertence (opcional)")] string? key = null,
         [Description("Descricao curta (opcional)")] string? description = null,
-        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+        [Description("analysis | correction (padrao: o plano aberto mais recente)")] string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         if (string.IsNullOrWhiteSpace(name)) throw new McpException("Informe o nome do arquivo (com extensao).");
         if (string.IsNullOrEmpty(content)) throw new McpException("Conteudo vazio.");

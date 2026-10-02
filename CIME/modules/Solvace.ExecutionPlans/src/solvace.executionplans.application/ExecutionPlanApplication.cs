@@ -511,6 +511,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (actor.IsExecutor)
         {
             var target = await LoadAsync(planId, cancellationToken);
+            // 0050: script que altera dados e texto do chamado são da correção — na análise, só as consultas.
+            if (ExecutionPhaseFiles.Reject(target.Phase, kind, name, upload.Data) is { } reason)
+                throw new DomainException(reason);
             var sha = Convert.ToHexStringLower(SHA256.HashData(upload.Data));
             if (await _repository.FindNoteAttachmentByShaAsync(target.CardNumber, sha, cancellationToken) is { } attachment)
                 return attachment.ToResponse();
