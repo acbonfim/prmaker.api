@@ -181,7 +181,7 @@ send_usage() { # [--quiet]
 import json, sys
 path, since, sid, host = sys.argv[1:5]
 import re
-seen = {}; model = None; mcp = set(); script = set(); kb = set(); search = set()
+seen = {}; model = None; model_of = {}; mcp = set(); script = set(); kb = set(); search = set()
 SEARCH = re.compile(r"(^|[\s|;&(])(grep|rg|ag|find|ack)\s")
 def classify(name, inp):
     # 0045: a Base Solvace veio antes das buscas no codigo? (mesma regra do executor)
@@ -209,13 +209,24 @@ for line in open(path, encoding="utf-8"):
         elif c == "search": search.add(part.get("id"))
     u = m.get("usage")
     if not isinstance(u, dict): continue
-    seen[m.get("id") or d.get("uuid")] = u
-    model = m.get("model") or model
+    key = m.get("id") or d.get("uuid")
+    seen[key] = u
+    model = m.get("model") if m.get("model") and m.get("model") != "<synthetic>" else model
+    # 0047: cada resposta no modelo que a gerou (Opus na analise, Sonnet na correcao); "<synthetic>" nao tem custo.
+    if m.get("model") and m.get("model") != "<synthetic>": model_of[key] = m.get("model").split("[")[0]
 tot = lambda k: sum(int(u.get(k) or 0) for u in seen.values())
+by_model = {}
+for key, u in seen.items():
+    if key not in model_of: continue
+    e = by_model.setdefault(model_of[key], {"model": model_of[key], "turns": 0, "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0})
+    e["turns"] += 1
+    for f, k in (("inputTokens", "input_tokens"), ("outputTokens", "output_tokens"), ("cacheReadTokens", "cache_read_input_tokens"), ("cacheWriteTokens", "cache_creation_input_tokens")):
+        e[f] += int(u.get(k) or 0)
 print(json.dumps({"sessionId": sid, "host": host, "turns": len(seen), "inputTokens": tot("input_tokens"),
                   "outputTokens": tot("output_tokens"), "cacheReadTokens": tot("cache_read_input_tokens"),
                   "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model,
-                  "mcpCalls": len(mcp), "scriptCalls": len(script), "kbCalls": len(kb), "searchCalls": len(search)}))
+                  "mcpCalls": len(mcp), "scriptCalls": len(script), "kbCalls": len(kb), "searchCalls": len(search),
+                  "models": list(by_model.values())}))
 PY
   local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/usage" \
     -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/usage.json" 2>/dev/null)"

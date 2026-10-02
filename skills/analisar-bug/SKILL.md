@@ -1,6 +1,7 @@
 ---
 name: analisar-bug
 description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Usa a Base Solvace (engenharia reversa + regras de negocio do Knowledge Center) antes de vasculhar codigo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card", "retomar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
+model: opus
 ---
 
 # analisar-bug

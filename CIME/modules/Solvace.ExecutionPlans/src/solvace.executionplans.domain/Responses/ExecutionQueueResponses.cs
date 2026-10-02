@@ -108,6 +108,12 @@ public class ExecutionClaimResponse
     public string FreshPrompt { get; set; } = string.Empty;
     /// <summary>Saldo do orçamento do dia (para <c>--max-budget-usd</c>); null = sem limite.</summary>
     public decimal? RemainingBudgetUsd { get; set; }
+    /// <summary>
+    /// 0047: fase do card nesta execução (analysis | correction) e o modelo que o executor passa ao Claude Code
+    /// (<c>--model</c>; ex.: <c>opus</c> na análise, <c>sonnet</c> na correção). Modelo null = o padrão da máquina.
+    /// </summary>
+    public string Phase { get; set; } = ExecutionPhase.Analysis;
+    public string? Model { get; set; }
 }
 
 public class ExecutionHeartbeatResponse

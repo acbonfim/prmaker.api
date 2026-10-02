@@ -28,6 +28,7 @@ public static class TranscriptUsage
     public static SessionUsage? Parse(IEnumerable<string> lines, string sessionId, string? host)
     {
         var usage = new Dictionary<string, JsonElement>();
+        var modelOf = new Dictionary<string, string>();
         var mcp = new HashSet<string>();
         var script = new HashSet<string>();
         var kb = new HashSet<string>();
@@ -62,8 +63,11 @@ public static class TranscriptUsage
 
             if (!message.TryGetProperty("usage", out var u) || u.ValueKind != JsonValueKind.Object) continue;
             // O Claude Code grava a mesma resposta em várias linhas (streaming): vale a última.
-            usage[Str(message, "id") ?? Str(root, "uuid") ?? Guid.NewGuid().ToString()] = u.Clone();
-            model = Str(message, "model") ?? model;
+            var key = Str(message, "id") ?? Str(root, "uuid") ?? Guid.NewGuid().ToString();
+            usage[key] = u.Clone();
+            if (Str(message, "model") is { Length: > 0 } current && current != "<synthetic>") model = current;
+            // 0047: cada resposta no modelo que a gerou ("<synthetic>" = mensagem local do Claude Code, sem custo).
+            if (Str(message, "model") is { Length: > 0 } m && m != "<synthetic>") modelOf[key] = m;
         }
         if (usage.Count == 0) return null;
         long Sum(string name) => usage.Values.Sum(u => u.TryGetProperty(name, out var v) && v.TryGetInt64(out var x) ? x : 0);
@@ -77,12 +81,26 @@ public static class TranscriptUsage
             CacheReadTokens = Sum("cache_read_input_tokens"),
             CacheWriteTokens = Sum("cache_creation_input_tokens"),
             Model = model,
+            Models = usage.Where(e => modelOf.ContainsKey(e.Key))
+                .GroupBy(e => modelOf[e.Key].Split('[')[0])
+                .Select(g => new ModelTokens
+                {
+                    Model = g.Key,
+                    Turns = g.Count(),
+                    InputTokens = g.Sum(e => Long(e.Value, "input_tokens")),
+                    OutputTokens = g.Sum(e => Long(e.Value, "output_tokens")),
+                    CacheReadTokens = g.Sum(e => Long(e.Value, "cache_read_input_tokens")),
+                    CacheWriteTokens = g.Sum(e => Long(e.Value, "cache_creation_input_tokens"))
+                })
+                .ToList(),
             McpCalls = mcp.Count,
             ScriptCalls = script.Count,
             KbCalls = kb.Count,
             SearchCalls = search.Count
         };
     }
+
+    private static long Long(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.TryGetInt64(out var x) ? x : 0;
 
     private static readonly System.Text.RegularExpressions.Regex SearchCommand =
         new(@"(^|[\s|;&(])(grep|rg|ag|find|ack)\s", System.Text.RegularExpressions.RegexOptions.Compiled);

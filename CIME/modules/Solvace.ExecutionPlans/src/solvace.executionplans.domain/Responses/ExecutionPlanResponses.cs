@@ -93,6 +93,8 @@ public class ExecutionUsageResponse
     /// <summary>0045: consultas à Base Solvace e buscas no código (somadas das sessões que informaram).</summary>
     public int KbCalls { get; set; }
     public int SearchCalls { get; set; }
+    /// <summary>0047: por modelo (Opus na análise, Sonnet na correção) — a tela cobra cada um pelo seu preço. Vazio = só o total.</summary>
+    public List<solvace.executionplans.domain.Requests.ExecutionModelTokens> Models { get; set; } = [];
 }
 
 /// <summary>Consumo médio por plano, com MCP × sem MCP (0041).</summary>
@@ -127,6 +129,19 @@ public class ExecutionUsageReportRow
     /// <summary>0045: consultas à Base Solvace e buscas no código, em média por plano.</summary>
     public double AvgKbCalls { get; set; }
     public double AvgSearchCalls { get; set; }
+    /// <summary>0047: média por plano em cada modelo do grupo.</summary>
+    public List<ExecutionModelAverage> Models { get; set; } = [];
+}
+
+/// <summary>Média por plano de um modelo no relatório (0047).</summary>
+public class ExecutionModelAverage
+{
+    public string Model { get; set; } = string.Empty;
+    public double AvgTurns { get; set; }
+    public double AvgInputTokens { get; set; }
+    public double AvgOutputTokens { get; set; }
+    public double AvgCacheReadTokens { get; set; }
+    public double AvgCacheWriteTokens { get; set; }
 }
 
 /// <summary>Plano que o vigia local deve retomar (0033): pedido de "continuar" ou respostas chegadas pela tela.</summary>
@@ -400,7 +415,8 @@ public static class ExecutionPlanMappings
             ScriptCalls = plan.Sessions.Sum(s => s.NetScriptCalls()),
             KbCalls = plan.Sessions.Sum(s => s.NetKbCalls()),
             SearchCalls = plan.Sessions.Sum(s => s.NetSearchCalls()),
-            Model = plan.UsageModel
+            Model = plan.UsageModel,
+            Models = plan.NetModelUsage().Select(m => m.ToTokens()).ToList()
         };
         target.ResumeRequestedAt = plan.ResumeRequestedAt;
         target.ResumeRequestedBy = plan.ResumeRequestedBy;
@@ -409,6 +425,12 @@ public static class ExecutionPlanMappings
         target.NotesReadAt = plan.NotesReadAt;
         return target;
     }
+
+    public static solvace.executionplans.domain.Requests.ExecutionModelTokens ToTokens(this ExecutionModelUsage m) => new()
+    {
+        Model = m.Model, Turns = m.Turns, InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
+        CacheReadTokens = m.CacheReadTokens, CacheWriteTokens = m.CacheWriteTokens
+    };
 
     public static ExecutionSessionResponse ToResponse(this ExecutionSession session) => new()
     {

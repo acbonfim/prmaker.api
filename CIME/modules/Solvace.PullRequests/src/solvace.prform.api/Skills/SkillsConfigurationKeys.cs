@@ -16,4 +16,8 @@ public static class SkillsConfigurationKeys
     public const string PrTitlePattern = "PrTitlePattern";
     public const string DefaultRepository = "DefaultRepository";
     public const string TicketSystem = "TicketSystem";
+    /// <summary>0047: modelo do Claude Code na análise pelo executor (apelido = sempre a versão mais nova; vazio = padrão da máquina).</summary>
+    public const string ExecutorAnalysisModel = "ExecutorAnalysisModel";
+    /// <summary>0047: modelo do Claude Code na correção pelo executor.</summary>
+    public const string ExecutorCorrectionModel = "ExecutorCorrectionModel";
 }
