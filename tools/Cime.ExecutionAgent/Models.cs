@@ -102,6 +102,9 @@ public sealed class ClaimResponse
     public string ResumePrompt { get; set; } = string.Empty;
     public string FreshPrompt { get; set; } = string.Empty;
     public decimal? RemainingBudgetUsd { get; set; }
+    /// <summary>0047: fase do card (analysis | correction) e o modelo do Claude Code para ela (null = padrão da máquina).</summary>
+    public string? Phase { get; set; }
+    public string? Model { get; set; }
 }
 
 public sealed class StartRequest
@@ -162,6 +165,19 @@ public sealed class SessionUsage
     public int? ScriptCalls { get; set; }
     public int? KbCalls { get; set; }
     public int? SearchCalls { get; set; }
+    /// <summary>0047: os mesmos tokens separados por modelo (Opus na análise, Sonnet na correção).</summary>
+    public List<ModelTokens>? Models { get; set; }
+}
+
+/// <summary>Consumo da sessão em um modelo (0047).</summary>
+public sealed class ModelTokens
+{
+    public string Model { get; set; } = string.Empty;
+    public int Turns { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
 }
 
 public sealed class PlanPending

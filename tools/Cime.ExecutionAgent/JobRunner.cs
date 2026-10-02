@@ -22,6 +22,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private JsonElement? _result;
     private string? _sessionFromStream;
+    /// <summary>0047: modelo que o Claude Code usou nesta execução (evento <c>system/init</c>).</summary>
+    private string? _modelFromStream;
     private string? _sessionId;
     /// <summary>Texto de limite da conta visto na saída (mensagem de erro sintética do Claude Code).</summary>
     private string? _limitText;
@@ -66,6 +68,10 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
         if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
             args.AddRange(["--add-dir", workspace]);
+        // 0047: o PRMake escolhe o modelo pela fase do card (Opus na análise, Sonnet na correção); retomar a mesma sessão
+        // com outro modelo é suportado pelo Claude Code.
+        if (!string.IsNullOrWhiteSpace(claim.Model))
+            args.AddRange(["--model", claim.Model.Trim()]);
         if (claim.RemainingBudgetUsd is { } budget && budget > 0)
             args.AddRange(["--max-budget-usd", budget.ToString("0.00", CultureInfo.InvariantCulture)]);
 
@@ -199,8 +205,10 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                 finish.CacheReadTokens = Sum("cache_read_input_tokens");
                 finish.CacheWriteTokens = Sum("cache_creation_input_tokens");
             }
-            // modelUsage: {"claude-opus-5-5[1m]": {...}} — o modelo que mais saída gerou.
-            if (res.TryGetProperty("modelUsage", out var models) && models.ValueKind == JsonValueKind.Object)
+            // 0047: o modelo desta execução (o modelUsage de uma sessão retomada acumula os modelos das execuções anteriores).
+            finish.Model = _modelFromStream?.Split('[')[0];
+            // modelUsage: {"claude-opus-5-5[1m]": {...}} — sem o init, o modelo que mais saída gerou.
+            if (finish.Model is null && res.TryGetProperty("modelUsage", out var models) && models.ValueKind == JsonValueKind.Object)
                 finish.Model = models.EnumerateObject()
                     .OrderByDescending(m => m.Value.TryGetProperty("outputTokens", out var o) && o.TryGetInt64(out var x) ? x : 0)
                     .Select(m => m.Name.Split('[')[0]).FirstOrDefault();
@@ -320,8 +328,11 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                     else if (type == "assistant" && line.Contains("limit", StringComparison.OrdinalIgnoreCase)
                              && AccountLimit.RetryAt(line, DateTimeOffset.UtcNow) is not null)
                         _limitText = ExtractText(root) ?? line;
-                    else if (type == "system" && root.TryGetProperty("session_id", out var sid))
-                        _sessionFromStream = sid.GetString();
+                    else if (type == "system")
+                    {
+                        if (root.TryGetProperty("session_id", out var sid)) _sessionFromStream = sid.GetString();
+                        if (root.TryGetProperty("model", out var md) && md.ValueKind == JsonValueKind.String) _modelFromStream = md.GetString();
+                    }
                 }
                 catch (JsonException)
                 {
