@@ -8,8 +8,8 @@ Branch `feature/0043` em `prform.api-0043` (spec/plano) e `prform-app-0043` (fro
 | F2 | ✅ concluída |
 | F3 | ✅ concluída |
 | F4 | ✅ concluída |
-| F5 | ⏳ pendente |
-| T1 | ⏳ pendente |
+| F5 | ✅ concluída |
+| T1 | ✅ concluída |
 
 ## Log
 - 2026-10-01 — spec, plano e branches criados.
@@ -24,3 +24,12 @@ Branch `feature/0043` em `prform.api-0043` (spec/plano) e `prform-app-0043` (fro
   automática só 5 s depois do último toque; tela cheia ≤768px ocupa a tela (lista → etapa, anterior/próxima, 16px) e
   trava a `.content-area`. Teste local (Postgres 55443, card 7010): gesto de toque começando na etapa rola
   (850→1247 px), gaveta fecha ao navegar, Voltar do app/sistema fecha camada por camada; desktop 1600×900 igual.
+- 2026-10-01 — F5: varredura de todas as rotas, diálogos do menu do usuário, login, primeiro acesso e handover em 375×667 e
+  390×844 (auditoria automática: rolagem horizontal da página e campos < 16px — nenhum). Corrigidos: cabeçalho das
+  telas de usuários/serviços/plugins (botão quebrava), `min-width` de desktop no conteúdo dos diálogos (perfil,
+  usuários, serviços, esqueci a senha), cabeçalho do diálogo de arquivos, altura do diff (`max(240px, …)`), redirect
+  de `/auth/user`. Diálogos grandes (conversa, arquivos, abrir PR, perfil, integrações, consumo de IA, api-key,
+  skills, executores) abrem em tela cheia no celular.
+- 2026-10-01 — T1: `ng build` de produção ok (só avisos de budget de CSS, que já existiam); tela de PR (3 abas + tela
+  cheia) sem rolagem horizontal nem campo < 16px em 375, 390 e 430 px; desktop 1600×900 e tablet 820 px sem mudança
+  de layout. Falta o teste no iPhone real (Safari e app instalado) — fica com o usuário.
