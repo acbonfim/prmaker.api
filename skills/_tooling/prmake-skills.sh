@@ -276,6 +276,30 @@ ensure_permissions() { # [force=0]
     mkdir -p "$TOOL_DIR"; : > "$mark"
     say "   permissão do Claude Code liberada em $SETTINGS: $label"
   done
+  ensure_cards_access "$force"
+}
+# 0046: pasta dos cards fora de ~/.claude (o Claude Code protege ~/.claude e nega gravar nela, mesmo com regra
+# Write(~/.claude/cards/**) — scripts e análises do card não eram salvos). Libera ~/.prmake/cards como diretório de
+# trabalho do Claude Code e a edição dos arquivos ali, para o Claude gravar sem prompt nem bloqueio do auto mode.
+CARDS_ROOT_DEFAULT="$HOME/.prmake/cards"
+ensure_cards_access() { # [force=0]
+  local force="${1:-0}" mark="$TOOL_DIR/.permissions-cards-v1" root="${CARDS_DIR:-$CARDS_ROOT_DEFAULT}"
+  [[ "$force" != "1" && -f "$mark" ]] && return 0
+  mkdir -p "$root" "$(dirname "$SETTINGS")"
+  [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+  jq -e . "$SETTINGS" >/dev/null 2>&1 || { warn "$SETTINGS não é um JSON válido — não liberei a pasta dos cards"; return 0; }
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  # Caminho como o Claude Code entende: no Windows (Git Bash) C:/...; regra com ~/ (home) ou // (absoluto) — "/x" seria
+  # relativo à pasta do settings.json.
+  local dir="$root" rule
+  command -v cygpath >/dev/null 2>&1 && dir="$(cygpath -m "$root")"
+  if [[ "$root" == "$HOME"/* ]]; then rule="Edit(~/${root#"$HOME"/}/**)"; else rule="Edit(/$dir/**)"; fi
+  jq --arg d "$dir" --arg r "$rule" \
+    '.permissions.additionalDirectories = (((.permissions.additionalDirectories // []) + [$d]) | unique)
+     | .permissions.allow = (((.permissions.allow // []) + [$r]) | unique)' \
+    "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS" || return 0
+  mkdir -p "$TOOL_DIR"; : > "$mark"
+  say "   pasta dos cards liberada no Claude Code: $root"
 }
 # Diagnóstico: cada script das regras tem ao menos uma forma de caminho liberada?
 permissions_report() {
@@ -294,6 +318,13 @@ permissions_report() {
       printf '  %-28s %s\n' "permissão $id" "NÃO liberada (${missing[*]}) — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh permissions"
     fi
   done
+  local root="${CARDS_DIR:-$CARDS_ROOT_DEFAULT}"
+  command -v cygpath >/dev/null 2>&1 && root="$(cygpath -m "$root")"
+  if jq -e --arg d "$root" '(.permissions.additionalDirectories // []) | index($d) != null' "$SETTINGS" >/dev/null 2>&1; then
+    printf '  %-28s %s\n' "pasta dos cards" "ok — $root"
+  else
+    printf '  %-28s %s\n' "pasta dos cards" "NÃO liberada ($root) — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh permissions"
+  fi
 }
 
 # Credenciais de leitura dos bancos dos clientes (0037), usadas pelo sql-query.sh da analisar-bug. Ficam só na

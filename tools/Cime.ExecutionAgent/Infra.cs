@@ -21,6 +21,18 @@ public static class Paths
     /// <summary>Pasta do Claude Code (CLAUDE_CONFIG_DIR, como o próprio Claude Code, ou ~/.claude).</summary>
     public static string ClaudeHome => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } c ? c : Path.Combine(Home, ".claude");
     public static string UserTokenFile => Path.Combine(ClaudeHome, "prmake-token.txt");
+    /// <summary>
+    /// Pastas dos cards da skill (CARDS_DIR ou ~/.prmake/cards — 0046). Fora de ~/.claude: o Claude Code protege aquela
+    /// pasta e, em dontAsk, nega gravar nela mesmo com Write liberado (scripts e análises do card não eram salvos).
+    /// </summary>
+    public static string CardsRoot => Environment.GetEnvironmentVariable("CARDS_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".prmake", "cards");
+
+    /// <summary>Cria a pasta dos cards (liberada ao Claude com --add-dir) e devolve o caminho.</summary>
+    public static string EnsureCardsRoot()
+    {
+        Directory.CreateDirectory(CardsRoot);
+        return CardsRoot;
+    }
     public static bool IsWindows => OperatingSystem.IsWindows();
     public static bool IsMac => OperatingSystem.IsMacOS();
 

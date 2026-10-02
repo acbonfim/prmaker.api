@@ -63,7 +63,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
         args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome]);
+            "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
         if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
             args.AddRange(["--add-dir", workspace]);
         if (claim.RemainingBudgetUsd is { } budget && budget > 0)

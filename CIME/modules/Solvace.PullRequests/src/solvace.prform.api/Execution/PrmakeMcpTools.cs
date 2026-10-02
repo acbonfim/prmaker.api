@@ -38,7 +38,8 @@ public partial class PrmakeMcpTools(
         "mover o card no DevOps). Toda gravacao no PRMake passa por aqui ou pelo prmake-plan.sh. Informe sempre o card; " +
         "'phase' (analysis|correction) escolhe o plano quando o card tem os dois (padrao: o plano aberto mais recente). " +
         "Ciclo do plano: prmake_advance (conclui uma etapa e inicia a proxima), prmake_block (trava esperando o usuario), " +
-        "prmake_ask/prmake_answer, prmake_correction (plano de correcao). Arquivos locais, git e o 'status' final ficam no prmake-plan.sh.";
+        "prmake_ask/prmake_answer, prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
+        "Git e o 'status' final ficam no prmake-plan.sh.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -386,6 +387,28 @@ public partial class PrmakeMcpTools(
             throw new McpException("Informe o numero ou o id da pergunta.");
         await plans.AnswerAsync(planId, questionId, text.Trim(), await ActorAsync(ct), ct);
         return "OK resposta gravada (via claude)";
+    });
+
+    [McpServerTool(Name = "prmake_file")]
+    [Description("Grava um arquivo de texto nos arquivos do plano (script .sql com rollback, analise .md, texto do chamado, dados .csv/.json) " +
+                 "direto pelo PRMake, sem depender da pasta local do card. Mesmo nome + tipo substitui a versao anterior. " +
+                 "Use para todo script/analise/chamado que o usuario precisa ver no plano.")]
+    public Task<string> SaveFile(string card,
+        [Description("Nome do arquivo com extensao, ex.: 01_mover_usuario.sql, analise-inicial.md, chamado.md")] string name,
+        [Description("Conteudo completo do arquivo (texto UTF-8)")] string content,
+        [Description("script | analysis | data | image | attachment (padrao: pela extensao)")] string? kind = null,
+        [Description("Chave da etapa a que o arquivo pertence (opcional)")] string? key = null,
+        [Description("Descricao curta (opcional)")] string? description = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new McpException("Informe o nome do arquivo (com extensao).");
+        if (string.IsNullOrEmpty(content)) throw new McpException("Conteudo vazio.");
+        var fileName = Path.GetFileName(name.Trim().Replace('\\', '/'));
+        var upload = new ExecutionArtifactUpload(fileName, kind, string.IsNullOrWhiteSpace(key) ? null : key.Trim(), description,
+            solvace.prform.Controllers.ExecutionPlanController.ResolveContentType(fileName, "text/plain; charset=utf-8"),
+            Encoding.UTF8.GetBytes(content));
+        var artifact = await plans.UploadArtifactAsync(await PlanIdAsync(card, phase, ct), upload, await ActorAsync(ct), ct);
+        return Serialize(new { artifact.Id, artifact.Number, artifact.Name, artifact.Kind, artifact.Size, artifact.StepKey });
     });
 
     [McpServerTool(Name = "prmake_link")]

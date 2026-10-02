@@ -313,7 +313,8 @@ public class ExecutionPlanController : ControllerBase
         return new ExecutionActor(userId, string.IsNullOrWhiteSpace(name) ? "Usuário" : name.Trim(), executor);
     }
 
-    private static string ResolveContentType(string fileName, string? declared)
+    /// <summary>Tipo pelo nome do arquivo (texto legível no visualizador); também usado pelo MCP (0046).</summary>
+    internal static string ResolveContentType(string fileName, string? declared)
     {
         if (ContentTypes.TryGetContentType(fileName, out var byExtension))
             return byExtension;

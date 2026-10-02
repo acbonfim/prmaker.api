@@ -59,6 +59,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
 | estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
+| arquivo nos arquivos do plano (script `.sql`, analise `.md`, texto do chamado) | `prmake_file(card, name, content, kind?, key?)` | `upload` · `sync` |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
 
@@ -93,6 +94,12 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
   plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
+- **Arquivos do card sempre no plano (0046)**: a pasta do card e a que o `contexto` imprime (`$CARD_DIR`, padrao
+  `~/.prmake/cards/<card>` — **nunca** grave em `~/.claude/...`: o Claude Code protege essa pasta e nega a gravacao).
+  Todo script (`.sql` com rollback), analise e **texto do chamado** que o usuario precisa ver vai para os arquivos do
+  plano: grave em `$CARD_DIR` e rode `sync`, ou direto com `prmake_file(card, "01_nome.sql", conteudo, "script", key)`.
+  Se a gravacao local falhar, use `prmake_file` e siga — **nunca** trave a etapa nem peca ao usuario para liberar
+  permissao por causa disso.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
