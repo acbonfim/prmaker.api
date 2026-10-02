@@ -125,7 +125,9 @@ que o certo e trocar e cadastrar pelo comando acima. Para ver o que esta configu
 
 **2. Consulte** — sempre com o **caminho literal** e **num comando so** (sem pipe, `&&`, `;` ou variavel antes): e
 assim que a regra de permissao do Claude Code casa e a consulta roda sem prompt. SQL com mais de uma linha vai em
-arquivo (`-f`), salvo em `$CARD_DIR/scripts/00_*.sql` (o usuario tambem consegue rodar e colar o resultado):
+arquivo (`-f`), salvo em `$CARD_DIR/scripts/00_consulta-<assunto>.sql` (o usuario tambem consegue rodar e colar o
+resultado). Essas consultas **somente leitura** sao os scripts do plano de **analise** (0050) — com um comentario no
+topo dizendo o que mostraram; script que altera dados vai so no plano de correcao:
 ```bash
 # aliases de host: prod | prod3 | prod4 (ou o hostname RDS completo)
 bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod3 -d <database> -q "SELECT TOP 20 Id, Name, Status FROM dbo.SomeTable WHERE ..."

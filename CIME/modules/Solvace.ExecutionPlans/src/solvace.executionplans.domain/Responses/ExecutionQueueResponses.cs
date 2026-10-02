@@ -25,7 +25,7 @@ public class ExecutionRequestResponse
     public int MaxAttempts { get; set; }
     public DateTimeOffset? NotBefore { get; set; }
     public string? WaitReason { get; set; }
-    /// <summary>Código do motivo de espera para a tela: no-worker | offline | paused | busy | budget | retry | gathering | null.</summary>
+    /// <summary>Código do motivo de espera para a tela: no-worker | offline | paused | busy | budget | retry | gathering | throttled | updating (0050) | null.</summary>
     public string? WaitCode { get; set; }
     public string? LastError { get; set; }
     public string? StderrTail { get; set; }
@@ -52,6 +52,16 @@ public class ExecutionRequestResponse
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
     public DateTimeOffset? LastHeartbeatAt { get; set; }
+    /// <summary>0050: o que o Claude está fazendo agora (rótulo do executor) e as últimas atividades, mais novas primeiro.</summary>
+    public ExecutionActivityResponse? CurrentActivity { get; set; }
+    public List<ExecutionActivityResponse> RecentActivities { get; set; } = [];
+}
+
+public class ExecutionActivityResponse
+{
+    public string Label { get; set; } = string.Empty;
+    public string? Tool { get; set; }
+    public DateTimeOffset At { get; set; }
 }
 
 public class ExecutionWorkerResponse
@@ -198,7 +208,12 @@ public static class ExecutionQueueResponseExtensions
         ClaimedAt = r.ClaimedAt,
         StartedAt = r.StartedAt,
         FinishedAt = r.FinishedAt,
-        LastHeartbeatAt = r.LastHeartbeatAt
+        LastHeartbeatAt = r.LastHeartbeatAt,
+        CurrentActivity = r.CurrentActivity is { } label && r.CurrentActivityAt is { } at
+            ? new ExecutionActivityResponse { Label = label, Tool = r.CurrentActivityTool, At = at }
+            : null,
+        RecentActivities = ExecutionActivity.Parse(r.RecentActivities)
+            .Select(a => new ExecutionActivityResponse { Label = a.Label, Tool = a.Tool, At = a.At }).ToList()
     };
 
     public static ExecutionWorkerResponse ToResponse(this ExecutionWorker w, DateTimeOffset now, int running = 0, string? latestAgentVersion = null)

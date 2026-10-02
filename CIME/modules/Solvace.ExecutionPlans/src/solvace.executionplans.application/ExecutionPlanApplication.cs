@@ -119,10 +119,18 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
         ExecutionStep? step = null;
+        // 0050: o Claude não deixa uma etapa de chamado nas mãos do usuário sem o script e o texto do chamado anexados.
+        var artifacts = actor.IsExecutor ? await _repository.GetArtifactsAsync(planId, cancellationToken) : null;
         var plan = await MutateAsync(planId, p =>
         {
+            var missingBefore = artifacts is null ? [] : TicketStepsMissingFiles(p, artifacts).ToHashSet();
             step = p.UpdateStep(stepKey, request.Status, request.Reason, request.Activity, request.Checkpoint,
                 request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn);
+            if (artifacts is not null && TicketStepsMissingFiles(p, artifacts).FirstOrDefault(k => !missingBefore.Contains(k)) is { } missing)
+                throw new DomainException(
+                    $"A etapa de chamado '{missing}' ficaria com o usuário sem os arquivos: anexe antes o script (.sql com rollback) e o texto do chamado " +
+                    $"com prmake_file(card, \"01_<nome>.sql\", conteudo, \"script\", \"{missing}\", phase: \"correction\") e " +
+                    $"prmake_file(card, \"chamado-<nome>.md\", texto, \"ticket\", \"{missing}\", phase: \"correction\").");
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
@@ -184,6 +192,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             UserActions = userActions,
             LastUserNoteNumber = lastUserNote,
             UserNotesChangedAt = userNotesChangedAt,
+            TicketStepsMissingFiles = TicketStepsMissingFiles(plan, await _repository.GetArtifactsAsync(plan.Id, cancellationToken)),
             PlanId = plan.Id,
             Status = plan.Status,
             StatusReason = plan.StatusReason,
@@ -511,6 +520,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (actor.IsExecutor)
         {
             var target = await LoadAsync(planId, cancellationToken);
+            // 0050: script que altera dados e texto do chamado são da correção — na análise, só as consultas.
+            if (ExecutionPhaseFiles.Reject(target.Phase, kind, name, upload.Data) is { } reason)
+                throw new DomainException(reason);
             var sha = Convert.ToHexStringLower(SHA256.HashData(upload.Data));
             if (await _repository.FindNoteAttachmentByShaAsync(target.CardNumber, sha, cancellationToken) is { } attachment)
                 return attachment.ToResponse();
@@ -598,6 +610,20 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private async Task<ExecutionPlan> LoadAsync(Guid planId, CancellationToken cancellationToken) =>
         await _repository.GetPlanWithStepsAsync(planId, cancellationToken)
         ?? throw new ExecutionPlanNotFoundException("Plano de execução não encontrado.");
+
+    /// <summary>
+    /// 0050: etapas de chamado já com o usuário (prontas ou aguardando) sem o script e o texto do chamado
+    /// (<c>ticket</c>) anexados com a <c>key</c> delas.
+    /// </summary>
+    private static List<string> TicketStepsMissingFiles(ExecutionPlan plan, IEnumerable<ExecutionArtifact> artifacts)
+    {
+        var files = artifacts.Where(a => a.NoteId is null && a.StepKey is not null).ToLookup(a => a.StepKey!);
+        return plan.StepsPendingForUser()
+            .Where(s => s.Kind == ExecutionStepKind.Ticket)
+            .Where(s => !(files[s.Key].Any(a => a.Kind == ExecutionArtifactKind.Ticket) && files[s.Key].Any(a => a.Kind == ExecutionArtifactKind.Script)))
+            .Select(s => s.Key)
+            .ToList();
+    }
 
     private Task<ExecutionPlan> MutateAsync(Guid planId, Action<ExecutionPlan> mutate, CancellationToken cancellationToken, ExecutionActor? actor = null) =>
         MutateAsync(planId, p => { mutate(p); return Task.CompletedTask; }, cancellationToken, actor);

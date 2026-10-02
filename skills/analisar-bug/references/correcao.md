@@ -6,7 +6,10 @@ Leia so a secao do passo em que esta (`bash ~/.claude/skills/analisar-bug/script
 Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** e **decida com o usuario**.
 1. `step propor-solucoes running`. Escreva `$CARD_DIR/analises/solucoes.md`: 1 a 3 opcoes, cada uma com o que
    muda (repositorios/arquivos), riscos, se precisa de script de dados (chamado) e o esforco; marque a
-   recomendada. `sync <card> propor-solucoes` (no executor: `prmake_file(card, "solucoes.md", conteudo, "analysis",
+   recomendada. **Opcao com chamado (0050): nao grave o script nem o texto do chamado aqui** — descreva o que o
+   script vai fazer (tabelas, filtro, linhas afetadas estimadas, rollback) e diga que ele e o texto do chamado serao
+   anexados no plano de correcao, na etapa do chamado. O resumo do checkpoint leva o que a correcao precisa para
+   escreve-lo (ids, consultas usadas, host/banco). `sync <card> propor-solucoes` (no executor: `prmake_file(card, "solucoes.md", conteudo, "analysis",
    "propor-solucoes")`) e `log ... decision` com o resumo.
 2. **Pergunte** (`ask`) tudo o que decide o plano — a etapa fica *aguardando* e o PRMake mostra as perguntas
    em destaque. Sempre que se aplicar:
@@ -33,8 +36,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    texto)` (sem MCP: `checkpoint <card> propor-solucoes "..."`), ate ~3.000 caracteres, **autossuficiente**: no
    executor a correcao roda numa sessao nova que le **so isto** (+ respostas, comentarios e arquivos), sem esta
    conversa. Inclua: causa raiz e a evidencia (ids, consultas, host/banco usados); onde mexer em cada opcao — repo
-   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha`, funcao/SP; scripts prontos (nomes nos arquivos do
-   plano); branches levantadas pelo `branches`; riscos; o que o usuario pediu nos comentarios. Sem repetir a analise
+   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha`, funcao/SP; consultas usadas (nomes nos arquivos do
+   plano) e, com chamado, o que o script de alteracao deve fazer (a correcao o escreve); branches levantadas pelo `branches`; riscos; o que o usuario pediu nos comentarios. Sem repetir a analise
    inteira — ela continua na Timeline e em `analises/`.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
    - Rode `bash $PLAN wait-answers <card> 3600` **em segundo plano** (ferramenta Bash com
@@ -66,7 +69,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Corrigir o codigo — **uma por repositorio** (`corrigir-<repo>`) | `code` | claude | branches e commits do fluxo abaixo |
 | Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao |
 | **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
-| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | voce prepara o `.sql` + texto do chamado (em `scripts/`, e **nos arquivos do plano** — `sync` ou `prmake_file`, `key` = a etapa do chamado); o usuario abre no sistema de chamados (`TicketSystem`) e anexa o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
+| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | crie com `dependsOn` numa etapa sua que prepara o script (ex.: `preparar-script-<nome>`, `claude`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | ~~`orientar-cliente`~~ — **nao e etapa** | — | — | a orientacao ao cliente (o que aconteceu, o que fazer, passo a passo, por que nao e bug) **e o resumo nao tecnico PT/EN** que o `fechar-card` publica na discussion: redija em `analises/orientacao-cliente.md` e use esse texto no resumo (ver abaixo) |
 | Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); quando ela ficar pronta, mova o card para Dev Test in QA (`devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar |
@@ -141,8 +144,9 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
      conforme a configuracao) com `$CARD_DIR/pr/<repo>/desc.md`. Sem titulo, o `open-pr` usa o `PrTitlePattern`.
 - Etapa de PR: os PRs abertos com `open-pr` ficam no card, na Timeline e anexados a etapa. **Nunca faca merge,
   nem aprove** — a etapa fica aguardando e conclui sozinha quando outra pessoa mesclar.
-- Etapa do usuario: diga o que fazer (ex.: "abra o chamado com o texto e o `.sql` de `scripts/`, e anexe o
-  link na etapa no PRMake") e que o botao *Concluir* esta na propria linha da etapa no PRMake (ela aparece em
+- Etapa do usuario: diga o que fazer, citando os arquivos pelo nome (ex.: "abra o chamado com o texto de
+  `chamado-x.md` e anexe `01_x.sql` — os dois estao na etapa do chamado, no plano de correcao — e cole o link na
+  etapa no PRMake") e que o botao *Concluir* esta na propria linha da etapa no PRMake (ela aparece em
   "Aguardando voce" no topo do plano e no sino), e siga com as outras etapas prontas.
 - Etapa sua travada por algo do usuario (permissao, VPN, credencial, acesso): `block` na hora — ver
   `ref.sh plano block`.

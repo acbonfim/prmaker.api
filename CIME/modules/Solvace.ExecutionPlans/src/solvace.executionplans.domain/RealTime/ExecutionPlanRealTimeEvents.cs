@@ -39,5 +39,10 @@ public static class ExecutionPlanRealTimeEvents
         public const string Note = "note";
         /// <summary>Pedido de execução do card mudou (0039).</summary>
         public const string Request = "request";
+        /// <summary>
+        /// 0050: o Claude começou outra atividade. Payload traz <c>activity { label, tool, at }</c> — a tela atualiza
+        /// a linha "agora" sem refazer o GET do plano.
+        /// </summary>
+        public const string Activity = "activity";
     }
 }

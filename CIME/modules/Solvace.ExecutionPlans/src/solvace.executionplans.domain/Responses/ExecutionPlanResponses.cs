@@ -300,6 +300,12 @@ public class ExecutionControlResponse
     /// <summary>Última mudança (novo, editado, removido) em comentário do usuário no card (0031).</summary>
     public DateTimeOffset? UserNotesChangedAt { get; set; }
 
+    /// <summary>
+    /// 0050: etapas de chamado já com o usuário sem o script e o texto do chamado anexados pela key — a skill anexa
+    /// (<c>prmake_file</c> com <c>phase: correction</c>) antes de qualquer outra coisa.
+    /// </summary>
+    public List<string> TicketStepsMissingFiles { get; set; } = [];
+
     /// <summary>Pendências do usuário (0037) — a skill diz no chat o que falta do lado dele.</summary>
     public int UserPending { get; set; }
     public List<ExecutionUserActionResponse> UserActions { get; set; } = [];
