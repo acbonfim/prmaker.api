@@ -63,7 +63,9 @@ public partial class PrmakeMcpTools(
                 s.Key, s.Title, s.Status, s.Executor, s.Kind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
-                links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new { l.Kind, title = l.Title ?? l.Url, l.Status, l.Url }).ToList() is { Count: > 0 } ls ? ls : null
+                links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new { l.Kind, title = l.Title ?? l.Url, l.Status, l.Url }).ToList() is { Count: > 0 } ls ? ls : null,
+                // 0050: arquivos anexados à etapa (pela key) — cite-os pelo nome na etapa, na mensagem final e na Timeline
+                files = plan.Artifacts.Where(a => a.StepKey == s.Key && a.NoteId is null).Select(a => new { a.Name, a.Kind }).ToList() is { Count: > 0 } fs ? fs : null
             }),
             openQuestions = plan.Questions.Count(q => q.Status == ExecutionQuestionStatus.Open),
             userActions = plan.UserActions.Count,
@@ -124,7 +126,9 @@ public partial class PrmakeMcpTools(
         return Serialize(new
         {
             c.Action, c.Status, c.StatusReason, c.StatusChangedBy, c.ReadySteps, c.WaitingSteps, c.CancelledSteps,
-            c.OpenQuestions, c.UserPending, c.LastUserNoteNumber
+            c.OpenQuestions, c.UserPending, c.LastUserNoteNumber,
+            // 0050: etapa de chamado com o usuário sem script/texto do chamado — anexe com prmake_file antes de seguir
+            ticketStepsMissingFiles = c.TicketStepsMissingFiles.Count > 0 ? c.TicketStepsMissingFiles : null
         });
     });
 
