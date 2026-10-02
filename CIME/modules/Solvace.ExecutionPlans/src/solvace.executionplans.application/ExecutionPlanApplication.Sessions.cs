@@ -34,7 +34,11 @@ public partial class ExecutionPlanApplication
             await EnsureBaselineAsync(p, request.SessionId, now, cancellationToken);
             p.RecordUsage(request.SessionId, request.Host, request.Turns, request.InputTokens, request.OutputTokens,
                 request.CacheReadTokens, request.CacheWriteTokens, request.Model, now, request.McpCalls, request.ScriptCalls,
-                request.KbCalls, request.SearchCalls);
+                request.KbCalls, request.SearchCalls, request.Models?.Select(m => new ExecutionModelUsage
+                {
+                    Model = m.Model, Turns = m.Turns, InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
+                    CacheReadTokens = m.CacheReadTokens, CacheWriteTokens = m.CacheWriteTokens
+                }).ToList());
             p.Touch(now, fromExecutor: true);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
@@ -118,6 +122,7 @@ public partial class ExecutionPlanApplication
                         copy.BaseCacheReadTokens = from.CacheReadTokens; copy.BaseCacheWriteTokens = from.CacheWriteTokens;
                         copy.BaseMcpCalls = from.McpCalls ?? 0; copy.BaseScriptCalls = from.ScriptCalls ?? 0;
                         copy.BaseKbCalls = from.KbCalls ?? 0; copy.BaseSearchCalls = from.SearchCalls ?? 0;
+                        copy.BaseModels = from.Models.Select(m => m.Copy()).ToList();
                     }
                     return copy;
                 }).ToList();
@@ -133,13 +138,15 @@ public partial class ExecutionPlanApplication
                     Script = sessions.Sum(s => s.NetScriptCalls()),
                     Kb = sessions.Sum(s => s.NetKbCalls()),
                     Search = sessions.Sum(s => s.NetSearchCalls()),
-                    Model = p.UsageModel
+                    Model = p.UsageModel,
+                    // 0047: por modelo, já com a linha de base (cópia acima quando a correção é antiga).
+                    Models = ExecutionPlan.NetModelUsageOf(sessions)
                 };
             })
             .Where(x => x.Turns > 0)
             .Select(x => new
             {
-                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Kb, x.Search, x.Model,
+                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Kb, x.Search, x.Model, x.Models,
                 Input = x.Fresh + x.CacheRead + x.CacheWrite,
                 Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script"
             })
@@ -167,7 +174,16 @@ public partial class ExecutionPlanApplication
                 AvgMcpCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Mcp), 1),
                 AvgScriptCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Script), 1),
                 AvgKbCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Kb), 1),
-                AvgSearchCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Search), 1)
+                AvgSearchCalls = group.Count == 0 ? 0 : Math.Round(group.Average(g => g.Search), 1),
+                Models = group.Count == 0 ? [] : ExecutionModelUsage.Sum(group.SelectMany(g => g.Models)).Select(m => new ExecutionModelAverage
+                {
+                    Model = m.Model,
+                    AvgTurns = Math.Round((double)m.Turns / group.Count, 1),
+                    AvgInputTokens = Math.Round((double)m.InputTokens / group.Count),
+                    AvgOutputTokens = Math.Round((double)m.OutputTokens / group.Count),
+                    AvgCacheReadTokens = Math.Round((double)m.CacheReadTokens / group.Count),
+                    AvgCacheWriteTokens = Math.Round((double)m.CacheWriteTokens / group.Count)
+                }).ToList()
             });
         }
         return result;
@@ -179,7 +195,8 @@ public partial class ExecutionPlanApplication
         Turns = s.Turns, InputTokens = s.InputTokens, OutputTokens = s.OutputTokens, CacheReadTokens = s.CacheReadTokens,
         CacheWriteTokens = s.CacheWriteTokens, Model = s.Model, McpCalls = s.McpCalls, ScriptCalls = s.ScriptCalls,
         KbCalls = s.KbCalls, SearchCalls = s.SearchCalls,
-        UsageUpdatedAt = s.UsageUpdatedAt
+        UsageUpdatedAt = s.UsageUpdatedAt,
+        Models = s.Models.Select(m => m.Copy()).ToList()
     };
 
     public async Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken)

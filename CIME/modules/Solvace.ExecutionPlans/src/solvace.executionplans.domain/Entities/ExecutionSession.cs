@@ -31,6 +31,9 @@ public class ExecutionSession
     public int? SearchCalls { get; set; }
     public DateTimeOffset? UsageUpdatedAt { get; set; }
 
+    /// <summary>0047: o mesmo consumo separado por modelo (vazio = sessão antiga, só o total e <see cref="Model"/>).</summary>
+    public List<ExecutionModelUsage> Models { get; set; } = [];
+
     /// <summary>
     /// 0044: a mesma sessão do Claude continua da análise para a correção (outro plano) e o transcript é acumulado — o
     /// que ela já tinha gasto no plano pai fica aqui e é descontado (o plano mostra só o consumo dele).
@@ -45,6 +48,8 @@ public class ExecutionSession
     public int BaseScriptCalls { get; set; }
     public int BaseKbCalls { get; set; }
     public int BaseSearchCalls { get; set; }
+    /// <summary>0047: linha de base por modelo (o que a sessão já tinha, em cada modelo, no plano pai).</summary>
+    public List<ExecutionModelUsage> BaseModels { get; set; } = [];
 
     public int NetTurns() => Math.Max(0, Turns - BaseTurns);
     public long NetInputTokens() => Math.Max(0, InputTokens - BaseInputTokens);
@@ -55,4 +60,10 @@ public class ExecutionSession
     public int NetScriptCalls() => Math.Max(0, (ScriptCalls ?? 0) - BaseScriptCalls);
     public int NetKbCalls() => Math.Max(0, (KbCalls ?? 0) - BaseKbCalls);
     public int NetSearchCalls() => Math.Max(0, (SearchCalls ?? 0) - BaseSearchCalls);
+
+    /// <summary>0047: consumo líquido por modelo (sem a linha de base do mesmo modelo).</summary>
+    public List<ExecutionModelUsage> NetModels() => Models
+        .Select(m => m.Minus(BaseModels.FirstOrDefault(b => string.Equals(b.Model, m.Model, StringComparison.OrdinalIgnoreCase))))
+        .Where(m => !m.IsEmpty)
+        .ToList();
 }

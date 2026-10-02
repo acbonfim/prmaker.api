@@ -176,4 +176,17 @@ public class RecordExecutionUsageRequest
     /// <summary>0045: consultas à Base Solvace (kb.sh / espelho) e buscas no código (grep/find/Grep/Glob) na sessão.</summary>
     public int? KbCalls { get; set; }
     public int? SearchCalls { get; set; }
+    /// <summary>0047: o mesmo consumo separado por modelo (acumulado na sessão).</summary>
+    public List<ExecutionModelTokens>? Models { get; set; }
+}
+
+/// <summary>Consumo em um modelo (0047): respostas, entrada nova, saída, cache lido e cache escrito.</summary>
+public class ExecutionModelTokens
+{
+    public string Model { get; set; } = string.Empty;
+    public int Turns { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
 }

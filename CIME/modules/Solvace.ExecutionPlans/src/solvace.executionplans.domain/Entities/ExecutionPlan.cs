@@ -84,7 +84,7 @@ public class ExecutionPlan
 
     /// <summary>Custo acumulado da sessão (a skill manda o total lido do transcript; o último valor vence).</summary>
     public void RecordUsage(string sessionId, string? host, int turns, long input, long output, long cacheRead, long cacheWrite, string? model, DateTimeOffset now,
-        int? mcpCalls = null, int? scriptCalls = null, int? kbCalls = null, int? searchCalls = null)
+        int? mcpCalls = null, int? scriptCalls = null, int? kbCalls = null, int? searchCalls = null, IReadOnlyCollection<ExecutionModelUsage>? models = null)
     {
         if (turns < 0 || input < 0 || output < 0 || cacheRead < 0 || cacheWrite < 0)
             throw new DomainException("Valores de uso inválidos.");
@@ -99,6 +99,15 @@ public class ExecutionPlan
         if (scriptCalls is >= 0) session.ScriptCalls = scriptCalls;
         if (kbCalls is >= 0) session.KbCalls = kbCalls;
         if (searchCalls is >= 0) session.SearchCalls = searchCalls;
+        // 0047: por modelo (acumulado, como os totais). Quem não manda (skill/executor antigos) mantém o que havia.
+        if (models is { Count: > 0 })
+        {
+            if (models.Any(m => m.Turns < 0 || m.InputTokens < 0 || m.OutputTokens < 0 || m.CacheReadTokens < 0 || m.CacheWriteTokens < 0))
+                throw new DomainException("Valores de uso inválidos.");
+            session.Models = ExecutionModelUsage.Sum(models
+                .Where(m => !string.IsNullOrWhiteSpace(m.Model))
+                .Select(m => { var c = m.Copy(); c.Model = Clean(m.Model, ExecutionModelUsage.MaxModelLength)!; return c; }));
+        }
         session.UsageUpdatedAt = now;
     }
 
@@ -121,6 +130,38 @@ public class ExecutionPlan
         session.BaseScriptCalls = fromParent.ScriptCalls ?? 0;
         session.BaseKbCalls = fromParent.KbCalls ?? 0;
         session.BaseSearchCalls = fromParent.SearchCalls ?? 0;
+        // 0047: por modelo. Pai antigo (sem modelos) mas com consumo: tudo no modelo dele — senão a correção somaria a análise.
+        session.BaseModels = fromParent.Models.Count > 0
+            ? fromParent.Models.Select(m => m.Copy()).ToList()
+            : fromParent.Model is { Length: > 0 } pm && fromParent.Turns > 0
+                ? [new ExecutionModelUsage
+                {
+                    Model = pm, Turns = fromParent.Turns, InputTokens = fromParent.InputTokens, OutputTokens = fromParent.OutputTokens,
+                    CacheReadTokens = fromParent.CacheReadTokens, CacheWriteTokens = fromParent.CacheWriteTokens
+                }]
+                : [];
+    }
+
+    /// <summary>
+    /// 0047: consumo líquido do plano por modelo. Sessão antiga (sem modelos) entra inteira no modelo dela; sem modelo
+    /// conhecido, a lista fica vazia e a tela usa só o total.
+    /// </summary>
+    public List<ExecutionModelUsage> NetModelUsage() => NetModelUsageOf(Sessions);
+
+    public static List<ExecutionModelUsage> NetModelUsageOf(IEnumerable<ExecutionSession> sessions)
+    {
+        var parts = new List<ExecutionModelUsage>();
+        foreach (var s in sessions)
+        {
+            if (s.Models.Count > 0) { parts.AddRange(s.NetModels()); continue; }
+            if (s.Model is not { Length: > 0 } || s.NetTurns() == 0) continue;
+            parts.Add(new ExecutionModelUsage
+            {
+                Model = s.Model, Turns = s.NetTurns(), InputTokens = s.NetInputTokens(), OutputTokens = s.NetOutputTokens(),
+                CacheReadTokens = s.NetCacheReadTokens(), CacheWriteTokens = s.NetCacheWriteTokens()
+            });
+        }
+        return ExecutionModelUsage.Sum(parts);
     }
 
     /// <summary>Modelo da sessão mais recente que informou consumo (para estimar o custo na tela).</summary>

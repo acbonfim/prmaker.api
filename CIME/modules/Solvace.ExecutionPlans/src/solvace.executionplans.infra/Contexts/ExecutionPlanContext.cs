@@ -66,6 +66,9 @@ public class ExecutionPlanContext : DbContext
                 s.Property(x => x.SessionId).HasMaxLength(ExecutionSession.MaxSessionIdLength);
                 s.Property(x => x.Host).HasMaxLength(ExecutionSession.MaxHostLength);
                 s.Property(x => x.Cwd).HasMaxLength(ExecutionSession.MaxCwdLength);
+                // 0047: consumo por modelo e a linha de base por modelo, dentro do mesmo JSON da sessão.
+                s.OwnsMany(x => x.Models, m => m.Property(x => x.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength));
+                s.OwnsMany(x => x.BaseModels, m => m.Property(x => x.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength));
             });
             entity.Property(e => e.ResumeRequestedBy).HasMaxLength(200);
         });
