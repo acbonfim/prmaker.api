@@ -132,11 +132,34 @@ public sealed class FinishRequest
     public string? Error { get; set; }
     public string? StderrTail { get; set; }
     public bool Retryable { get; set; } = true;
+    /// <summary>total_cost_usd do Claude Code: ACUMULADO da sessão quando ela é retomada (o PRMake grava a diferença).</summary>
     public decimal? CostUsd { get; set; }
     public long? InputTokens { get; set; }
     public long? OutputTokens { get; set; }
     public int? Turns { get; set; }
     public DateTimeOffset? RetryAt { get; set; }
+    // 0044: partes da entrada desta execução, modelo e o consumo final da sessão (transcript) para o plano.
+    public long? FreshInputTokens { get; set; }
+    public long? CacheReadTokens { get; set; }
+    public long? CacheWriteTokens { get; set; }
+    public string? Model { get; set; }
+    public string? SessionId { get; set; }
+    public SessionUsage? SessionUsage { get; set; }
+}
+
+/// <summary>Consumo acumulado da sessão (mesmo formato do <c>PUT ExecutionPlan/{id}/usage</c> da skill).</summary>
+public sealed class SessionUsage
+{
+    public string SessionId { get; set; } = string.Empty;
+    public string? Host { get; set; }
+    public int Turns { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
+    public string? Model { get; set; }
+    public int? McpCalls { get; set; }
+    public int? ScriptCalls { get; set; }
 }
 
 public sealed class PlanPending

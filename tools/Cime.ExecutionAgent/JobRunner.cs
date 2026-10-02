@@ -22,6 +22,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private JsonElement? _result;
     private string? _sessionFromStream;
+    private string? _sessionId;
     /// <summary>Texto de limite da conta visto na saída (mensagem de erro sintética do Claude Code).</summary>
     private string? _limitText;
 
@@ -56,6 +57,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var workspace = ConfigStore.ResolveWorkspace(config);
         var resume = r.Kind == "resume" && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
         var sessionId = resume ? r.SessionId! : Guid.NewGuid().ToString();
+        _sessionId = sessionId;
         var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : workspace;
 
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
@@ -193,7 +195,22 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
                 long Sum(params string[] names) => names.Sum(n => usage.TryGetProperty(n, out var v) && v.TryGetInt64(out var x) ? x : 0);
                 finish.InputTokens = Sum("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens");
                 finish.OutputTokens = Sum("output_tokens");
+                finish.FreshInputTokens = Sum("input_tokens");
+                finish.CacheReadTokens = Sum("cache_read_input_tokens");
+                finish.CacheWriteTokens = Sum("cache_creation_input_tokens");
             }
+            // modelUsage: {"claude-opus-5-5[1m]": {...}} — o modelo que mais saída gerou.
+            if (res.TryGetProperty("modelUsage", out var models) && models.ValueKind == JsonValueKind.Object)
+                finish.Model = models.EnumerateObject()
+                    .OrderByDescending(m => m.Value.TryGetProperty("outputTokens", out var o) && o.TryGetInt64(out var x) ? x : 0)
+                    .Select(m => m.Name.Split('[')[0]).FirstOrDefault();
+        }
+        var session = _sessionFromStream ?? _sessionId;
+        if (!string.IsNullOrEmpty(session))
+        {
+            finish.SessionId = session;
+            finish.SessionUsage = TranscriptUsage.Read(session, Paths.HostName);
+            finish.Model ??= finish.SessionUsage?.Model;
         }
 
         if (_killedByServer)
@@ -216,7 +233,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var subtype = _result?.TryGetProperty("subtype", out var st) == true ? st.GetString() : null;
         var isError = _result?.TryGetProperty("is_error", out var ie) == true && ie.ValueKind == JsonValueKind.True;
         if (_result is not null && !isError && subtype == "success")
-            return With(finish, "done", $"A sessão encerrou a vez ({finish.Turns ?? 0} turnos{(finish.CostUsd is { } usd ? $", US$ {usd.ToString("0.00", CultureInfo.InvariantCulture)}" : "")})", null, false);
+            // 0044: sem o custo no texto — o Claude Code informa o acumulado da sessão; o do pedido aparece à parte na tela.
+            return With(finish, "done", $"A sessão encerrou a vez ({finish.Turns ?? 0} turnos)", null, false);
         if (subtype?.Contains("budget", StringComparison.OrdinalIgnoreCase) == true)
             return With(finish, "failed", null, "Orçamento do dia atingido durante a sessão", false);
         if (subtype == "error_max_turns")

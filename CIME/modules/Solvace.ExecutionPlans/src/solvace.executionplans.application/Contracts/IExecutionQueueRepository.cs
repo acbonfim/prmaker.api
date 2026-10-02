@@ -21,6 +21,8 @@ public interface IExecutionQueueRepository
     /// <summary>Quantos pedidos pegos/rodando cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken);
+    /// <summary>0044: maior acumulado da sessão informado por OUTRO pedido já terminado (base do custo deste).</summary>
+    Task<decimal?> GetLastSessionCostAsync(string sessionId, Guid exceptRequestId, CancellationToken cancellationToken);
     Task<int> CountBySourceSinceAsync(Guid ownerUserId, string source, DateTimeOffset since, CancellationToken cancellationToken);
     /// <summary>Algum pedido do card (qualquer status) criado depois de <paramref name="since"/>?</summary>
     Task<bool> HasRequestForCardSinceAsync(string cardNumber, DateTimeOffset since, CancellationToken cancellationToken);

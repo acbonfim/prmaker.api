@@ -14,8 +14,24 @@ namespace solvace.prform.Controllers;
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
-public class AiUsageController(DefaultContext db) : ControllerBase
+public class AiUsageController(DefaultContext db, solvace.prform.application.IPluginCacheManager plugins) : ControllerBase
 {
+    /// <summary>
+    /// Tabela de preços (US$ por milhão de tokens) do "AI Configurations" com as partes da entrada já resolvidas (0044):
+    /// a tela estima o custo do Claude Code (plano, pedidos, relatório) e mostra o desconto do cache lido.
+    /// </summary>
+    [HttpGet("prices")]
+    public async Task<IActionResult> Prices(CancellationToken cancellationToken)
+    {
+        var prices = await AiUsageRecorder.LoadPricesAsync(plugins, cancellationToken);
+        return Ok(new
+        {
+            prices = prices.ToDictionary(p => p.Key, p => new { input = p.Value.Input, output = p.Value.Output, cacheRead = p.Value.CacheRead, cacheWrite = p.Value.CacheWrite }),
+            defaultCacheReadFactor = AiUsagePricing.DefaultCacheReadFactor,
+            defaultCacheWriteFactor = AiUsagePricing.DefaultCacheWriteFactor
+        });
+    }
+
     private const int MaxDays = 90;
     private const int RecentCount = 50;
 

@@ -127,8 +127,26 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
         Run<ExecutionHeartbeatResponse>(async () => Ok(await queue.HeartbeatAsync(id, RequireWorkerId(), request, ct)));
 
     [HttpPost("{id:guid}/finish")]
-    public Task<ActionResult<ExecutionRequestResponse>> Finish([FromRoute] Guid id, [FromBody] FinishExecutionRequestRequest request, CancellationToken ct) =>
-        Run<ExecutionRequestResponse>(async () => Ok(await queue.FinishAsync(id, RequireWorkerId(), request, ct)));
+    public Task<ActionResult<ExecutionRequestResponse>> Finish([FromRoute] Guid id, [FromBody] FinishExecutionRequestRequest request,
+        [FromServices] IExecutionPlanApplication plans, [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
+        Run<ExecutionRequestResponse>(async () =>
+        {
+            var response = await queue.FinishAsync(id, RequireWorkerId(), request, ct);
+            // 0044: consumo FINAL da sessão (lido do transcript pelo executor) — a skill só manda fotos no meio da execução.
+            if (request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
+            {
+                try
+                {
+                    if (await queue.ResolvePlanIdAsync(id, usage.SessionId, ct) is { } planId)
+                        await plans.RecordUsageAsync(planId, usage, ct);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    logger.LogWarning(e, "Não gravei o consumo final da sessão do pedido {RequestId}", id);
+                }
+            }
+            return Ok(response);
+        });
 }
 
 /// <summary>

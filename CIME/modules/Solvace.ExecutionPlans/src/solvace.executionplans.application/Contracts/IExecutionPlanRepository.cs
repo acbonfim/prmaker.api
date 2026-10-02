@@ -29,6 +29,8 @@ public interface IExecutionPlanRepository
 
     /// <summary>Plano mais recente do card (qualquer status).</summary>
     Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0044: sessões (só leitura) de alguns planos — linha de base da sessão que passa da análise para a correção.</summary>
+    Task<Dictionary<Guid, List<ExecutionSession>>> GetSessionsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
 
     Task<long> GetLastLogIdAsync(Guid planId, CancellationToken cancellationToken);
     Task<HashSet<string>> GetExistingClientIdsAsync(Guid planId, IReadOnlyCollection<string> clientIds, CancellationToken cancellationToken);

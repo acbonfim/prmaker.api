@@ -89,6 +89,13 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         .Where(p => p.Sessions.Any(s => s.UsageUpdatedAt != null))
         .ToList();
 
+    public async Task<Dictionary<Guid, List<ExecutionSession>>> GetSessionsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken)
+    {
+        if (planIds.Count == 0) return [];
+        var plans = await _context.Plans.AsNoTracking().Where(p => planIds.Contains(p.Id)).ToListAsync(cancellationToken);
+        return plans.ToDictionary(p => p.Id, p => p.Sessions.ToList());
+    }
+
     public Task<Guid?> GetCurrentPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
         _context.Plans
             .AsNoTracking()

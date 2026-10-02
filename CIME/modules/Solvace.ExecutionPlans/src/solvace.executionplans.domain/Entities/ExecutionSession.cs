@@ -27,4 +27,25 @@ public class ExecutionSession
     public int? McpCalls { get; set; }
     public int? ScriptCalls { get; set; }
     public DateTimeOffset? UsageUpdatedAt { get; set; }
+
+    /// <summary>
+    /// 0044: a mesma sessão do Claude continua da análise para a correção (outro plano) e o transcript é acumulado — o
+    /// que ela já tinha gasto no plano pai fica aqui e é descontado (o plano mostra só o consumo dele).
+    /// </summary>
+    public bool BaselineSet { get; set; }
+    public int BaseTurns { get; set; }
+    public long BaseInputTokens { get; set; }
+    public long BaseOutputTokens { get; set; }
+    public long BaseCacheReadTokens { get; set; }
+    public long BaseCacheWriteTokens { get; set; }
+    public int BaseMcpCalls { get; set; }
+    public int BaseScriptCalls { get; set; }
+
+    public int NetTurns() => Math.Max(0, Turns - BaseTurns);
+    public long NetInputTokens() => Math.Max(0, InputTokens - BaseInputTokens);
+    public long NetOutputTokens() => Math.Max(0, OutputTokens - BaseOutputTokens);
+    public long NetCacheReadTokens() => Math.Max(0, CacheReadTokens - BaseCacheReadTokens);
+    public long NetCacheWriteTokens() => Math.Max(0, CacheWriteTokens - BaseCacheWriteTokens);
+    public int NetMcpCalls() => Math.Max(0, (McpCalls ?? 0) - BaseMcpCalls);
+    public int NetScriptCalls() => Math.Max(0, (ScriptCalls ?? 0) - BaseScriptCalls);
 }

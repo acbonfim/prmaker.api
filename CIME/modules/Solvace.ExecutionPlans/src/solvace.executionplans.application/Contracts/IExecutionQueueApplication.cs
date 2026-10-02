@@ -21,6 +21,11 @@ public interface IExecutionQueueApplication
     Task<ExecutionRequestResponse> StartAsync(Guid requestId, Guid workerId, StartExecutionRequestRequest request, CancellationToken cancellationToken);
     Task<ExecutionHeartbeatResponse> HeartbeatAsync(Guid requestId, Guid workerId, ExecutionRequestHeartbeatRequest request, CancellationToken cancellationToken);
     Task<ExecutionRequestResponse> FinishAsync(Guid requestId, Guid workerId, FinishExecutionRequestRequest request, CancellationToken cancellationToken);
+    /// <summary>
+    /// 0044: plano onde gravar o consumo final da sessão — o atual do card quando a sessão está nele (a análise virou
+    /// correção no meio da execução), senão o do pedido.
+    /// </summary>
+    Task<Guid?> ResolvePlanIdAsync(Guid requestId, string sessionId, CancellationToken cancellationToken);
 
     // Executores
     Task<(ExecutionWorker Worker, ExecutionWorkerResponse Response)> RegisterWorkerAsync(RegisterExecutionWorkerRequest request, ExecutionActor actor, CancellationToken cancellationToken);

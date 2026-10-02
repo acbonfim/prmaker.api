@@ -102,9 +102,18 @@ public class ExecutionRequest
     public string? FinishedReason { get; private set; }
     public string? FinishedBy { get; private set; }
 
+    /// <summary>Custo DESTE pedido (0044: o Claude Code informa o acumulado da sessão — aqui fica a diferença).</summary>
     public decimal? CostUsd { get; private set; }
+    /// <summary>0044: acumulado da sessão informado pelo Claude Code no fim deste pedido (base do próximo pedido).</summary>
+    public decimal? SessionCostUsd { get; private set; }
+    /// <summary>Entrada total (nova + cache lido + cache escrito).</summary>
     public long? InputTokens { get; private set; }
     public long? OutputTokens { get; private set; }
+    /// <summary>0044: as partes da entrada (executor 1.0.3+).</summary>
+    public long? FreshInputTokens { get; private set; }
+    public long? CacheReadTokens { get; private set; }
+    public long? CacheWriteTokens { get; private set; }
+    public string? Model { get; private set; }
     public int? Turns { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -201,12 +210,31 @@ public class ExecutionRequest
         UpdatedAt = now;
     }
 
-    public void RecordUsage(decimal? costUsd, long? inputTokens, long? outputTokens, int? turns)
+    public const int MaxModelLength = 100;
+
+    /// <summary>
+    /// Consumo da tentativa. <paramref name="sessionCostUsd"/> é o acumulado da sessão (o Claude Code soma as
+    /// retomadas); <paramref name="previousSessionCostUsd"/> é o acumulado no fim do pedido anterior da mesma sessão —
+    /// o custo deste pedido é a diferença (0044). Acumulado menor que o anterior = sessão recomeçou: vale inteiro.
+    /// </summary>
+    public void RecordUsage(decimal? sessionCostUsd, decimal? previousSessionCostUsd, long? inputTokens, long? outputTokens, int? turns,
+        long? freshInputTokens = null, long? cacheReadTokens = null, long? cacheWriteTokens = null, string? model = null)
     {
-        if (costUsd is not null) CostUsd = (CostUsd ?? 0) + Math.Max(0, costUsd.Value);
+        if (sessionCostUsd is { } total)
+        {
+            total = Math.Max(0, total);
+            var previous = SessionCostUsd ?? previousSessionCostUsd;
+            var delta = previous is { } p && total >= p ? total - p : total;
+            CostUsd = (CostUsd ?? 0) + delta;
+            SessionCostUsd = total;
+        }
         if (inputTokens is not null) InputTokens = (InputTokens ?? 0) + Math.Max(0, inputTokens.Value);
         if (outputTokens is not null) OutputTokens = (OutputTokens ?? 0) + Math.Max(0, outputTokens.Value);
         if (turns is not null) Turns = (Turns ?? 0) + Math.Max(0, turns.Value);
+        if (freshInputTokens is not null) FreshInputTokens = (FreshInputTokens ?? 0) + Math.Max(0, freshInputTokens.Value);
+        if (cacheReadTokens is not null) CacheReadTokens = (CacheReadTokens ?? 0) + Math.Max(0, cacheReadTokens.Value);
+        if (cacheWriteTokens is not null) CacheWriteTokens = (CacheWriteTokens ?? 0) + Math.Max(0, cacheWriteTokens.Value);
+        if (!string.IsNullOrWhiteSpace(model)) Model = Clean(model, MaxModelLength);
     }
 
     /// <summary>O processo terminou bem (a skill encerrou a vez: pergunta, PR aberto, plano concluído...).</summary>
