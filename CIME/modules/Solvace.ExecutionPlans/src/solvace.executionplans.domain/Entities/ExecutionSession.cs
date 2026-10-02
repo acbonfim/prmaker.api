@@ -32,7 +32,9 @@ public class ExecutionSession
     public DateTimeOffset? UsageUpdatedAt { get; set; }
 
     /// <summary>0047: o mesmo consumo separado por modelo (vazio = sessão antiga, só o total e <see cref="Model"/>).</summary>
-    public List<ExecutionModelUsage> Models { get; set; } = [];
+    /// <remarks>Sessão gravada antes da 0047 não tem a chave no JSON e o EF materializa null — nunca devolve null.</remarks>
+    public List<ExecutionModelUsage> Models { get => _models ??= []; set => _models = value ?? []; }
+    private List<ExecutionModelUsage>? _models;
 
     /// <summary>
     /// 0044: a mesma sessão do Claude continua da análise para a correção (outro plano) e o transcript é acumulado — o
@@ -49,7 +51,8 @@ public class ExecutionSession
     public int BaseKbCalls { get; set; }
     public int BaseSearchCalls { get; set; }
     /// <summary>0047: linha de base por modelo (o que a sessão já tinha, em cada modelo, no plano pai).</summary>
-    public List<ExecutionModelUsage> BaseModels { get; set; } = [];
+    public List<ExecutionModelUsage> BaseModels { get => _baseModels ??= []; set => _baseModels = value ?? []; }
+    private List<ExecutionModelUsage>? _baseModels;
 
     public int NetTurns() => Math.Max(0, Turns - BaseTurns);
     public long NetInputTokens() => Math.Max(0, InputTokens - BaseInputTokens);
