@@ -97,9 +97,11 @@ do usuario que perdeu o sentido (plano antigo), cancele com o motivo ("a orienta
 bash $PLAN branches <card> <repo>                       # usa o fluxo pela area do card
 bash $PLAN branches <card> <repo> --flow <f> --base <b> # quando ele pedir (exit 3) ou o usuario escolher
 ```
-Ele imprime o tipo do repositorio, o fluxo, a base, a branch de correcao, a mensagem de commit, os PRs (branch
-derivada, de onde sai + cherry-pick, destino, titulo) e os **comandos prontos** (`git checkout`, `cherry-pick`,
-`push` e as linhas de `open-pr`). Siga exatamente o que ele imprimir; o nome da branch nunca leva o prefixo do
+Ele imprime o tipo do repositorio, o fluxo, a base, **a pasta do repositorio nesta maquina** (`pasta=`, pelo mapa
+da 0048), a branch de correcao, a mensagem de commit, os PRs (branch derivada, de onde sai + cherry-pick, destino,
+titulo) e os **comandos prontos** (`git checkout`/`worktree` ja com a pasta, `cherry-pick`, `push` e as linhas de
+`open-pr`). Exit 4 = a pasta do repositorio e desconhecida (fora do mapa ou mais de um clone): pergunte ao usuario,
+fixe com `bash ~/.claude/skills/.prmake/prmake-skills.sh repos set <repo> <pasta>` e rode o `branches` de novo. Siga exatamente o que ele imprimir; o nome da branch nunca leva o prefixo do
 commit/titulo. Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin <base>` que
 as bases existem; se nao existirem ou o caso nao estiver claro, **pergunte**. Commits so com a mudanca
 necessaria: **sem comentarios novos no codigo** (ver passo 8).

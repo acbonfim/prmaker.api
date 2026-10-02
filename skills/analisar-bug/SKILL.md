@@ -36,7 +36,8 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
   `kb.sh index <termos>`; nao sabe o mundo: `kb.sh show edv-solvace modulos` (glossario de siglas → projeto). Base sem o
-  caso → busca **so na pasta do modulo** (nunca `grep -r` em `~/repos/solvace` inteiro) e, ao achar, registre a lacuna
+  caso → busca **so na pasta do modulo** (`revamp-repos.sh where <repo>`; nunca `grep -r` na pasta de todos os
+  repositorios) e, ao achar, registre a lacuna
   (`arch.sh suggest <projeto> modulos lacuna.md --kind gap --card <card>`); varredura ampla inevitavel → subagente
   `Explore` (volta so o resumo). Diga no `advance` de `investigar-codigo` qual secao da base usou.
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
@@ -76,6 +77,11 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   `watch`/`wait`/`wait-answers` (saem com exit 12) nem pergunta no chat: o que depende de alguem vai para o plano
   (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir.
   Correcao sempre no worktree do card (o `branches` ja imprime os comandos com `$WT`). Detalhes: `$REF plano executor`.
+- **Repositorios da maquina (0048)**: as pastas vem do mapa da maquina (`~/.prmake/repos.json`, nome do repositorio
+  pelo remote → pasta) — nunca suponha `~/repos/solvace/...`. Ache com `revamp-repos.sh where <repo>` (ou `list`); o
+  `branches` ja imprime `pasta=`. Fora do mapa ou com mais de um clone (`where` exit 2/3, `branches` exit 4): pergunte
+  ao usuario a pasta (`ask`; no terminal, no chat) e fixe com `bash ~/.claude/skills/.prmake/prmake-skills.sh repos set
+  <repo> <pasta>` — nao conclua a analise "sem o codigo" sem ele dizer que pode. Detalhes: `$REF consultas 3a`.
 - **MCP do PRMake primeiro** (tabela acima): plano, etapas, bloqueios, perguntas e respostas, comentarios, anexos,
   links, correcao, configuracao, card e DevOps pelas ferramentas `mcp__prmake__*`; o script fica para arquivos locais,
   git, o `contexto` e o `status` final — e para quando o MCP nao estiver na sessao.
