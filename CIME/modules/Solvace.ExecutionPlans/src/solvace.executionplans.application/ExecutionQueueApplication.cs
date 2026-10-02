@@ -493,7 +493,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
                 Request = request.ToResponse(),
                 ResumePrompt = ResumePrompt(request),
                 FreshPrompt = FreshPrompt(request),
-                RemainingBudgetUsd = budget is { } limit && !request.Force ? Math.Max(0, limit - spent) : null
+                RemainingBudgetUsd = budget is { } limit && !request.Force ? Math.Max(0, limit - spent) : null,
+                Phase = await PhaseOfAsync(request.CardNumber, cancellationToken)
             };
         }
         return null;
@@ -846,6 +847,30 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             throw new ExecutionForbiddenException("Este executor foi revogado — registre a máquina de novo (prmake-agent register).");
         return worker;
     }
+
+    /// <summary>
+    /// 0047: fase do card para escolher o modelo — correção quando o plano aberto é o de correção ou quando as perguntas
+    /// de <c>propor-solucoes</c> da análise já foram respondidas (a próxima execução já é a correção); senão, análise.
+    /// </summary>
+    private async Task<string> PhaseOfAsync(string card, CancellationToken cancellationToken)
+    {
+        if (await _plans.GetCurrentPlanIdAsync(card, cancellationToken) is not { } planId
+            || await _plans.GetPlanWithStepsAsync(planId, cancellationToken) is not { } plan)
+            return ExecutionPhase.Analysis;
+        if (plan.Phase == ExecutionPhase.Correction)
+            return ExecutionPhase.Correction;
+        if (plan.Steps.Any(s => s.Key == ProposeSolutionsStep && s.Status == ExecutionStatus.Completed))
+            return ExecutionPhase.Correction;
+        var proposal = (await _plans.GetQuestionsAsync(plan.Id, cancellationToken))
+            .Where(q => q.StepKey == ProposeSolutionsStep && q.Status != ExecutionQuestionStatus.Cancelled)
+            .ToList();
+        return proposal.Count > 0 && proposal.All(q => q.Status == ExecutionQuestionStatus.Answered)
+            ? ExecutionPhase.Correction
+            : ExecutionPhase.Analysis;
+    }
+
+    /// <summary>Etapa da skill em que as soluções são propostas ao usuário (fim da análise).</summary>
+    private const string ProposeSolutionsStep = "propor-solucoes";
 
     private static string FreshPrompt(ExecutionRequest r)
     {

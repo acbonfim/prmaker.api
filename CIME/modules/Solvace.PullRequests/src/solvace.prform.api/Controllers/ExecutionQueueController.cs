@@ -111,12 +111,40 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
 
     /// <summary>Long-poll do executor: 200 com o pedido assim que existir, 204 depois de <paramref name="wait"/> s (máx. 25).</summary>
     [HttpGet("next")]
-    public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait, CancellationToken ct) =>
+    public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait,
+        [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
+        [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
         Run<ExecutionClaimResponse>(async () =>
         {
             var claim = await queue.NextAsync(RequireWorkerId(), TimeSpan.FromSeconds(Math.Clamp(wait, 0, 25)), ct);
-            return claim is null ? NoContent() : Ok(claim);
+            if (claim is null) return NoContent();
+            claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);
+            return Ok(claim);
         });
+
+    /// <summary>
+    /// 0047: modelo da fase pela "Skills Configurations" (ExecutorAnalysisModel / ExecutorCorrectionModel). Sem a
+    /// configuração (ou falha ao ler), null — o executor usa o modelo padrão da máquina.
+    /// </summary>
+    private static async Task<string?> ModelForAsync(string phase,
+        solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings, ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            var config = await settings.GetEffectiveConfigurationAsync(solvace.prform.Skills.SkillsConfigurationKeys.PluginName, ct);
+            var key = phase == ExecutionPhase.Correction
+                ? solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel
+                : solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel;
+            var model = solvace.prform.domain.Extensions.PluginConfigurationExtensions.GetConfigurationValueOrDefault(config, key, string.Empty).Trim();
+            // Só apelido ou id de modelo (vai como argumento do Claude Code).
+            return model.Length is > 0 and <= 100 && model.All(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '_' or '[' or ']') ? model : null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException)
+        {
+            logger.LogWarning(e, "Sem a configuração do modelo do executor (fase {Phase}) — vai o padrão da máquina", phase);
+            return null;
+        }
+    }
 
     [HttpPost("{id:guid}/start")]
     public Task<ActionResult<ExecutionRequestResponse>> Start([FromRoute] Guid id, [FromBody] StartExecutionRequestRequest request, CancellationToken ct) =>
