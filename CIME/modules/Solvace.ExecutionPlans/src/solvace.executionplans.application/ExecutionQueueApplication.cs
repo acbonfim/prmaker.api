@@ -977,16 +977,21 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     private static string FreshPrompt(ExecutionRequest r, string phase)
     {
-        var prompt = $"/analisar-bug {r.CardNumber}";
         if (phase == ExecutionPhase.Correction)
-            // 0049: a correção não carrega a conversa da análise — só o resumo que a análise deixou no plano.
-            prompt += "\n\nFASE DE CORRECAO numa sessao nova: a analise deste card rodou em outra sessao e o contexto dela nao esta " +
-                      "aqui de proposito (cada resposta relia a analise inteira). Em vez do passo 2, comece com " +
-                      $"`bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh contexto-correcao {r.CardNumber}`: ele retoma o plano e mostra " +
-                      "o resumo para a correcao, as respostas, os comentarios e os arquivos. Nao refaca a investigacao — confie no resumo e " +
-                      "na analise publicada; leia codigo/banco so no que a correcao precisar. Siga do passo 7 (sem plano de correcao) ou da " +
-                      "primeira etapa pronta do plano de correcao.";
-        else if (r.Kind == ExecutionRequestKind.Resume)
+            // 0049: a correção não carrega a conversa da análise — só o resumo que a análise deixou no plano. Sem invocar
+            // a skill: o "model: opus" do cabeçalho dela valeria para a execução inteira do claude -p, por cima do --model
+            // da correção (card 75067 rodou a correção toda no Opus).
+            return $"Card {r.CardNumber} — skill analisar-bug, FASE DE CORRECAO numa sessao nova. Leia as instrucoes da skill com " +
+                   "`cat ~/.claude/skills/analisar-bug/SKILL.md` (Bash) e siga-as — NAO use a ferramenta Skill nem /analisar-bug: a skill " +
+                   "fixa o Opus para a execucao inteira e a correcao roda no modelo configurado no PRMake. " +
+                   "A analise deste card rodou em outra sessao e o contexto dela nao esta aqui de proposito (cada resposta relia a analise " +
+                   "inteira). Em vez do passo 2, comece com " +
+                   $"`bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh contexto-correcao {r.CardNumber}`: ele retoma o plano e mostra " +
+                   "o resumo para a correcao, as respostas, os comentarios e os arquivos. Nao refaca a investigacao — confie no resumo e " +
+                   "na analise publicada; leia codigo/banco so no que a correcao precisar. Siga do passo 7 (sem plano de correcao) ou da " +
+                   "primeira etapa pronta do plano de correcao." + ExecutorSuffix(r);
+        var prompt = $"/analisar-bug {r.CardNumber}";
+        if (r.Kind == ExecutionRequestKind.Resume)
             prompt += "\n\nEste card ja tem plano no PRMake: retome de onde parou (o contexto do plano mostra o que ja foi feito).";
         return prompt + ExecutorSuffix(r);
     }

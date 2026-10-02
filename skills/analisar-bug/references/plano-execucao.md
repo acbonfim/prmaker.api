@@ -137,7 +137,9 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
 - **Correcao numa sessao nova (0049)**: quando o card passa para a correcao (respostas de `propor-solucoes` dadas ou
   plano de correcao aberto), o executor nao retoma a sessao da analise — abre outra, com o prompt pedindo
   `contexto-correcao <card>` (resumo deixado no checkpoint de `propor-solucoes`, respostas, comentarios, arquivos). As
-  retomadas seguintes da correcao continuam essa sessao nova. "Skills Configurations" → `ExecutorCorrectionNewSession`.
+  retomadas seguintes da correcao continuam essa sessao nova. O prompt manda **ler esta SKILL.md** (`cat`) em vez de
+  invocar a skill: o `model: opus` do cabecalho valeria para a execucao inteira e a correcao roda no modelo configurado
+  (`ExecutorCorrectionModel`) — nao chame a ferramenta Skill nessa sessao. "Skills Configurations" → `ExecutorCorrectionNewSession`.
 - **Comentarios em sequencia = uma retomada (0049)**: um comentario espera `ExecutorNoteDelaySeconds` (padrao 120 s)
   antes de retomar o card; outro comentario nesse meio empurra a espera (ate 3×). "Continuar" ou outra acao do usuario
   comeca na hora. Leia **todos** os comentarios novos (`prmake_notes`) e atenda-os juntos.
