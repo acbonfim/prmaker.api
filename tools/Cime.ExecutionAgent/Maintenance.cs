@@ -51,10 +51,12 @@ public static class Doctor
 
         var workspace = ConfigStore.ResolveWorkspace(config);
         Add("Workspace", Directory.Exists(workspace), workspace);
-        var edv = Environment.GetEnvironmentVariable("EDV_SOLVACE_DIR") ?? Path.Combine(Paths.Home, "repos", "solvace", "edv-solvace");
-        var revamp = Environment.GetEnvironmentVariable("REVAMP_DIR") ?? Path.Combine(Paths.Home, "repos", "solvace", "revamp_separado");
-        Add("Repositório legado (edv-solvace)", Directory.Exists(edv), Directory.Exists(edv) ? edv : $"não encontrado em {edv} (EDV_SOLVACE_DIR)", warning: true);
-        Add("Repositórios revamp", Directory.Exists(revamp), Directory.Exists(revamp) ? revamp : $"não encontrado em {revamp} (REVAMP_DIR)", warning: true);
+        // 0048: os repositórios vêm do mapa da máquina (prmake-skills.sh repos), não de caminho fixo.
+        var (mapOk, mapMessage) = RepoMap.DoctorLine(RepoMap.Load());
+        Add("Mapa de repositórios", mapOk, mapMessage, warning: true);
+        foreach (var (name, value) in new[] { ("EDV_SOLVACE_DIR", Environment.GetEnvironmentVariable("EDV_SOLVACE_DIR")), ("REVAMP_DIR", Environment.GetEnvironmentVariable("REVAMP_DIR")) })
+            if (value is { Length: > 0 } && !Directory.Exists(value))
+                Add(name, false, $"a variável aponta para uma pasta que não existe: {value}", warning: true);
 
         foreach (var tool in new[] { "git", "bash", "jq", "python3" })
         {
@@ -67,7 +69,7 @@ public static class Doctor
         var creds = Path.Combine(Paths.ClaudeHome, "sqlserver-credentials.json");
         if (!File.Exists(creds))
             Add("Acesso aos bancos (SQL Server)", false, $"sem credenciais em {creds} — análises que precisam do banco vão parar pedindo acesso", warning: true);
-        else if (File.Exists(sql) && Shell.Which("bash") is { } bash)
+        else if (File.Exists(sql) && Shell.Bash() is { } bash)
         {
             foreach (var alias in new[] { "prod", "prod3", "prod4" })
             {
@@ -113,8 +115,13 @@ public static class Worktrees
         }
         catch
         {
-            return;
+            // workspace sumiu — ainda olha ao lado dos repositórios do mapa
         }
+        // 0048: o worktree fica em <pasta-do-repo>/../.prmake-wt — repositórios do mapa fora do workspace também.
+        foreach (var repo in RepoMap.Folders(RepoMap.Load()))
+            if (Path.GetDirectoryName(repo) is { } parent && Path.Combine(parent, ".prmake-wt") is var wtRoot && Directory.Exists(wtRoot))
+                roots.Add(wtRoot);
+        roots = roots.Select(Path.GetFullPath).Distinct(Paths.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToList();
         var retention = TimeSpan.FromDays(Math.Max(1, config.WorktreeRetentionDays));
         foreach (var root in roots)
         {

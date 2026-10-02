@@ -25,6 +25,8 @@ public static class Paths
     /// Pastas dos cards da skill (CARDS_DIR ou ~/.prmake/cards — 0046). Fora de ~/.claude: o Claude Code protege aquela
     /// pasta e, em dontAsk, nega gravar nela mesmo com Write liberado (scripts e análises do card não eram salvos).
     /// </summary>
+    /// <summary>Pasta do PRMake na máquina (PRMAKE_HOME ou ~/.prmake): cards (0046) e o mapa de repositórios (0048).</summary>
+    public static string PrmakeHome => Environment.GetEnvironmentVariable("PRMAKE_HOME") is { Length: > 0 } p ? p : Path.Combine(Home, ".prmake");
     public static string CardsRoot => Environment.GetEnvironmentVariable("CARDS_DIR") is { Length: > 0 } d ? d : Path.Combine(Home, ".prmake", "cards");
 
     /// <summary>Cria a pasta dos cards (liberada ao Claude com --add-dir) e devolve o caminho.</summary>
@@ -130,13 +132,18 @@ public static class ConfigStore
     public static string ResolveApiBase(AgentConfig config) =>
         (Environment.GetEnvironmentVariable("PRMAKE_API_BASE") is { Length: > 0 } b ? b : config.ApiBase).TrimEnd('/');
 
-    /// <summary>Raiz dos repositórios: config, PRMAKE_WORKSPACE, pai do EDV_SOLVACE_DIR, ~/repos/solvace ou a home.</summary>
+    /// <summary>
+    /// Raiz dos repositórios: config, PRMAKE_WORKSPACE, pai do EDV_SOLVACE_DIR, pasta comum aos repositórios do mapa
+    /// (0048), ~/repos/solvace ou a home.
+    /// </summary>
     public static string ResolveWorkspace(AgentConfig config)
     {
         if (config.Workspace is { Length: > 0 } w && Directory.Exists(w)) return w;
         if (Environment.GetEnvironmentVariable("PRMAKE_WORKSPACE") is { Length: > 0 } env && Directory.Exists(env)) return env;
         if (Environment.GetEnvironmentVariable("EDV_SOLVACE_DIR") is { Length: > 0 } edv && Directory.GetParent(edv) is { Exists: true } parent)
             return parent.FullName;
+        if (RepoMap.CommonAncestor(RepoMap.Folders(RepoMap.Load())) is { } common)
+            return common;
         var solvace = Path.Combine(Paths.Home, "repos", "solvace");
         return Directory.Exists(solvace) ? solvace : Paths.Home;
     }
@@ -302,6 +309,21 @@ public static class Shell
         }
         output.Append(await o).Append(await er);
         return (p.ExitCode, output.ToString().Trim());
+    }
+
+    /// <summary>
+    /// bash para rodar os scripts das skills: no Windows o do Git (CLAUDE_CODE_GIT_BASH_PATH ou a instalação padrão) — o
+    /// bash.exe do System32 é o do WSL e não enxerga a home do Windows.
+    /// </summary>
+    public static string? Bash()
+    {
+        if (!Paths.IsWindows) return Which("bash");
+        if (Environment.GetEnvironmentVariable("CLAUDE_CODE_GIT_BASH_PATH") is { Length: > 0 } b && File.Exists(b)) return b;
+        foreach (var root in new[] { Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramW6432"),
+                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs") })
+            if (root is { Length: > 0 } && Path.Combine(root, "Git", "bin", "bash.exe") is var candidate && File.Exists(candidate))
+                return candidate;
+        return Which("bash") is { } any && !any.Contains("System32", StringComparison.OrdinalIgnoreCase) ? any : null;
     }
 
     /// <summary>Executável no PATH (com as extensões do Windows).</summary>

@@ -42,6 +42,8 @@ public sealed class Runner(AgentConfig config)
         using var client = new PrmakeClient(ConfigStore.ResolveApiBase(config), config.Token);
         Log.Info($"executor {Agent.Version} iniciado em {Paths.HostName} (workspace {ConfigStore.ResolveWorkspace(config)})");
         ClaudeSettings.Ensure();
+        // 0048: sem mapa de repositórios (instalação antiga, executor atualizado antes das skills) → monta agora.
+        _ = RepoMap.EnsureAsync(stopping);
 
         var background = Task.WhenAll(
             Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
@@ -209,7 +211,10 @@ public sealed class Runner(AgentConfig config)
         }
     }
 
-    /// <summary>Repositórios git na raiz do workspace (e um nível abaixo) — a tela mostra o que a máquina alcança.</summary>
+    /// <summary>
+    /// Repositórios git na raiz do workspace (e um nível abaixo) e, desde a 0048, o mapa de repositórios da máquina
+    /// (<c>repoMap</c>) — a tela mostra o que a máquina alcança.
+    /// </summary>
     private JsonElement Capabilities()
     {
         var workspace = ConfigStore.ResolveWorkspace(config);
@@ -228,8 +233,18 @@ public sealed class Runner(AgentConfig config)
         {
             // workspace sumiu
         }
-        var json = JsonSerializer.Serialize(repos.Take(200).ToList(), AgentJson.Default.ListString);
-        using var doc = JsonDocument.Parse($"{{\"repos\":{json},\"os\":{JsonSerializer.Serialize(Paths.OsDescription, AgentJson.Default.String)}}}");
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer))
+        {
+            w.WriteStartObject();
+            w.WriteStartArray("repos");
+            foreach (var r in repos.Take(200)) w.WriteStringValue(r);
+            w.WriteEndArray();
+            w.WriteString("os", Paths.OsDescription);
+            RepoMap.WriteCapabilities(w, RepoMap.Load());
+            w.WriteEndObject();
+        }
+        using var doc = JsonDocument.Parse(buffer.ToArray());
         return doc.RootElement.Clone();
     }
 
