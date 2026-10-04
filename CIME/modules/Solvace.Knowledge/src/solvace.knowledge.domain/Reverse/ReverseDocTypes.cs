@@ -26,7 +26,10 @@ public static class ReverseDocTypes
         - Linhas de metadados logo abaixo do cabeçalho (o índice do PRMake lê): `- **Onde:** `arquivo:linha`, …`
           (evidência no código — obrigatória em RN, UC, API, DB, EVT, JOB, INT e TELA), `- **Tabelas:** TB_…`,
           `- **Módulos:** revamp-users, legado-usuarios` (outros módulos envolvidos — chave do projeto na Base Solvace),
-          `- **Tags:** termos que alguém usaria para procurar (PT e EN, nomes de tela, siglas)`, `- **KC:** ART-n`.
+          `- **Tags:** termos que alguém usaria para procurar (PT e EN, nomes de tela, siglas)`, `- **KC:** ART-n`,
+          `- **Sinônimos:** …` (nos `GLO`: todos os nomes do mesmo conceito — a busca das análises usa).
+        - Regra ou comportamento que vive **no banco** (procedure, view, function, trigger, job): a evidência é o banco
+          da DEMO — `- **Onde:** banco DEMO <global|local> · dbo.STP_X (linha 42)` — e o item diz em qual banco está.
         - Referencie outros itens pelo ID (`RN-012`, `TELA-003`) e itens de outro módulo por `<módulo>#<ID>`
           (`revamp-users#API-004`).
         - **Literal e exato**: valores, limites, mensagens de erro como estão no código (entre aspas), nomes de campos,
@@ -39,7 +42,7 @@ public static class ReverseDocTypes
     public static readonly IReadOnlyList<ReverseDocType> All =
     [
         new("funcional", "Levantamento funcional", "re-funcional", 110,
-            ["FN", "UC", "RN", "PRF", "EST", "NTF", "CFG", "REL"],
+            ["FN", "UC", "RN", "PRF", "EST", "NTF", "CFG", "REL", "GLO"],
             [
                 new("Resumo do módulo", "resumo"),
                 new("Perfis e permissões", "perfis"),
@@ -51,6 +54,7 @@ public static class ReverseDocTypes
                 new("Configurações e parâmetros", "configurac"),
                 new("Relatórios e indicadores", "relatorios"),
                 new("Integrações com outros módulos", "integrac"),
+                new("Glossário", "glossario"),
                 new("Lacunas e pontos a confirmar", "lacunas")
             ],
             "O que o módulo faz, para quem, com TODAS as regras de negócio e casos de uso — em nível que dispensa abrir o código.",
@@ -102,20 +106,29 @@ public static class ReverseDocTypes
             Visão funcional: o que este módulo usa de outros (usuários, masterdata, plano de ação, notificações…) e o que
             fornece — cada linha apontando o `INT-…` do levantamento de arquitetura e o módulo (`**Módulos:**`).
 
+            ## Glossário
+            **Todos os termos do módulo**, sem número fixo: cada conceito que aparece na tela (rótulos, títulos, menus,
+            status, tipos), nas siglas e nos nomes de tabela/objeto. `### GLO-001 — <termo como o usuário vê>` com
+            **Sinônimos** (todos os nomes do mesmo conceito: sigla, nome antigo, PT/EN/ES das traduções, nome da tabela —
+            ex.: `SA3, A3, RCA, RCA 1-pager, root cause analysis, TB_SA3_A3`), significado no domínio e onde aparece
+            (TELA-…, tabelas). A lista de termos vem do inventário (traduções, menus, siglas); termo genérico de interface
+            fica fora; termo deixado de fora de propósito vai justificado em `GAP`.
+
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`: o que não foi possível confirmar no código, contradições, código morto, comportamento suspeito.
             """),
 
         new("arquitetura", "Levantamento de arquitetura", "re-arquitetura", 120,
-            ["TEC", "CMP", "API", "DB", "EVT", "JOB", "INT", "CFG"],
+            ["TEC", "CMP", "API", "DB", "EVT", "JOB", "INT", "CFG", "SQL", "TRG"],
             [
                 new("Visão técnica", "visao tecnica"),
                 new("Tecnologias e versões", "tecnologias"),
                 new("Componentes e camadas", "componentes"),
                 new("Endpoints e contratos", "endpoints"),
-                new("Dados — tabelas e entidades", "dados"),
+                new("Dados — tabelas e entidades", "tabelas"),
                 new("Eventos, filas e mensagens", "eventos"),
                 new("Jobs e rotinas", "jobs"),
+                new("Banco de dados: views, procedures, functions, triggers e jobs", "banco de dados"),
                 new("Integrações", "integrac"),
                 new("Configuração e segredos (só nomes)", "configurac"),
                 new("Segurança e autenticação", "seguranca"),
@@ -153,6 +166,16 @@ public static class ReverseDocTypes
 
             ## Jobs e rotinas
             `### JOB-001 — <job/worker/Lambda/SP agendada>`: agendamento, o que faz passo a passo, tabelas, falhas comuns.
+
+            ## Banco de dados: views, procedures, functions, triggers e jobs
+            Lido **direto do banco da DEMO** (global e locais — o catálogo da sessão), nunca de scripts versionados.
+            **Todos os objetos do módulo**: `### SQL-001 — <view|procedure|function> dbo.<nome>` e
+            `### TRG-001 — <trigger> em <tabela> (<INSERT|UPDATE|DELETE>)`, com **Banco** (DEMO global/local, igual nos
+            locais ou divergente, data da última alteração), **o que faz passo a passo** (a regra está no corpo: condições,
+            cálculos, valores), tabelas lidas/gravadas, **quem chama** (TELA/API/JOB/outro objeto/trigger), regras que
+            aplica (RN-…), efeitos colaterais (o que o trigger faz "escondido") e objetos de **outros módulos** que usam
+            as tabelas deste (`**Módulos:**`). Jobs do SQL Agent que tocam o módulo entram como `JOB-…` (agenda, passos,
+            comando resumido — sem credencial).
 
             ## Integrações
             **Cada** integração com outro módulo Solvace ou serviço externo, nos dois sentidos. `### INT-001 — <este> →
@@ -214,7 +237,7 @@ public static class ReverseDocTypes
             """),
 
         new("visao", "Especificação de visão", "re-visao", 130,
-            ["OBJ", "PER", "GLO"],
+            ["OBJ", "PER"],
             [
                 new("Propósito e problema", "proposito"),
                 new("Objetivos e escopo", "objetivos"),
@@ -246,7 +269,8 @@ public static class ReverseDocTypes
             O que existe em cada mundo, o que mudou de comportamento, o que ainda não foi migrado, convivência dos dois.
 
             ## Glossário
-            `### GLO-001 — <termo>`: significado no domínio, sinônimos (PT/EN/sigla), onde aparece (telas, tabelas).
+            O glossário do módulo fica no levantamento funcional (`GLO-…`, com sinônimos): aqui só os termos do negócio que
+            a visão precisa explicar, **referenciando** os `GLO` (não redefina o ID).
 
             ## Métricas de sucesso
             Indicadores que mostram que o módulo funciona (REL-…), metas quando conhecidas ("a confirmar" se não).
@@ -282,7 +306,8 @@ public static class ReverseDocTypes
             aplicadas em cada passo e o que acontece em erro. Cubra os UC principais e tudo que cruza módulos.
 
             ## Modelo de dados
-            ```mermaid erDiagram``` das tabelas do módulo e das tabelas de outros módulos que ele lê/grava (DB-…).
+            ```mermaid erDiagram``` das tabelas do módulo e das tabelas de outros módulos que ele lê/grava (DB-…), com as
+            views/procedures/triggers (SQL-…, TRG-…) que as tocam; as sequências incluem triggers e jobs (JOB-…).
 
             ## Decisões de arquitetura
             `### ADR-001 — <decisão observada>`: contexto, decisão, consequências (inferidas do código — marque "inferido").

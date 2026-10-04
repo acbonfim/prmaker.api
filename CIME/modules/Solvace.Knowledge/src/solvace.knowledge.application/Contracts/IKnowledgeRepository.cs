@@ -70,12 +70,30 @@ public interface IReverseSettingsProvider
     Task<ReverseSettings> GetAsync(CancellationToken cancellationToken);
 }
 
+/// <summary>Banco de referência da engenharia reversa (0053): o ambiente que reflete produção (DEMO), global e locais.</summary>
+public sealed record ReverseReferenceDatabase(string Environment, string Host, string Global, IReadOnlyList<string> Locals)
+{
+    public static ReverseReferenceDatabase Demo { get; } = new("DEMO", "prod", "DB_DEMO_PRD_GLOBAL",
+        ["DB_DEMO_PRD_LOCAL_CTB", "DB_DEMO_PRD_LOCAL_GLB", "DB_DEMO_PRD_LOCAL_PAR"]);
+}
+
 /// <param name="Templates">Modelos que substituem os do código (tipo → markdown).</param>
+/// <param name="GlossaryExclusions">Palavras genéricas de interface fora da cobertura de termos do glossário (0053).</param>
 public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
-    IReadOnlyDictionary<string, string> Templates)
+    IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null)
 {
     public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
-        new Dictionary<string, string>());
+        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions);
+
+    /// <summary>Palavras de interface que não são conceito do domínio (o plugin pode trocar a lista).</summary>
+    public static IReadOnlyList<string> DefaultGlossaryExclusions { get; } =
+    [
+        "Salvar", "Cancelar", "Filtrar", "Filtro", "Data", "Buscar", "Pesquisar", "Editar", "Excluir", "Remover", "Adicionar", "Novo", "Nova",
+        "Voltar", "Fechar", "Sim", "Não", "OK", "Confirmar", "Limpar", "Exportar", "Imprimir", "Detalhes", "Ações", "Opções", "Selecione",
+        "Todos", "Todas", "Nenhum", "Carregando", "Erro", "Sucesso", "Atenção", "Aviso", "Enviar", "Anexar", "Visualizar", "Copiar",
+        "Save", "Cancel", "Filter", "Date", "Search", "Edit", "Delete", "Remove", "Add", "New", "Back", "Close", "Yes", "No", "Confirm",
+        "Clear", "Export", "Print", "Details", "Actions", "Options", "Select", "All", "None", "Loading", "Error", "Success", "Warning", "Send"
+    ];
 }
 
 /// <summary>Configuração efetiva do KC (plugin "Knowledge Center Configurations"): ambiente ativo + regras extras do filtro.</summary>

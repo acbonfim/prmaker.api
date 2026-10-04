@@ -126,6 +126,8 @@ public class ReverseModuleResponse : ReverseModuleSummaryResponse
     /// <summary>Outros módulos da mesma área (o par legado × revamp).</summary>
     public List<string> Siblings { get; set; } = [];
     public bool CanApprove { get; set; }
+    /// <summary>0053: termos do glossário que ainda não são apelido nem palavra-chave (aceitar/dispensar na tela).</summary>
+    public List<string> SuggestedTerms { get; set; } = [];
 }
 
 public class ReverseItemHead
@@ -184,6 +186,20 @@ public class ReverseRevisionResponse : ReverseRevisionHead
     public int? CurrentPublishedVersion { get; set; }
     public ReverseRevisionDiff? Diff { get; set; }
     public bool CanApprove { get; set; }
+    /// <summary>0053: decisões da sessão sobre as sugestões (resolvidas ao publicar).</summary>
+    public List<ReverseSuggestionDecisionView> SuggestionDecisions { get; set; } = [];
+    /// <summary>0053: sugestões resolvidas por esta publicação (o host avisa o card de origem pela Timeline).</summary>
+    public List<ReverseSuggestionDecisionView> ResolvedSuggestions { get; set; } = [];
+}
+
+public class ReverseSuggestionDecisionView : ReverseSuggestionDecision
+{
+    public string? Kind { get; set; }
+    public string? SectionKey { get; set; }
+    public string? Content { get; set; }
+    public string? CardNumber { get; set; }
+    /// <summary>Status atual da sugestão (pending, applied, dismissed) — null se ela não existe mais.</summary>
+    public string? Status { get; set; }
 }
 
 /// <summary>Pacote da sessão do Claude: tudo o que a skill precisa para escrever o documento sem perguntar.</summary>
@@ -206,6 +222,19 @@ public class ReverseSessionResponse
     /// <summary>Seções antigas da Base Solvace do projeto (ponto de partida): chave, título, tamanho.</summary>
     public List<ArchitectureSectionSummaryResponse> ExistingSections { get; set; } = [];
     public double MinCoverage { get; set; }
+    /// <summary>0053: banco de referência (DEMO) e palavras genéricas fora do glossário.</summary>
+    public ReverseReferenceDatabaseResponse? ReferenceDatabase { get; set; }
+    public List<string> GlossaryExclusions { get; set; } = [];
+    /// <summary>0053: dados da sessão da última revisão publicada (commits das fontes, catálogo do banco) — o melhorar compara.</summary>
+    public JsonElement? PublishedSession { get; set; }
+}
+
+public class ReverseReferenceDatabaseResponse
+{
+    public string Environment { get; set; } = string.Empty;
+    public string Host { get; set; } = string.Empty;
+    public string Global { get; set; } = string.Empty;
+    public List<string> Locals { get; set; } = [];
 }
 
 public class ReverseIndexHit
@@ -222,6 +251,7 @@ public class ReverseIndexHit
     public List<string> Tags { get; set; } = [];
     public List<string> Tables { get; set; } = [];
     public List<string> Modules { get; set; } = [];
+    public List<string> Synonyms { get; set; } = [];
     public bool Removed { get; set; }
     public double Score { get; set; }
 }
@@ -245,4 +275,6 @@ public class ReverseSettingsResponse
     public double MinCoverage { get; set; }
     public bool CanApprove { get; set; }
     public List<ReverseItemKindResponse> Kinds { get; set; } = [];
+    public ReverseReferenceDatabaseResponse? ReferenceDatabase { get; set; }
+    public List<string> GlossaryExclusions { get; set; } = [];
 }

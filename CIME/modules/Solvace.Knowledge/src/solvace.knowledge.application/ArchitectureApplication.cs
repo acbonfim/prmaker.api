@@ -218,7 +218,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var terms = ArchitectureSearch.Terms(query, extraTerms);
         if (terms.Count == 0) return [];
         var (projects, articles, _) = await LoadAllAsync(cancellationToken);
-        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections);
+        // 0053: sinônimos do glossário da engenharia reversa ("RCA" acha "A3") também na busca/Pergunte da Base Solvace.
+        var synonyms = await ReverseSearch.SynonymsAsync(repository, cancellationToken);
+        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms);
     }
 
     // ── Perguntas do "Pergunte" (0040) ──────────────────────────────────────────────────────────

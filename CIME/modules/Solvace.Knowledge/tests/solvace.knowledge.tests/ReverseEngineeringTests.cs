@@ -43,6 +43,7 @@ public class ReverseEngineeringTests
         ## Configurações e parâmetros
         ## Relatórios e indicadores
         ## Integrações com outros módulos
+        ## Glossário
         ## Lacunas e pontos a confirmar
         """;
 
@@ -194,7 +195,7 @@ public class ReverseEngineeringTests
         r.ReportProgress(new ReverseProgressUpdate { Step = "inventario", Status = "completed", Detail = "434 itens" }, now);
         r.ReportProgress(new ReverseProgressUpdate { Step = "area:aprovacao", Title = "Área: Aprovação", Status = "running", Activity = "Lendo KaizenWorkflowService" }, now);
         var p = r.ReportProgress(new ReverseProgressUpdate { Step = "area:cadastro", Title = "Área: Cadastro", Status = "pending", Log = "senha=abc123 vazou?", Kind = "warning" }, now);
-        Assert.Equal(["sessao", "inventario", "leitura", "area:aprovacao", "area:cadastro", "checagem", "envio"], p.Steps.Select(x => x.Key));
+        Assert.Equal(["sessao", "inventario", "banco", "leitura", "area:aprovacao", "area:cadastro", "checagem", "envio"], p.Steps.Select(x => x.Key));
         Assert.Equal("running", p.Steps.Single(x => x.Key == "leitura").Status);
         Assert.Equal("Lendo KaizenWorkflowService", p.Activity);
         Assert.DoesNotContain("abc123", p.Logs.Single().Text);

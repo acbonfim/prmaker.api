@@ -24,6 +24,9 @@ public static partial class ReverseItemKinds
         new("DB", "Tabela / entidade", "Tabelas e entidades"),
         new("EVT", "Evento / fila", "Eventos e filas"),
         new("JOB", "Job / rotina", "Jobs e rotinas"),
+        // 0053: objetos do banco (lidos da DEMO) — view/procedure/function e trigger.
+        new("SQL", "Objeto de banco (view, procedure, function)", "Objetos de banco"),
+        new("TRG", "Trigger", "Triggers"),
         new("INT", "Integração", "Integrações"),
         new("TELA", "Tela", "Telas"),
         new("FLX", "Fluxo de navegação", "Fluxos de navegação"),

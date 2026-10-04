@@ -14,7 +14,8 @@ public sealed record ReverseItem(
     List<string> Tables,
     List<string> Refs,
     List<string> Evidence,
-    List<string> Modules)
+    List<string> Modules,
+    List<string> Synonyms)
 {
     public bool Removed => Title.StartsWith("(removido)", StringComparison.OrdinalIgnoreCase);
 }
@@ -72,7 +73,7 @@ public static partial class ReverseDocParser
             var canonical = ReverseItemKinds.Canonical(kind, number);
             var title = id.Groups["title"].Value.Trim();
             items.Add(new ReverseItem(canonical, kind, title.Length == 0 ? canonical : Trim(title, 300), heading.Level, items.Count,
-                body, MetaList(body, TagsLine()), Tables(body), Refs(body, canonical), Evidence(body), Modules(body)));
+                body, MetaList(body, TagsLine()), Tables(body), Refs(body, canonical), Evidence(body), Modules(body), MetaList(body, SynonymsLine())));
         }
         return items;
     }
@@ -93,8 +94,10 @@ public static partial class ReverseDocParser
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
     }
 
+    /// <summary>Tabelas e objetos de banco citados (0053: views, procedures, functions, triggers — para o impacto).</summary>
     private static List<string> Tables(string body) =>
         TablePattern().Matches(body).Select(m => m.Value.ToUpperInvariant())
+            .Concat(DbObjectPattern().Matches(body).Select(m => m.Groups[1].Value.ToUpperInvariant()))
             .Concat(MetaList(body, TablesLine()).Where(t => !t.Contains(' ')))
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(40).ToList();
 
@@ -104,8 +107,14 @@ public static partial class ReverseDocParser
             .Where(m => m.Success).Select(m => m.Value)
             .Distinct().Take(20).ToList();
 
+    /// <summary>
+    /// Evidência: arquivo:linha e, desde a 0053, o banco — <c>**Onde:** banco DEMO local · dbo.STP_X (linha 42)</c> ou
+    /// <c>**Banco:** DEMO global · alterado em …</c> (regra que só existe no banco).
+    /// </summary>
     private static List<string> Evidence(string body) =>
         EvidencePattern().Matches(body).Select(m => m.Value.Trim('`', '(', ')', ','))
+            .Concat(BankEvidence().Matches(body).Select(m => "banco: " + m.Groups["v"].Value.Replace("**", "").Replace("`", "").Trim()))
+            .Select(v => v.Length <= 200 ? v : v[..200])
             .Distinct(StringComparer.Ordinal).Take(30).ToList();
 
     private static List<string> Refs(string body, string self)
@@ -132,6 +141,15 @@ public static partial class ReverseDocParser
     [GeneratedRegex(@"\*\*Tags:?\*\*:?\s*(.+)", RegexOptions.IgnoreCase)]
     private static partial Regex TagsLine();
 
+    [GeneratedRegex(@"\*\*Sin[ôo]nimos:?\*\*:?\s*(.+)", RegexOptions.IgnoreCase)]
+    private static partial Regex SynonymsLine();
+
+    [GeneratedRegex(@"\*\*Onde:?\*\*:?[^\n]*?\b(?<v>banco\b[^\n]+)|\*\*Banco:?\*\*:?\s*(?<v>[^\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex BankEvidence();
+
+    [GeneratedRegex(@"\b(?:dbo\.)?((?:VW|STP|SP|USP|FN|UFN|TR|TRG|PRC|PR)_[A-Za-z0-9_]{2,})\b")]
+    private static partial Regex DbObjectPattern();
+
     [GeneratedRegex(@"\*\*Tabelas:?\*\*:?\s*(.+)", RegexOptions.IgnoreCase)]
     private static partial Regex TablesLine();
 
@@ -147,6 +165,6 @@ public static partial class ReverseDocParser
     [GeneratedRegex(@"[\w./\\-]+\.(?:cs|cshtml|razor|asp|aspx|ascx|inc|js|ts|tsx|html|scss|sql|py|json|ya?ml|xml|config|vb|java|go)(?::\d+(?:-\d+)?)?\b")]
     private static partial Regex EvidencePattern();
 
-    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
+    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
     private static partial Regex RefPattern();
 }

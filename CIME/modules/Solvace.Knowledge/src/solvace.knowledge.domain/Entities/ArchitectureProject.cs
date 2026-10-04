@@ -172,6 +172,15 @@ public class ArchitectureProject
         return result;
     }
 
+    /// <summary>Acrescenta uma palavra-chave (0053: termo do glossário aceito na tela); false se já existia.</summary>
+    public bool AddKeyword(string keyword)
+    {
+        var k = (keyword ?? string.Empty).Trim();
+        if (k.Length == 0 || Keywords.Any(x => string.Equals(x, k, StringComparison.OrdinalIgnoreCase))) return false;
+        Keywords = [.. Keywords, k];
+        return true;
+    }
+
     public void Touch(string actor, DateTimeOffset now)
     {
         UpdatedAt = now;

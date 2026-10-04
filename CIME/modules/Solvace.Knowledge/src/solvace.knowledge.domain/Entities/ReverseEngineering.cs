@@ -27,12 +27,59 @@ public class ReverseModule
     public List<ReverseSource> Sources { get; private set; } = [];
     public List<string> Aliases { get; private set; } = [];
     public string? Notes { get; private set; }
+    /// <summary>
+    /// Termos do glossário publicado que não estão nos apelidos nem nas palavras-chave (0053) — sugestão na tela para
+    /// virar apelido (campo Module do card) ou palavra-chave; nunca gravados sozinhos.
+    /// </summary>
+    public List<string> SuggestedTerms { get; private set; } = [];
+    /// <summary>Termos que alguém dispensou (não voltam como sugestão).</summary>
+    public List<string> DismissedTerms { get; private set; } = [];
     public DateTimeOffset CreatedAt { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset UpdatedAt { get; private set; }
     public string UpdatedBy { get; private set; } = string.Empty;
 
     protected ReverseModule() { }
+
+    public const int MaxSuggestedTerms = 300;
+
+    /// <summary>Recalcula as sugestões a partir dos termos do glossário (o que já é apelido/palavra-chave/dispensado sai).</summary>
+    public void SuggestTerms(IEnumerable<string> glossaryTerms, IEnumerable<string> keywords)
+    {
+        var known = Aliases.Concat(keywords).Concat(DismissedTerms).Select(Norm).ToHashSet();
+        SuggestedTerms = glossaryTerms.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim())
+            .Where(t => t.Length is >= 2 and <= 100 && !known.Contains(Norm(t)))
+            .DistinctBy(Norm).Take(MaxSuggestedTerms).ToList();
+    }
+
+    /// <summary>alias | keyword | dismiss. Devolve o termo aceito (para virar palavra-chave no projeto) ou null.</summary>
+    public string? ResolveTerm(string term, string action, string actor, DateTimeOffset now)
+    {
+        var found = SuggestedTerms.FirstOrDefault(t => Norm(t) == Norm(term)) ?? term?.Trim();
+        if (string.IsNullOrWhiteSpace(found)) throw new DomainException("Informe o termo.");
+        SuggestedTerms = SuggestedTerms.Where(t => Norm(t) != Norm(found)).ToList();
+        string? keyword = null;
+        switch ((action ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "alias":
+                if (Aliases.Count >= MaxAliases) throw new DomainException($"No máximo {MaxAliases} apelidos por módulo.");
+                if (!Aliases.Any(a => Norm(a) == Norm(found))) Aliases = [.. Aliases, found];
+                break;
+            case "keyword":
+                keyword = found;
+                break;
+            case "dismiss":
+                if (!DismissedTerms.Any(d => Norm(d) == Norm(found))) DismissedTerms = [.. DismissedTerms, found];
+                break;
+            default:
+                throw new DomainException("Ação inválida: alias, keyword ou dismiss.");
+        }
+        UpdatedAt = now;
+        UpdatedBy = actor;
+        return keyword;
+    }
+
+    private static string Norm(string? value) => ReverseLint.Normalize(value ?? string.Empty).Trim();
 
     public ReverseModule(string key, string actor, DateTimeOffset now)
     {
@@ -119,6 +166,18 @@ public class ReverseRevision
     /// <summary>Versão da seção publicada a partir da qual o rascunho foi escrito (para avisar se mudou no meio).</summary>
     public int? BaseVersion { get; private set; }
     public int? PublishedVersion { get; private set; }
+    /// <summary>
+    /// Decisões da sessão sobre as sugestões do pacote (0053): JSON de <see cref="ReverseSuggestionDecision"/> — aplicada
+    /// (itens que mudaram) ou recusada (motivo). Resolvidas na publicação.
+    /// </summary>
+    public string? SuggestionDecisions { get; private set; }
+
+    public void SetSuggestionDecisions(string? json)
+    {
+        if (!IsOpen) throw new DomainException($"A revisão #{Number} está {Label(Status)}.");
+        SuggestionDecisions = string.IsNullOrWhiteSpace(json) ? null : json;
+    }
+
     /// <summary>Andamento da sessão do Claude (JSON de <see cref="ReverseProgress"/>) — a tela mostra ao vivo.</summary>
     public string? Progress { get; private set; }
     public DateTimeOffset? ProgressAt { get; private set; }
@@ -282,6 +341,41 @@ public class ReverseRevision
     }
 }
 
+/// <summary>Decisão da sessão sobre uma sugestão do pacote (0053).</summary>
+public class ReverseSuggestionDecision
+{
+    public Guid SuggestionId { get; set; }
+    /// <summary>applied | dismissed</summary>
+    public string Decision { get; set; } = string.Empty;
+    /// <summary>Itens que mudaram por causa da sugestão (aplicada).</summary>
+    public List<string> Items { get; set; } = [];
+    /// <summary>Resumo do que foi feito ou o motivo da recusa.</summary>
+    public string? Note { get; set; }
+
+    public static List<ReverseSuggestionDecision> Normalize(IEnumerable<ReverseSuggestionDecision>? decisions)
+    {
+        var result = new List<ReverseSuggestionDecision>();
+        foreach (var d in decisions ?? [])
+        {
+            if (d.SuggestionId == Guid.Empty || result.Any(r => r.SuggestionId == d.SuggestionId)) continue;
+            var decision = (d.Decision ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "applied" or "aplicada" or "apply" => "applied",
+                "dismissed" or "recusada" or "recusar" or "dismiss" => "dismissed",
+                var other => throw new DomainException($"Decisão inválida para a sugestão {d.SuggestionId}: '{other}' (applied ou dismissed).")
+            };
+            var note = string.IsNullOrWhiteSpace(d.Note) ? null : d.Note.Trim()[..Math.Min(d.Note.Trim().Length, 480)];
+            if (decision == "dismissed" && note is null) throw new DomainException($"Diga o motivo da recusa da sugestão {d.SuggestionId}.");
+            result.Add(new ReverseSuggestionDecision
+            {
+                SuggestionId = d.SuggestionId, Decision = decision, Note = note,
+                Items = (d.Items ?? []).Where(i => !string.IsNullOrWhiteSpace(i)).Select(i => i.Trim()).Distinct().Take(50).ToList()
+            });
+        }
+        return result;
+    }
+}
+
 /// <summary>Anexo de UI/UX de um módulo (0052): link do Figma/protótipo ou arquivo (imagem, PDF, export do Figma).</summary>
 public class ReverseAsset
 {
@@ -367,6 +461,8 @@ public class ReverseIndexEntry
     public List<string> Refs { get; private set; } = [];
     public List<string> Evidence { get; private set; } = [];
     public List<string> Modules { get; private set; } = [];
+    /// <summary>Sinônimos (itens GLO — 0053): expansão da busca do módulo.</summary>
+    public List<string> Synonyms { get; private set; } = [];
     public bool Removed { get; private set; }
     public int SectionVersion { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -389,6 +485,7 @@ public class ReverseIndexEntry
         Refs = item.Refs;
         Evidence = item.Evidence;
         Modules = item.Modules;
+        Synonyms = item.Synonyms;
         Removed = item.Removed;
         SectionVersion = sectionVersion;
         UpdatedAt = now;

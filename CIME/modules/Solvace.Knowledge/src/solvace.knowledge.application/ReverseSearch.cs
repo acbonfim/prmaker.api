@@ -17,6 +17,14 @@ public static partial class ReverseSearch
     private static readonly object Gate = new();
     private static (int Count, DateTimeOffset? Last) _stamp = (-1, null);
     private static List<Prepared> _prepared = [];
+    private static ReverseSynonyms _synonyms = ReverseSynonyms.Empty;
+
+    /// <summary>Sinônimos do glossário publicado (0053), do mesmo cache dos itens.</summary>
+    public static async Task<ReverseSynonyms> SynonymsAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
+    {
+        await EnsureAsync(repository, cancellationToken);
+        lock (Gate) return _synonyms;
+    }
 
     /// <summary>Itens preparados, recarregando do banco só quando a marca muda.</summary>
     public static async Task<IReadOnlyList<ReverseIndexEntry>> EntriesAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
@@ -33,13 +41,15 @@ public static partial class ReverseSearch
         var entries = await repository.GetIndexEntriesAsync(null, cancellationToken);
         var prepared = entries.Select(e => new Prepared(e,
             ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
-            ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Modules)),
+            ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
             ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
             ArchitectureSearch.Normalize(e.Body))).ToList();
+        var synonyms = new ReverseSynonyms(entries);
         lock (Gate)
         {
             _stamp = stamp;
             _prepared = prepared;
+            _synonyms = synonyms;
             return _prepared;
         }
     }
@@ -55,6 +65,8 @@ public static partial class ReverseSearch
         IReadOnlyDictionary<string, string> moduleNames, CancellationToken cancellationToken)
     {
         var prepared = await EnsureAsync(repository, cancellationToken);
+        ReverseSynonyms synonyms;
+        lock (Gate) synonyms = _synonyms;
         var exactIds = IdPattern().Matches(query ?? string.Empty)
             .Select(m => ReverseItemKinds.ParseRef(m.Value)).Where(r => r is not null).Select(r => r!.Value).ToList();
         var terms = ArchitectureSearch.Terms(IdPattern().Replace(query ?? string.Empty, " "));
@@ -73,10 +85,18 @@ public static partial class ReverseSearch
             var matched = 0;
             foreach (var term in terms)
             {
-                var inTitle = p.Title.Contains(term, StringComparison.Ordinal);
-                var inTags = p.Tags.Contains(term, StringComparison.Ordinal);
-                var inTables = p.Tables.Contains(term, StringComparison.Ordinal);
+                // 0053: sinônimos do glossário do módulo — "RCA" casa com "A3".
+                var alts = synonyms.Alternatives(e.ModuleKey, term);
+                bool Has(string text) => text.Contains(term, StringComparison.Ordinal) || alts.Any(a => text.Contains(a, StringComparison.Ordinal));
+                var inTitle = Has(p.Title);
+                var inTags = Has(p.Tags);
+                var inTables = Has(p.Tables);
                 var count = Count(p.Body, term);
+                foreach (var alt in alts)
+                {
+                    if (count > 0) break;
+                    count = Count(p.Body, alt);
+                }
                 if (!inTitle && !inTags && !inTables && count == 0) continue;
                 matched++;
                 score += (inTitle ? 6 : 0) + (inTags ? 4 : 0) + (inTables ? 5 : 0) + (count > 0 ? 1 + Math.Min(count, 6) * 0.4 : 0);
@@ -96,7 +116,7 @@ public static partial class ReverseSearch
     {
         Ref = e.Ref, ModuleKey = e.ModuleKey, ModuleName = moduleNames.GetValueOrDefault(e.ModuleKey), DocType = e.DocType, ItemId = e.ItemId,
         Kind = e.Kind, KindLabel = ReverseItemKinds.ByPrefix.TryGetValue(e.Kind, out var k) ? k.Label : e.Kind, Title = e.Title,
-        Snippet = snippet, Tags = e.Tags, Tables = e.Tables, Modules = e.Modules, Removed = e.Removed, Score = score
+        Snippet = snippet, Tags = e.Tags, Tables = e.Tables, Modules = e.Modules, Synonyms = e.Synonyms, Removed = e.Removed, Score = score
     };
 
     /// <summary>Primeiras linhas úteis do corpo (sem o cabeçalho e sem marcação).</summary>
@@ -115,7 +135,7 @@ public static partial class ReverseSearch
         return count;
     }
 
-    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|FN|UC|RN|DB|UI)-\d{1,4}\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-\d{1,4}\b", RegexOptions.IgnoreCase)]
     private static partial Regex IdPattern();
 
     [GeneratedRegex(@"[#*`>|]+|\[(?=[^\]]*\]\()|\]\([^)]*\)|```[a-z]*")]

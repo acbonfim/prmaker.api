@@ -43,7 +43,31 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
             required.Count > 0 ? required : d.RequiredDocs,
             string.IsNullOrWhiteSpace(gate) ? null : gate,
             Math.Clamp(coverage, 0, 1),
-            Templates(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTemplates)));
+            Templates(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTemplates)),
+            Reference(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringReferenceDatabase)) ?? d.ReferenceDatabase,
+            List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGlossaryExclusions)) is { Count: > 0 } ex ? ex : d.GlossaryExclusions);
+    }
+
+    /// <summary>{"environment": "DEMO", "host": "prod", "global": "DB_…_GLOBAL", "locals": ["DB_…_LOCAL_X"]} (0053).</summary>
+    private ReverseReferenceDatabase? Reference(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : string.Empty;
+            var locals = root.TryGetProperty("locals", out var l) && l.ValueKind == JsonValueKind.Array
+                ? l.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!.Trim()).Where(x => x.Length > 0).ToList()
+                : [];
+            var reference = new ReverseReferenceDatabase(Str("environment") is { Length: > 0 } env ? env : "DEMO", Str("host"), Str("global"), locals);
+            return reference.Host.Length == 0 || reference.Global.Length == 0 ? null : reference;
+        }
+        catch (JsonException)
+        {
+            logger.LogWarning("ReverseEngineeringReferenceDatabase inválido no plugin — usando a DEMO padrão.");
+            return null;
+        }
     }
 
     /// <summary>Aceita "a,b", "a; b" ou ["a","b"].</summary>

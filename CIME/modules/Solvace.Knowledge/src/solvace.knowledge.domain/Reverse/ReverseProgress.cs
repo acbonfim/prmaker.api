@@ -59,6 +59,7 @@ public sealed partial class ReverseProgress
         [
             new() { Key = "sessao", Title = "Sessão aberta (modelo, publicado, sugestões, anexos)", Status = "completed", StartedAt = now, FinishedAt = now },
             new() { Key = "inventario", Title = "Inventário do código" },
+            new() { Key = "banco", Title = "Banco de dados (DEMO)" },
             new() { Key = "leitura", Title = "Leitura do código e escrita" },
             new() { Key = "checagem", Title = "Checagem e cobertura" },
             new() { Key = "envio", Title = "Enviado para revisão" }
