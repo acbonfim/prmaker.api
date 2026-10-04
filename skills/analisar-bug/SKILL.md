@@ -40,7 +40,9 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   item cita (Read com offset/limit naquele arquivo:linha) ou quando a base nao tem o assunto — ai e lacuna: diga qual e
   registre (`arch.sh suggest <modulo> re-funcional lacuna.md --kind gap --card <card>`). Modulo com engenharia
   **COMPLETA**: a etapa `investigar-codigo` so conclui citando no resumo os itens usados (`revamp-kaizen#RN-012`) ou
-  `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA.
+  `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
+  (0055) mede de onde voce leu: engenharia reversa × base antiga × codigo **confirmando** um item (o arquivo que o `Onde:`
+  cita) × codigo **explorando** (sem item que o cite — vira candidato a lacuna na tela).
 - **Base antiga (modulo sem engenharia reversa)**: a PRIMEIRA consulta sobre o codigo e a base:
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:

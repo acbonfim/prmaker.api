@@ -183,6 +183,26 @@ public class RecordExecutionUsageRequest
     public int? SearchCalls { get; set; }
     /// <summary>0047: o mesmo consumo separado por modelo (acumulado na sessão).</summary>
     public List<ExecutionModelTokens>? Models { get; set; }
+    /// <summary>0055: de onde a sessão leu (re | base | code-confirm | code-explore | code-search) — chamadas e tokens estimados.</summary>
+    public List<ExecutionReadSourceDto>? Sources { get; set; }
+    /// <summary>0055: arquivos de código lidos sem item da engenharia reversa que os cite (os que mais pesaram).</summary>
+    public List<ExecutionExploredFileDto>? ExploredFiles { get; set; }
+}
+
+/// <summary>0055: leituras de uma origem — chamadas e tokens estimados do que entrou no contexto.</summary>
+public class ExecutionReadSourceDto
+{
+    public string Key { get; set; } = string.Empty;
+    public int Calls { get; set; }
+    public long Tokens { get; set; }
+}
+
+/// <summary>0055: arquivo de código explorado (sem item da engenharia reversa que o cite).</summary>
+public class ExecutionExploredFileDto
+{
+    public string Path { get; set; } = string.Empty;
+    public int Reads { get; set; }
+    public long Tokens { get; set; }
 }
 
 /// <summary>Consumo em um modelo (0047): respostas, entrada nova, saída, cache lido e cache escrito.</summary>

@@ -84,7 +84,8 @@ public class ExecutionPlan
 
     /// <summary>Custo acumulado da sessão (a skill manda o total lido do transcript; o último valor vence).</summary>
     public void RecordUsage(string sessionId, string? host, int turns, long input, long output, long cacheRead, long cacheWrite, string? model, DateTimeOffset now,
-        int? mcpCalls = null, int? scriptCalls = null, int? kbCalls = null, int? searchCalls = null, IReadOnlyCollection<ExecutionModelUsage>? models = null)
+        int? mcpCalls = null, int? scriptCalls = null, int? kbCalls = null, int? searchCalls = null, IReadOnlyCollection<ExecutionModelUsage>? models = null,
+        IReadOnlyCollection<ExecutionReadSource>? sources = null, IReadOnlyCollection<ExecutionExploredFile>? exploredFiles = null)
     {
         if (turns < 0 || input < 0 || output < 0 || cacheRead < 0 || cacheWrite < 0)
             throw new DomainException("Valores de uso inválidos.");
@@ -108,6 +109,16 @@ public class ExecutionPlan
                 .Where(m => !string.IsNullOrWhiteSpace(m.Model))
                 .Select(m => { var c = m.Copy(); c.Model = Clean(m.Model, ExecutionModelUsage.MaxModelLength)!; return c; }));
         }
+        // 0055: de onde leu. Quem não manda (skill/executor antigos) mantém o que havia.
+        if (sources is not null)
+        {
+            if (sources.Any(s => s.Calls < 0 || s.Tokens < 0) || exploredFiles?.Any(f => f.Reads < 0 || f.Tokens < 0) == true)
+                throw new DomainException("Valores de uso inválidos.");
+            session.Sources = ExecutionReadSource.Sum(sources.Select(s => { var c = s.Copy(); c.Key = (s.Key ?? "").Trim().ToLowerInvariant(); return c; }));
+            session.ExploredFiles = ExecutionExploredFile.Top((exploredFiles ?? [])
+                .Where(f => !string.IsNullOrWhiteSpace(f.Path))
+                .Select(f => { var c = f.Copy(); c.Path = Clean(f.Path, ExecutionExploredFile.MaxPathLength)!; return c; }));
+        }
         session.UsageUpdatedAt = now;
     }
 
@@ -130,6 +141,8 @@ public class ExecutionPlan
         session.BaseScriptCalls = fromParent.ScriptCalls ?? 0;
         session.BaseKbCalls = fromParent.KbCalls ?? 0;
         session.BaseSearchCalls = fromParent.SearchCalls ?? 0;
+        session.BaseSources = fromParent.Sources.Select(s => s.Copy()).ToList();
+        session.BaseExploredFiles = fromParent.ExploredFiles.Select(f => f.Copy()).ToList();
         // 0047: por modelo. Pai antigo (sem modelos) mas com consumo: tudo no modelo dele — senão a correção somaria a análise.
         session.BaseModels = fromParent.Models.Count > 0
             ? fromParent.Models.Select(m => m.Copy()).ToList()
@@ -163,6 +176,10 @@ public class ExecutionPlan
         }
         return ExecutionModelUsage.Sum(parts);
     }
+
+    /// <summary>0055: leituras líquidas do plano por origem e os arquivos de código mais explorados.</summary>
+    public List<ExecutionReadSource> NetReadSources() => ExecutionReadSource.Sum(Sessions.SelectMany(s => s.NetSources()));
+    public List<ExecutionExploredFile> NetExploredFiles() => ExecutionExploredFile.Top(Sessions.SelectMany(s => s.NetExploredFiles()));
 
     /// <summary>Modelo da sessão mais recente que informou consumo (para estimar o custo na tela).</summary>
     public string? UsageModel => Sessions.Where(s => s.Model != null).OrderByDescending(s => s.UsageUpdatedAt ?? s.LastSeenAt).FirstOrDefault()?.Model;

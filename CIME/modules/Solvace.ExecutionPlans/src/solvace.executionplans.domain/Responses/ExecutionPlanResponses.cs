@@ -95,6 +95,15 @@ public class ExecutionUsageResponse
     public int SearchCalls { get; set; }
     /// <summary>0047: por modelo (Opus na análise, Sonnet na correção) — a tela cobra cada um pelo seu preço. Vazio = só o total.</summary>
     public List<solvace.executionplans.domain.Requests.ExecutionModelTokens> Models { get; set; } = [];
+    /// <summary>
+    /// 0055: de onde o plano leu (engenharia reversa, base antiga/KC, código confirmando item, código explorando, buscas) —
+    /// chamadas e tokens estimados. Vazio = sessões anteriores à 0055.
+    /// </summary>
+    public List<solvace.executionplans.domain.Requests.ExecutionReadSourceDto> Sources { get; set; } = [];
+    /// <summary>0055: fração dos tokens lidos que veio da engenharia reversa (null = sem medição).</summary>
+    public double? ReverseShare { get; set; }
+    /// <summary>0055: arquivos de código explorados (sem item da engenharia reversa que os cite) — candidatos a lacuna.</summary>
+    public List<solvace.executionplans.domain.Requests.ExecutionExploredFileDto> ExploredFiles { get; set; } = [];
 }
 
 /// <summary>Consumo médio por plano, com MCP × sem MCP (0041).</summary>
@@ -131,6 +140,20 @@ public class ExecutionUsageReportRow
     public double AvgSearchCalls { get; set; }
     /// <summary>0047: média por plano em cada modelo do grupo.</summary>
     public List<ExecutionModelAverage> Models { get; set; } = [];
+    /// <summary>0055: planos do grupo que mediram de onde leram (as médias abaixo são só deles).</summary>
+    public int ReadPlans { get; set; }
+    /// <summary>0055: média da fração lida da engenharia reversa (null = nenhum plano mediu).</summary>
+    public double? AvgReverseShare { get; set; }
+    /// <summary>0055: média por plano de cada origem de leitura.</summary>
+    public List<ExecutionReadAverage> Sources { get; set; } = [];
+}
+
+/// <summary>0055: média por plano de uma origem de leitura.</summary>
+public class ExecutionReadAverage
+{
+    public string Key { get; set; } = string.Empty;
+    public double AvgCalls { get; set; }
+    public double AvgTokens { get; set; }
 }
 
 /// <summary>Média por plano de um modelo no relatório (0047).</summary>
@@ -424,6 +447,14 @@ public static class ExecutionPlanMappings
             Model = plan.UsageModel,
             Models = plan.NetModelUsage().Select(m => m.ToTokens()).ToList()
         };
+        if (target.Usage is { } usage)
+        {
+            var sources = plan.NetReadSources();
+            usage.Sources = sources.Select(s => new solvace.executionplans.domain.Requests.ExecutionReadSourceDto { Key = s.Key, Calls = s.Calls, Tokens = s.Tokens }).ToList();
+            usage.ReverseShare = ExecutionReadSource.ReverseShare(sources);
+            usage.ExploredFiles = plan.NetExploredFiles()
+                .Select(f => new solvace.executionplans.domain.Requests.ExecutionExploredFileDto { Path = f.Path, Reads = f.Reads, Tokens = f.Tokens }).ToList();
+        }
         target.ResumeRequestedAt = plan.ResumeRequestedAt;
         target.ResumeRequestedBy = plan.ResumeRequestedBy;
         target.ResumePending = plan.ResumePending;

@@ -170,6 +170,25 @@ public sealed class SessionUsage
     public int? SearchCalls { get; set; }
     /// <summary>0047: os mesmos tokens separados por modelo (Opus na análise, Sonnet na correção).</summary>
     public List<ModelTokens>? Models { get; set; }
+    /// <summary>0055: de onde a sessão leu (engenharia reversa × base × código) e os arquivos de código explorados.</summary>
+    public List<ReadSource>? Sources { get; set; }
+    public List<ExploredFile>? ExploredFiles { get; set; }
+}
+
+/// <summary>Leituras de uma origem (0055): re | base | code-confirm | code-explore | code-search.</summary>
+public sealed class ReadSource
+{
+    public string Key { get; set; } = string.Empty;
+    public int Calls { get; set; }
+    public long Tokens { get; set; }
+}
+
+/// <summary>Arquivo de código lido sem item da engenharia reversa que o cite (0055).</summary>
+public sealed class ExploredFile
+{
+    public string Path { get; set; } = string.Empty;
+    public int Reads { get; set; }
+    public long Tokens { get; set; }
 }
 
 /// <summary>Consumo da sessão em um modelo (0047).</summary>
