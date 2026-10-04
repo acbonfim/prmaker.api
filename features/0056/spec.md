@@ -95,6 +95,43 @@ Avisos da sessão (texto do usuário):
   - o inventário e o `trabalho` (diff por commit) tratam arquivo e glob como fonte;
   - as fontes do módulo na tela (`ReverseModule.Sources`) aceitam o mesmo formato, gravado pelo aprovador.
 
+## 3. Correções de tela pedidas pelo usuário (2026-10-04)
+
+### 3.1 Glossário recolhido por padrão
+- **Hoje:** no módulo, o painel "N termos do glossário ainda não são apelido nem palavra-chave" abre sozinho para quem
+  aprova (`reverse-engineering.component.html`, `<details class="terms" [open]="m.canApprove">`). Com ~300 termos, os
+  chips ocupam a tela inteira antes das abas do documento. O grupo "Glossário" do sumário lateral também lista todos os
+  `GLO` sem recolher.
+- **Esperado:**
+  - o painel de termos vem **sempre recolhido**, com a contagem no título e um tooltip ("Abra para ver os N termos e
+    decidir apelido, palavra-chave ou dispensar");
+  - o estado aberto/fechado fica lembrado por usuário (localStorage);
+  - no sumário lateral, o grupo "Glossário" vem recolhido com a contagem e abre ao clicar. Ir a um `GLO` pelo link
+    (`?i=GLO-012`) abre o grupo.
+
+### 3.2 Botão de copiar nos comandos do "Como gerar"
+- **Hoje:** só os comandos de instalação e de repositórios têm o botão de copiar (`re-how-to.component.ts`, `.cmd`). Os
+  comandos de gerar e melhorar cada documento (`/engenharia-reversa <módulo> <doc>`, `… tudo`, `… melhorar <doc>`) e os
+  das telas de documento (aviso "desatualizada", visão prática bloqueada, documento não gerado) são texto solto.
+- **Esperado:** todo comando exibido para o usuário rodar no Claude tem o botão de copiar, no mesmo componente `.cmd`
+  (código + ícone, tooltip "Copiar", aviso "Copiado"). Um componente único `app-copy-command` é usado no "Como gerar",
+  nos avisos da aba do documento e no painel da sessão.
+
+### 3.3 Tabelas em markdown espremidas (uma letra por linha)
+- **Hoje:** em tabelas largas do documento (ex.: rastreabilidade do Registro do A3, colunas `TELA | Componente/trecho do
+  front | Chamada (JS → URL/hdnAction) | API | Tabelas (DB)`), as colunas encolhem até caber uma letra e o texto quebra
+  letra a letra. **Causa:** o container do documento usa `overflow-wrap: anywhere` (`.md` em
+  `reverse-engineering.component.css` e `.kb__md` em `architecture.component.css`), que zera a largura mínima das
+  células. A tabela já tem rolagem horizontal (`display: block; overflow-x: auto`), mas nunca precisa dela, porque as
+  colunas aceitam ficar com 1 caractere.
+- **Esperado, nas duas telas (Engenharia reversa e Base Solvace) e no preview da revisão:**
+  - células com `overflow-wrap: normal` e `word-break: normal`, quebrando só entre palavras;
+  - largura mínima por coluna (~10–14ch);
+  - código inline longo (caminhos, `hdnAction=…`) quebra em `/`, `.`, `_`, `=`; quando não couber, a tabela rola na
+    horizontal em vez de espremer;
+  - cabeçalho sem quebra estranha.
+- **Teste:** o documento real do SA3 com a tabela de rastreabilidade, em 1366px e 1920px, com print.
+
 ## Fora do escopo
 - Refazer a engenharia reversa do SA3. O piloto continua pelo "melhorar"; esta demanda só corrige as ferramentas e
   a tela.

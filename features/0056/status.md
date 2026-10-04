@@ -9,6 +9,7 @@
 | S3 | ⏸ aguardando | Claude | — |
 | S4 | ⏸ aguardando | Claude | — |
 | F1 | ⏸ aguardando | Claude | — |
+| F2 | ⏸ aguardando | Claude | — |
 | T1 | ⏸ aguardando | Claude | — |
 
 ## Log
@@ -19,3 +20,5 @@
   (branch `feature/0056` a partir de `origin/master`).
 - 2026-10-04 — respostas do usuário: árvore do Simples com "Histórico" recolhido; traduções vêm do Multilingual do
   revamp (PostgreSQL separado), não do `TB_WCM_LANGUAGE` — 2.3 reescrita no modelo de acesso do Knowledge Center.
+- 2026-10-04 — acrescentadas correções de tela pedidas pelo usuário (seção 3): glossário recolhido por padrão, botão de
+  copiar em todos os comandos, tabelas em markdown espremidas (causa: `overflow-wrap: anywhere` no container).
