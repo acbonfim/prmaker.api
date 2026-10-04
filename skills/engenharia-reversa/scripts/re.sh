@@ -32,6 +32,12 @@
 #                                     ANDAMENTO ao vivo na tela (chaves: inventario, leitura, checagem; areas: area:<nome>)
 #   atividade <modulo> <doc> "texto"  o que esta fazendo agora (aparece na tela, linha "agora")
 #   log <modulo> <doc> "texto" [info|progress|warning|error]
+#   perguntas <modulo> [arquivo]      VISAO PRATICA (0054): quais perguntas reais do Pergunte o documento responde
+#   armadilhas <modulo>               armadilhas do modulo (o que ja deu errado, ligado aos itens)
+#   armadilha <modulo> --titulo T --texto-file F [--itens RN-001,TELA-002] [--cards 75067] [--origem learning|manual]
+#                                     registra uma armadilha (de quem nao aprova: "a conferir")
+#   migrar <modulo> <migracao.json>   liga as armadilhas antigas e as sugestoes sem item aos itens (0054):
+#                                     {"traps":[{title,text,items,cards}], "suggestions":[{id,itemId,sectionKey}]}
 #   ids <modulo>                      IDs ja usados no modulo (publicados + rascunhos locais) — para nao repetir
 #   find <termos> [--module m] [--kind RN,UC] [--card N]
 #   get <ref> [ref...] [--card N]     itens publicados (modulo#RN-012) com o texto
@@ -207,6 +213,15 @@ case "$CMD" in
     jq -r '.suggestions[] | "## \(.kind) · \(.sectionKey // "-") · card \(.cardNumber // "-") · \(.createdBy) (\(.id))\n\n\(.content)\n"' "$D/sessao.json" > "$D/sugestoes.md"
     jq -r '.reviewNote // ""' "$D/sessao.json" > "$D/nota-revisor.md"
     jq -r '.otherDocIds | to_entries[] | "\(.key)\t\(.value)"' "$D/sessao.json" > "$D/ids-outros-documentos.tsv"
+    # 0054: visão prática = só o publicado; perguntas reais; armadilhas (e as antigas, para migrar)
+    if [[ "$(jq '.publishedDocs | length' "$D/sessao.json")" -gt 0 ]]; then
+      mkdir -p "$D/publicados"
+      for k in $(jq -r '.publishedDocs | keys[]' "$D/sessao.json"); do jq -r --arg k "$k" '.publishedDocs[$k]' "$D/sessao.json" > "$D/publicados/$k.md"; done
+    fi
+    jq '.questions' "$D/sessao.json" > "$D/perguntas.json"
+    jq -r '.questions[] | "- (\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
+    jq -r '.traps[] | "## \(.title)\(if .needsReview then " (a conferir)" else "" end)\n- itens: \(.items | join(", ")) · cards: \(.cards | join(", "))\n\n\(.text)\n"' "$D/sessao.json" > "$D/armadilhas.md"
+    jq -r '.legacyTraps // ""' "$D/sessao.json" > "$D/armadilhas-antigas.md"
     # rascunho: retomado (conteudo do PRMake) ou o ponto de partida; nunca sobrescreve um documento local mais novo
     if [[ "$(jq -r '.resumed' "$D/sessao.json")" == false || ! -s "$D/documento.md" ]]; then
       [[ -s "$D/documento.md" ]] && mv "$D/documento.md" "$D/documento.anterior.md"
@@ -228,7 +243,10 @@ case "$CMD" in
       (if .revision.publishedChangedSinceBase then "AVISO: a versao publicada mudou depois que este rascunho comecou — compare com publicado.md" else empty end),
       (if .referenceDatabase then "Banco de referencia: \(.referenceDatabase.environment) (\(.referenceDatabase.host): \(.referenceDatabase.global) + \(.referenceDatabase.locals | join(", "))) — re.sh banco \(.revision.moduleKey)" else empty end),
       (if .revision.mode == "improve" and .publishedSession then "MELHORAR: rode re.sh trabalho \(.revision.moduleKey) \(.revision.docType) (o que mudou no codigo e no banco desde a versao publicada)" else empty end),
-      (if (.suggestions|length) > 0 then "Sugestoes: decida cada uma (aplicada + itens / recusada + motivo) e envie com --sugestoes decisoes.json" else empty end)' "$D/sessao.json"
+      (if (.suggestions|length) > 0 then "Sugestoes: decida cada uma (aplicada + itens / recusada + motivo) e envie com --sugestoes decisoes.json" else empty end),
+      (if (.publishedDocs|length) > 0 then "VISAO PRATICA: escreva so a partir de publicados/*.md (\(.publishedDocs | keys | join(", "))); perguntas reais: perguntas.md (\(.questions|length)) — confira com re.sh perguntas" else empty end),
+      (if (.traps|length) > 0 then "Armadilhas do modulo: armadilhas.md (\(.traps|length))" else empty end),
+      (if (.legacyTraps // "") != "" then "MIGRACAO PENDENTE: ligue as armadilhas antigas (armadilhas-antigas.md) e as sugestoes sem item aos itens — re.sh migrar \(.revision.moduleKey) migracao.json" else empty end)' "$D/sessao.json"
     progress "$MOD" "$DOC" "$(jq -c --arg h "${USER:-?}@$(hostname -s 2>/dev/null || echo maquina)" '{log: "Claude em \($h): pacote da sessao baixado (\(.suggestions|length) sugestoes, \(.module.assets|length) anexos\(if .publishedVersion then ", publicado v\(.publishedVersion)" else "" end))", kind: "progress"}' "$D/sessao.json")"
     echo "Andamento ao vivo na tela: re.sh etapa|atividade|log (o inventario, a checagem e o rascunho ja reportam sozinhos)."
     ;;
@@ -347,11 +365,22 @@ case "$CMD" in
     progress "$MOD" "$DOC" "$(jq -n --arg m "$MSG" '{log: ("Lista de trabalho do melhorar: " + $m), kind: "progress", activity: $m}')"
     ;;
 
+  perguntas)
+    MOD="${1:?modulo}"; DOC=pratica; F="$(doc_file "$MOD" "$DOC" "${2:-}")"; D="$(docdir "$MOD" "$DOC")"
+    [[ -s "$D/perguntas.json" ]] || die "sem perguntas no pacote — rode re.sh start $MOD pratica"
+    python3 "$TOOL_PY" perguntas "$F" "$D/perguntas.json" --json "$D/cobertura.json"
+    ;;
+
   check)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; F="$(doc_file "$MOD" "$DOC" "${3:-}")"
     INV="$(moddir "$MOD")/inventario.json"; RATIO=null
+    if [[ "$DOC" == pratica ]]; then INV=/dev/null; fi
     progress "$MOD" "$DOC" '{"step":"checagem","status":"running","activity":"Checando estrutura e cobertura do inventario"}'
-    if [[ -s "$INV" ]]; then
+    if [[ "$DOC" == pratica && -s "$(docdir "$MOD" "$DOC")/perguntas.json" ]]; then
+      # visão prática: a cobertura é das perguntas reais do Pergunte sobre o módulo
+      python3 "$TOOL_PY" perguntas "$F" "$(docdir "$MOD" "$DOC")/perguntas.json" --json "$(docdir "$MOD" "$DOC")/cobertura.json"
+      RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
+    elif [[ -s "$INV" ]]; then
       EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
       python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}" "${EXTRA[@]}"
       RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
@@ -377,7 +406,9 @@ case "$CMD" in
     SUMMARY="$(opt --summary "" "$@")"
     [[ "$CMD" == submit && -z "$SUMMARY" ]] && die "informe --summary \"o que este documento cobre / o que mudou\" (o revisor le)"
     COV="$(docdir "$MOD" "$DOC")/cobertura.json"; INV="$(moddir "$MOD")/inventario.json"
-    if [[ -s "$INV" ]]; then
+    if [[ "$DOC" == pratica && -s "$(docdir "$MOD" "$DOC")/perguntas.json" ]]; then
+      python3 "$TOOL_PY" perguntas "$F" "$(docdir "$MOD" "$DOC")/perguntas.json" --json "$COV" >/dev/null
+    elif [[ -s "$INV" ]]; then
       EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
       python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$COV" --max 0 "${EXTRA[@]}" >/dev/null
     fi
@@ -409,6 +440,38 @@ case "$CMD" in
       jq -r '"Rascunho gravado: revisao #\(.number) (\(.status)), \(.length) caracteres" + (if .lint and (.lint.errors|length) > 0 then " — \(.lint.errors|length) erro(s) de checagem: re.sh check" else "" end)' "$TMP/resp"
       progress "$MOD" "$DOC" "$(jq -c '{log: ("Rascunho gravado (visivel na tela): \(.lint.items // 0) itens" + (if .coverageRatio then ", cobertura \(.coverageRatio * 100 | floor)%" else "" end)), kind: "progress"}' "$TMP/resp")"
     fi
+    ;;
+
+  armadilhas)
+    MOD="${1:?modulo}"; api GET "/traps?module=$(urlenc "$MOD")"; check
+    jq -r 'if length == 0 then "Nenhuma armadilha registrada." else .[] | "- \(.title)\(if .needsReview then " (a conferir)" else "" end) · itens: \(.items | join(", ")) · cards: \(.cards | join(", "))" end' "$TMP/resp"
+    ;;
+
+  armadilha)
+    MOD="${1:?modulo}"; shift
+    TF="$(opt --texto-file "" "$@")"; [[ -s "$TF" ]] || die "informe --texto-file com o texto (sintoma, causa, como diagnosticar)"
+    jq -n --arg t "$(opt --titulo "" "$@")" --rawfile x "$TF" --arg i "$(opt --itens "" "$@")" --arg c "$(opt --cards "" "$@")" --arg o "$(opt --origem learning "$@")" \
+      '[{title: $t, text: $x, items: ($i | split(",") | map(select(length > 0))), cards: ($c | split(",") | map(select(length > 0))), origin: $o}]' > "$TMP/body"
+    api POST "/modules/$(urlenc "$MOD")/traps" "$TMP/body"; check
+    jq -r '.[] | "Armadilha registrada: \(.title)\(if .needsReview then " (a conferir por um aprovador)" else "" end) · itens \(.items | join(", "))"' "$TMP/resp"
+    ;;
+
+  migrar)
+    MOD="${1:?modulo}"; FILE="${2:?migracao.json}"; [[ -s "$FILE" ]] || die "arquivo nao encontrado: $FILE"
+    jq -e '(.traps // []) | type == "array"' "$FILE" >/dev/null || die "$FILE: {\"traps\": [...], \"suggestions\": [...]}"
+    if [[ "$(jq '(.traps // []) | length' "$FILE")" -gt 0 ]]; then
+      jq '[.traps[] | {title, text, items: (.items // []), cards: (.cards // []), origin: "migrated"}]' "$FILE" > "$TMP/body"
+      api POST "/modules/$(urlenc "$MOD")/traps" "$TMP/body"; check
+      echo "Armadilhas ligadas aos itens (a conferir): $(jq length "$TMP/resp")"
+    fi
+    for row in $(jq -c '(.suggestions // [])[]' "$FILE"); do
+      jq -n --argjson r "$row" '{itemId: $r.itemId, sectionKey: $r.sectionKey}' > "$TMP/body"
+      api POST "/suggestions/$(jq -r '.id' <<<"$row")/item" "$TMP/body"; check
+    done
+    echo "Sugestoes ligadas a itens: $(jq '(.suggestions // []) | length' "$FILE")"
+    api POST "/modules/$(urlenc "$MOD")/traps/migrated"; check
+    echo "Migracao registrada: a secao antiga de armadilhas sai do espelho; as novas aparecem nas analises (marcadas 'a conferir' ate um aprovador conferir na tela)."
+    for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"log":"Armadilhas antigas e sugestoes ligadas aos itens (migracao 0054)","kind":"progress"}'; done
     ;;
 
   ids)

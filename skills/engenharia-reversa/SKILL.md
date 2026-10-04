@@ -18,13 +18,14 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh           # Knowledge Center (reg
 ```
 
 ## Comandos (o que o usuario digita)
-`<doc>` = `funcional` · `arquitetura` · `uiux` · `visao` · `spec-arquitetura` · `design`. Sempre com o **modulo** (chave
+`<doc>` = `funcional` · `arquitetura` · `uiux` · `visao` · `spec-arquitetura` · `design` · `pratica` (0054: visão prática,
+nao tecnica — so depois dos demais exigidos publicados). Sempre com o **modulo** (chave
 da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve a dezenas de modulos.
 
 | Pedido | O que fazer |
 |---|---|
 | `/engenharia-reversa <modulo> <doc>` | um documento do modulo (sem o modulo: `re.sh modulo` pela pasta; ambiguo → pergunte) |
-| `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado) |
+| `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado); a `pratica` so depois que esses forem **publicados** (aprovacao humana) — avise o usuario e pare |
 | `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
@@ -111,6 +112,34 @@ itens por tipo, cobertura, avisos e onde aprovar. Rascunho intermediario (sem en
   recusada, e o card de origem fica sabendo pela Timeline). Sugestao sem decisao continua pendente.
 - **refazer**: escreva do zero, mas reaproveite o ID de cada assunto que continua existindo (`publicado.md` e
   `bash $RE ids <modulo>` mostram os IDs atuais).
+
+## Visao pratica (0054) — `/engenharia-reversa <modulo> pratica`
+O guia do sistema para quem usa (QA, suporte, gestores, clientes): o que e e onde fica (**legado ou revamp**), como
+chegar em cada tela, **como fazer** cada tarefa (`### TUT-001 — Como criar um A3`) e as **perguntas praticas**
+(`### FAQ-001 — O A3 e legado ou revamp?`). Regras duras (a checagem barra):
+- Escreva **so a partir de `publicados/*.md`** (o que foi aprovado) — **nao leia codigo nem banco**. O que a engenharia
+  reversa nao cobre nao entra aqui: registre a lacuna no documento tecnico certo
+  (`arch.sh suggest <modulo> re-<doc> lacuna.md --kind gap --item <ID>`).
+- **Toda** frase, passo e resposta termina com a fonte: `<!-- fonte: RN-012, TELA-003 -->` (IDs publicados; de outro
+  modulo: `revamp-users#FN-002`). Fonte inexistente ou de item removido = erro.
+- **Sem termo tecnico**: nada de tabela (`TB_…`), objeto de banco, arquivo (`.asp`, `.cs`…), rota `/api/…`, classe
+  (`…Controller`). Nome de tela e de menu como o usuario ve.
+- **FAQ das perguntas reais**: `perguntas.md` traz o que as pessoas perguntaram no Pergunte sobre o modulo (as mais
+  frequentes primeiro) — responda todas que a engenharia reversa permite; `bash $RE perguntas <modulo>` mostra quais
+  ficaram sem resposta (o revisor ve essa cobertura). Inclua tambem as perguntas obvias de quem chega: legado ou
+  revamp?, onde fica?, quem pode?, por que nao aparece?, quem recebe o e-mail?
+- Republicado um documento tecnico, a visao pratica fica "desatualizada" na tela: rode `melhorar` dela.
+
+## Armadilhas (0054) — o que ja deu errado, ligado aos itens
+A engenharia reversa descreve "como o sistema e"; armadilhas sao "o que ja deu errado" (sintoma, causa raiz, como
+diagnosticar, cards). Ficam ligadas aos itens (`RN-020`) e as analises recebem as duas.
+- **Migracao (automatica, uma vez por modulo)**: se o `start` disser `MIGRACAO PENDENTE`, leia `armadilhas-antigas.md`
+  e `sugestoes.md` (as sem item) e monte `migracao.json` ligando **cada** armadilha antiga ao item mais provavel
+  (`{"traps":[{"title","text","items":["RN-020"],"cards":["75067"]}], "suggestions":[{"id","itemId":"RN-020","sectionKey":"re-funcional"}]}`)
+  → `bash $RE migrar <modulo> migracao.json`. Fica "a conferir" ate um aprovador conferir na tela; a secao antiga sai
+  do espelho.
+- Armadilha nova (visto ao ler o codigo/banco): `bash $RE armadilha <modulo> --titulo "..." --texto-file t.md --itens RN-020`.
+- Nao escreva armadilha dentro dos documentos tecnicos.
 
 ## UI/UX (Figma e prototipos)
 O documento `uiux` mapeia **cada tela** do front ao banco (tela → componente → servico HTTP → API → tabela). Anexos do

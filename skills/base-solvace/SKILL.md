@@ -21,6 +21,10 @@ como **item com ID** (`revamp-kaizen#RN-012`). Leia por item, nunca o documento 
   `prmake_base_module(module)` → ficha do modulo e IDs.
 - Offline (espelho): `bash $KB re find <termos> [--module m] [--kind RN]` e `bash $KB re get <modulo>#<ID> [--card N]`;
   o `kb.sh index` marca `RE n/6` nos projetos que tem.
+- **Fonte (0054)**: modulo com engenharia reversa publicada tem as secoes antigas cobertas por ela **substituidas** (fora
+  do espelho, da busca e do MCP) — a fonte e a engenharia reversa; o `kb.sh index` marca `fonte: engenharia reversa`.
+  As **armadilhas** (o que ja deu errado) vem ligadas aos itens no `prmake_base_get`/`kb.sh show <m> armadilhas`. A visao
+  pratica (para pessoas) fica fora das analises.
 - Gerar/melhorar a engenharia reversa de um modulo: skill `engenharia-reversa` (Claude aberto no repositorio do modulo;
   a tela Engenharia reversa do PRMake mostra o passo a passo e o andamento ao vivo). Divergencia/lacuna achada numa
   analise: `arch.sh suggest <modulo> re-<doc> nota.md --kind divergence|gap --card <card>` citando o ID.

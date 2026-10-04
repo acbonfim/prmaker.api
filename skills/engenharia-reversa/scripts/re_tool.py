@@ -13,6 +13,9 @@
       Termos do modulo para o GLOSSARIO (0053): rotulos da tela (GetLanguageByName do legado, i18n do front), menus e
       aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do TB_WCM_LANGUAGE. A cobertura do funcional exige
       cada termo no glossario (titulo ou Sinonimos de um GLO). Palavras genericas de interface ficam fora (exclusoes).
+  re_tool.py perguntas <documento.md> <perguntas.json> [--json saida.json]
+      VISAO PRATICA (0054): quais perguntas reais do Pergunte o documento responde (titulo/corpo de um FAQ/TUT com as
+      palavras da pergunta) — cobertura que o revisor ve.
   re_tool.py afetados <publicado.md> [--arquivos lista.txt] [--objetos lista.txt]
       Itens publicados que citam arquivos/objetos alterados (lista de trabalho do modo melhorar — 0053).
   re_tool.py juntar <saida.md> <parte1.md> [parte2.md ...]
@@ -43,7 +46,7 @@ DOC_CATEGORIES = {
     "spec-arquitetura": ["evento", "job", "trigger"],
 }
 
-ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-(\d{1,4})\b",
+ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-(\d{1,4})\b",
                         re.IGNORECASE)
 
 
@@ -576,6 +579,52 @@ def afetados(doc_path, files, objects):
     return hits
 
 
+STOP = set("a o as os um uma de do da dos das em no na nos nas por para pra com sem que se e ou como qual quais quando onde quem "
+           "porque por que e é eu voce você meu minha isso esse essa este esta tem ter ha há ser foi esta está nao não sim pode posso"
+           " consigo devo the of to in and is how what why".split())
+
+
+def words(text):
+    return {w[:-2] if len(w) > 5 else w for w in re.findall(r"[a-z0-9]{3,}", norm(text)) if w not in STOP}
+
+
+def perguntas(doc_path, questions_path, out=None):
+    """Cobertura das perguntas reais pela visão prática: a pergunta casa com um FAQ/TUT que tenha ≥ 60% das palavras dela."""
+    doc = open(doc_path, encoding="utf-8").read()
+    qs = json.load(open(questions_path, encoding="utf-8"))
+    blocks, current, buf = [], None, []
+    for line in doc.splitlines():
+        m = ID_HEADING.match(line)
+        if m or re.match(r"^#{1,2}\s", line):
+            if current:
+                blocks.append((current, "\n".join(buf)))
+            current = f"{m.group(2).upper()}-{int(m.group(3)):03d}" if m and m.group(2).upper() in ("FAQ", "TUT") else None
+            buf = [line]
+        elif current:
+            buf.append(line)
+    if current:
+        blocks.append((current, "\n".join(buf)))
+    covered, missing = [], []
+    for q in qs:
+        qw = words(q.get("text", ""))
+        best = max(((len(qw & words(body)) / max(1, len(qw)), item) for item, body in blocks), default=(0, None))
+        (covered if qw and best[0] >= 0.6 else missing).append({"cat": "pergunta", "name": q.get("text", ""), "file": "", "line": 0,
+                                                              "detail": f"{q.get('times', 1)}× · {q.get('coverage', '')}" + (f" · melhor: {best[1]} ({best[0]:.0%})" if best[1] else "")})
+    total = len(qs)
+    result = {"docType": "pratica", "total": total, "covered": len(covered), "ratio": None if total == 0 else round(len(covered) / total, 4),
+              "byCategory": {"pergunta": {"total": total, "covered": len(covered)}}, "missing": missing, "missingCount": len(missing)}
+    if out:
+        with open(out, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, ensure_ascii=False, indent=1)
+    if total == 0:
+        print("Nenhuma pergunta do Pergunte sobre o módulo ainda — escreva as perguntas práticas mais prováveis (ex.: legado ou revamp?, como fazer X?).")
+    else:
+        print(f"Perguntas reais respondidas: {len(covered)}/{total} = {result['ratio']:.0%}")
+        for m in missing[:60]:
+            print(f"  SEM RESPOSTA: {m['name'][:120]} ({m['detail']})")
+    return result
+
+
 def main(argv):
     if len(argv) < 2 or argv[1] in ("-h", "--help"):
         print(__doc__)
@@ -653,6 +702,10 @@ def main(argv):
             return 2
         opt = lambda n: argv[argv.index(n) + 1] if n in argv else None
         termos(argv[2], opt("--banco"), json.loads(opt("--exclusoes") or "[]"), opt("--out"), json.loads(opt("--outros-modulos") or "[]"))
+        return 0
+    if cmd == "perguntas":
+        opt = lambda n: argv[argv.index(n) + 1] if n in argv else None
+        perguntas(argv[2], argv[3], opt("--json"))
         return 0
     if cmd == "afetados":
         opt = lambda n: argv[argv.index(n) + 1] if n in argv else None

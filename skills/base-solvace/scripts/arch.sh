@@ -16,7 +16,8 @@
 #                                           nome do repositorio (pasta pelo mapa da maquina — 0048)
 #   publicar-pasta <pasta-kb> [projeto...]  publica cada <pasta-kb>/<chave>/ (projeto.json com relations + NNN-secao.md);
 #                                           repoDir relativo a SOLVACE_REPOS (padrao ~/repos/solvace) grava o commit
-#   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence|gap] [--card N]
+#   suggest <chave> <secao|-> <arquivo.md> [--kind learning|divergence|gap|kc] [--card N] [--item RN-012]
+#                                           (0054: --item = o item da engenharia reversa; kc = divergencia Knowledge Center x codigo)
 #                                           PROPOE uma melhoria (qualquer usuario): vai para a fila do admin no PRMake,
 #                                           nunca grava na secao
 #   learn <card> [--instructions T] [--send 1,3|all]
@@ -128,7 +129,9 @@ case "$CMD" in
     KEY="${1:?chave}"; SEC="${2:?secao (ou - para o projeto)}"; FILE="${3:?arquivo.md}"; shift 3
     [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
     jq -n --arg p "$KEY" --arg s "$SEC" --rawfile c "$FILE" --arg k "$(opt --kind learning "$@")" --arg card "$(opt --card "" "$@")" \
-      '{projectKey:$p, sectionKey:(if $s == "-" then null else $s end), kind:$k, content:$c, cardNumber:(if $card == "" then null else $card end)}' > "$TMP/body"
+      --arg item "$(opt --item "" "$@")" \
+      '{projectKey:$p, sectionKey:(if $s == "-" then null else $s end), kind:$k, content:$c, cardNumber:(if $card == "" then null else $card end)}
+       + (if $item == "" then {} else {itemId:$item} end)' > "$TMP/body"
     api POST /suggestions "$TMP/body"; check
     echo "OK sugestao registrada para $KEY${SEC:+/$SEC} — o admin aplica ou descarta na tela Base Solvace" ;;
   publicar-pasta)
