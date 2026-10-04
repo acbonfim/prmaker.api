@@ -16,6 +16,11 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
     public DbSet<ArchitectureSectionVersion> SectionVersions { get; set; }
     public DbSet<ArchitectureSuggestion> Suggestions { get; set; }
     public DbSet<ArchitectureQuestion> Questions { get; set; }
+    public DbSet<ReverseModule> ReverseModules { get; set; }
+    public DbSet<ReverseRevision> ReverseRevisions { get; set; }
+    public DbSet<ReverseAsset> ReverseAssets { get; set; }
+    public DbSet<ReverseIndexEntry> ReverseIndexEntries { get; set; }
+    public DbSet<ReverseCardContext> ReverseCardContexts { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -148,6 +153,94 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Ignore(e => e.IsGap);
             entity.HasIndex(e => e.Normalized).IsUnique();
             entity.HasIndex(e => new { e.Status, e.LastAskedAt });
+        });
+
+        // 0052: engenharia reversa por módulo — fontes, revisões com aprovação, anexos de UI/UX, índice por item.
+        modelBuilder.Entity<ReverseModule>(entity =>
+        {
+            entity.ToTable("ReverseModules");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.OwnsMany(e => e.Sources, s => s.ToJson());
+            entity.Property(e => e.Aliases).HasColumnType("jsonb");
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<ReverseRevision>(entity =>
+        {
+            entity.ToTable("ReverseRevisions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ModuleKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.DocType).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.Mode).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Content).IsRequired().HasColumnType("text");
+            entity.Property(e => e.Summary).HasMaxLength(ReverseRevision.MaxSummaryLength);
+            entity.Property(e => e.Lint).HasColumnType("jsonb");
+            entity.Property(e => e.Coverage).HasColumnType("jsonb");
+            entity.Property(e => e.Session).HasColumnType("jsonb");
+            entity.Property(e => e.ReviewNote).HasMaxLength(ReverseRevision.MaxNoteLength);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.SubmittedBy).HasMaxLength(200);
+            entity.Property(e => e.ReviewedBy).HasMaxLength(200);
+            entity.Property(e => e.PublishedBy).HasMaxLength(200);
+            entity.Ignore(e => e.IsOpen);
+            entity.HasIndex(e => new { e.ModuleKey, e.DocType, e.Number }).IsUnique();
+            entity.HasIndex(e => new { e.Status, e.UpdatedAt });
+        });
+
+        modelBuilder.Entity<ReverseAsset>(entity =>
+        {
+            entity.ToTable("ReverseAssets");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ModuleKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Url).HasMaxLength(2000);
+            entity.Property(e => e.FileName).HasMaxLength(300);
+            entity.Property(e => e.ContentType).HasMaxLength(200);
+            entity.Property(e => e.Data).HasColumnType("bytea");
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.Screens).HasColumnType("jsonb");
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => new { e.ModuleKey, e.IsDeleted });
+        });
+
+        modelBuilder.Entity<ReverseIndexEntry>(entity =>
+        {
+            entity.ToTable("ReverseIndexEntries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ModuleKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.DocType).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.ItemId).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
+            entity.Property(e => e.Body).IsRequired().HasColumnType("text");
+            entity.Property(e => e.Tags).HasColumnType("jsonb");
+            entity.Property(e => e.Tables).HasColumnType("jsonb");
+            entity.Property(e => e.Refs).HasColumnType("jsonb");
+            entity.Property(e => e.Evidence).HasColumnType("jsonb");
+            entity.Property(e => e.Modules).HasColumnType("jsonb");
+            entity.Ignore(e => e.Ref);
+            entity.HasIndex(e => new { e.ModuleKey, e.DocType });
+            entity.HasIndex(e => new { e.ModuleKey, e.ItemId });
+        });
+
+        modelBuilder.Entity<ReverseCardContext>(entity =>
+        {
+            entity.ToTable("ReverseCardContexts");
+            entity.HasKey(e => e.CardNumber);
+            entity.Property(e => e.CardNumber).HasMaxLength(100);
+            entity.Property(e => e.Modules).HasColumnType("jsonb");
+            entity.Property(e => e.ConsultedRefs).HasColumnType("jsonb");
         });
     }
 }
