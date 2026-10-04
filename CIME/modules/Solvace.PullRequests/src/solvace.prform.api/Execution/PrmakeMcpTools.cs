@@ -31,7 +31,8 @@ public partial class PrmakeMcpTools(
     IAzureService azure,
     solvace.prform.Skills.SkillsConfigService skillsConfig,
     IHttpContextAccessor http,
-    solvace.timeline.application.Contracts.IUserRepository users)
+    solvace.timeline.application.Contracts.IUserRepository users,
+    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -39,7 +40,10 @@ public partial class PrmakeMcpTools(
         "'phase' (analysis|correction) escolhe o plano quando o card tem os dois (padrao: o plano aberto mais recente). " +
         "Ciclo do plano: prmake_advance (conclui uma etapa e inicia a proxima), prmake_block (trava esperando o usuario), " +
         "prmake_ask/prmake_answer, prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
-        "Git e o 'status' final ficam no prmake-plan.sh.";
+        "Git e o 'status' final ficam no prmake-plan.sh. " +
+        "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
+        "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
+        "Codigo so para confirmar o 'Onde:' que o item cita.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -333,6 +337,9 @@ public partial class PrmakeMcpTools(
     {
         var planId = await PlanIdAsync(card, phase, ct);
         var actor = await ActorAsync(ct);
+        // 0052: módulo com engenharia reversa completa — a investigação só conclui consultando a base ou citando item/lacuna.
+        if (await reverse.CheckGateAsync(card, from, message, ct) is { } gate)
+            throw new McpException(gate);
         if (!string.IsNullOrWhiteSpace(message))
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {

@@ -60,7 +60,8 @@ public partial class ExecutorCredentialMiddleware(RequestDelegate next)
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(30);
 
-    [GeneratedRegex(@"^/(api/v[\d.]+/(ExecutionQueue|ExecutionWorker|ExecutionPlan|Skills)(/|$)|mcp(/|$))", RegexOptions.IgnoreCase)]
+    // 0052: a análise lê a engenharia reversa do card (contexto, índice, itens, impacto) e registra a consulta.
+    [GeneratedRegex(@"^/(api/v[\d.]+/(ExecutionQueue|ExecutionWorker|ExecutionPlan|Skills|ReverseEngineering/(for-card|index|items|impact|consulted))(/|$)|mcp(/|$))", RegexOptions.IgnoreCase)]
     private static partial Regex AllowedPath();
 
     public async Task InvokeAsync(HttpContext context, IExecutionQueueApplication queue, IMemoryCache cache)

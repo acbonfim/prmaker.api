@@ -71,8 +71,19 @@ public class ExecutionPlanController : ControllerBase
 
     /// <summary>Atualiza uma etapa (status, atividade atual, checkpoint...). Etapa nova é criada no fim.</summary>
     [HttpPatch("{id:guid}/steps/{key}")]
-    public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request, CancellationToken ct) =>
-        Run<ExecutionStepResponse>(async () => Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct)));
+    public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request,
+        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse, CancellationToken ct) =>
+        Run<ExecutionStepResponse>(async () =>
+        {
+            // 0052: a skill concluindo a investigação de card com engenharia reversa completa precisa ter consultado/citado a base.
+            if (string.Equals(request.Status, ExecutionStatus.Completed, StringComparison.OrdinalIgnoreCase) && IsExecutorRequest())
+            {
+                var plan = await _application.GetAsync(id, ct);
+                if (await reverse.CheckGateAsync(plan.CardNumber, key, request.Message ?? request.Reason, ct) is { } gate)
+                    return BadRequest(new { error = gate });
+            }
+            return Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct));
+        });
 
     /// <summary>O usuário cancela (pula) uma etapa que ainda não terminou; a skill pula na próxima checagem.</summary>
     [HttpPost("{id:guid}/steps/{key}/cancel")]
