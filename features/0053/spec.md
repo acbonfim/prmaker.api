@@ -122,6 +122,25 @@ itens), sem reproduzir a falha na tela Engenharia reversa — mas com duas causa
 - Teste: no T1, clicar em todos os itens do sumário do `legado-rca` nas duas telas (inclusive logo após abrir e depois
   de voltar do Índice) e conferir o topo do título visível.
 
+### 6. Modo "melhorar" que fecha o ciclo (pedido do usuário, 2026-10-04)
+- **Sugestões resolvidas na publicação**: hoje as sugestões pendentes entram no pacote do `melhorar`, mas continuam
+  pendentes depois de publicar (voltam na próxima sessão). Passa a ser:
+  - no envio (`re.sh submit … --sugestoes <arquivo>`), a skill informa, para cada sugestão do pacote, `aplicada`
+    (com os IDs dos itens que mudaram) ou `recusada` (com o motivo); sem decisão = continua pendente;
+  - a revisão mostra essa lista ao revisor (sugestão → itens alterados / motivo da recusa);
+  - ao **publicar**, as aplicadas viram `applied` e as recusadas `dismissed`, com a nota e o número da revisão (e o card
+    de origem fica sabendo pela Timeline, se a sugestão veio de um card); descartar a revisão não resolve nada.
+- **O que mudou desde a última publicação**: a revisão já guarda o commit de cada fonte (`session.sources[].commit`).
+  No `melhorar`, a skill compara esse commit com o atual de cada fonte (`git diff --stat <commit>..HEAD -- <pasta>`) e,
+  com a §1, o catálogo do banco da DEMO publicado × o atual, e monta a **lista de trabalho da sessão**:
+  arquivos/objetos alterados, novos e removidos → itens da ER que os citam (pela evidência `Onde:`) → itens a revisar.
+  O andamento ao vivo mostra essa lista ("12 arquivos e 3 procedures mudaram desde a v2 → 9 itens a revisar"); o
+  resumo do envio diz o que foi revisto por causa dela. Commit gravado que não existe mais (rebase/clone raso) → avisa
+  e cai no inventário completo.
+- **Comando com o módulo**: o painel "Como gerar" e a SKILL.md mostram sempre o módulo explícito
+  (`/engenharia-reversa <módulo> melhorar <doc>` / `refazer <doc>`) — no legado a pasta do `edv-solvace` serve a dezenas
+  de módulos e não identifica o módulo sozinha; o painel lista também as chaves válidas de `<doc>`.
+
 ## Fora do escopo
 - Usar os scripts `solvace-asp/#database/…` ou migrações versionadas como fonte (decisão do usuário).
 - Banco de clientes que não a DEMO como referência (o catálogo é de referência; divergência de um cliente específico
