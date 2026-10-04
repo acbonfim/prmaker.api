@@ -117,6 +117,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.knowledge.infra", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.knowledge.tests", "CIME\modules\Solvace.Knowledge\tests\solvace.knowledge.tests\solvace.knowledge.tests.csproj", "{5CBA1576-1537-44B4-97ED-B2962371C11A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D3B6DE9E-F7D1-6E24-9C23-7BF079C7302B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.executionplans.tests", "CIME\modules\Solvace.ExecutionPlans\tests\solvace.executionplans.tests\solvace.executionplans.tests.csproj", "{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -559,6 +563,18 @@ Global
 		{5CBA1576-1537-44B4-97ED-B2962371C11A}.Release|x64.Build.0 = Release|Any CPU
 		{5CBA1576-1537-44B4-97ED-B2962371C11A}.Release|x86.ActiveCfg = Release|Any CPU
 		{5CBA1576-1537-44B4-97ED-B2962371C11A}.Release|x86.Build.0 = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|x64.Build.0 = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Debug|x86.Build.0 = Debug|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x64.ActiveCfg = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x64.Build.0 = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x86.ActiveCfg = Release|Any CPU
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -619,5 +635,7 @@ Global
 		{949820A7-AD4F-4F7D-BD58-B078B364E079} = {744F4450-A22E-87E5-6C50-F00201FD0D15}
 		{7A964F0D-9902-42FC-8FA5-A62CFCEEA379} = {744F4450-A22E-87E5-6C50-F00201FD0D15}
 		{5CBA1576-1537-44B4-97ED-B2962371C11A} = {744F4450-A22E-87E5-6C50-F00201FD0D15}
+		{D3B6DE9E-F7D1-6E24-9C23-7BF079C7302B} = {5A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C60}
+		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E} = {D3B6DE9E-F7D1-6E24-9C23-7BF079C7302B}
 	EndGlobalSection
 EndGlobal

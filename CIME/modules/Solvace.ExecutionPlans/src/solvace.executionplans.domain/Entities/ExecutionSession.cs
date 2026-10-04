@@ -36,6 +36,13 @@ public class ExecutionSession
     public List<ExecutionModelUsage> Models { get => _models ??= []; set => _models = value ?? []; }
     private List<ExecutionModelUsage>? _models;
 
+    /// <summary>0055: de onde a sessão leu (engenharia reversa × base × código) e os arquivos de código explorados.</summary>
+    /// <remarks>Sessão anterior à 0055 não tem as chaves no JSON — nunca devolve null.</remarks>
+    public List<ExecutionReadSource> Sources { get => _sources ??= []; set => _sources = value ?? []; }
+    private List<ExecutionReadSource>? _sources;
+    public List<ExecutionExploredFile> ExploredFiles { get => _explored ??= []; set => _explored = value ?? []; }
+    private List<ExecutionExploredFile>? _explored;
+
     /// <summary>
     /// 0044: a mesma sessão do Claude continua da análise para a correção (outro plano) e o transcript é acumulado — o
     /// que ela já tinha gasto no plano pai fica aqui e é descontado (o plano mostra só o consumo dele).
@@ -53,6 +60,11 @@ public class ExecutionSession
     /// <summary>0047: linha de base por modelo (o que a sessão já tinha, em cada modelo, no plano pai).</summary>
     public List<ExecutionModelUsage> BaseModels { get => _baseModels ??= []; set => _baseModels = value ?? []; }
     private List<ExecutionModelUsage>? _baseModels;
+    /// <summary>0055: linha de base das leituras (o que a sessão já tinha lido no plano pai).</summary>
+    public List<ExecutionReadSource> BaseSources { get => _baseSources ??= []; set => _baseSources = value ?? []; }
+    private List<ExecutionReadSource>? _baseSources;
+    public List<ExecutionExploredFile> BaseExploredFiles { get => _baseExplored ??= []; set => _baseExplored = value ?? []; }
+    private List<ExecutionExploredFile>? _baseExplored;
 
     public int NetTurns() => Math.Max(0, Turns - BaseTurns);
     public long NetInputTokens() => Math.Max(0, InputTokens - BaseInputTokens);
@@ -68,5 +80,16 @@ public class ExecutionSession
     public List<ExecutionModelUsage> NetModels() => Models
         .Select(m => m.Minus(BaseModels.FirstOrDefault(b => string.Equals(b.Model, m.Model, StringComparison.OrdinalIgnoreCase))))
         .Where(m => !m.IsEmpty)
+        .ToList();
+
+    /// <summary>0055: leituras líquidas por origem (sem a linha de base).</summary>
+    public List<ExecutionReadSource> NetSources() => Sources
+        .Select(s => s.Minus(BaseSources.FirstOrDefault(b => b.Key == s.Key)))
+        .Where(s => !s.IsEmpty)
+        .ToList();
+
+    public List<ExecutionExploredFile> NetExploredFiles() => ExploredFiles
+        .Select(f => f.Minus(BaseExploredFiles.FirstOrDefault(b => string.Equals(b.Path, f.Path, StringComparison.OrdinalIgnoreCase))))
+        .Where(f => f.Reads > 0 || f.Tokens > 0)
         .ToList();
 }

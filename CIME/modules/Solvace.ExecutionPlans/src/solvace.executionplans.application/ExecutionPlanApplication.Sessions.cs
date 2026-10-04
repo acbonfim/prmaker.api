@@ -38,7 +38,9 @@ public partial class ExecutionPlanApplication
                 {
                     Model = m.Model, Turns = m.Turns, InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
                     CacheReadTokens = m.CacheReadTokens, CacheWriteTokens = m.CacheWriteTokens
-                }).ToList());
+                }).ToList(),
+                request.Sources?.Select(s => new ExecutionReadSource { Key = s.Key, Calls = s.Calls, Tokens = s.Tokens }).ToList(),
+                request.ExploredFiles?.Select(f => new ExecutionExploredFile { Path = f.Path, Reads = f.Reads, Tokens = f.Tokens }).ToList());
             p.Touch(now, fromExecutor: !sessionEnded);
         }, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
@@ -123,6 +125,8 @@ public partial class ExecutionPlanApplication
                         copy.BaseMcpCalls = from.McpCalls ?? 0; copy.BaseScriptCalls = from.ScriptCalls ?? 0;
                         copy.BaseKbCalls = from.KbCalls ?? 0; copy.BaseSearchCalls = from.SearchCalls ?? 0;
                         copy.BaseModels = from.Models.Select(m => m.Copy()).ToList();
+                        copy.BaseSources = from.Sources.Select(x => x.Copy()).ToList();
+                        copy.BaseExploredFiles = from.ExploredFiles.Select(x => x.Copy()).ToList();
                     }
                     return copy;
                 }).ToList();
@@ -140,13 +144,15 @@ public partial class ExecutionPlanApplication
                     Search = sessions.Sum(s => s.NetSearchCalls()),
                     Model = p.UsageModel,
                     // 0047: por modelo, já com a linha de base (cópia acima quando a correção é antiga).
-                    Models = ExecutionPlan.NetModelUsageOf(sessions)
+                    Models = ExecutionPlan.NetModelUsageOf(sessions),
+                    // 0055: de onde leu (vazio = plano anterior à medição)
+                    Reads = ExecutionReadSource.Sum(sessions.SelectMany(s => s.NetSources()))
                 };
             })
             .Where(x => x.Turns > 0)
             .Select(x => new
             {
-                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Kb, x.Search, x.Model, x.Models,
+                x.Phase, x.Turns, x.Fresh, x.CacheRead, x.CacheWrite, x.Output, x.Mcp, x.Script, x.Kb, x.Search, x.Model, x.Models, x.Reads,
                 Input = x.Fresh + x.CacheRead + x.CacheWrite,
                 Channel = x.Mcp > 0 && x.Mcp >= x.Script ? "mcp" : "script"
             })
@@ -183,11 +189,22 @@ public partial class ExecutionPlanApplication
                     AvgOutputTokens = Math.Round((double)m.OutputTokens / group.Count),
                     AvgCacheReadTokens = Math.Round((double)m.CacheReadTokens / group.Count),
                     AvgCacheWriteTokens = Math.Round((double)m.CacheWriteTokens / group.Count)
-                }).ToList()
+                }).ToList(),
+                ReadPlans = group.Count(g => g.Reads.Count > 0),
+                AvgReverseShare = group.Where(g => g.Reads.Count > 0).Select(g => ExecutionReadSource.ReverseShare(g.Reads)).Where(v => v is not null)
+                    .Select(v => v!.Value).DefaultIfEmpty(-1).Average() is var share and >= 0 ? Math.Round(share, 3) : null,
+                Sources = ReadAverages(group.Where(g => g.Reads.Count > 0).Select(g => g.Reads).ToList())
             });
         }
         return result;
     }
+
+    /// <summary>0055: média por plano de cada origem de leitura (só os planos que mediram).</summary>
+    private static List<ExecutionReadAverage> ReadAverages(List<List<ExecutionReadSource>> plans) =>
+        plans.Count == 0 ? [] : ExecutionReadSource.Sum(plans.SelectMany(p => p)).Select(s => new ExecutionReadAverage
+        {
+            Key = s.Key, AvgCalls = Math.Round((double)s.Calls / plans.Count, 1), AvgTokens = Math.Round((double)s.Tokens / plans.Count)
+        }).ToList();
 
     private static ExecutionSession Clone(ExecutionSession s) => new()
     {
@@ -196,7 +213,9 @@ public partial class ExecutionPlanApplication
         CacheWriteTokens = s.CacheWriteTokens, Model = s.Model, McpCalls = s.McpCalls, ScriptCalls = s.ScriptCalls,
         KbCalls = s.KbCalls, SearchCalls = s.SearchCalls,
         UsageUpdatedAt = s.UsageUpdatedAt,
-        Models = s.Models.Select(m => m.Copy()).ToList()
+        Models = s.Models.Select(m => m.Copy()).ToList(),
+        Sources = s.Sources.Select(x => x.Copy()).ToList(),
+        ExploredFiles = s.ExploredFiles.Select(x => x.Copy()).ToList()
     };
 
     public async Task<List<ExecutionResumeCandidateResponse>> GetResumeCandidatesAsync(Guid? userId, string? host, CancellationToken cancellationToken)

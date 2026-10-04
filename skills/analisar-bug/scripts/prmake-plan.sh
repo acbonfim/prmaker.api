@@ -181,62 +181,13 @@ send_usage() { # [--quiet]
   since="$( [[ -f "$mark" ]] && cut -d'|' -f2 "$mark")"
   transcript="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -maxdepth 2 -name "$sid.jsonl" 2>/dev/null | head -1)"
   [[ -n "$transcript" ]] || { [[ "${1:-}" == "--quiet" ]] || echo "(transcript da sessao nao encontrado)"; return 0; }
-  python3 - "$transcript" "${since:-}" "$sid" "$SESSION_HOST" > "$TMP/usage.json" <<'PY' || return 0
-import json, sys
-path, since, sid, host = sys.argv[1:5]
-import re
-seen = {}; model = None; model_of = {}; mcp = set(); script = set(); kb = set(); search = set()
-SEARCH = re.compile(r"(^|[\s|;&(])(grep|rg|ag|find|ack)\s")
-def classify(name, inp):
-    # 0045: a Base Solvace veio antes das buscas no codigo? (mesma regra do executor)
-    cmd = str(inp.get("command", "")); path = str(inp.get("file_path", "")) + str(inp.get("path", ""))
-    if name.startswith("mcp__prmake__prmake_base"):  # 0052: a base pelo MCP
-        return "kb"
-    if "kb.sh" in cmd or "solvace-kb" in cmd or "solvace-kb" in path or "/re.sh" in cmd:
-        return None if "contexto" in cmd else "kb"
-    if name in ("Grep", "Glob"):
-        return None if "/.claude/" in path else "search"
-    if name == "Bash" and SEARCH.search(cmd) and "/.claude/" not in cmd and "prmake-" not in cmd:
-        return "search"
-    return None
-for line in open(path, encoding="utf-8"):
-    try: d = json.loads(line)
-    except Exception: continue
-    if d.get("type") != "assistant" or (since and (d.get("timestamp") or "") < since): continue
-    m = d.get("message") or {}
-    # 0041: chamadas ao PRMake pelo MCP x pelo script (comparativo de consumo no PRMake).
-    for part in m.get("content") or []:
-        if not isinstance(part, dict) or part.get("type") != "tool_use": continue
-        name = part.get("name") or ""
-        if name.startswith("mcp__prmake__"): mcp.add(part.get("id"))
-        elif name == "Bash" and "prmake-plan.sh" in str((part.get("input") or {}).get("command", "")): script.add(part.get("id"))
-        c = classify(name, part.get("input") or {})
-        if c == "kb": kb.add(part.get("id"))
-        elif c == "search": search.add(part.get("id"))
-    u = m.get("usage")
-    if not isinstance(u, dict): continue
-    key = m.get("id") or d.get("uuid")
-    seen[key] = u
-    model = m.get("model") if m.get("model") and m.get("model") != "<synthetic>" else model
-    # 0047: cada resposta no modelo que a gerou (Opus na analise, Sonnet na correcao); "<synthetic>" nao tem custo.
-    if m.get("model") and m.get("model") != "<synthetic>": model_of[key] = m.get("model").split("[")[0]
-tot = lambda k: sum(int(u.get(k) or 0) for u in seen.values())
-by_model = {}
-for key, u in seen.items():
-    if key not in model_of: continue
-    e = by_model.setdefault(model_of[key], {"model": model_of[key], "turns": 0, "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0})
-    e["turns"] += 1
-    for f, k in (("inputTokens", "input_tokens"), ("outputTokens", "output_tokens"), ("cacheReadTokens", "cache_read_input_tokens"), ("cacheWriteTokens", "cache_creation_input_tokens")):
-        e[f] += int(u.get(k) or 0)
-print(json.dumps({"sessionId": sid, "host": host, "turns": len(seen), "inputTokens": tot("input_tokens"),
-                  "outputTokens": tot("output_tokens"), "cacheReadTokens": tot("cache_read_input_tokens"),
-                  "cacheWriteTokens": tot("cache_creation_input_tokens"), "model": model,
-                  "mcpCalls": len(mcp), "scriptCalls": len(script), "kbCalls": len(kb), "searchCalls": len(search),
-                  "models": list(by_model.values())}))
-PY
+  # 0055: o leitor do transcript (tokens, MCP x script, por modelo e DE ONDE LEU: engenharia reversa x base x codigo)
+  # fica em usage_scan.py — o executor (Cime.ExecutionAgent/TranscriptUsage.cs) segue as mesmas regras.
+  python3 "$(cd "$(dirname "$0")" && pwd)/usage_scan.py" "$transcript" "${since:-}" "$sid" "$SESSION_HOST" > "$TMP/usage.json" || return 0
   local code; code="$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X PUT "$BASE/ExecutionPlan/$PLAN/usage" \
     -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/usage.json" 2>/dev/null)"
-  [[ "${1:-}" == "--quiet" ]] || jq -r --arg c "$code" '"custo desta sessao no plano: \(.turns) turnos · saida \(.outputTokens) · cache lido \(.cacheReadTokens) · cache escrito \(.cacheWriteTokens) (HTTP \($c))"' "$TMP/usage.json"
+  [[ "${1:-}" == "--quiet" ]] || jq -r --arg c "$code" '"custo desta sessao no plano: \(.turns) turnos · saida \(.outputTokens) · cache lido \(.cacheReadTokens) · cache escrito \(.cacheWriteTokens) (HTTP \($c))",
+    (if ((.sources // []) | map(.tokens) | add // 0) > 0 then "leitura: " + ([.sources[] | select(.calls > 0) | "\(.key) \(.calls)× ~\(.tokens) tok"] | join(" · ")) else empty end)' "$TMP/usage.json"
 }
 go_offline() { # <motivo>
   jq -n --arg card "$CARD" --arg why "$1" '{planId:null, card:$card, offline:true, reason:$why}' > "$STATE"

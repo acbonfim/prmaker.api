@@ -69,6 +69,11 @@ public class ExecutionPlanContext : DbContext
                 // 0047: consumo por modelo e a linha de base por modelo, dentro do mesmo JSON da sessão.
                 s.OwnsMany(x => x.Models, m => m.Property(x => x.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength));
                 s.OwnsMany(x => x.BaseModels, m => m.Property(x => x.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength));
+                // 0055: de onde a sessão leu e os arquivos de código explorados (com as linhas de base).
+                s.OwnsMany(x => x.Sources, r => r.Property(x => x.Key).HasMaxLength(ExecutionReadSource.MaxKeyLength));
+                s.OwnsMany(x => x.BaseSources, r => r.Property(x => x.Key).HasMaxLength(ExecutionReadSource.MaxKeyLength));
+                s.OwnsMany(x => x.ExploredFiles, f => f.Property(x => x.Path).HasMaxLength(ExecutionExploredFile.MaxPathLength));
+                s.OwnsMany(x => x.BaseExploredFiles, f => f.Property(x => x.Path).HasMaxLength(ExecutionExploredFile.MaxPathLength));
             });
             entity.Property(e => e.ResumeRequestedBy).HasMaxLength(200);
         });
