@@ -1,0 +1,11 @@
+{
+  "requires": [
+    "curl",
+    "jq",
+    "python3",
+    "git"
+  ],
+  "depends": [
+    "base-solvace"
+  ]
+}

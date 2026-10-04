@@ -8,7 +8,8 @@
     "aws"
   ],
   "depends": [
-    "base-solvace"
+    "base-solvace",
+    "engenharia-reversa"
   ],
   "setup": {
     "check": "[ -x .venv/bin/python ] && .venv/bin/python -c 'import pytds' 2>/dev/null",
