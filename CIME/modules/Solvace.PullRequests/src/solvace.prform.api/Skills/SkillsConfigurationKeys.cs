@@ -34,4 +34,8 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringMinCoverage = "ReverseEngineeringMinCoverage";
     /// <summary>0052: modelos que substituem os do código ({"funcional": "markdown"}; {} = os do código).</summary>
     public const string ReverseEngineeringTemplates = "ReverseEngineeringTemplates";
+    /// <summary>0053: banco de referência da engenharia reversa (JSON: environment, host, global, locals) — a DEMO.</summary>
+    public const string ReverseEngineeringReferenceDatabase = "ReverseEngineeringReferenceDatabase";
+    /// <summary>0053: palavras genéricas de interface fora da cobertura de termos do glossário (JSON: lista).</summary>
+    public const string ReverseEngineeringGlossaryExclusions = "ReverseEngineeringGlossaryExclusions";
 }

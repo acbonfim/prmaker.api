@@ -18,18 +18,20 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh           # Knowledge Center (reg
 ```
 
 ## Comandos (o que o usuario digita)
+`<doc>` = `funcional` · `arquitetura` · `uiux` · `visao` · `spec-arquitetura` · `design`. Sempre com o **modulo** (chave
+da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve a dezenas de modulos.
+
 | Pedido | O que fazer |
 |---|---|
-| `/engenharia-reversa <doc>` | um documento do modulo da pasta atual (doc: `funcional`, `arquitetura`, `uiux`, `visao`, `spec-arquitetura`, `design`) |
-| `/engenharia-reversa <modulo> <doc>` | idem, informando o modulo (chave da Base Solvace) |
-| `/engenharia-reversa tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado) |
-| `/engenharia-reversa melhorar <doc>` | parte do publicado + sugestoes pendentes + lacunas das analises + nota do revisor |
-| `/engenharia-reversa refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
-| `/engenharia-reversa status` | `bash $RE status <modulo>` |
+| `/engenharia-reversa <modulo> <doc>` | um documento do modulo (sem o modulo: `re.sh modulo` pela pasta; ambiguo → pergunte) |
+| `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado) |
+| `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
+| `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
+| `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
 
 ## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
-A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → leitura e escrita, com uma
-subetapa por area → checagem → envio), a linha "agora" e um registro curto. `start`, `inventario`, `check`, `save` e
+A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → banco da DEMO → leitura e escrita, com uma
+subetapa por area → checagem → envio), a linha "agora" e um registro curto. `start`, `inventario`, `banco`, `trabalho`, `check`, `save` e
 `submit` ja reportam sozinhos; o resto e voce:
 - Antes de ler/escrever: `bash $RE etapa <m> <doc> leitura running --detail "N areas: A, B, C"`.
 - Cada area: `bash $RE etapa <m> <doc> area:<nome> running --title "Area: <Nome>"` ao comecar (inclusive ao despachar o
@@ -63,6 +65,16 @@ modulos`; pode repetir `--path` para `solvace-core/<modulo>`). Revamp: o back (`
 (`edv-solvace-apps/projects/<x>`) sao fontes do mesmo modulo — fonte faltando: peca ao usuario/aprovador para cadastrar
 na tela (Fontes) ou use `--path`.
 
+**3b. Banco da DEMO (0053, todo modulo — legado e revamp)** — `bash $RE banco <modulo>`: le **direto do banco de
+referencia** (a DEMO: global e os locais, configurados no PRMake; somente leitura pelo `sql-query.sh`) as tabelas do
+modulo (prefixo `TB_<SIGLA>_` deduzido do codigo — confira; `--prefix`/`--sigla` corrigem), e o que depende delas:
+views, procedures, functions, **triggers**, colunas/chaves/**check constraints** e os **jobs do SQL Agent**, com o corpo
+de cada objeto em `~/.prmake/reverse/<modulo>/banco/`. **Nunca** use os scripts `solvace-asp/#database/…` nem migracoes
+versionadas (desatualizados). Sem acesso (VPN/credencial) → a etapa fica **falha no andamento** com o que fazer; diga
+ao usuario e so siga sem o banco se ele mandar (e registre `GAP`). Depois `bash $RE termos <modulo>`: os termos da tela
+(rotulos traduzidos, menus, siglas, traducoes EN/ES) que o **glossario** precisa cobrir. Como documentar objetos do
+banco e o glossario: `references/banco.md` (leia antes de escrever arquitetura ou funcional).
+
 **4. Ler o codigo e escrever** — `references/escrever.md` (leia **inteiro** antes de escrever; e curto). Resumo:
 - Leia o codigo **de verdade** (controllers → services → repositorios/SP → tabelas; telas → componentes → servicos HTTP).
   Profundidade > velocidade: cada regra com condicao, valores e mensagem **literais** e o `**Onde:** arquivo:linha`.
@@ -87,10 +99,16 @@ aprovador) que aprova e publica; so entao fica ativo na Base Solvace. Diga ao us
 itens por tipo, cobertura, avisos e onde aprovar. Rascunho intermediario (sem enviar): `bash $RE save <modulo> <doc>`.
 
 ## Melhorar e refazer
-- **melhorar**: o `documento.md` comeca igual ao publicado. Resolva primeiro a nota do revisor, depois as sugestoes
-  (`sugestoes.md`: aprendizados, divergencias e lacunas que as analises de cards registraram) e o que o `check` mostrar
-  como faltando. **Mantenha os IDs**; item que deixou de existir vira `### RN-012 — (removido) <motivo>` (analises antigas
-  citam o ID). No `--summary`, liste o que mudou por ID.
+- **melhorar**: o `documento.md` comeca igual ao publicado. Rode `bash $RE inventario`, `bash $RE banco` e
+  **`bash $RE trabalho <modulo> <doc>`**: a lista do que mudou no codigo (commits gravados na versao publicada × agora)
+  e no banco (catalogo publicado × atual) e os **itens publicados afetados** (`trabalho.md`) — e a pauta da sessao.
+  Resolva primeiro a nota do revisor, depois a lista de trabalho, as sugestoes (`sugestoes.md`: aprendizados,
+  divergencias e lacunas das analises) e o que o `check` mostrar como faltando. **Mantenha os IDs**; item que deixou de
+  existir vira `### RN-012 — (removido) <motivo>` (analises antigas citam o ID). No `--summary`, liste o que mudou por ID.
+- **Decida cada sugestao do pacote** e envie com `--sugestoes decisoes.json`:
+  `[{"suggestionId": "<id>", "decision": "aplicada", "items": ["RN-012"], "note": "o que mudou"},
+  {"suggestionId": "<id>", "decision": "recusada", "note": "motivo"}]` — ao publicar, a fila resolve sozinha (aplicada /
+  recusada, e o card de origem fica sabendo pela Timeline). Sugestao sem decisao continua pendente.
 - **refazer**: escreva do zero, mas reaproveite o ID de cada assunto que continua existindo (`publicado.md` e
   `bash $RE ids <modulo>` mostram os IDs atuais).
 

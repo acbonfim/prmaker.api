@@ -58,6 +58,8 @@ public interface IReverseEngineeringApplication
     Task<ReverseModuleResponse> GetModuleAsync(string key, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseModuleResponse> UpsertModuleAsync(string key, UpsertReverseModuleRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken);
+    /// <summary>0053: termo sugerido pelo glossário → apelido, palavra-chave ou dispensado.</summary>
+    Task<ReverseModuleResponse> ResolveTermAsync(string key, ResolveReverseTermRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseSessionResponse> StartSessionAsync(string key, string docType, StartReverseSessionRequest request, string actor, IReadOnlyCollection<string> userRoles,
         CancellationToken cancellationToken);
     Task<List<ReverseRevisionHead>> ListRevisionsAsync(string? moduleKey, string? docType, string? status, CancellationToken cancellationToken);

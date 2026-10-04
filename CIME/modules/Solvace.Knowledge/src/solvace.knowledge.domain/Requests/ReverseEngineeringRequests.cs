@@ -26,6 +26,15 @@ public class SaveReverseRevisionRequest
     public JsonElement? Coverage { get; set; }
     public double? CoverageRatio { get; set; }
     public JsonElement? Session { get; set; }
+    /// <summary>0053: o que a sessão fez com cada sugestão do pacote (aplicada + itens / recusada + motivo); null mantém.</summary>
+    public List<ReverseSuggestionDecision>? SuggestionDecisions { get; set; }
+}
+
+/// <summary>Termo sugerido do glossário: alias (apelido do módulo) | keyword (palavra-chave do projeto) | dismiss.</summary>
+public class ResolveReverseTermRequest
+{
+    public string Term { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
 }
 
 /// <summary>approve | changes (nota obrigatória) | discard.</summary>

@@ -9,6 +9,12 @@
       Quanto do inventario o documento cita (por nome, rota, mensagem, tabela ou arquivo:linha) e o que falta.
   re_tool.py ids <pasta-ou-arquivos...>
       IDs definidos (### RN-012 ...) em varios documentos locais - para nao repetir ID entre documentos da mesma sessao.
+  re_tool.py termos <inventario.json> [--banco <pasta-banco>] [--exclusoes '<json>'] --out <inventario-termos.json>
+      Termos do modulo para o GLOSSARIO (0053): rotulos da tela (GetLanguageByName do legado, i18n do front), menus e
+      aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do TB_WCM_LANGUAGE. A cobertura do funcional exige
+      cada termo no glossario (titulo ou Sinonimos de um GLO). Palavras genericas de interface ficam fora (exclusoes).
+  re_tool.py afetados <publicado.md> [--arquivos lista.txt] [--objetos lista.txt]
+      Itens publicados que citam arquivos/objetos alterados (lista de trabalho do modo melhorar — 0053).
   re_tool.py juntar <saida.md> <parte1.md> [parte2.md ...]
       Junta partes escritas por subagentes: mesmas secoes (##) viram uma so, na ordem da primeira parte; IDs repetidos
       sao avisados.
@@ -28,15 +34,16 @@ MAX_FILE = 1_500_000
 
 # Categorias do inventario e os documentos que precisam cobri-las.
 DOC_CATEGORIES = {
-    "funcional": ["validacao", "permissao", "endpoint", "enum", "pagina", "handler", "procedure"],
-    "arquitetura": ["endpoint", "tabela", "evento", "job", "config", "http-front", "pagina", "handler", "procedure"],
+    "funcional": ["validacao", "permissao", "endpoint", "enum", "pagina", "handler", "procedure", "termo"],
+    "arquitetura": ["endpoint", "tabela", "evento", "job", "config", "http-front", "pagina", "handler", "procedure",
+                    "view", "function", "trigger", "constraint"],
     "uiux": ["rota-front", "componente-front", "http-front", "pagina"],
     "design": ["componente-front"],
     "visao": [],
-    "spec-arquitetura": ["evento", "job"],
+    "spec-arquitetura": ["evento", "job", "trigger"],
 }
 
-ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|FN|UC|RN|DB|UI)-(\d{1,4})\b",
+ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-(\d{1,4})\b",
                         re.IGNORECASE)
 
 
@@ -206,6 +213,17 @@ def inventory(sources):
                     add(items, seen, "http-front", f"{m.group(1).upper()} {url}", path, root, text, m.start())
                 for m in R_NG_VALIDATOR.finditer(text):
                     add(items, seen, "validacao", f"{m.group(1)} [Validators.{m.group(2)}]", path, root, text, m.start(), "formulario")
+            if ext in (".asp", ".inc", ".aspx", ".vb", ".cshtml", ".js", ".cs"):
+                for m in R_LANG.finditer(text):  # rótulos traduzidos da tela (legado) — matéria-prima do glossário
+                    add(items, seen, "rotulo", m.group(1), path, root, text, m.start(), "GetLanguageByName")
+            if ext == ".json" and ("/i18n/" in path.replace("\\", "/") or "/locale" in path) and re.search(r"(^|[/_.-])pt([-_]br)?\.json$", path.lower()):
+                try:
+                    data = json.loads(text)
+                except ValueError:
+                    data = None
+                for key, value in flat_items(data):
+                    if isinstance(value, str):
+                        add(items, seen, "rotulo", value, path, root, text, 0, f"i18n {key}")
             if ext in (".asp", ".inc", ".aspx", ".vb"):
                 for m in R_ASP_MSG.finditer(text):
                     msg = R_LANG.search(m.group(1)).group(1) if R_LANG.search(m.group(1)) else m.group(1)
@@ -229,6 +247,16 @@ def inventory(sources):
         counts[it["cat"]] += 1
     return {"version": 1, "sources": [{"role": r, "path": p} for r, p in sources], "files": dict(files_by_role), "counts": dict(counts),
             "items": items}
+
+
+def flat_items(data, prefix=""):
+    if isinstance(data, dict):
+        for k, v in data.items():
+            key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                yield from flat_items(v, key)
+            else:
+                yield key, v
 
 
 def flat_keys(data, prefix=""):
@@ -284,6 +312,8 @@ def needles(item):
         out.append(norm(leaf) if len(leaf) > 5 else norm(name))
     elif cat == "pagina":
         out += [norm(name), norm(os.path.splitext(name)[0])]
+    elif cat == "termo":
+        out.append(norm(name))
     elif cat == "handler":
         out.append(norm(re.sub(r"(Query|Command)?(Queries)?(Request|Handler)$", "", name)))
     else:
@@ -309,10 +339,28 @@ def contains(haystack, needle):
     return re.search(r"(?<![a-z0-9_])" + re.escape(needle) + r"(?![a-z0-9_])", haystack) is not None
 
 
+def glossary_text(doc):
+    """Títulos e linhas de sinônimos dos itens GLO — onde um termo precisa aparecer para contar (0053)."""
+    out, inside = [], False
+    for line in doc.splitlines():
+        m = ID_HEADING.match(line)
+        if m:
+            inside = m.group(2).upper() == "GLO"
+            if inside:
+                out.append(line)
+            continue
+        if re.match(r"^#{1,4}\s", line):
+            inside = False
+        if inside and re.search(r"(?i)\*\*sin[ôo]nimos", line):
+            out.append(line)
+    return " \n ".join(out)
+
+
 def coverage(inv, doc_text, doc_type, max_missing):
     cats = DOC_CATEGORIES.get(doc_type, [])
     doc_norm = norm(doc_text)
     strong_norm = norm(strong_text(doc_text))
+    glossary_norm = norm(glossary_text(doc_text))
     evidence = defaultdict(list)
     for m in R_EVIDENCE.finditer(doc_text):
         start = int(m.group(2))
@@ -327,11 +375,13 @@ def coverage(inv, doc_text, doc_type, max_missing):
         total += 1
         c = by_cat.setdefault(it["cat"], {"total": 0, "covered": 0})
         c["total"] += 1
-        text = strong_norm if it["cat"] in STRONG_CATS else doc_norm
+        text = glossary_norm if it["cat"] == "termo" else strong_norm if it["cat"] in STRONG_CATS else doc_norm
         hit = any(contains(text, n) for n in needles(it))
         if not hit:
             base = os.path.basename(it["file"]).lower()
             hit = any(s - 5 <= it["line"] <= e + 5 for s, e in evidence.get(base, []))
+        if it["cat"] == "termo":
+            hit = any(contains(text, n) for n in needles(it))  # termo só conta no glossário (sem evidência de arquivo)
         if hit:
             covered += 1
             c["covered"] += 1
@@ -396,6 +446,136 @@ def join_parts(output, parts):
     return dups
 
 
+GENERIC_UI = {norm(w) for w in """
+salvar cancelar filtrar filtro filtros data buscar pesquisar pesquisa editar excluir remover adicionar novo nova voltar fechar sim nao ok
+confirmar limpar exportar importar imprimir detalhes acoes opcoes selecione selecionar todos todas nenhum nenhuma carregando erro sucesso
+atencao aviso enviar anexar visualizar copiar alterar aplicar anterior proximo proxima primeiro ultimo inicio fim carregar mais mostrar
+ocultar expandir recolher abrir baixar download upload arquivo arquivos anexo anexos link links buscando aguarde total ver mais menos
+agora hoje ontem amanha semana mes ano dia dias horas hora minutos janeiro fevereiro marco abril maio junho julho agosto setembro outubro
+novembro dezembro segunda terca quarta quinta sexta sabado domingo jan fev mar abr mai jun jul ago set out nov dez
+caixa de selecao caixa suspensa calendario texto numero lista campo campos obrigatorio opcional descricao titulo nome codigo valor
+save cancel filter filters date search edit delete remove add new back close yes no confirm clear export import print details actions
+options select all none loading error success warning send apply previous next first last more less today yesterday tomorrow
+procurar exibir incluir processando salvando primeira ultima minuto days results resultados show dom seg ter qua qui sex sab registro
+registros page pages pagina paginas item itens
+""".split()} | {norm(w) for w in ["caixa de seleção", "caixa suspensa", "busca global", "carregar mais", "ver mais", "adicionar link"]}
+
+MESSAGE_HINTS = ("sucesso", "êxito", "exito", "deseja", "certeza", "por favor", "aguarde", "não foi possível", "nao foi possivel",
+                 "obrigatório", "preencha", "selecione um", "selecione uma", "informe", "inválid", "invalid", "successfully", "please",
+                 "digite", "insira", "nenhum registro", "nenhum resultado", "exibindo", "showing", "encontramos", "registros que",
+                 "registro(s)", "expandir todos", "recolher todos", "limpar filtros", "pesquisado a partir", "novo texto")
+
+
+def is_term(text):
+    t = (text or "").strip().rstrip(":").strip()
+    if not (2 <= len(t) <= 60) or not re.search(r"[A-Za-zÀ-ú]", t):
+        return None
+    if any(c in t for c in "{}<>[]|%=") or "http" in t.lower() or t.endswith((".", "?", "!")):
+        return None
+    if len(t.split()) > 5 or any(h in t.lower() for h in MESSAGE_HINTS):
+        return None
+    return t
+
+
+def termos(inv_path, banco_dir, exclusions, out, other_modules=()):
+    inv = json.load(open(inv_path, encoding="utf-8"))
+    # genéricos de interface + nomes de outros módulos (citados por link/integração, não são termos deste)
+    excl = {norm(x) for x in exclusions} | GENERIC_UI | {norm(x) for x in other_modules}
+    terms = {}
+
+    def put(term, source, file="", line=0):
+        t = is_term(term)
+        if not t or norm(t) in excl:
+            return
+        key = norm(t)
+        e = terms.setdefault(key, {"term": t, "sources": set(), "file": file, "line": line})
+        e["sources"].add(source)
+
+    for it in inv.get("items", []):
+        if it["cat"] == "rotulo":
+            put(it["name"], "tela", it["file"], it["line"])
+    translations = {}
+    if banco_dir and os.path.isdir(banco_dir):
+        cat_path = os.path.join(banco_dir, "catalogo.json")
+        if os.path.exists(cat_path):
+            cat = json.load(open(cat_path, encoding="utf-8"))
+            app = cat.get("application") or {}
+            for v in (app.get("name"), app.get("alias")):
+                if v:
+                    put(v, "aplicação", "banco/catalogo.json", 1)
+            for m in cat.get("menus", []):
+                put(m.get("item"), "menu", "banco/catalogo.json", 1)
+                put(m.get("grp"), "menu", "banco/catalogo.json", 1)
+            if cat.get("sigla"):
+                put(cat["sigla"], "sigla", "banco/catalogo.json", 1)
+        tr_path = os.path.join(banco_dir, "traducoes.json")
+        if os.path.exists(tr_path):
+            for r in json.load(open(tr_path, encoding="utf-8")):
+                for k in ("term", "pt"):
+                    if r.get(k):
+                        translations.setdefault(norm(r[k]), r)
+    items = []
+    for key, e in sorted(terms.items()):
+        tr = translations.get(key)
+        detail = ", ".join(sorted(e["sources"]))
+        if tr:
+            extra = [f"{lang.upper()}: {tr[lang]}" for lang in ("en", "es") if tr.get(lang) and norm(tr[lang]) != key]
+            if extra:
+                detail += " · " + "; ".join(extra)
+        items.append({"cat": "termo", "name": e["term"], "file": e["file"], "line": e["line"], "detail": detail})
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"version": 1, "sources": [], "files": {}, "counts": {"termo": len(items)}, "items": items}, fh, ensure_ascii=False, indent=1)
+    print(f"Termos do módulo para o glossário: {len(items)} ({sum(1 for i in items if '·' in i['detail'])} com tradução) -> {out}")
+
+
+def afetados(doc_path, files, objects):
+    """
+    Itens do documento publicado afetados pelo que mudou: objeto do banco citado, ou arquivo alterado cujas LINHAS
+    alteradas (lado antigo do diff) caem perto do arquivo:linha que o item cita (±10). Item que cita o arquivo sem linha
+    conta como afetado. files: "arquivo<TAB>ini-fim,ini-fim" (ou só o arquivo = mudou inteiro).
+    """
+    doc = open(doc_path, encoding="utf-8").read()
+    ranges = {}
+    for f in files:
+        if not f.strip():
+            continue
+        name, _, spans = f.partition("\t")
+        rs = []
+        for span in filter(None, spans.split(",")):
+            a, _, b = span.partition("-")
+            rs.append((int(a), int(b or a)))
+        ranges.setdefault(os.path.basename(name).lower(), []).extend(rs or [(0, 10 ** 9)])
+    objs = {o.strip().upper() for o in objects if o.strip()}
+    blocks, current, buf = [], None, []
+    for line in doc.splitlines():
+        m = ID_HEADING.match(line)
+        if m or re.match(r"^#{1,2}\s", line):
+            if current:
+                blocks.append((current, "\n".join(buf)))
+            current = f"{m.group(2).upper()}-{int(m.group(3)):03d} {line.split('—', 1)[-1].strip()}" if m else None
+            buf = [line]
+        elif current:
+            buf.append(line)
+    if current:
+        blocks.append((current, "\n".join(buf)))
+    hits = []
+    for item, body in blocks:
+        why = set(o for o in objs if o in body.upper())
+        low = body.lower()
+        for base, rs in ranges.items():
+            if base not in low:
+                continue
+            cited = [(int(mm.group(1)), int(mm.group(2) or mm.group(1)))
+                     for mm in re.finditer(re.escape(base) + r":(\d+)(?:-(\d+))?", low)]
+            if not cited or any(ca - 10 <= b and a <= cb + 10 for ca, cb in cited for a, b in rs):
+                why.add(base)
+        if why:
+            hits.append((item, sorted(why)))
+    for item, why in hits:
+        print(f"{item}\t{', '.join(why[:6])}")
+    return hits
+
+
 def main(argv):
     if len(argv) < 2 or argv[1] in ("-h", "--help"):
         print(__doc__)
@@ -425,6 +605,13 @@ def main(argv):
             return 2
         with open(argv[2], encoding="utf-8") as fh:
             inv = json.load(fh)
+        # 0053: inventários a mais (banco da DEMO, termos do glossário) — --extra <arquivo> (repetível)
+        for i, a in enumerate(argv):
+            if a == "--extra" and i + 1 < len(argv) and os.path.exists(argv[i + 1]):
+                with open(argv[i + 1], encoding="utf-8") as fh:
+                    extra = json.load(fh)
+                seen_names = {(it["cat"], it["name"].upper()) for it in inv["items"]}
+                inv["items"] += [it for it in extra.get("items", []) if (it["cat"], it["name"].upper()) not in seen_names]
         with open(argv[3], encoding="utf-8") as fh:
             doc = fh.read()
         max_missing = int(argv[argv.index("--max") + 1]) if "--max" in argv else 80
@@ -459,6 +646,18 @@ def main(argv):
         for i in sorted(seen, key=lambda x: (x.split("-")[0], int(x.split("-")[1]))):
             flag = "  <- REPETIDO" if len(set(seen[i])) > 1 or len(seen[i]) > 1 else ""
             print(f"{i}\t{', '.join(sorted(set(os.path.basename(p) for p in seen[i])))}{flag}")
+        return 0
+    if cmd == "termos":
+        if len(argv) < 3 or "--out" not in argv:
+            print("uso: re_tool.py termos <inventario.json> [--banco <pasta>] [--exclusoes '<json>'] --out <saida.json>", file=sys.stderr)
+            return 2
+        opt = lambda n: argv[argv.index(n) + 1] if n in argv else None
+        termos(argv[2], opt("--banco"), json.loads(opt("--exclusoes") or "[]"), opt("--out"), json.loads(opt("--outros-modulos") or "[]"))
+        return 0
+    if cmd == "afetados":
+        opt = lambda n: argv[argv.index(n) + 1] if n in argv else None
+        read = lambda f: open(f, encoding="utf-8").read().splitlines() if f and os.path.exists(f) else []
+        afetados(argv[2], read(opt("--arquivos")), read(opt("--objetos")))
         return 0
     if cmd == "juntar":
         if len(argv) < 4:

@@ -164,6 +164,8 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Key).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
             entity.OwnsMany(e => e.Sources, s => s.ToJson());
             entity.Property(e => e.Aliases).HasColumnType("jsonb");
+            entity.Property(e => e.SuggestedTerms).HasColumnType("jsonb");
+            entity.Property(e => e.DismissedTerms).HasColumnType("jsonb");
             entity.Property(e => e.Notes).HasMaxLength(2000);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
@@ -185,6 +187,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Coverage).HasColumnType("jsonb");
             entity.Property(e => e.Session).HasColumnType("jsonb");
             entity.Property(e => e.Progress).HasColumnType("jsonb");
+            entity.Property(e => e.SuggestionDecisions).HasColumnType("jsonb");
             entity.Property(e => e.ReviewNote).HasMaxLength(ReverseRevision.MaxNoteLength);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
@@ -230,6 +233,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Refs).HasColumnType("jsonb");
             entity.Property(e => e.Evidence).HasColumnType("jsonb");
             entity.Property(e => e.Modules).HasColumnType("jsonb");
+            entity.Property(e => e.Synonyms).HasColumnType("jsonb");
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });

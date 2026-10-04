@@ -15,11 +15,19 @@
 #                                     edv-solvace inteiro nao e um modulo)
 #   inventario <modulo> [--path repo=subpasta ...]
 #                                     inventario deterministico do codigo -> $RE_HOME/<modulo>/inventario.json
+#   banco <modulo> [--prefix TB_X_ ...] [--sigla X]
+#                                     CATALOGO DO BANCO DA DEMO (0053, somente leitura): views, procedures, functions,
+#                                     triggers, tabelas (colunas, chaves, checks) e jobs do SQL Agent do modulo, global e
+#                                     locais -> $RE_HOME/<modulo>/banco/ (+ inventario-banco.json para a cobertura)
+#   termos <modulo>                   termos do modulo para o GLOSSARIO (rotulos da tela, menus, siglas, traducoes)
+#   trabalho <modulo> <doc>           MELHORAR (0053): o que mudou no codigo (commits) e no banco desde a versao
+#                                     publicada e os itens afetados -> trabalho.md
 #   check <modulo> <doc> [arquivo]    cobertura do inventario + checagem do PRMake (erros barram o envio)
 #   save <modulo> <doc> [arquivo] [--summary "..."]
 #                                     grava o rascunho no PRMake (sem enviar)
-#   submit <modulo> <doc> [arquivo] --summary "o que mudou"
-#                                     grava e envia para revisao (aprovacao na tela)
+#   submit <modulo> <doc> [arquivo] --summary "o que mudou" [--sugestoes decisoes.json]
+#                                     grava e envia para revisao (aprovacao na tela); decisoes.json = o que foi feito com
+#                                     cada sugestao do pacote: [{"suggestionId","decision":"aplicada|recusada","items":[..],"note"}]
 #   etapa <modulo> <doc> <chave> <pending|running|completed|failed|skipped> [--title T] [--detail D]
 #                                     ANDAMENTO ao vivo na tela (chaves: inventario, leitura, checagem; areas: area:<nome>)
 #   atividade <modulo> <doc> "texto"  o que esta fazendo agora (aparece na tela, linha "agora")
@@ -46,6 +54,8 @@ esac
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL_PY="$HERE/re_tool.py"
+BANCO_PY="$HERE/re_banco.py"
+SQL_SH="${RE_SQL:-$HOME/.claude/skills/analisar-bug/scripts/sql-query.sh}"
 RE_HOME="${RE_HOME:-${PRMAKE_HOME:-$HOME/.prmake}/reverse}"
 SKILLS_TOOL="${PRMAKE_SKILLS_TOOL:-$HOME/.claude/skills/.prmake/prmake-skills.sh}"
 CMD="${1:-}"; shift || true
@@ -105,6 +115,9 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
   [[ $n -gt 0 ]] || return 3
   return $missing
 }
+
+# Inventários a mais (0053): banco da DEMO e termos do glossário, quando já foram gerados.
+extra_inv() { local m; m="$(moddir "$1")"; for f in "$m/banco/inventario-banco.json" "$m/inventario-termos.json"; do [[ -s "$f" ]] && printf -- '--extra\n%s\n' "$f"; done; }
 
 doc_file() { # <modulo> <doc> [arquivo]
   local f="${3:-}"; [[ -z "$f" ]] && f="$(docdir "$1" "$2")/documento.md"
@@ -212,7 +225,10 @@ case "$CMD" in
       "Secoes obrigatorias (##): " + (.docType.headings | join(" · ")),
       "Itens deste documento: " + (.docType.kinds | join(", ")) + " (+ GAP) · cobertura minima do inventario: \(.minCoverage * 100 | floor)%",
       (if .reviewNote then "NOTA DO REVISOR (resolva primeiro): \(.reviewNote)" else empty end),
-      (if .revision.publishedChangedSinceBase then "AVISO: a versao publicada mudou depois que este rascunho comecou — compare com publicado.md" else empty end)' "$D/sessao.json"
+      (if .revision.publishedChangedSinceBase then "AVISO: a versao publicada mudou depois que este rascunho comecou — compare com publicado.md" else empty end),
+      (if .referenceDatabase then "Banco de referencia: \(.referenceDatabase.environment) (\(.referenceDatabase.host): \(.referenceDatabase.global) + \(.referenceDatabase.locals | join(", "))) — re.sh banco \(.revision.moduleKey)" else empty end),
+      (if .revision.mode == "improve" and .publishedSession then "MELHORAR: rode re.sh trabalho \(.revision.moduleKey) \(.revision.docType) (o que mudou no codigo e no banco desde a versao publicada)" else empty end),
+      (if (.suggestions|length) > 0 then "Sugestoes: decida cada uma (aplicada + itens / recusada + motivo) e envie com --sugestoes decisoes.json" else empty end)' "$D/sessao.json"
     progress "$MOD" "$DOC" "$(jq -c --arg h "${USER:-?}@$(hostname -s 2>/dev/null || echo maquina)" '{log: "Claude em \($h): pacote da sessao baixado (\(.suggestions|length) sugestoes, \(.module.assets|length) anexos\(if .publishedVersion then ", publicado v\(.publishedVersion)" else "" end))", kind: "progress"}' "$D/sessao.json")"
     echo "Andamento ao vivo na tela: re.sh etapa|atividade|log (o inventario, a checagem e o rascunho ja reportam sozinhos)."
     ;;
@@ -243,12 +259,101 @@ case "$CMD" in
     done < "$TMP/sources" > "$(moddir "$MOD")/fontes.tsv"
     ;;
 
+  banco)
+    MOD="${1:?modulo}"; shift
+    [[ -f "$SQL_SH" ]] || die "sql-query.sh nao encontrado ($SQL_SH) — instale a skill analisar-bug (prmake-skills.sh update analisar-bug)"
+    api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
+    jq -e '.referenceDatabase.global' "$TMP/settings.json" >/dev/null || die "banco de referencia nao configurado (Skills Configurations -> ReverseEngineeringReferenceDatabase)"
+    INV="$(moddir "$MOD")/inventario.json"
+    [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD (o banco usa as tabelas e procedures citadas no codigo)"
+    PREFIXES=(); SIGLA="$(opt --sigla "" "$@")"
+    while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && PREFIXES+=("$2"); shift; done
+    if [[ ${#PREFIXES[@]} -eq 0 ]]; then
+      # prefixos TB_<SIGLA>_ mais citados pelo código do módulo (fora os compartilhados: WCM, SYS, GLB, EMP, MLG…)
+      while IFS= read -r p; do [[ -n "$p" ]] && PREFIXES+=("$p"); done < <(jq -r '[.items[] | select(.cat == "tabela") | .name | ascii_upcase
+        | (capture("^(?<p>TB_[A-Z0-9]+_)") | .p)] | map(select(test("^TB_(WCM|SYS|GLB|EMP|MLG|CMN|AUD|LOG)_") | not))
+        | group_by(.) | map({p: .[0], n: length}) | sort_by(-.n) | (.[0].n // 0) as $top | map(select(.n * 2 >= $top)) | .[:3][] | .p' "$INV")
+    fi
+    [[ ${#PREFIXES[@]} -gt 0 ]] || die "nao achei o prefixo das tabelas do modulo — informe: re.sh banco $MOD --prefix TB_<SIGLA>_ --sigla <SIGLA>"
+    [[ -n "$SIGLA" ]] || SIGLA="$(printf '%s' "${PREFIXES[0]}" | sed -E 's/^TB_([A-Z0-9]+)_$/\1/')"
+    ENVN="$(jq -r '.referenceDatabase.environment' "$TMP/settings.json")"; HOSTA="$(jq -r '.referenceDatabase.host' "$TMP/settings.json")"
+    ARGS=(catalogo --sql "$SQL_SH" --host "$HOSTA" --environment "$ENVN" --global "$(jq -r '.referenceDatabase.global' "$TMP/settings.json")"
+          --sigla "$SIGLA" --inventario "$INV" --out "$(moddir "$MOD")/banco")
+    while IFS= read -r l; do ARGS+=(--local "$l"); done < <(jq -r '.referenceDatabase.locals[]?' "$TMP/settings.json")
+    for p in "${PREFIXES[@]}"; do ARGS+=(--prefix "$p"); done
+    echo "Banco de referencia $ENVN ($HOSTA): prefixos ${PREFIXES[*]} · sigla $SIGLA"
+    for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg a "Lendo o banco $ENVN (global e locais): ${PREFIXES[*]}" '{step: "banco", status: "running", activity: $a}')"; done
+    if python3 "$BANCO_PY" "${ARGS[@]}" > "$TMP/banco.out"; then
+      cat "$TMP/banco.out"
+      DETAIL="$(grep -m1 '^Banco' "$TMP/banco.out" | cut -c1-380)"
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "banco", status: "completed", detail: $dt, log: $dt, kind: "progress"}')"; done
+    else
+      RC=$?; cat "$TMP/banco.out"
+      MSG="Sem acesso ao banco $ENVN ($HOSTA) — ligue a VPN e confira a credencial (prmake-skills.sh db-credentials); o documento registra GAP se seguir sem o banco"
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg m "$MSG" '{step: "banco", status: "failed", detail: $m, log: $m, kind: "error"}')"; done
+      die "$MSG" 
+    fi
+    ;;
+
+  termos)
+    MOD="${1:?modulo}"
+    INV="$(moddir "$MOD")/inventario.json"; [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD"
+    api GET "/settings"; check; EXCL="$(jq -c '.glossaryExclusions // []' "$TMP/resp")"
+    api GET "/modules"; check
+    # nomes de outros módulos (e as siglas de 2–4 letras das palavras-chave deles) não são termos deste módulo
+    OUTROS="$(jq -c --arg m "$MOD" '[.[] | select(.key != $m) | (.displayName // .name), .name, .aliases[]] | map(select(. != null)) | unique' "$TMP/resp")"
+    python3 "$TOOL_PY" termos "$INV" --banco "$(moddir "$MOD")/banco" --exclusoes "$EXCL" --outros-modulos "$OUTROS" --out "$(moddir "$MOD")/inventario-termos.json"
+    ;;
+
+  trabalho)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"
+    [[ -s "$D/sessao.json" ]] || die "abra a sessao antes: re.sh start $MOD $DOC improve"
+    [[ -s "$D/publicado.md" ]] || { echo "Sem versao publicada — nao ha o que comparar (documento novo)."; exit 0; }
+    : > "$TMP/arquivos"; : > "$TMP/objetos"; OUT="$D/trabalho.md"
+    { echo "# Lista de trabalho — $MOD / $DOC (o que mudou desde a versao publicada)"; echo; } > "$OUT"
+    echo "## Codigo" >> "$OUT"
+    while IFS=$'\x1f' read -r role path commit; do
+      [[ -z "$path" ]] && continue
+      sha="${commit%%@*}"
+      if [[ -z "$sha" || ! -d "$path" ]]; then echo "- $role $path: sem commit gravado/pasta ausente — revise pelo inventario completo" >> "$OUT"; continue; fi
+      if ! git -C "$path" cat-file -e "$sha^{commit}" 2>/dev/null; then echo "- $role $path: commit $sha nao existe mais neste clone — revise pelo inventario completo" >> "$OUT"; continue; fi
+      CH="$(git -C "$path" diff --name-status "$sha"..HEAD -- . 2>/dev/null)"
+      echo "- $role \`$path\` desde $sha: $(printf '%s' "$CH" | grep -c . | tr -d ' ') arquivo(s)" >> "$OUT"
+      printf '%s\n' "$CH" | grep . | sed 's/^/  - /' | head -200 >> "$OUT"
+      # linhas alteradas (lado antigo = o que o documento publicado cita) por arquivo: "arquivo<TAB>ini-fim,ini-fim"
+      git -C "$path" diff -U0 "$sha"..HEAD -- . 2>/dev/null | awk '
+        /^--- a\// { f = substr($0, 7); next }
+        /^--- \/dev\/null/ { f = ""; next }
+        /^\+\+\+ b\// { if (f == "") f = substr($0, 7); next }
+        /^@@/ { split($2, o, ","); a = substr(o[1], 2) + 0; n = (o[2] == "" ? 1 : o[2] + 0); if (n == 0) n = 1;
+                r[f] = r[f] (r[f] == "" ? "" : ",") a "-" (a + n - 1) }
+        END { for (k in r) print k "\t" r[k] }' >> "$TMP/arquivos"
+    done < <(jq -r '.publishedSession.sources[]? | [.role, .path, .commit] | join("\u001f")' "$D/sessao.json")
+    echo >> "$OUT"; echo "## Banco ($(jq -r '.referenceDatabase.environment // "DEMO"' "$D/sessao.json"))" >> "$OUT"
+    CAT="$(moddir "$MOD")/banco/catalogo.json"
+    if jq -e '.publishedSession.catalog' "$D/sessao.json" >/dev/null 2>&1 && [[ -s "$CAT" ]]; then
+      jq '.publishedSession.catalog' "$D/sessao.json" > "$TMP/antigo.json"
+      python3 "$BANCO_PY" diff "$TMP/antigo.json" "$CAT" > "$TMP/diff.json"
+      jq -r '"- novos: \(.novos | join(", "))", "- alterados: \(.alterados | join(", "))", "- removidos: \(.removidos | join(", "))"' "$TMP/diff.json" >> "$OUT"
+      jq -r '(.novos + .alterados + .removidos)[] | sub("^job "; "")' "$TMP/diff.json" >> "$TMP/objetos"
+    else
+      echo "- sem retrato do banco na versao publicada (ou rode re.sh banco $MOD) — compare pelo catalogo atual" >> "$OUT"
+    fi
+    echo >> "$OUT"; echo "## Itens publicados afetados (citam o que mudou)" >> "$OUT"
+    python3 "$TOOL_PY" afetados "$D/publicado.md" --arquivos "$TMP/arquivos" --objetos "$TMP/objetos" | sed 's/^/- /; s/\t/ — por /' >> "$OUT"
+    NA="$(grep -c . "$TMP/arquivos" | tr -d ' ')"; NO="$(grep -c . "$TMP/objetos" | tr -d ' ')"; NI="$(grep -c '^- [A-Z]' <(sed -n '/Itens publicados afetados/,$p' "$OUT") | tr -d ' ')"
+    MSG="$NA arquivo(s) e $NO objeto(s) do banco mudaram desde a versao publicada → $NI item(ns) a revisar"
+    echo; cat "$OUT"; echo; echo "$MSG"
+    progress "$MOD" "$DOC" "$(jq -n --arg m "$MSG" '{log: ("Lista de trabalho do melhorar: " + $m), kind: "progress", activity: $m}')"
+    ;;
+
   check)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; F="$(doc_file "$MOD" "$DOC" "${3:-}")"
     INV="$(moddir "$MOD")/inventario.json"; RATIO=null
     progress "$MOD" "$DOC" '{"step":"checagem","status":"running","activity":"Checando estrutura e cobertura do inventario"}'
     if [[ -s "$INV" ]]; then
-      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}"
+      EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
+      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}" "${EXTRA[@]}"
       RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
     else
       echo "(sem inventario — rode: re.sh inventario $MOD)"
@@ -272,16 +377,28 @@ case "$CMD" in
     SUMMARY="$(opt --summary "" "$@")"
     [[ "$CMD" == submit && -z "$SUMMARY" ]] && die "informe --summary \"o que este documento cobre / o que mudou\" (o revisor le)"
     COV="$(docdir "$MOD" "$DOC")/cobertura.json"; INV="$(moddir "$MOD")/inventario.json"
-    if [[ -s "$INV" ]]; then python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$COV" --max 0 >/dev/null; fi
+    if [[ -s "$INV" ]]; then
+      EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
+      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$COV" --max 0 "${EXTRA[@]}" >/dev/null
+    fi
     [[ -s "$COV" ]] || echo '{}' > "$COV"
     FONTES="$(moddir "$MOD")/fontes.tsv"; [[ -s "$FONTES" ]] || : > "$FONTES"
-    jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" \
-      --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
+    # 0053: retrato do banco (objetos/jobs com hash e data) guardado na revisão — o próximo "melhorar" compara
+    CAT="$(moddir "$MOD")/banco/catalogo.json"
+    if [[ -s "$CAT" ]]; then python3 "$BANCO_PY" snapshot "$CAT" > "$TMP/snapshot.json"; else echo 'null' > "$TMP/snapshot.json"; fi
+    DEC="$(opt --sugestoes "" "$@")"
+    if [[ -n "$DEC" ]]; then [[ -s "$DEC" ]] || die "arquivo de decisoes nao encontrado: $DEC"; jq -e 'type == "array"' "$DEC" >/dev/null || die "$DEC precisa ser uma lista JSON"
+      jq -e 'all(.[]; ((.suggestionId // .id // "") | test("^[0-9a-fA-F-]{36}$")))' "$DEC" >/dev/null || die "$DEC: toda decisao precisa do suggestionId (o id da sugestao em sugestoes.md)"
+      cp "$DEC" "$TMP/decisoes.json"; else echo 'null' > "$TMP/decisoes.json"; fi
+    jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
+      --slurpfile dec "$TMP/decisoes.json" --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
       {content: $c,
        coverage: ($cov[0] | {total, covered, ratio, byCategory, missingCount, missing: ((.missing // [])[:200])}),
        coverageRatio: ($cov[0].ratio),
-       session: {sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]})), inventory: $counts, tool: "re.sh"}}
-      + (if $s == "" then {} else {summary: $s} end)' > "$TMP/body"
+       session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]})), inventory: $counts, tool: "re.sh"}
+                 + (if $snap[0] == null then {} else {catalog: $snap[0]} end))}
+      + (if $s == "" then {} else {summary: $s} end)
+      + (if $dec[0] == null then {} else {suggestionDecisions: ($dec[0] | map({suggestionId: (.suggestionId // .id), decision: (.decision // .decisao), items: (.items // .itens // []), note: (.note // .motivo // .nota)}))} end)' > "$TMP/body"
     api PUT "/revisions/$ID" "$TMP/body"; check
     if [[ "$CMD" == submit ]]; then
       api POST "/revisions/$ID/submit"; check

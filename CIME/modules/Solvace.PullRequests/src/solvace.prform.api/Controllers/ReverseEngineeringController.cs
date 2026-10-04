@@ -20,7 +20,8 @@ namespace solvace.prform.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
 public class ReverseEngineeringController(IReverseEngineeringApplication application, solvace.timeline.application.Contracts.IUserRepository users,
-    Cime.BuildingBlocks.RealTime.IRealTimeNotifier realTime, ILogger<ReverseEngineeringController> logger) : ControllerBase
+    Cime.BuildingBlocks.RealTime.IRealTimeNotifier realTime, solvace.executionplans.application.Contracts.IExecutionTimelineWriter timeline,
+    ILogger<ReverseEngineeringController> logger) : ControllerBase
 {
     /// <summary>Grupo do tempo real de um módulo (a tela do módulo assina) e o da lista de módulos.</summary>
     public static string Group(string moduleKey) => $"reverse:{moduleKey}";
@@ -49,6 +50,11 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     [HttpPut("modules/{key}")]
     public Task<ActionResult<ReverseModuleResponse>> UpsertModule([FromRoute] string key, [FromBody] UpsertReverseModuleRequest request, CancellationToken ct) =>
         Run<ReverseModuleResponse>(async () => Ok(await application.UpsertModuleAsync(key, request, await ActorAsync(ct), Roles(), ct)));
+
+    /// <summary>Termo sugerido pelo glossário (0053): alias (apelido do módulo) | keyword (palavra-chave) | dismiss.</summary>
+    [HttpPost("modules/{key}/terms")]
+    public Task<ActionResult<ReverseModuleResponse>> ResolveTerm([FromRoute] string key, [FromBody] ResolveReverseTermRequest request, CancellationToken ct) =>
+        Run<ReverseModuleResponse>(async () => Ok(await application.ResolveTermAsync(key, request, await ActorAsync(ct), Roles(), ct)));
 
     [HttpGet("modules/{key}/docs/{doc}")]
     public Task<ActionResult<ReverseDocResponse>> Doc([FromRoute] string key, [FromRoute] string doc, CancellationToken ct) =>
@@ -103,7 +109,28 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     /// <summary>Publica a revisão aprovada na Base Solvace (seção re-*, índice por item, integrações no grafo).</summary>
     [HttpPost("revisions/{id:guid}/publish")]
     public Task<ActionResult<ReverseRevisionResponse>> Publish([FromRoute] Guid id, [FromBody] PublishReverseRevisionRequest? request, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.PublishAsync(id, request ?? new(), await ActorAsync(ct), Roles(), ct))));
+        Run<ReverseRevisionResponse>(async () =>
+        {
+            var actor = await ActorAsync(ct);
+            var revision = await NotifyAsync(await application.PublishAsync(id, request ?? new(), actor, Roles(), ct));
+            await TellCardsAsync(revision, actor, ct);
+            return Ok(revision);
+        });
+
+    /// <summary>0053: a sugestão que veio de um card e foi aplicada/recusada fica registrada na Timeline do card.</summary>
+    private async Task TellCardsAsync(ReverseRevisionResponse revision, string actor, CancellationToken ct)
+    {
+        foreach (var byCard in revision.ResolvedSuggestions.Where(s => !string.IsNullOrWhiteSpace(s.CardNumber)).GroupBy(s => s.CardNumber!))
+        {
+            var lines = byCard.Select(s => s.Decision == "applied"
+                ? $"- ✅ aplicada{(s.Items.Count > 0 ? $" ({string.Join(", ", s.Items)})" : "")}{(s.Note is null ? "" : $": {s.Note}")}"
+                : $"- ❌ recusada: {s.Note}");
+            var markdown = $"**Engenharia reversa — {revision.ModuleName ?? revision.ModuleKey} ({revision.DocType})**: a sugestão deste card foi tratada "
+                           + $"na revisão #{revision.Number}, publicada por {actor}.\n" + string.Join("\n", lines);
+            try { await timeline.WriteAsync(byCard.Key, markdown, null, actor, ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { logger.LogWarning(e, "Timeline do card {Card} não registrou a sugestão", byCard.Key); }
+        }
+    }
 
     // ── UI/UX ───────────────────────────────────────────────────────────────────────────────────
 

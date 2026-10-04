@@ -65,6 +65,7 @@ public class ReverseEngineeringApplicationTests
         ## Configurações e parâmetros
         ## Relatórios e indicadores
         ## Integrações com outros módulos
+        ## Glossário
         ## Lacunas e pontos a confirmar
         """;
 

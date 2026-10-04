@@ -58,13 +58,18 @@ public static partial class ArchitectureSearch
         return terms.Distinct().Take(24).ToList();
     }
 
+    /// <summary>Radical de uma palavra já normalizada (o mesmo da busca) — para os sinônimos (0053).</summary>
+    public static string StemWord(string word) => Stem(word);
+
     /// <summary>Radical simples para palavras; nomes técnicos (com _ ou dígito, ex.: TB_WCM_USER) ficam inteiros.</summary>
     private static string Stem(string word) =>
         word.Length > 5 && !word.Contains('_') && !word.Any(char.IsDigit) ? word[..(word.Length - 2)] : word;
 
     public static List<ArchitectureSearchHit> Run(IReadOnlyList<ArchitectureProject> projects, IReadOnlyList<KnowledgeArticle> articles,
-        IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects = null, IReadOnlyCollection<string>? boostSections = null)
+        IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects = null, IReadOnlyCollection<string>? boostSections = null,
+        ReverseSynonyms? synonyms = null)
     {
+        synonyms ??= ReverseSynonyms.Empty;
         if (terms.Count == 0) return [];
         var hits = new List<ArchitectureSearchHit>();
         var minCoverage = terms.Count >= 3 ? 0.34 : 0.0;
@@ -84,10 +89,17 @@ public static partial class ArchitectureSearch
                 var firstPos = -1;
                 foreach (var term in terms)
                 {
-                    var inTitle = title.Contains(term);
-                    var inProject = projectText.Contains(term);
+                    // 0053: o termo casa também pelos sinônimos do glossário do projeto ("RCA" ↔ "A3").
+                    var alts = synonyms.Alternatives(project.Key, term);
+                    var inTitle = title.Contains(term) || alts.Any(title.Contains);
+                    var inProject = projectText.Contains(term) || alts.Any(projectText.Contains);
                     var count = Count(text, term, out var pos);
-                    var inHeading = headings.Any(h => h.Title.Contains(term));
+                    foreach (var alt in alts)
+                    {
+                        if (count > 0) break;
+                        count = Count(text, alt, out pos);
+                    }
+                    var inHeading = headings.Any(h => h.Title.Contains(term) || alts.Any(h.Title.Contains));
                     if (!inTitle && !inProject && count == 0) continue;
                     matched.Add(term);
                     score += (inTitle ? 6 : 0) + (inProject ? 3 : 0) + (inHeading ? 4 : 0) + (count > 0 ? 1 + Math.Min(count, 6) * 0.4 : 0);
@@ -114,8 +126,14 @@ public static partial class ArchitectureSearch
             var firstPos = -1;
             foreach (var term in terms)
             {
-                var inTitle = title.Contains(term);
+                var alts = synonyms.Alternatives("*", term);
+                var inTitle = title.Contains(term) || alts.Any(title.Contains);
                 var count = Count(text, term, out var pos);
+                foreach (var alt in alts)
+                {
+                    if (count > 0) break;
+                    count = Count(text, alt, out pos);
+                }
                 if (!inTitle && count == 0) continue;
                 matched.Add(term);
                 score += (inTitle ? 6 : 0) + (count > 0 ? 1 + Math.Min(count, 6) * 0.4 : 0);

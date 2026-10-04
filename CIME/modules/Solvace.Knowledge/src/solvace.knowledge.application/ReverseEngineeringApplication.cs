@@ -31,9 +31,16 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         {
             ApproverRoles = s.ApproverRoles.ToList(), RequiredDocs = s.RequiredDocs.ToList(), GateStep = s.GateStep, MinCoverage = s.MinCoverage,
             CanApprove = CanApprove(s, userRoles),
-            Kinds = ReverseItemKinds.All.Select(k => new ReverseItemKindResponse { Prefix = k.Prefix, Label = k.Label, Plural = k.Plural }).ToList()
+            Kinds = ReverseItemKinds.All.Select(k => new ReverseItemKindResponse { Prefix = k.Prefix, Label = k.Label, Plural = k.Plural }).ToList(),
+            ReferenceDatabase = ToReference(s.ReferenceDatabase),
+            GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList()
         };
     }
+
+    private static ReverseReferenceDatabaseResponse? ToReference(ReverseReferenceDatabase? r) => r is null ? null : new()
+    {
+        Environment = r.Environment, Host = r.Host, Global = r.Global, Locals = r.Locals.ToList()
+    };
 
     public static bool CanApprove(ReverseSettings settings, IReadOnlyCollection<string> userRoles) =>
         userRoles.Any(r => settings.ApproverRoles.Contains(r, StringComparer.OrdinalIgnoreCase));
@@ -168,7 +175,24 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             ? []
             : all.Where(p => p.Key != project.Key && p.BusinessArea == project.BusinessArea && ModuleKinds.Contains(p.Kind)).Select(p => p.Key).ToList();
         response.CanApprove = CanApprove(s, userRoles);
+        response.SuggestedTerms = module?.SuggestedTerms ?? [];
         return response;
+    }
+
+    /// <summary>Termo sugerido pelo glossário (0053): vira apelido do módulo, palavra-chave do projeto ou é dispensado.</summary>
+    public async Task<ReverseModuleResponse> ResolveTermAsync(string key, ResolveReverseTermRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        await RequireApproverAsync(userRoles, "aceitar termos do glossário", cancellationToken);
+        var normalized = ArchitectureProject.NormalizeKey(key);
+        var project = await repository.GetProjectForUpdateAsync(normalized, cancellationToken);
+        if (project is null || project.IsDeleted) throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
+        var module = await EnsureModuleAsync(project, actor, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        if (module.ResolveTerm(request.Term, request.Action, actor, now) is { } keyword && project.AddKeyword(keyword))
+            project.Touch(actor, now);
+        await repository.SaveChangesAsync(cancellationToken);
+        return await GetModuleAsync(project.Key, userRoles, cancellationToken);
     }
 
     /// <summary>Fontes sugeridas enquanto o módulo não foi configurado: o repositório do projeto (nome pela URL).</summary>
@@ -292,7 +316,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 .OrderBy(x => x.Order)
                 .Select(x => new ArchitectureSectionSummaryResponse { Id = x.Id, Key = x.Key, Title = x.Title, Order = x.Order, Version = x.Version, Length = x.Content.Length })
                 .ToList(),
-            MinCoverage = s.MinCoverage
+            MinCoverage = s.MinCoverage,
+            ReferenceDatabase = ToReference(s.ReferenceDatabase),
+            GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
+            PublishedSession = Element((await repository.GetPublishedRevisionsForUpdateAsync(project.Key, type.Key, cancellationToken))
+                .OrderByDescending(r => r.Number).FirstOrDefault()?.Session)
         };
     }
 
@@ -362,6 +390,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                       && revision.Status is not (ReverseRevisionStatus.Draft or ReverseRevisionStatus.Changes))
             throw new DomainException("Só quem abriu a sessão ou um aprovador edita uma revisão enviada.");
         revision.Save(request.Content, request.Summary, Raw(request.Coverage), request.CoverageRatio, Raw(request.Session), approver, actor, DateTimeOffset.UtcNow);
+        if (request.SuggestionDecisions is not null)
+            revision.SetSuggestionDecisions(JsonSerializer.Serialize(ReverseSuggestionDecision.Normalize(request.SuggestionDecisions), Json));
         var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
         revision.SetLint(JsonSerializer.Serialize(await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken), Json));
         await repository.SaveChangesAsync(cancellationToken);
@@ -443,8 +473,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         if (revision.Status != ReverseRevisionStatus.Approved)
             throw new DomainException($"Só revisão aprovada pode ser publicada (a #{revision.Number} está {ReverseRevision.Label(revision.Status)}).");
         var type = ReverseDocTypes.Get(revision.DocType);
+        // A estrutura (seções obrigatórias) foi checada no envio; aqui só barra o grave — assim uma revisão enviada antes de
+        // o modelo ganhar uma seção nova (0053: glossário, banco de dados) continua publicável.
         var lint = ReverseLint.Run(type, revision.Content);
-        if (lint.Errors.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", lint.Errors));
+        var blocking = lint.Errors.Where(e => !e.StartsWith("Faltam seções obrigatórias", StringComparison.Ordinal)).ToList();
+        if (blocking.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", blocking));
 
         var project = await repository.GetProjectForUpdateAsync(revision.ModuleKey, cancellationToken);
         if (project is null || project.IsDeleted) throw new KnowledgeNotFoundException($"Projeto '{revision.ModuleKey}' não encontrado.");
@@ -467,11 +500,37 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var items = ReverseDocParser.Parse(section.Content);
         await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken);
         if (type.Key == "arquitetura") MergeIntegrations(project, items);
+
+        // 0053: as sugestões que a sessão aplicou/recusou saem da fila com a revisão que as tratou.
+        var resolved = new List<ReverseSuggestionDecisionView>();
+        foreach (var decision in Decisions(revision))
+        {
+            var suggestion = await repository.GetSuggestionAsync(decision.SuggestionId, cancellationToken);
+            if (suggestion is null || suggestion.Status != ArchitectureSuggestionStatus.Pending) continue;
+            var resolution = decision.Decision == "applied"
+                ? $"Aplicada na revisão #{revision.Number} de {type.Title}" + (decision.Items.Count > 0 ? $" ({string.Join(", ", decision.Items)})" : "")
+                  + (decision.Note is null ? "" : $": {decision.Note}")
+                : $"Recusada na revisão #{revision.Number} de {type.Title}: {decision.Note}";
+            suggestion.Resolve(decision.Decision == "applied" ? ArchitectureSuggestionStatus.Applied : ArchitectureSuggestionStatus.Dismissed, resolution, actor, now);
+            resolved.Add(View(decision, suggestion));
+        }
+
+        // 0053: termos do glossário que ainda não são apelido nem palavra-chave viram sugestão na tela.
+        var module = await EnsureModuleAsync(project, actor, cancellationToken);
+        var glossary = items.Where(i => i.Kind == "GLO" && !i.Removed).SelectMany(i => new[] { i.Title }.Concat(i.Synonyms)).ToList();
+        if (glossary.Count > 0)
+        {
+            var others = (await ReverseSearch.EntriesAsync(repository, cancellationToken))
+                .Where(e => e.ModuleKey == project.Key && e.DocType != type.Key);
+            module.SuggestTerms(glossary.Concat(ReverseSynonyms.TermsOf(others, project.Key)), project.Keywords);
+        }
         await repository.SaveChangesAsync(cancellationToken);
         ReverseSearch.Invalidate();
 
         var fresh = FindProject(await repository.GetProjectsAsync(cancellationToken), project.Key);
-        return await ToRevisionAsync(revision, fresh, s, userRoles, withDiff: false, cancellationToken);
+        var response = await ToRevisionAsync(revision, fresh, s, userRoles, withDiff: false, cancellationToken);
+        response.ResolvedSuggestions = resolved;
+        return response;
     }
 
     /// <summary>Troca os itens do índice de um documento (usado ao publicar e quando a seção re-* é editada pela Base Solvace).</summary>
@@ -528,9 +587,33 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             CurrentPublishedVersion = section?.Version,
             PublishedChangedSinceBase = r.IsOpen && section is not null && r.BaseVersion != section.Version,
             Diff = withDiff ? Diff(section?.Content ?? string.Empty, r.Content) : null,
-            CanApprove = CanApprove(s, userRoles)
+            CanApprove = CanApprove(s, userRoles),
+            SuggestionDecisions = await DecisionViewsAsync(r, cancellationToken)
         };
     }
+
+    private static List<ReverseSuggestionDecision> Decisions(ReverseRevision r)
+    {
+        if (string.IsNullOrWhiteSpace(r.SuggestionDecisions)) return [];
+        try { return JsonSerializer.Deserialize<List<ReverseSuggestionDecision>>(r.SuggestionDecisions, Json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private async Task<List<ReverseSuggestionDecisionView>> DecisionViewsAsync(ReverseRevision r, CancellationToken cancellationToken)
+    {
+        var decisions = Decisions(r);
+        if (decisions.Count == 0) return [];
+        var views = new List<ReverseSuggestionDecisionView>();
+        foreach (var d in decisions)
+            views.Add(View(d, await repository.GetSuggestionAsync(d.SuggestionId, cancellationToken)));
+        return views;
+    }
+
+    private static ReverseSuggestionDecisionView View(ReverseSuggestionDecision d, ArchitectureSuggestion? s) => new()
+    {
+        SuggestionId = d.SuggestionId, Decision = d.Decision, Items = d.Items, Note = d.Note, Kind = s?.Kind, SectionKey = s?.SectionKey,
+        Content = s is null ? null : s.Content.Length <= 600 ? s.Content : s.Content[..600] + "…", CardNumber = s?.CardNumber, Status = s?.Status
+    };
 
     /// <summary>Diferença por item (ID): o que o revisor precisa ver — itens novos, removidos e alterados.</summary>
     public static ReverseRevisionDiff Diff(string published, string draft)
@@ -893,7 +976,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     [GeneratedRegex(@"\b(?:revamp|legado|legacy|novo|antigo|new|old)\b|[()\[\]]")]
     private static partial Regex WorldWords();
 
-    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|FN|UC|RN|DB|UI)-\d{1,4}\b")]
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-\d{1,4}\b")]
     private static partial Regex CitedRefs();
 }
 
