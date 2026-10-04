@@ -6,6 +6,7 @@
     "git"
   ],
   "depends": [
-    "base-solvace"
+    "base-solvace",
+    "analisar-bug"
   ]
 }
