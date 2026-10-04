@@ -10,9 +10,11 @@
 | S1 | ⏸ aguardando | Claude | — |
 | S2 | ⏸ aguardando | Claude | — |
 | F1 | ⏸ aguardando | Claude | — |
+| F2 | ⏸ aguardando | Claude | — |
 | T1 | ⏸ aguardando | Claude | — |
 
 ## Log
 - 2026-10-04 — spec e plano escritos a pedido do usuário; worktree `prform.api-0053` (branch `feature/0053` a partir de
   `origin/master` 15151d6). Perguntas em aberto na spec.
 - 2026-10-04 — respostas do usuário na spec: bancos DEMO (global + 3 locais, alias prod), msdb acessível, revamp nos mesmos bancos (foco no global), glossário sem número fixo. Primeira leitura: global com 442 tabelas, 18 views, 4 triggers, sem procedures; locais deram timeout (VPN).
+- 2026-10-04 — §5 na spec: clique no sumário que não rolava (temporário no piloto SA3) — âncoras aplicadas uma vez só (engenharia reversa) e títulos com _/*/código/link que nunca rolam na Base Solvace (13 de 186 no SA3); fase F2.

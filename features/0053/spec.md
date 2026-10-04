@@ -102,6 +102,26 @@ Hoje:
 - **Aba "Glossário"** na tela Engenharia reversa: termos de todos os módulos, com sinônimos, módulo (legado × revamp)
   e onde aparecem; busca por termo.
 
+### 5. Correção: clique no sumário não rola até o item (relatado em 2026-10-04, piloto SA3)
+Relato: na aba do levantamento funcional, clicar num item do sumário (PRF, FN, UC…) às vezes não levava ao ponto
+exato; depois voltou a funcionar sozinho. Investigado com o documento real do `legado-rca` (85 mil caracteres, 175
+itens), sem reproduzir a falha na tela Engenharia reversa — mas com duas causas concretas:
+- **Engenharia reversa — âncoras aplicadas uma vez só**: os `id="item-RN-012"` são postos por um `setTimeout` depois de
+  carregar o documento (`decorate()`); a app é *zoneless*, então em documento grande o clique pode chegar antes, e um
+  redesenho do conteúdo sem recarga deixa o documento sem âncoras — o clique não acha o item e nada acontece.
+  Correção: aplicar as âncoras **a cada renderização** do conteúdo (`afterRenderEffect`/`MutationObserver` no
+  `#docContent`, ou âncoras geradas já no HTML pelo renderizador de markdown) e, no clique, se o item ainda não tiver
+  âncora, decorar e tentar de novo; diagramas mermaid renderizados depois do clique não podem deslocar o destino (rolar
+  de novo ao terminar a renderização).
+- **Base Solvace — títulos com `_`, `*`, `` ` `` ou link nunca rolam**: o sumário compara o texto do título tirando
+  essas marcas só de um lado (`cleanInline` × `textContent`) — no SA3, 13 de 186 títulos (ex.: `EST-001 — A3
+  (TB_SA3_A3.ID_STATUS)`, `CFG-002 — … RCA_FISHBONE_DISABLED`). Correção: casar pela mesma normalização dos dois
+  lados ou por âncora (id) gerada no título, e usar o ID do item quando o título começa com um.
+- Nos dois: o título para colado na barra superior (topo 70 px = altura da barra) — `scroll-margin-top` maior e
+  destaque rápido no item (como no `?i=` da engenharia reversa).
+- Teste: no T1, clicar em todos os itens do sumário do `legado-rca` nas duas telas (inclusive logo após abrir e depois
+  de voltar do Índice) e conferir o topo do título visível.
+
 ## Fora do escopo
 - Usar os scripts `solvace-asp/#database/…` ou migrações versionadas como fonte (decisão do usuário).
 - Banco de clientes que não a DEMO como referência (o catálogo é de referência; divergência de um cliente específico
