@@ -329,7 +329,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Published = section?.Content,
             PublishedVersion = section?.Version,
             Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
-                .Where(x => x.ProjectKey == project.Key).Take(40).Select(ToSuggestion).ToList(),
+                .Where(x => x.ProjectKey == project.Key && ForDocument(x, type)).Take(40).Select(ToSuggestion).ToList(),
             ReviewNote = revision.ReviewNote ?? lastChanges?.ReviewNote,
             OtherDocIds = OtherDocIds(entries, project.Key, type.Key),
             Related = RenderRelated(project, all, entries),
@@ -551,7 +551,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         foreach (var decision in Decisions(revision))
         {
             var suggestion = await repository.GetSuggestionAsync(decision.SuggestionId, cancellationToken);
-            if (suggestion is null || suggestion.Status != ArchitectureSuggestionStatus.Pending) continue;
+            if (suggestion is null || suggestion.Status != ArchitectureSuggestionStatus.Pending || !ForDocument(suggestion, type)) continue;
             var resolution = decision.Decision == "applied"
                 ? $"Aplicada na revisão #{revision.Number} de {type.Title}" + (decision.Items.Count > 0 ? $" ({string.Join(", ", decision.Items)})" : "")
                   + (decision.Note is null ? "" : $": {decision.Note}")
@@ -636,6 +636,14 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             SuggestionDecisions = await DecisionViewsAsync(r, cancellationToken)
         };
     }
+
+    /// <summary>
+    /// 0054: a sugestão é deste documento — aponta a seção dele, ou nenhuma seção da engenharia reversa (as antigas, da
+    /// base de antes). A de outro documento fica para a sessão dele (a visão prática não aplica nem fecha a do funcional).
+    /// </summary>
+    private static bool ForDocument(ArchitectureSuggestion suggestion, ReverseDocType type) =>
+        suggestion.SectionKey == type.SectionKey
+        || !(suggestion.SectionKey ?? string.Empty).StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal);
 
     private static List<ReverseSuggestionDecision> Decisions(ReverseRevision r)
     {

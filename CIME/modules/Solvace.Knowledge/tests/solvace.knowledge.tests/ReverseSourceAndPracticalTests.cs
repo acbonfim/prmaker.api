@@ -225,6 +225,32 @@ public class ReverseSourceAndPracticalTests
     }
 
     [Fact]
+    public async Task Each_session_gets_and_resolves_only_the_suggestions_of_its_own_document()
+    {
+        var (app, arch, repo) = Create();
+        await PublishAsync(app, "funcional", Funcional);
+        var func = await arch.SuggestAsync(new CreateArchitectureSuggestionRequest { ProjectKey = "legado-rca", SectionKey = "re-funcional", ItemId = "RN-001", Kind = "learning", Content = "aprendizado do funcional" }, "analise", default);
+        var old = await arch.SuggestAsync(new CreateArchitectureSuggestionRequest { ProjectKey = "legado-rca", SectionKey = "regras-de-negocio", Kind = "learning", Content = "sugestão da base antiga" }, "analise", default);
+        await app.RecordQuestionGapAsync("legado-rca", "Como exportar o A3 em PDF?", "user", default);
+
+        var pack = await app.StartSessionAsync("legado-rca", "pratica", new StartReverseSessionRequest(), "dev", Dev, default);
+        Assert.DoesNotContain(pack.Suggestions, x => x.Id == func.Id);          // é do funcional: fica para a sessão dele
+        Assert.Contains(pack.Suggestions, x => x.Id == old.Id);                 // sem documento da ER: qualquer sessão trata
+        var gap = Assert.Single(pack.Suggestions, x => x.SectionKey == "re-pratica");
+
+        // decisão sobre a sugestão de outro documento é ignorada na publicação
+        await app.SaveRevisionAsync(pack.Revision.Id, new SaveReverseRevisionRequest
+        {
+            Content = Practical,
+            SuggestionDecisions = [new() { SuggestionId = func.Id, Decision = "applied" }, new() { SuggestionId = gap.Id, Decision = "applied", Items = ["FAQ-001"] }]
+        }, "dev", Dev, default);
+        await app.SubmitAsync(pack.Revision.Id, "dev", Dev, default);
+        await app.PublishAsync(pack.Revision.Id, new PublishReverseRevisionRequest { Approve = true }, "gestor", Approver, default);
+        Assert.Equal(ArchitectureSuggestionStatus.Pending, (await repo.GetSuggestionAsync(func.Id, default))!.Status);
+        Assert.Equal(ArchitectureSuggestionStatus.Applied, (await repo.GetSuggestionAsync(gap.Id, default))!.Status);
+    }
+
+    [Fact]
     public async Task The_analysis_gate_uses_only_the_technical_docs()
     {
         var (app, _, _) = Create(["funcional", "pratica"]);

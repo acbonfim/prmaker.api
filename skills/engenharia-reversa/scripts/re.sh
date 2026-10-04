@@ -491,7 +491,9 @@ case "$CMD" in
   get)
     CARD="$(opt --card "" "$@")"; REFS="$(positional "$@" | paste -sd, -)"
     api GET "/items?refs=$(urlenc "$REFS")&card=$(urlenc "$CARD")"; check
-    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\n\(.body)\n"' "$TMP/resp"
+    # 0054: as armadilhas (o que ja deu errado) vem junto com o item
+    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\n\(.body)\n",
+      (.traps // [] | .[] | "  ARMADILHA\(if .needsReview then " (a conferir)" else "" end): \(.title)\(if (.cards|length) > 0 then " · cards " + (.cards[:4]|join(", ")) else "" end)\n    \(.text | gsub("\n"; "\n    "))\n")' "$TMP/resp"
     ;;
 
   impact)

@@ -105,7 +105,9 @@ public static partial class ReverseLint
             result.Errors.Add("O texto parece conter credencial/segredo (senha, connection string, chave ou token) — só nomes de recursos e chaves.");
 
         if (coverage is { } c && minCoverage > 0 && c < minCoverage)
-            result.Warnings.Add($"Cobertura do inventário {c:P0} abaixo do mínimo {minCoverage:P0} — itens do código sem menção no documento.");
+            result.Warnings.Add(type.Derived
+                ? $"Perguntas reais respondidas {c:P0} abaixo do mínimo {minCoverage:P0} — responda com FAQ/TUT (com a fonte) ou registre a lacuna no documento técnico."
+                : $"Cobertura do inventário {c:P0} abaixo do mínimo {minCoverage:P0} — itens do código sem menção no documento.");
         return result;
     }
 
