@@ -32,7 +32,16 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Referencias so por secao, so na hora**: `bash $REF <arquivo> <secao>` (tabela no fim). **Nunca** `cat`/Read de
   um arquivo inteiro de `references/`, nunca varios de uma vez, nunca "para ja ter". Esta SKILL.md ja esta no
   contexto — nao a releia (so se o passo 0 disser que atualizou).
-- **Base Solvace antes do codigo (obrigatorio, economiza turnos)**: a PRIMEIRA consulta sobre o codigo e a base:
+- **Engenharia reversa primeiro (0052, obrigatorio)**: o `contexto` ja traz o bloco `=== ENGENHARIA REVERSA` com os
+  itens do modulo do card (regras `RN`, casos de uso `UC`, telas, endpoints, tabelas) que casam com o titulo/repro — e o
+  texto dos primeiros. Investigue **a partir deles**: `prmake_base_search(query, module, kinds, card)` para outros
+  assuntos (barato: so referencias) → `prmake_base_get(refs, card)` para o texto do item → `prmake_base_impact(tabela|item)`
+  para quem mais usa. **Sempre com `card`** (registra a consulta). O codigo entra so para **confirmar o `Onde:`** que o
+  item cita (Read com offset/limit naquele arquivo:linha) ou quando a base nao tem o assunto — ai e lacuna: diga qual e
+  registre (`arch.sh suggest <modulo> re-funcional lacuna.md --kind gap --card <card>`). Modulo com engenharia
+  **COMPLETA**: a etapa `investigar-codigo` so conclui citando no resumo os itens usados (`revamp-kaizen#RN-012`) ou
+  `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA.
+- **Base antiga (modulo sem engenharia reversa)**: a PRIMEIRA consulta sobre o codigo e a base:
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
   `kb.sh index <termos>`; nao sabe o mundo: `kb.sh show edv-solvace modulos` (glossario de siglas → projeto). Base sem o
@@ -50,11 +59,12 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 ## Comandos do plano no dia a dia — MCP primeiro
 Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
 Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
-`ToolSearch("select:mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
+`ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
 (as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
 
 | O que | MCP | Script (reserva) |
 |---|---|---|
+| **Base Solvace (antes do codigo)**: itens da engenharia reversa, secoes, KC · impacto entre modulos | `prmake_base_search(query, module?, kinds?, card)` · `prmake_base_get(refs, card)` · `prmake_base_impact(term)` · `prmake_base_module(module)` | `kb.sh re find` · `kb.sh re get <m>#<ID> --card` · `kb.sh show` |
 | concluir etapa e iniciar a proxima | `prmake_advance(card, from, to, message, kind)` | `advance <card> <key> <proxima\|-> "resumo" [finding]` |
 | mudar etapa / registrar andamento | `prmake_step(card, key, status, reason)` · `prmake_log(card, message, kind, stepKey)` | `step` · `log` |
 | criar/refinar etapas · onde parei | `prmake_steps(card, steps)` · `prmake_checkpoint(card, key, text)` | `steps` · `checkpoint` |
@@ -154,8 +164,9 @@ Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas**
 **Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
 
-**3. Investigar** — comece pela secao da Base Solvace do modulo que o `contexto` mostrou (`bash $KB show <projeto>
-<secao>`; nenhum casou → `bash $KB index <modulo/tela>`), depois o codigo apontado; regra de negocio → KC. Reconstrua
+**3. Investigar** — comece pelos itens da engenharia reversa que o `contexto` mostrou (`prmake_base_get` com o card;
+outros assuntos: `prmake_base_search`); sem engenharia reversa do modulo, pela secao da Base Solvace (`bash $KB show
+<projeto> <secao>`; nenhum casou → `bash $KB index <modulo/tela>`); depois so o codigo apontado; regra de negocio → KC. Reconstrua
 o fluxo, levante hipoteses priorizadas com `caminho:linha`, marque o que e hipotese. Diga em qual mundo/repo esta o
 codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito, localizar codigo fora da base:
 `$REF consultas 3a|3b|3c` (`consultar-ambiente`; cancele com motivo so se o caso **nao** depender de dados). Card que envolve dados
@@ -174,8 +185,10 @@ com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
 `branches`, PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
 **9. Aprender e reportar** — se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
-query util), proponha em poucas linhas: `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto>
-<secao> aprendizado.md --kind learning --card <card>` (vai para a fila do admin; nunca grava direto). Reporte: card,
+query util) ou mostrou um item da engenharia reversa errado/incompleto, proponha em poucas linhas:
+`bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> aprendizado.md --kind learning|divergence
+--card <card>` — com engenharia reversa, a secao e o documento do item (`re-funcional`, `re-arquitetura`, `re-uiux`...)
+e o texto cita o ID (`RN-012`): a sugestao entra na proxima sessao `melhorar` do modulo (nunca grava direto). Reporte: card,
 causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo esta nos planos do card no PRMake. O custo da sessao vai sozinho ao mudar o status do plano (`bash $PLAN usage` mostra).
 
 ## Retomar um card

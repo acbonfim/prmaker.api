@@ -190,7 +190,9 @@ SEARCH = re.compile(r"(^|[\s|;&(])(grep|rg|ag|find|ack)\s")
 def classify(name, inp):
     # 0045: a Base Solvace veio antes das buscas no codigo? (mesma regra do executor)
     cmd = str(inp.get("command", "")); path = str(inp.get("file_path", "")) + str(inp.get("path", ""))
-    if "kb.sh" in cmd or "solvace-kb" in cmd or "solvace-kb" in path:
+    if name.startswith("mcp__prmake__prmake_base"):  # 0052: a base pelo MCP
+        return "kb"
+    if "kb.sh" in cmd or "solvace-kb" in cmd or "solvace-kb" in path or "/re.sh" in cmd:
         return None if "contexto" in cmd else "kb"
     if name in ("Grep", "Glob"):
         return None if "/.claude/" in path else "search"
@@ -532,7 +534,9 @@ case "$CMD" in
 
   step)
     require_plan; KEY="${1:?key}"; ST="${2:?status}"; REASON="${3:-}"
-    jq -n --arg s "$ST" --arg r "$REASON" '{status:$s} + (if $r != "" then {reason:$r} else {} end)' > "$TMP/body"
+    # 0052: STEP_MESSAGE = resumo do advance (a trava da engenharia reversa procura os itens citados nele).
+    jq -n --arg s "$ST" --arg r "$REASON" --arg m "${STEP_MESSAGE:-}" \
+      '{status:$s} + (if $r != "" then {reason:$r} else {} end) + (if $m != "" then {message:$m} else {} end)' > "$TMP/body"
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> $ST"
     ;;
 
@@ -560,8 +564,8 @@ case "$CMD" in
   advance)
     # Fecha uma etapa e abre a proxima numa chamada so (menos turnos = menos contexto relido).
     require_plan; FROM="${1:?etapa que terminou}"; TO="${2:--}"; MSG="${3:-}"; KIND="${4:-progress}"
+    STEP_MESSAGE="$MSG" bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
     if [[ -n "$MSG" ]]; then bash "$0" log "$CARD" "$FROM" "$KIND" "$MSG" >/dev/null || exit $?; fi
-    bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
     if [[ "$TO" != "-" ]]; then bash "$0" step "$CARD" "$TO" running >/dev/null || exit $?; fi
     if [[ "$TO" != "-" ]]; then echo "OK $FROM -> completed · $TO -> running"; else echo "OK $FROM -> completed"; fi
     ;;
@@ -673,12 +677,22 @@ case "$CMD" in
     echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
     bash "$SELF" notes "$CARD" 2>&1
     echo
+    # 0052: engenharia reversa do modulo do card — os itens que casam com o titulo/repro ja vem com o texto, e o card
+    # fica registrado (a etapa investigar-codigo so conclui consultando/citando a base quando o modulo esta completo).
+    RE_Q="${CTITLE:-} $(head -c 600 "$DESC" 2>/dev/null | tr '\n\r\t' '   ')"
+    RE_OUT="$(curl -s --max-time 30 -G "$BASE/ReverseEngineering/for-card/$CARD" -H "x-api-key: $TOKEN" \
+      --data-urlencode "module=$CMOD" --data-urlencode "q=${RE_Q:0:900}" -w '\n%{http_code}' 2>/dev/null)"
+    if [[ "${RE_OUT##*$'\n'}" =~ ^2 ]]; then
+      printf '%s\n\n' "${RE_OUT%$'\n'*}"
+    else
+      echo "=== ENGENHARIA REVERSA indisponivel (HTTP ${RE_OUT##*$'\n'}) — use prmake_base_search (MCP) ou kb.sh"; echo
+    fi
     if [[ -f "$SK/kb.sh" ]]; then
       bash "$SK/kc.sh" sync --quiet 2>/dev/null || true
       bash "$SK/kb.sh" sync --quiet 2>/dev/null || true
       echo "=== BASE SOLVACE (projetos ligados ao card — legado edv-solvace = legado-*, nova = revamp-* · ficha: kb.sh show <projeto> · secao: kb.sh show <projeto> <secao> · outros: kb.sh index <termos>)"
       bash "$SK/kb.sh" index "${CTITLE:-${1:-}} $CMOD" --max 3 2>/dev/null || echo "(indice indisponivel)"
-      echo "(ANTES de qualquer busca no codigo: kb.sh show <projeto do mundo certo> modulos — telas → arquivos. Base sem o caso → busca so na pasta do modulo e registre a lacuna)"
+      echo "(ANTES de qualquer busca no codigo: a engenharia reversa acima e prmake_base_search/prmake_base_get (MCP, com o card); sem item: kb.sh show <projeto do mundo certo> modulos. Base sem o caso → busca so na pasta do modulo e registre a lacuna)"
       echo; echo "=== KNOWLEDGE CENTER (regras de negocio relacionadas — kc.sh article <n> para o texto inteiro)"
       bash "$SK/kc.sh" search "${CTITLE:-${1:-$CARD}} $CMOD" --limit 3 2>/dev/null || echo "(KC indisponivel)"
     else

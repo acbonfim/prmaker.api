@@ -48,3 +48,39 @@ public interface IArchitectureApplication
     Task<List<ArchitectureQuestionResponse>> GetQuestionsAsync(string? status, bool gapsOnly, CancellationToken cancellationToken);
     Task<ArchitectureQuestionResponse> ResolveQuestionAsync(Guid id, ResolveArchitectureQuestionRequest request, string actor, CancellationToken cancellationToken);
 }
+
+/// <summary>Engenharia reversa por módulo (0052). <c>userRoles</c> = papéis de quem chama (aprovar/publicar pela configuração).</summary>
+public interface IReverseEngineeringApplication
+{
+    Task<ReverseSettingsResponse> GetSettingsAsync(IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken);
+    Task<List<ReverseModuleSummaryResponse>> ListModulesAsync(CancellationToken cancellationToken);
+    Task<ReverseModuleResponse> GetModuleAsync(string key, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseModuleResponse> UpsertModuleAsync(string key, UpsertReverseModuleRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken);
+    Task<ReverseSessionResponse> StartSessionAsync(string key, string docType, StartReverseSessionRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken);
+    Task<List<ReverseRevisionHead>> ListRevisionsAsync(string? moduleKey, string? docType, string? status, CancellationToken cancellationToken);
+    Task<ReverseRevisionResponse> GetRevisionAsync(Guid id, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseRevisionResponse> SaveRevisionAsync(Guid id, SaveReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseRevisionHead> ReportProgressAsync(Guid id, domain.Reverse.ReverseProgressUpdate update, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken);
+    Task<domain.Reverse.ReverseLintResult> LintAsync(string key, LintReverseDocumentRequest request, CancellationToken cancellationToken);
+    Task<ReverseRevisionResponse> SubmitAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseRevisionResponse> ReviewAsync(Guid id, ReviewReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseRevisionResponse> PublishAsync(Guid id, PublishReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseAssetResponse> AddLinkAsync(string key, CreateReverseAssetLinkRequest request, string actor, CancellationToken cancellationToken);
+    Task<ReverseAssetResponse> AddFileAsync(string key, string title, string fileName, string contentType, byte[] data, string? notes, IEnumerable<string>? screens,
+        string actor, CancellationToken cancellationToken);
+    Task<(string FileName, string ContentType, byte[] Data)> GetAssetFileAsync(Guid id, CancellationToken cancellationToken);
+    Task DeleteAssetAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<List<ReverseIndexHit>> SearchAsync(string? query, IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType, int limit,
+        bool includeRemoved, CancellationToken cancellationToken);
+    Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken);
+    Task<List<ReverseIndexHit>> ImpactAsync(string term, int limit, CancellationToken cancellationToken);
+    /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
+    Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
+    Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
+    /// <summary>Trava da etapa de investigação; null = pode concluir.</summary>
+    Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken);
+}

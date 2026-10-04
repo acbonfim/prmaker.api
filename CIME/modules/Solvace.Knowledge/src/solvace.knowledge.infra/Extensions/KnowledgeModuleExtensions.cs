@@ -25,6 +25,8 @@ public static class KnowledgeModuleExtensions
         services.AddScoped<IKnowledgeRepository, KnowledgeRepository>();
         services.AddScoped<IKnowledgeApplication, KnowledgeApplication>();
         services.AddScoped<IArchitectureApplication, ArchitectureApplication>();
+        // 0052: engenharia reversa por módulo (o host registra o IReverseSettingsProvider — "Skills Configurations").
+        services.AddScoped<IReverseEngineeringApplication, ReverseEngineeringApplication>();
         return services;
     }
 }

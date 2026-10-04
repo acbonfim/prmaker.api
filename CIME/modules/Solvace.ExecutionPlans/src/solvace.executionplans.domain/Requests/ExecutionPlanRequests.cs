@@ -58,6 +58,11 @@ public class UpdateExecutionStepRequest
     public string? Checkpoint { get; set; }
     public string? Title { get; set; }
     public string? Description { get; set; }
+    /// <summary>
+    /// 0052: resumo do <c>advance</c> que conclui a etapa (não é gravado aqui — vai no log) — a trava da engenharia
+    /// reversa procura nele os itens citados (RN-…, UC-…) ou "lacuna".
+    /// </summary>
+    public string? Message { get; set; }
 }
 
 public class CancelExecutionStepRequest

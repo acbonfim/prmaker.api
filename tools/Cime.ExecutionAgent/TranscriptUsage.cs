@@ -105,14 +105,20 @@ public static class TranscriptUsage
     private static readonly System.Text.RegularExpressions.Regex SearchCommand =
         new(@"(^|[\s|;&(])(grep|rg|ag|find|ack)\s", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>kb = consulta à Base Solvace (kb.sh ou o espelho); search = busca no código (Grep/Glob ou grep/rg/find no Bash).</summary>
+    /// <summary>
+    /// kb = consulta à Base Solvace (MCP prmake_base_*, kb.sh/re.sh ou o espelho); search = busca no código (Grep/Glob ou
+    /// grep/rg/find no Bash).
+    /// </summary>
     public static string? Classify(string name, JsonElement part)
     {
+        // 0052: a base pelo MCP (o caminho preferido da skill) também é consulta à base.
+        if (name.StartsWith("mcp__prmake__prmake_base", StringComparison.Ordinal)) return "kb";
         var input = part.TryGetProperty("input", out var i) && i.ValueKind == JsonValueKind.Object ? i : default;
         string Get(string n) => input.ValueKind == JsonValueKind.Object ? Str(input, n) ?? string.Empty : string.Empty;
         var command = Get("command");
         var path = Get("file_path") + Get("path");
         if (command.Contains("kb.sh", StringComparison.Ordinal) || command.Contains("solvace-kb", StringComparison.Ordinal)
+            || command.Contains("/re.sh", StringComparison.Ordinal)
             || path.Contains("solvace-kb", StringComparison.Ordinal))
             return command.Contains("contexto", StringComparison.Ordinal) ? null : "kb";
         if (name is "Grep" or "Glob")

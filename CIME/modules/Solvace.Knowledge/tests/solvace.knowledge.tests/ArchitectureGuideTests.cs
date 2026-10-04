@@ -39,7 +39,7 @@ public class ArchitectureGuideTests
     [Fact]
     public async Task Guide_and_friendly_fields_do_not_reach_the_skill_mirror()
     {
-        var repo = new InMemoryRepository();
+        var repo = new InMemoryKnowledgeRepository();
         var app = new ArchitectureApplication(repo, new Settings());
         await app.UpsertProjectAsync("revamp-actionplan", new UpsertArchitectureProjectRequest { Name = "Revamp — Action Plan", Kind = "revamp", Summary = "Plano de ação." }, "t", default);
         await app.WriteSectionAsync("revamp-actionplan", "visao-geral", new WriteArchitectureSectionRequest { Title = "Visão geral", Content = "TB_ACP_PLAN", Order = 10 }, "t", default);
@@ -114,33 +114,5 @@ public class ArchitectureGuideTests
     private sealed class Settings : IKnowledgeSettingsProvider
     {
         public Task<KnowledgeSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(new KnowledgeSettings("dev", KnowledgeFilterOptions.None));
-    }
-
-    private sealed class InMemoryRepository : IKnowledgeRepository
-    {
-        private readonly List<ArchitectureProject> _projects = [];
-        public Task<List<KnowledgeArticle>> GetArticlesAsync(string environment, bool tracked, CancellationToken cancellationToken) => Task.FromResult(new List<KnowledgeArticle>());
-        public Task<KnowledgeArticle?> GetArticleAsync(string environment, int articleNumber, CancellationToken cancellationToken) => Task.FromResult<KnowledgeArticle?>(null);
-        public Task<List<KnowledgeArticle>> SearchArticlesAsync(string environment, string? term, int limit, CancellationToken cancellationToken) => Task.FromResult(new List<KnowledgeArticle>());
-        public void AddArticle(KnowledgeArticle article) { }
-        public void RemoveArticle(KnowledgeArticle article) { }
-        public Task<KnowledgeSyncState?> GetStateAsync(string environment, CancellationToken cancellationToken) => Task.FromResult<KnowledgeSyncState?>(null);
-        public void AddState(KnowledgeSyncState state) { }
-        public Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken) => Task.FromResult(_projects.Where(p => !p.IsDeleted).ToList());
-        public Task<ArchitectureProject?> GetProjectForUpdateAsync(string key, CancellationToken cancellationToken) => Task.FromResult(_projects.FirstOrDefault(p => p.Key == key));
-        public void AddProject(ArchitectureProject project) => _projects.Add(project);
-        public void AddSection(ArchitectureSection section) { }
-        public void AddVersion(ArchitectureSectionVersion version) { }
-        public Task<List<ArchitectureSectionVersion>> GetVersionsAsync(Guid sectionId, CancellationToken cancellationToken) => Task.FromResult(new List<ArchitectureSectionVersion>());
-        public Task<ArchitectureSectionVersion?> GetVersionAsync(Guid sectionId, int version, CancellationToken cancellationToken) => Task.FromResult<ArchitectureSectionVersion?>(null);
-        public void AddSuggestion(ArchitectureSuggestion suggestion) { }
-        public Task<ArchitectureSuggestion?> GetSuggestionAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult<ArchitectureSuggestion?>(null);
-        public Task<List<ArchitectureSuggestion>> GetSuggestionsAsync(string? status, CancellationToken cancellationToken) => Task.FromResult(new List<ArchitectureSuggestion>());
-        private readonly List<ArchitectureQuestion> _questions = [];
-        public void AddQuestion(ArchitectureQuestion question) => _questions.Add(question);
-        public Task<ArchitectureQuestion?> GetQuestionByNormalizedAsync(string normalized, CancellationToken cancellationToken) => Task.FromResult(_questions.FirstOrDefault(q => q.Normalized == normalized));
-        public Task<ArchitectureQuestion?> GetQuestionAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(_questions.FirstOrDefault(q => q.Id == id));
-        public Task<List<ArchitectureQuestion>> GetQuestionsAsync(string? status, CancellationToken cancellationToken) => Task.FromResult(_questions.Where(q => status == null || q.Status == status).ToList());
-        public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

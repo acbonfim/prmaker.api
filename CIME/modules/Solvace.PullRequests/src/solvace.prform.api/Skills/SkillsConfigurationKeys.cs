@@ -24,4 +24,14 @@ public static class SkillsConfigurationKeys
     public const string ExecutorCorrectionNewSession = "ExecutorCorrectionNewSession";
     /// <summary>0049: segundos de espera depois de um comentário antes de retomar o card (0 = na hora).</summary>
     public const string ExecutorNoteDelaySeconds = "ExecutorNoteDelaySeconds";
+    /// <summary>0052: papéis que aprovam e publicam a engenharia reversa ("admin,gestor").</summary>
+    public const string ReverseEngineeringApproverRoles = "ReverseEngineeringApproverRoles";
+    /// <summary>0052: documentos exigidos para o módulo contar como completo.</summary>
+    public const string ReverseEngineeringRequiredDocs = "ReverseEngineeringRequiredDocs";
+    /// <summary>0052: etapa da analisar-bug que só conclui consultando/citando a engenharia reversa (vazio desliga).</summary>
+    public const string ReverseEngineeringGateStep = "ReverseEngineeringGateStep";
+    /// <summary>0052: cobertura mínima do inventário do código (0–1) — abaixo disso o revisor vê o aviso.</summary>
+    public const string ReverseEngineeringMinCoverage = "ReverseEngineeringMinCoverage";
+    /// <summary>0052: modelos que substituem os do código ({"funcional": "markdown"}; {} = os do código).</summary>
+    public const string ReverseEngineeringTemplates = "ReverseEngineeringTemplates";
 }

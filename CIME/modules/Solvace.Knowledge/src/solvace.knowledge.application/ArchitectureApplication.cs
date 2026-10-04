@@ -141,8 +141,16 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         {
             repository.AddVersion(version);
             project.Touch(actor, now);
+            // 0052: documento da engenharia reversa editado direto na Base Solvace — o índice por item acompanha.
+            if (domain.Reverse.ReverseDocTypes.BySection(section.Key) is { } reverseType)
+            {
+                var items = domain.Reverse.ReverseDocParser.Parse(section.Content);
+                await ReverseEngineeringApplication.ReplaceIndexAsync(repository, project.Key, reverseType.Key, items, section.Version, now, cancellationToken);
+                if (reverseType.Key == "arquitetura") ReverseEngineeringApplication.MergeIntegrations(project, items);
+            }
         }
         await repository.SaveChangesAsync(cancellationToken);
+        if (domain.Reverse.ReverseDocTypes.BySection(section.Key) is not null) ReverseSearch.Invalidate();
         return ToSection(section, withContent: true);
     }
 
@@ -301,6 +309,14 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                     Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
             }
             Add(zip, "graph.json", JsonSerializer.Serialize(await GetGraphAsync(cancellationToken), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+            // 0052: índice por item da engenharia reversa — a skill acha o item com grep e lê só o bloco dele.
+            var reverse = await repository.GetIndexEntriesAsync(null, cancellationToken);
+            if (reverse.Count > 0)
+            {
+                Add(zip, "reverse/INDEX.md", RenderReverseIndex(projects, reverse));
+                foreach (var byModule in reverse.GroupBy(e => e.ModuleKey))
+                    Add(zip, $"reverse/{byModule.Key}.tsv", RenderReverseTsv(byModule));
+            }
             Add(zip, "knowledge/INDEX.md", RenderKnowledgeIndex(articles, environment));
             foreach (var article in articles)
                 Add(zip, $"knowledge/ART-{article.ArticleNumber}.md", RenderArticle(article));
@@ -363,6 +379,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 if (exported.Count > 0)
                     sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
                               + $" (~{Math.Max(1, exported.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
+                var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is not null);
+                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count}** (reverse/{p.Key}.tsv)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
                 var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
                 if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");
@@ -379,6 +397,33 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             foreach (var a in byCategory)
                 sb.AppendLine($"- ART-{a.ArticleNumber} {a.Title}{(a.Subcategory is null ? "" : $" · {a.Subcategory}")}{(a.Tags.Count == 0 ? "" : $" · tags: {string.Join(", ", a.Tags)}")}");
         }
+        return sb.ToString();
+    }
+
+    /// <summary>Engenharia reversa no espelho (0052): módulos com documentos publicados e itens por tipo.</summary>
+    private static string RenderReverseIndex(List<ArchitectureProject> projects, List<ReverseIndexEntry> entries)
+    {
+        var names = projects.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+        var sb = new StringBuilder("# Engenharia reversa — índice por item\n\n");
+        sb.AppendLine("Cada módulo tem `reverse/<módulo>.tsv` (ID, tipo, documento, título, tabelas, tags — uma linha por item). Ache com");
+        sb.AppendLine("`kb.sh re find <termos>` (ou grep no .tsv) e leia só o bloco: `kb.sh re get <módulo>#<ID>` (ou MCP `prmake_base_get`).");
+        sb.AppendLine("Tipos: " + string.Join(" · ", domain.Reverse.ReverseItemKinds.All.Select(k => $"{k.Prefix} {k.Label.ToLowerInvariant()}")));
+        sb.AppendLine();
+        foreach (var byModule in entries.Where(e => !e.Removed).GroupBy(e => e.ModuleKey).OrderBy(g => g.Key))
+        {
+            var docs = byModule.Select(e => e.DocType).Distinct().OrderBy(d => d);
+            var kinds = byModule.GroupBy(e => e.Kind).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}");
+            sb.AppendLine($"- `{byModule.Key}` {names.GetValueOrDefault(byModule.Key)} — docs: {string.Join(", ", docs)} · {string.Join(" · ", kinds)}");
+        }
+        return sb.ToString();
+    }
+
+    private static string RenderReverseTsv(IEnumerable<ReverseIndexEntry> entries)
+    {
+        static string Clean(string v) => v.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
+        var sb = new StringBuilder("id\tkind\tdoc\ttitle\ttables\ttags\tmodules\n");
+        foreach (var e in entries.OrderBy(e => e.DocType).ThenBy(e => e.Order))
+            sb.Append($"{e.ItemId}\t{e.Kind}\t{e.DocType}\t{Clean(e.Removed ? "(removido) " + e.Title : e.Title)}\t{string.Join(",", e.Tables)}\t{Clean(string.Join(",", e.Tags))}\t{string.Join(",", e.Modules)}\n");
         return sb.ToString();
     }
 
