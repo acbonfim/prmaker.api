@@ -56,7 +56,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         Key = t.Key, Title = t.Title, SectionKey = t.SectionKey, Order = t.Order, Required = s.RequiredDocs.Contains(t.Key), Kinds = t.Kinds.ToList(),
         Headings = t.Headings.Select(h => h.Title).ToList(), Purpose = t.Purpose,
         Template = (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
-                   + "\n\n" + ReverseDocTypes.ItemGuide.Trim()
+                   + (t.Derived ? "" : "\n\n" + ReverseDocTypes.ItemGuide.Trim())
     };
 
     // ── Módulos ─────────────────────────────────────────────────────────────────────────────────
@@ -126,6 +126,15 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 PendingSuggestions = suggestions.GetValueOrDefault((p.Key, t.SectionKey))
             };
         }).ToList();
+        // 0054: a visão prática só começa com os demais exigidos publicados e fica desatualizada quando um técnico é republicado
+        foreach (var doc in summary.Docs.Where(d => ReverseDocTypes.ByKey[d.Type].Derived))
+        {
+            doc.BlockedBy = s.RequiredDocs.Where(r => !ReverseDocTypes.ByKey.TryGetValue(r, out var rt) || !rt.Derived)
+                .Where(r => summary.Docs.FirstOrDefault(x => x.Type == r)?.Published is null).ToList();
+            if (doc.Published is { } practical)
+                doc.StaleBecause = summary.Docs.Where(x => x.Type != doc.Type && x.Published is not null && x.Published.UpdatedAt > practical.UpdatedAt)
+                    .Select(x => x.Title).ToList();
+        }
         summary.RequiredCount = s.RequiredDocs.Count;
         summary.PublishedRequired = summary.Docs.Count(d => d.Required && d.Published is not null);
         summary.Complete = summary.RequiredCount > 0 && summary.PublishedRequired == summary.RequiredCount;
@@ -176,6 +185,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             : all.Where(p => p.Key != project.Key && p.BusinessArea == project.BusinessArea && ModuleKinds.Contains(p.Kind)).Select(p => p.Key).ToList();
         response.CanApprove = CanApprove(s, userRoles);
         response.SuggestedTerms = module?.SuggestedTerms ?? [];
+        var traps = await repository.GetTrapsAsync(project.Key, cancellationToken);
+        response.Traps = traps.Count;
+        response.TrapsToReview = traps.Count(t => t.NeedsReview);
+        response.TrapsMigratedAt = module?.TrapsMigratedAt;
+        response.SupersededSections = ReverseSupersession.Compute(project, s, module);
         return response;
     }
 
@@ -283,6 +297,13 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         await EnsureModuleAsync(project, actor, cancellationToken);
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
 
+        if (type.Derived)
+        {
+            var missing = s.RequiredDocs.Where(r => r != type.Key && ReverseDocTypes.ByKey.TryGetValue(r, out var rt) && !rt.Derived
+                                                    && !project.Sections.Any(x => x.Key == rt.SectionKey)).ToList();
+            if (missing.Count > 0)
+                throw new DomainException($"A {type.Title} é escrita só do que foi publicado: publique antes {string.Join(", ", missing)}.");
+        }
         var revision = await repository.GetOpenRevisionForUpdateAsync(project.Key, type.Key, cancellationToken);
         var resumed = revision is not null;
         if (revision is not null && revision.Status is ReverseRevisionStatus.Draft or ReverseRevisionStatus.Changes)
@@ -320,8 +341,29 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             ReferenceDatabase = ToReference(s.ReferenceDatabase),
             GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
             PublishedSession = Element((await repository.GetPublishedRevisionsForUpdateAsync(project.Key, type.Key, cancellationToken))
-                .OrderByDescending(r => r.Number).FirstOrDefault()?.Session)
+                .OrderByDescending(r => r.Number).FirstOrDefault()?.Session),
+            PublishedDocs = type.Derived
+                ? ReverseDocTypes.All.Where(t => !t.Derived).Select(t => (t.Key, Section: project.Sections.FirstOrDefault(x => x.Key == t.SectionKey)))
+                    .Where(x => x.Section is not null).ToDictionary(x => x.Key, x => x.Section!.Content)
+                : [],
+            Questions = await ModuleQuestionsAsync(project, module: (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key), cancellationToken),
+            Traps = (await repository.GetTrapsAsync(project.Key, cancellationToken)).Select(ReverseTrapResponse.From).ToList(),
+            LegacyTraps = (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key)?.TrapsMigratedAt is null
+                ? project.Sections.FirstOrDefault(x => x.Key == "armadilhas")?.Content
+                : null
         };
+    }
+
+    /// <summary>0054: perguntas do "Pergunte" sobre o módulo (pela seção sugerida/respondida ou pelo nome/apelido/sigla no texto).</summary>
+    private async Task<List<ReverseModuleQuestion>> ModuleQuestionsAsync(ArchitectureProject project, ReverseModule? module, CancellationToken cancellationToken)
+    {
+        var names = new[] { project.DisplayName, project.Name }.Concat(module?.Aliases ?? []).Concat(project.Keywords.Where(k => k.Length is >= 2 and <= 12))
+            .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => ArchitectureSearch.Normalize(n!)).Where(n => n.Length >= 2).Distinct().ToList();
+        return (await repository.GetQuestionsAsync(null, cancellationToken))
+            .Where(q => q.SuggestedProject == project.Key || q.AnsweredProject == project.Key
+                        || names.Any(n => System.Text.RegularExpressions.Regex.IsMatch(ArchitectureSearch.Normalize(q.Text), $@"(^|\W){System.Text.RegularExpressions.Regex.Escape(n)}(\W|$)")))
+            .OrderByDescending(q => q.Times).Take(80)
+            .Select(q => new ReverseModuleQuestion { Id = q.Id, Text = q.Text, Coverage = q.Coverage, Times = q.Times, Status = q.Status }).ToList();
     }
 
     private static Dictionary<string, string> OtherDocIds(IReadOnlyList<ReverseIndexEntry> entries, string moduleKey, string docType) =>
@@ -427,7 +469,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var type = ReverseDocTypes.Get(docType);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var published = entries.Where(e => e.ModuleKey == project.Key && e.DocType == type.Key).Select(e => e.ItemId).ToList();
-        return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage);
+        var removed = entries.Where(e => e.ModuleKey == project.Key && e.Removed).Select(e => e.ItemId).ToHashSet();
+        return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage, removed);
     }
 
     public async Task<ReverseRevisionResponse> SubmitAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
@@ -475,7 +518,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var type = ReverseDocTypes.Get(revision.DocType);
         // A estrutura (seções obrigatórias) foi checada no envio; aqui só barra o grave — assim uma revisão enviada antes de
         // o modelo ganhar uma seção nova (0053: glossário, banco de dados) continua publicável.
-        var lint = ReverseLint.Run(type, revision.Content);
+        // mesma checagem do envio (com os IDs dos outros documentos e os removidos — a visão prática cita os publicados)
+        var lint = await LintAsync(FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey), type.Key, revision.Content, null, s, cancellationToken);
         var blocking = lint.Errors.Where(e => !e.StartsWith("Faltam seções obrigatórias", StringComparison.Ordinal)).ToList();
         if (blocking.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", blocking));
 
@@ -484,10 +528,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
         if (section is null)
         {
-            section = new ArchitectureSection(project.Id, type.SectionKey, ArchitectureSectionAudience.Llm);
+            section = new ArchitectureSection(project.Id, type.SectionKey, type.Audience);
             project.Sections.Add(section);
             repository.AddSection(section);
         }
+        else section.SetAudience(type.Audience); // 0054: a visão prática é para pessoas (human)
         var note = $"engenharia reversa: revisão #{revision.Number} ({revision.Mode}) aprovada por {revision.ReviewedBy ?? actor}, publicada por {actor}";
         var version = section.Write(type.Title, revision.Content, type.Order, ArchitectureSource.Skill, note, actor, now);
         if (version is not null) repository.AddVersion(version);
@@ -749,7 +794,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
                 Removed = hit.Removed, Body = e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
                 ReferencedBy = entries.Where(x => x.Id != e.Id && (x.Refs.Contains(e.Ref) || (x.ModuleKey == e.ModuleKey && x.Refs.Contains(e.ItemId))))
-                    .Select(x => x.Ref).Take(40).ToList()
+                    .Select(x => x.Ref).Take(40).ToList(),
+                Traps = (await repository.GetTrapsAsync(e.ModuleKey, cancellationToken))
+                    .Where(t => t.Items.Contains(e.ItemId) || t.Items.Contains(e.Ref)).Select(ReverseTrapResponse.From).ToList()
             });
         }
         return result;
@@ -802,8 +849,10 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             matched = (await ReverseSearch.RunAsync(repository, query, null, null, null, 30, false, names, cancellationToken))
                 .GroupBy(h => h.ModuleKey).OrderByDescending(g => g.Sum(h => h.Score)).Take(2).Select(g => g.Key).ToList();
 
-        bool IsComplete(ArchitectureProject p) => s.RequiredDocs.Count > 0
-                                                  && s.RequiredDocs.All(d => ReverseDocTypes.ByKey.TryGetValue(d, out var t) && p.Sections.Any(x => x.Key == t.SectionKey));
+        // 0054: "completa" para a análise = os documentos técnicos exigidos (a visão prática é para pessoas)
+        var technical = s.TechnicalRequired;
+        bool IsComplete(ArchitectureProject p) => technical.Count > 0
+                                                  && technical.All(d => ReverseDocTypes.ByKey.TryGetValue(d, out var t) && p.Sections.Any(x => x.Key == t.SectionKey));
         var projects = matched.Select(k => all.FirstOrDefault(p => p.Key == k)).Where(p => p is not null).Select(p => p!).ToList();
         var complete = projects.Any(IsComplete);
 
@@ -836,6 +885,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                           + (withRe.Contains(p.Key) ? $" · {entries.Count(e => e.ModuleKey == p.Key && !e.Removed)} itens" : ""));
             var pair = all.Where(x => x.Key != p.Key && x.BusinessArea is not null && x.BusinessArea == p.BusinessArea && ModuleKinds.Contains(x.Kind)).Select(x => x.Key).ToList();
             if (pair.Count > 0) sb.AppendLine($"  par/mesma área: {string.Join(", ", pair)}");
+            var superseded = ReverseSupersession.Compute(p, s, reverseModules.FirstOrDefault(m => m.Key == p.Key));
+            if (superseded.Count > 0) sb.AppendLine($"  fonte: engenharia reversa (seções antigas substituídas: {string.Join(", ", superseded.Keys)})");
         }
 
         var moduleKeys = projects.Select(p => p.Key).Where(withRe.Contains).ToList();
@@ -846,7 +897,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         }
         var hits = string.IsNullOrWhiteSpace(query)
             ? []
-            : await ReverseSearch.RunAsync(repository, query, moduleKeys, null, null, 10, false, names, cancellationToken);
+            : (await ReverseSearch.RunAsync(repository, query, moduleKeys, null, null, 14, false, names, cancellationToken))
+                .Where(h => h.DocType != ReverseDocTypes.Practical).Take(10).ToList();
         if (hits.Count == 0)
         {
             sb.AppendLine("Nenhum item casou com o título/repro — procure pelo assunto: prmake_base_search(query, module) (regras: kinds=RN; telas: TELA; casos de uso: UC).");
@@ -855,6 +907,14 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         {
             sb.AppendLine("Itens que casam com o card (texto inteiro: prmake_base_get(refs, card)):");
             foreach (var h in hits) sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")}");
+            // 0054: o que a operação já viu dar errado nesses itens
+            var traps = (await repository.GetTrapsAsync(null, cancellationToken))
+                .Where(t => hits.Any(h => h.ModuleKey == t.ModuleKey && (t.Items.Contains(h.ItemId) || t.Items.Contains(h.Ref)))).Take(8).ToList();
+            if (traps.Count > 0)
+            {
+                sb.AppendLine("Armadilhas ligadas a esses itens (o que já deu errado):");
+                foreach (var t in traps) sb.AppendLine($"- [{string.Join(", ", t.Items)}] {t.Title}{(t.NeedsReview ? " (a conferir)" : "")}{(t.Cards.Count > 0 ? " · cards " + string.Join(", ", t.Cards.Take(4)) : "")}");
+            }
             var budget = 5000;
             sb.AppendLine("Texto dos primeiros:");
             foreach (var h in hits.Take(3))
@@ -936,6 +996,116 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                + "ou escreva 'lacuna: <o que a base não cobre>' e registre a sugestão na seção re-* do módulo.";
     }
 
+    // ── 0054: armadilhas, sugestões por item, lacunas do Pergunte, divergências com o KC ───────
+
+    public async Task<List<ReverseTrapResponse>> ListTrapsAsync(string? moduleKey, CancellationToken cancellationToken) =>
+        (await repository.GetTrapsAsync(string.IsNullOrWhiteSpace(moduleKey) ? null : ArchitectureProject.NormalizeKey(moduleKey), cancellationToken))
+            .Select(ReverseTrapResponse.From).ToList();
+
+    /// <summary>Cria armadilhas (lote). Quem não aprova — e toda migração automática — cria "a conferir".</summary>
+    public async Task<List<ReverseTrapResponse>> CreateTrapsAsync(string key, List<CreateReverseTrapRequest> requests, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        if (requests.Count is 0 or > 200) throw new DomainException("Envie de 1 a 200 armadilhas por vez.");
+        var now = DateTimeOffset.UtcNow;
+        var approver = CanApprove(s, userRoles);
+        var created = requests.Select(r => new ReverseTrap(project.Key, r.Title, r.Text, r.Items, r.Cards, r.Origin,
+            needsReview: !approver || string.Equals(r.Origin, "migrated", StringComparison.OrdinalIgnoreCase), actor, now)).ToList();
+        foreach (var t in created) repository.AddTrap(t);
+        await repository.SaveChangesAsync(cancellationToken);
+        ReverseSearch.Invalidate();
+        return created.Select(ReverseTrapResponse.From).ToList();
+    }
+
+    public async Task<ReverseTrapResponse> UpdateTrapAsync(Guid id, UpdateReverseTrapRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var trap = await repository.GetTrapForUpdateAsync(id, cancellationToken) ?? throw new KnowledgeNotFoundException("Armadilha não encontrada.");
+        var approver = CanApprove(s, userRoles);
+        if (!approver && !(trap.NeedsReview && string.Equals(trap.CreatedBy, actor, StringComparison.OrdinalIgnoreCase)))
+            throw new ReverseForbiddenException($"Só {string.Join(" ou ", s.ApproverRoles)} edita uma armadilha conferida.");
+        var now = DateTimeOffset.UtcNow;
+        trap.Edit(request.Title, request.Text, request.Items, request.Cards, actor, now);
+        if (request.Confirm)
+        {
+            if (!approver) throw new ReverseForbiddenException($"Só {string.Join(" ou ", s.ApproverRoles)} confere a armadilha.");
+            trap.Confirm(actor, now);
+        }
+        await repository.SaveChangesAsync(cancellationToken);
+        return ReverseTrapResponse.From(trap);
+    }
+
+    public async Task DeleteTrapAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        await RequireApproverAsync(userRoles, "remover armadilhas", cancellationToken);
+        var trap = await repository.GetTrapForUpdateAsync(id, cancellationToken) ?? throw new KnowledgeNotFoundException("Armadilha não encontrada.");
+        trap.Delete(actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Sugestão que não muda o "como o sistema é", mas ensina o que dá errado → armadilha (aprovador, um clique).</summary>
+    public async Task<ReverseTrapResponse> SuggestionToTrapAsync(Guid suggestionId, string? title, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        await RequireApproverAsync(userRoles, "converter sugestões em armadilhas", cancellationToken);
+        var suggestion = await repository.GetSuggestionAsync(suggestionId, cancellationToken) ?? throw new KnowledgeNotFoundException("Sugestão não encontrada.");
+        var now = DateTimeOffset.UtcNow;
+        var firstLine = suggestion.Content.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim().TrimStart('#', ' ') ?? suggestion.Content;
+        var trap = new ReverseTrap(suggestion.ProjectKey, string.IsNullOrWhiteSpace(title) ? (firstLine.Length <= 160 ? firstLine : firstLine[..160] + "…") : title,
+            suggestion.Content, suggestion.ItemId is null ? [] : [suggestion.ItemId], suggestion.CardNumber is null ? [] : [suggestion.CardNumber], "suggestion",
+            needsReview: false, actor, now);
+        trap.Confirm(actor, now);
+        repository.AddTrap(trap);
+        if (suggestion.Status == ArchitectureSuggestionStatus.Pending)
+            suggestion.Resolve(ArchitectureSuggestionStatus.Applied, "Virou armadilha da engenharia reversa", actor, now);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ReverseTrapResponse.From(trap);
+    }
+
+    /// <summary>A skill terminou de ligar as armadilhas antigas e as sugestões aos itens: a seção antiga sai do espelho.</summary>
+    public async Task<ReverseModuleResponse> MarkTrapsMigratedAsync(string key, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var tracked = await repository.GetProjectForUpdateAsync(project.Key, cancellationToken) ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
+        var module = await EnsureModuleAsync(tracked, actor, cancellationToken);
+        module.MarkTrapsMigrated(actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return await GetModuleAsync(project.Key, userRoles, cancellationToken);
+    }
+
+    /// <summary>Liga uma sugestão a um item/documento da engenharia reversa (migração, análises).</summary>
+    public async Task<ArchitectureSuggestionResponse> LinkSuggestionAsync(Guid id, LinkSuggestionItemRequest request, CancellationToken cancellationToken)
+    {
+        var suggestion = await repository.GetSuggestionAsync(id, cancellationToken) ?? throw new KnowledgeNotFoundException("Sugestão não encontrada.");
+        suggestion.LinkItem(request.ItemId, request.SectionKey);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToSuggestion(suggestion);
+    }
+
+    /// <summary>
+    /// Pergunta do "Pergunte" sem resposta (ou parcial) sobre um módulo com engenharia reversa → sugestão na visão prática
+    /// (vira FAQ na próxima sessão). Não duplica a mesma pergunta pendente.
+    /// </summary>
+    public async Task RecordQuestionGapAsync(string projectKey, string question, string actor, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(projectKey) || string.IsNullOrWhiteSpace(question)) return;
+        var project = (await repository.GetProjectsAsync(cancellationToken)).FirstOrDefault(p => p.Key == ArchitectureProject.NormalizeKey(projectKey));
+        if (project is null || !project.Sections.Any(x => x.Key.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal))) return;
+        var content = $"Pergunta do Pergunte sem resposta na engenharia reversa: \"{question.Trim()}\"";
+        var practical = ReverseDocTypes.ByKey[ReverseDocTypes.Practical].SectionKey;
+        if ((await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+            .Any(x => x.ProjectKey == project.Key && x.Content == content)) return;
+        repository.AddSuggestion(new ArchitectureSuggestion(project.Key, practical, "gap", content, null, actor, DateTimeOffset.UtcNow));
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Divergências entre o Knowledge Center e o código (sugestões "kc" pendentes) — lista para o time de produto.</summary>
+    public async Task<List<ArchitectureSuggestionResponse>> KcDivergencesAsync(CancellationToken cancellationToken) =>
+        (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken)).Where(x => x.Kind == "kc").Select(ToSuggestion).ToList();
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
     private async Task<ReverseSettings> RequireApproverAsync(IReadOnlyCollection<string> userRoles, string what, CancellationToken cancellationToken)
@@ -967,7 +1137,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         Id = s.Id, ProjectKey = s.ProjectKey, SectionKey = s.SectionKey, Kind = s.Kind, Content = s.Content, CardNumber = s.CardNumber,
         Status = s.Status, CreatedBy = s.CreatedBy, CreatedAt = s.CreatedAt, ResolvedBy = s.ResolvedBy, ResolvedAt = s.ResolvedAt,
-        ResolutionNote = s.ResolutionNote
+        ResolutionNote = s.ResolutionNote, ItemId = s.ItemId
     };
 
     [GeneratedRegex(@"\s+")]
@@ -976,7 +1146,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     [GeneratedRegex(@"\b(?:revamp|legado|legacy|novo|antigo|new|old)\b|[()\[\]]")]
     private static partial Regex WorldWords();
 
-    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-\d{1,4}\b")]
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-\d{1,4}\b")]
     private static partial Regex CitedRefs();
 }
 

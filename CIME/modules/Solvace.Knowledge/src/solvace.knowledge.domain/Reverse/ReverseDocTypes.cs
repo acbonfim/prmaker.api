@@ -7,15 +7,23 @@ public sealed record ReverseHeading(string Title, string Match);
 /// Um documento da engenharia reversa de um módulo (0052). Publicado, vira a seção <see cref="SectionKey"/> do projeto
 /// na Base Solvace (espelho, índice, busca). <see cref="Kinds"/> são os itens que ele define (<c>GAP</c> vale em todos).
 /// </summary>
+/// <param name="Audience">llm (técnico, vai para as análises) | human (0054: a visão prática — Simples, busca de pessoas, Pergunte).</param>
 public sealed record ReverseDocType(string Key, string Title, string SectionKey, int Order, IReadOnlyList<string> Kinds,
-    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template);
+    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template, string Audience = "llm")
+{
+    /// <summary>Documento derivado só do que já foi publicado (0054: visão prática) — depende dos demais exigidos.</summary>
+    public bool Derived => Key == ReverseDocTypes.Practical;
+}
 
 public static class ReverseDocTypes
 {
     public const string SectionPrefix = "re-";
 
+    /// <summary>0054: a visão prática (não técnica), gerada do que foi publicado — último documento.</summary>
+    public const string Practical = "pratica";
+
     /// <summary>Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar).</summary>
-    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "visao", "spec-arquitetura", "design"];
+    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "visao", "spec-arquitetura", "design", Practical];
 
     private const string ItemRules = """
         ## Como escrever um item (vale para todo o documento)
@@ -360,7 +368,60 @@ public static class ReverseDocTypes
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`
-            """)
+            """),
+
+        new(Practical, "Visão prática (não técnica)", "re-pratica", 160,
+            ["TUT", "FAQ"],
+            [
+                new("O que é e onde fica", "o que e"),
+                new("Como chegar", "como chegar"),
+                new("Como fazer", "como fazer"),
+                new("Perguntas práticas", "perguntas"),
+                new("Regras em linguagem simples", "regras"),
+                new("Como configurar e dar acesso", "configurar"),
+                new("Como testar", "testar"),
+                new("Glossário", "glossario")
+            ],
+            "O guia do sistema para quem usa: o que é, onde fica, como chegar em cada tela, como fazer cada tarefa e as respostas às perguntas reais — gerado só do que foi publicado.",
+            """
+            # Visão prática — <módulo>
+
+            > Escrito para quem usa o sistema (QA, suporte, gestores, clientes): **sem** tabela, classe, endpoint, procedure
+            > ou caminho de arquivo; nome de tela e de menu como o usuário vê. Gerado **só a partir do que está publicado**
+            > na engenharia reversa do módulo — **toda** frase, passo e resposta termina com a fonte:
+            > `<!-- fonte: RN-012, TELA-003 -->` (IDs publicados; de outro módulo: `revamp-users#FN-002`). O que a engenharia
+            > reversa não cobre **não entra aqui**: vira `GAP` no documento técnico certo (sugestão).
+
+            ## O que é e onde fica
+            Para que serve, quem usa, se é **legado ou revamp** (e onde convivem — o par do outro mundo), como habilitar
+            na planta. <!-- fonte: … -->
+
+            ## Como chegar
+            Para cada tela: o caminho de menu ("Menu → Melhoria → A3 → Novo"), quem vê. <!-- fonte: TELA-…, PRF-… -->
+
+            ## Como fazer
+            `### TUT-001 — Como <tarefa>` (criar, editar, aprovar, reabrir, exportar, configurar…): passos numerados com a
+            tela e o que o usuário vê, mensagens de erro comuns e o que fazer em cada uma. Cada passo com a fonte.
+
+            ## Perguntas práticas
+            `### FAQ-001 — <pergunta como o usuário faz>` (ex.: "O SA3 é legado ou revamp?", "Como saber se um usuário logou
+            com sucesso?", "Por que o botão X não aparece?", "Quem recebe o e-mail?"): resposta direta em 2–6 frases com a
+            fonte. As perguntas vêm das perguntas reais do "Pergunte" sobre o módulo (no pacote da sessão), das lacunas e
+            das dúvidas dos cards. Pergunta que depende de outro módulo: responda com o que a engenharia reversa dele
+            publicou e aponte o módulo.
+
+            ## Regras em linguagem simples
+            Quem pode o quê, prazos, aprovações, validações — uma frase por regra, com a fonte (RN-…).
+
+            ## Como configurar e dar acesso
+            Onde se configura, quem configura, como dar acesso, o que conferir quando "não aparece". <!-- fonte: CFG-…, PRF-… -->
+
+            ## Como testar
+            Cenários para QA: pré-requisitos, passos, resultado esperado e onde conferir. <!-- fonte: UC-… -->
+
+            ## Glossário
+            Os termos do módulo em linguagem simples, com os sinônimos — referenciando os `GLO-…` do funcional.
+            """, "human")
     ];
 
     public static readonly IReadOnlyDictionary<string, ReverseDocType> ByKey = All.ToDictionary(d => d.Key, StringComparer.Ordinal);

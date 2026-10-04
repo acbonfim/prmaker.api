@@ -76,6 +76,8 @@ public class WriteArchitectureSectionRequest
 public class CreateArchitectureSuggestionRequest
 {
     public string ProjectKey { get; set; } = string.Empty;
+    /// <summary>0054: item da engenharia reversa (RN-012) a que a sugestão se refere.</summary>
+    public string? ItemId { get; set; }
     public string? SectionKey { get; set; }
     /// <summary>learning | divergence | other.</summary>
     public string? Kind { get; set; }

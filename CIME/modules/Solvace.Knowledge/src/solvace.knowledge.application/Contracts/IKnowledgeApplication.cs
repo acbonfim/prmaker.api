@@ -83,6 +83,16 @@ public interface IReverseEngineeringApplication
     /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
+    // 0054
+    Task<List<ReverseTrapResponse>> ListTrapsAsync(string? moduleKey, CancellationToken cancellationToken);
+    Task<List<ReverseTrapResponse>> CreateTrapsAsync(string key, List<CreateReverseTrapRequest> requests, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseTrapResponse> UpdateTrapAsync(Guid id, UpdateReverseTrapRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task DeleteTrapAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseTrapResponse> SuggestionToTrapAsync(Guid suggestionId, string? title, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseModuleResponse> MarkTrapsMigratedAsync(string key, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ArchitectureSuggestionResponse> LinkSuggestionAsync(Guid id, LinkSuggestionItemRequest request, CancellationToken cancellationToken);
+    Task RecordQuestionGapAsync(string projectKey, string question, string actor, CancellationToken cancellationToken);
+    Task<List<ArchitectureSuggestionResponse>> KcDivergencesAsync(CancellationToken cancellationToken);
     /// <summary>Trava da etapa de investigação; null = pode concluir.</summary>
     Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken);
 }

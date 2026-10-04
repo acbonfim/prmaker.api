@@ -74,6 +74,10 @@ public class ReverseDocStatusResponse
     public ReversePublishedInfo? Published { get; set; }
     public ReverseRevisionHead? Open { get; set; }
     public int PendingSuggestions { get; set; }
+    /// <summary>0054 (visão prática): um documento técnico foi republicado depois dela — lista dos documentos.</summary>
+    public List<string> StaleBecause { get; set; } = [];
+    /// <summary>0054: o documento só pode começar com os demais exigidos publicados (faltam estes).</summary>
+    public List<string> BlockedBy { get; set; } = [];
 }
 
 public class ReverseModuleSummaryResponse
@@ -128,6 +132,43 @@ public class ReverseModuleResponse : ReverseModuleSummaryResponse
     public bool CanApprove { get; set; }
     /// <summary>0053: termos do glossário que ainda não são apelido nem palavra-chave (aceitar/dispensar na tela).</summary>
     public List<string> SuggestedTerms { get; set; } = [];
+    /// <summary>0054: armadilhas do módulo e quantas estão a conferir; quando a migração das antigas foi feita.</summary>
+    public int Traps { get; set; }
+    public int TrapsToReview { get; set; }
+    public DateTimeOffset? TrapsMigratedAt { get; set; }
+    /// <summary>0054: seções antigas da Base Solvace já substituídas pela engenharia reversa.</summary>
+    public Dictionary<string, string> SupersededSections { get; set; } = [];
+}
+
+public class ReverseTrapResponse
+{
+    public Guid Id { get; set; }
+    public string ModuleKey { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public List<string> Items { get; set; } = [];
+    public List<string> Cards { get; set; } = [];
+    public string Origin { get; set; } = "manual";
+    public bool NeedsReview { get; set; }
+    public string? ReviewedBy { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+
+    public static ReverseTrapResponse From(ReverseTrap t) => new()
+    {
+        Id = t.Id, ModuleKey = t.ModuleKey, Title = t.Title, Text = t.Text, Items = t.Items, Cards = t.Cards, Origin = t.Origin,
+        NeedsReview = t.NeedsReview, ReviewedBy = t.ReviewedBy, CreatedAt = t.CreatedAt, CreatedBy = t.CreatedBy
+    };
+}
+
+/// <summary>0054: pergunta do "Pergunte" sobre o módulo (sem resposta ou parcial) — matéria da visão prática.</summary>
+public class ReverseModuleQuestion
+{
+    public Guid Id { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public string Coverage { get; set; } = string.Empty;
+    public int Times { get; set; }
+    public string Status { get; set; } = string.Empty;
 }
 
 public class ReverseItemHead
@@ -227,6 +268,14 @@ public class ReverseSessionResponse
     public List<string> GlossaryExclusions { get; set; } = [];
     /// <summary>0053: dados da sessão da última revisão publicada (commits das fontes, catálogo do banco) — o melhorar compara.</summary>
     public JsonElement? PublishedSession { get; set; }
+    /// <summary>0054: documentos publicados do módulo (tipo → markdown) — a visão prática é escrita só a partir deles.</summary>
+    public Dictionary<string, string> PublishedDocs { get; set; } = [];
+    /// <summary>0054: perguntas do "Pergunte" sobre o módulo (as reais — viram FAQ).</summary>
+    public List<ReverseModuleQuestion> Questions { get; set; } = [];
+    /// <summary>0054: armadilhas do módulo (a sessão as considera; não as reescreve).</summary>
+    public List<ReverseTrapResponse> Traps { get; set; } = [];
+    /// <summary>0054: migração pendente — o texto da seção antiga de armadilhas para ligar aos itens (null = já migrado ou não há).</summary>
+    public string? LegacyTraps { get; set; }
 }
 
 public class ReverseReferenceDatabaseResponse
@@ -258,6 +307,8 @@ public class ReverseIndexHit
 
 public class ReverseItemResponse : ReverseIndexHit
 {
+    /// <summary>0054: armadilhas ligadas ao item (o que já deu errado aqui).</summary>
+    public List<ReverseTrapResponse> Traps { get; set; } = [];
     public string Body { get; set; } = string.Empty;
     public List<string> Refs { get; set; } = [];
     public List<string> Evidence { get; set; } = [];

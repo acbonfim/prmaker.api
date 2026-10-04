@@ -21,6 +21,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
     public DbSet<ReverseAsset> ReverseAssets { get; set; }
     public DbSet<ReverseIndexEntry> ReverseIndexEntries { get; set; }
     public DbSet<ReverseCardContext> ReverseCardContexts { get; set; }
+    public DbSet<ReverseTrap> ReverseTraps { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -128,6 +129,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.ResolvedBy).HasMaxLength(200);
             entity.Property(e => e.ResolutionNote).HasMaxLength(500);
+            entity.Property(e => e.ItemId).HasMaxLength(20);
             entity.HasIndex(e => new { e.Status, e.CreatedAt });
         });
 
@@ -237,6 +239,24 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });
+        });
+
+        // 0054: armadilhas ligadas aos itens da engenharia reversa
+        modelBuilder.Entity<ReverseTrap>(entity =>
+        {
+            entity.ToTable("ReverseTraps");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ModuleKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Text).IsRequired().HasColumnType("text");
+            entity.Property(e => e.Items).HasColumnType("jsonb");
+            entity.Property(e => e.Cards).HasColumnType("jsonb");
+            entity.Property(e => e.Origin).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ReviewedBy).HasMaxLength(200);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => new { e.ModuleKey, e.IsDeleted });
         });
 
         modelBuilder.Entity<ReverseCardContext>(entity =>

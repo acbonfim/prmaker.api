@@ -15,18 +15,35 @@ namespace solvace.knowledge.application;
 /// O espelho leva só as seções técnicas (público <c>llm</c>); o Guia para pessoas (<c>human</c>, 0038) fica só na tela,
 /// sem pesar no índice da análise nem mudar o hash.
 /// </summary>
-public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings) : IArchitectureApplication
+public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings, IReverseSettingsProvider? reverseSettings = null)
+    : IArchitectureApplication
 {
+    private async Task<ReverseSettings> ReverseSettingsAsync(CancellationToken cancellationToken) =>
+        reverseSettings is null ? ReverseSettings.Default : await reverseSettings.GetAsync(cancellationToken);
+
+    /// <summary>0054: marca na resposta as seções antigas que a engenharia reversa já substituiu (histórico na tela).</summary>
+    private async Task<ArchitectureProjectResponse> WithSupersededAsync(ArchitectureProjectResponse response, ArchitectureProject project,
+        IReadOnlyCollection<ReverseModule>? modules, CancellationToken cancellationToken)
+    {
+        modules ??= await repository.GetReverseModulesAsync(cancellationToken);
+        response.SupersededSections = ReverseSupersession.Compute(project, await ReverseSettingsAsync(cancellationToken), modules.FirstOrDefault(m => m.Key == project.Key));
+        return response;
+    }
     public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken)
     {
         var all = await repository.GetProjectsAsync(cancellationToken);
-        return all.OrderBy(p => p.Order).ThenBy(p => p.Name).Select(p => WithUsedBy(ToResponse(p), all)).ToList();
+        var modules = await repository.GetReverseModulesAsync(cancellationToken);
+        var result = new List<ArchitectureProjectResponse>();
+        foreach (var p in all.OrderBy(p => p.Order).ThenBy(p => p.Name))
+            result.Add(await WithSupersededAsync(WithUsedBy(ToResponse(p), all), p, modules, cancellationToken));
+        return result;
     }
 
     public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
     {
         var all = await repository.GetProjectsAsync(cancellationToken);
-        return WithUsedBy(ToResponse(await FindAsync(key, cancellationToken)), all);
+        var project = await FindAsync(key, cancellationToken);
+        return await WithSupersededAsync(WithUsedBy(ToResponse(project), all), project, null, cancellationToken);
     }
 
     /// <summary>Grafo do ecossistema (0034): arestas agrupadas por (origem, destino, tipo).</summary>
@@ -180,6 +197,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureSuggestionResponse> SuggestAsync(CreateArchitectureSuggestionRequest request, string actor, CancellationToken cancellationToken)
     {
         var suggestion = new ArchitectureSuggestion(request.ProjectKey, request.SectionKey, request.Kind, request.Content, request.CardNumber, actor, DateTimeOffset.UtcNow);
+        suggestion.LinkItem(request.ItemId, null); // 0054: aprendizado/divergência apontando o item da engenharia reversa
         repository.AddSuggestion(suggestion);
         await repository.SaveChangesAsync(cancellationToken);
         return ToSuggestion(suggestion);
@@ -201,7 +219,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     {
         Id = s.Id, ProjectKey = s.ProjectKey, SectionKey = s.SectionKey, Kind = s.Kind, Content = s.Content, CardNumber = s.CardNumber,
         Status = s.Status, CreatedBy = s.CreatedBy, CreatedAt = s.CreatedAt, ResolvedBy = s.ResolvedBy, ResolvedAt = s.ResolvedAt,
-        ResolutionNote = s.ResolutionNote
+        ResolutionNote = s.ResolutionNote, ItemId = s.ItemId
     };
 
     // ── Índice e espelho local ──────────────────────────────────────────────────────────────────
@@ -290,13 +308,13 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken)
     {
         var (projects, articles, environment) = await LoadAllAsync(cancellationToken);
-        return Manifest(projects, articles, environment);
+        return Manifest(projects, articles, environment, await TrapsStampAsync(cancellationToken));
     }
 
     public async Task<(ArchitectureExportManifest Manifest, byte[] Zip)> ExportAsync(CancellationToken cancellationToken)
     {
         var (projects, articles, environment) = await LoadAllAsync(cancellationToken);
-        var manifest = Manifest(projects, articles, environment);
+        var manifest = Manifest(projects, articles, environment, await TrapsStampAsync(cancellationToken));
 
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -312,6 +330,14 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             }
             Add(zip, "graph.json", JsonSerializer.Serialize(await GetGraphAsync(cancellationToken), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
             // 0052: índice por item da engenharia reversa — a skill acha o item com grep e lê só o bloco dele.
+            // 0054: armadilhas migradas viram a seção técnica de armadilhas do módulo (a antiga foi substituída)
+            var migrated = (await repository.GetReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
+            if (migrated.Count > 0)
+            {
+                var traps = (await repository.GetTrapsAsync(null, cancellationToken)).GroupBy(t => t.ModuleKey).ToDictionary(g => g.Key, g => g.ToList());
+                foreach (var project in projects.Where(p => migrated.Contains(p.Key) && traps.ContainsKey(p.Key)))
+                    Add(zip, $"projects/{project.Key}/090-armadilhas.md", ReverseSupersession.RenderTraps(project, traps[project.Key]));
+            }
             var reverse = await repository.GetIndexEntriesAsync(null, cancellationToken);
             if (reverse.Count > 0)
             {
@@ -330,13 +356,24 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     {
         var environment = (await settings.GetAsync(cancellationToken)).ActiveEnvironment;
         var projects = (await repository.GetProjectsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).ToList();
+        // 0054: uma fonte por módulo — seção antiga já coberta pela engenharia reversa não vai para espelho/busca/catálogo
+        ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
         var articles = (await repository.GetArticlesAsync(environment, tracked: false, cancellationToken)).OrderBy(a => a.ArticleNumber).ToList();
         return (projects, articles, environment);
     }
 
-    private static ArchitectureExportManifest Manifest(List<ArchitectureProject> projects, List<KnowledgeArticle> articles, string environment)
+    /// <summary>0054: armadilhas migradas entram no pacote — mudam o hash do espelho.</summary>
+    private async Task<string> TrapsStampAsync(CancellationToken cancellationToken)
     {
-        var fingerprint = new StringBuilder(environment);
+        var migrated = (await repository.GetReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
+        if (migrated.Count == 0) return string.Empty;
+        return string.Join("|", (await repository.GetTrapsAsync(null, cancellationToken)).Where(t => migrated.Contains(t.ModuleKey))
+            .OrderBy(t => t.Id).Select(t => $"{t.Id}:{t.UpdatedAt.UtcTicks}:{t.NeedsReview}"));
+    }
+
+    private static ArchitectureExportManifest Manifest(List<ArchitectureProject> projects, List<KnowledgeArticle> articles, string environment, string extra = "")
+    {
+        var fingerprint = new StringBuilder(environment).Append(extra);
         foreach (var p in projects)
         {
             fingerprint.Append('|').Append(p.Key).Append(':').Append(p.Name).Append(':').Append(p.Kind).Append(':').Append(p.Summary)
@@ -382,7 +419,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                     sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
                               + $" (~{Math.Max(1, exported.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
                 var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is not null);
-                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count}** (reverse/{p.Key}.tsv)");
+                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm")}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
                 var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
                 if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");

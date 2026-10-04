@@ -74,3 +74,31 @@ public class ReverseConsultedRequest
     public string Card { get; set; } = string.Empty;
     public List<string> Refs { get; set; } = [];
 }
+
+/// <summary>0054: armadilha nova (ligada a itens). Quem não aprova cria "a conferir".</summary>
+public class CreateReverseTrapRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public List<string>? Items { get; set; }
+    public List<string>? Cards { get; set; }
+    /// <summary>manual | suggestion | migrated | learning</summary>
+    public string? Origin { get; set; }
+}
+
+public class UpdateReverseTrapRequest
+{
+    public string? Title { get; set; }
+    public string? Text { get; set; }
+    public List<string>? Items { get; set; }
+    public List<string>? Cards { get; set; }
+    /// <summary>true = conferida (aprovador).</summary>
+    public bool Confirm { get; set; }
+}
+
+/// <summary>0054: liga uma sugestão a um item (e documento) da engenharia reversa.</summary>
+public class LinkSuggestionItemRequest
+{
+    public string? ItemId { get; set; }
+    public string? SectionKey { get; set; }
+}

@@ -31,7 +31,9 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         CancellationToken ct = default) => Safe(async () =>
     {
         var modules = Split(module);
-        var hits = await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40), false, ct);
+        // 0054: a visão prática é para pessoas — não entra nas análises
+        var hits = (await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40) + 5, false, ct))
+            .Where(h => h.DocType != solvace.knowledge.domain.Reverse.ReverseDocTypes.Practical).Take(Math.Clamp(limit, 1, 40)).ToList();
         var sb = new StringBuilder();
         if (hits.Count > 0)
         {
@@ -88,6 +90,9 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
                 {
                     sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}")
                         .AppendLine(item.Body);
+                    // 0054: o que já deu errado neste item
+                    foreach (var trap in item.Traps)
+                        sb.AppendLine($"  ARMADILHA{(trap.NeedsReview ? " (a conferir)" : "")}: {trap.Title}{(trap.Cards.Count > 0 ? " · cards " + string.Join(", ", trap.Cards.Take(4)) : "")}\n    {trap.Text.Replace("\n", "\n    ")}");
                     consulted.Add(item.Ref);
                 }
                 continue;

@@ -37,6 +37,9 @@ public static partial class ReverseItemKinds
         new("NFR", "Requisito não funcional", "Requisitos não funcionais"),
         new("SEQ", "Fluxo de sequência", "Fluxos de sequência"),
         new("UI", "Componente de UI", "Componentes de UI"),
+        // 0054: visão prática (não técnica) — passo a passo por tarefa e perguntas práticas.
+        new("TUT", "Passo a passo", "Passos a passo (como fazer)"),
+        new("FAQ", "Pergunta prática", "Perguntas práticas"),
         new("GAP", "Lacuna / débito / risco", "Lacunas, débitos e riscos")
     ];
 

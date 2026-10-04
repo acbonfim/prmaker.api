@@ -34,6 +34,18 @@ public class ReverseModule
     public List<string> SuggestedTerms { get; private set; } = [];
     /// <summary>Termos que alguém dispensou (não voltam como sugestão).</summary>
     public List<string> DismissedTerms { get; private set; } = [];
+    /// <summary>
+    /// 0054: as armadilhas antigas (seção 090) e as sugestões sem item já foram ligadas aos itens da engenharia reversa —
+    /// a seção antiga sai do espelho e a de armadilhas passa a ser gerada das <see cref="ReverseTrap"/>.
+    /// </summary>
+    public DateTimeOffset? TrapsMigratedAt { get; private set; }
+
+    public void MarkTrapsMigrated(string actor, DateTimeOffset now)
+    {
+        TrapsMigratedAt = now;
+        UpdatedAt = now;
+        UpdatedBy = actor;
+    }
     public DateTimeOffset CreatedAt { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -338,6 +350,88 @@ public class ReverseRevision
     {
         var v = value.Trim();
         return v.Length == 0 ? null : v.Length <= max ? v : v[..max];
+    }
+}
+
+/// <summary>
+/// Armadilha (0054): o que a operação ensinou sobre um módulo — o que quebra, causa raiz já vista, configuração que
+/// confunde, consulta de diagnóstico — ligada aos itens da engenharia reversa (<c>RN-020</c>, <c>TELA-003</c>). A
+/// engenharia reversa descreve "como o sistema é"; a armadilha, "o que já deu errado" — as análises recebem as duas.
+/// Criada pela análise/migração = a conferir; por aprovador (ou conferida) = confirmada.
+/// </summary>
+public class ReverseTrap
+{
+    public const int MaxTextLength = 6_000;
+    public static readonly IReadOnlySet<string> Origins = new HashSet<string> { "manual", "suggestion", "migrated", "learning" };
+
+    public Guid Id { get; private set; }
+    public string ModuleKey { get; private set; } = string.Empty;
+    public string Title { get; private set; } = string.Empty;
+    public string Text { get; private set; } = string.Empty;
+    public List<string> Items { get; private set; } = [];
+    public List<string> Cards { get; private set; } = [];
+    public string Origin { get; private set; } = "manual";
+    public bool NeedsReview { get; private set; }
+    public string? ReviewedBy { get; private set; }
+    public DateTimeOffset? ReviewedAt { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public string CreatedBy { get; private set; } = string.Empty;
+    public DateTimeOffset UpdatedAt { get; private set; }
+    public string UpdatedBy { get; private set; } = string.Empty;
+    public bool IsDeleted { get; private set; }
+
+    protected ReverseTrap() { }
+
+    public ReverseTrap(string moduleKey, string title, string text, IEnumerable<string>? items, IEnumerable<string>? cards, string? origin, bool needsReview,
+        string actor, DateTimeOffset now)
+    {
+        Id = Guid.NewGuid();
+        ModuleKey = ArchitectureProject.NormalizeKey(moduleKey);
+        Origin = Origins.Contains((origin ?? "manual").Trim().ToLowerInvariant()) ? origin!.Trim().ToLowerInvariant() : "manual";
+        CreatedAt = UpdatedAt = now;
+        CreatedBy = UpdatedBy = actor;
+        Edit(title, text, items, cards, actor, now);
+        NeedsReview = needsReview;
+    }
+
+    public void Edit(string? title, string? text, IEnumerable<string>? items, IEnumerable<string>? cards, string actor, DateTimeOffset now)
+    {
+        if (title is not null)
+        {
+            var t = title.Trim();
+            if (t.Length == 0) throw new DomainException("Dê um título à armadilha (o que dá errado, numa frase).");
+            Title = t.Length <= 200 ? t : t[..200];
+        }
+        if (text is not null)
+        {
+            var x = text.Replace("\r\n", "\n").Trim();
+            if (x.Length == 0) throw new DomainException("Descreva a armadilha (sintoma, causa, como diagnosticar).");
+            if (x.Length > MaxTextLength) throw new DomainException($"A armadilha pode ter no máximo {MaxTextLength} caracteres.");
+            Text = x;
+        }
+        if (items is not null)
+            Items = items.Select(i => Reverse.ReverseItemKinds.ParseRef(i)).Where(r => r is not null)
+                .Select(r => r!.Value.Module is null ? r.Value.Id : $"{r.Value.Module}#{r.Value.Id}").Distinct().Take(30).ToList();
+        if (cards is not null)
+            Cards = cards.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).Distinct().Take(30).ToList();
+        UpdatedAt = now;
+        UpdatedBy = actor;
+    }
+
+    public void Confirm(string actor, DateTimeOffset now)
+    {
+        NeedsReview = false;
+        ReviewedBy = actor;
+        ReviewedAt = now;
+        UpdatedAt = now;
+        UpdatedBy = actor;
+    }
+
+    public void Delete(string actor, DateTimeOffset now)
+    {
+        IsDeleted = true;
+        UpdatedAt = now;
+        UpdatedBy = actor;
     }
 }
 
