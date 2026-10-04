@@ -1,7 +1,6 @@
 # Feature 0054 — Engenharia reversa como fonte; Base Solvace como leitura e aprendizado
 
-> **Status: especificada — não iniciar.** Depende da 0053 (banco da DEMO, glossário com sinônimos, correção do
-> sumário), que por sua vez espera o fim do piloto do SA3 (`legado-rca`).
+> **Status: implementada em 2026-10-04** (ver `status.md`), depois da 0053.
 
 ## Problema
 Desde a 0052 a engenharia reversa (ER) e a Base Solvace convivem **sem hierarquia**: o documento publicado vira a seção

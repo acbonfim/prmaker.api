@@ -1,7 +1,6 @@
 # Plano — Feature 0054 (ER como fonte; Base Solvace como leitura e aprendizado)
 
-Branch `feature/0054` em `prform.api-0054` e, na execução, `prform-app-0054`. **Não iniciar antes da 0053**
-(rebasear em `master` depois que a 0053 entrar). Perguntas respondidas em 2026-10-04 (seção "Respostas" da spec).
+Branch `feature/0054` em `prform.api-0054` e `prform-app-0054`. Executada em 2026-10-04, depois da 0053 (ver `status.md`). Perguntas respondidas em 2026-10-04 (seção "Respostas" da spec).
 
 | Fase | O quê | Depende |
 |---|---|---|
