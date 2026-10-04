@@ -17,3 +17,4 @@
 - 2026-10-04 — spec e plano escritos a pedido do usuário (ER como fonte; Base Solvace como leitura e aprendizado; guia
   Simples gerado da ER; armadilhas ligadas aos itens). Worktree `prform.api-0054` (branch `feature/0054` a partir de
   `origin/master` 15151d6). Perguntas em aberto na spec.
+- 2026-10-04 — respostas do usuário: migração automática, visão prática exigida, substituídas visíveis, transversais ganham ER depois; guia virou o 7º documento "Visão prática (não técnica)" (depende dos obrigatórios; TUT/FAQ; fonte obrigatória; validação por perguntas reais).

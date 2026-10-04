@@ -39,7 +39,7 @@ quando a seção antiga está desatualizada ou diz outra coisa, a informação c
   | `080-regras-de-negocio` | `re-funcional` (`RN`) |
   | `085-operacao` | `re-funcional` (`CFG`, `PRF`) |
   | `090-armadilhas` | **não** substituída — vira a camada de armadilhas (§4) |
-  | `guia-*` (Simples) | documento `guia` da ER (§3) |
+  | `guia-*` (Simples) | documento `pratica` da ER — visão prática (§3) |
 
   O mapa é configurável (plugin "Skills Configurations", chave `ReverseEngineeringSupersedes`) — nada fixo.
 - Quando **todos** os documentos que substituem uma seção estão publicados, a seção antiga fica **substituída**: sai do
@@ -48,21 +48,38 @@ quando a seção antiga está desatualizada ou diz outra coisa, a informação c
 - Módulo sem ER continua com a base antiga, igual a hoje (transição módulo a módulo).
 - O índice compacto (`kb.sh index`) e o `for-card` dizem por módulo qual fonte vale (`ER` ou `base antiga`).
 
-### 3. Visão Simples dentro da ER — documento `guia`
-- 7º tipo de documento: **"Guia (visão simples)"**, seção `re-guia`, público `human` (fica fora das análises; vai para o
-  modo Simples, a busca de pessoas e o "Pergunte").
-- Gerado na mesma skill (`/engenharia-reversa <módulo> guia`, último do `tudo`), **só a partir do que está publicado**
-  na ER do módulo — sem ler código: linguagem simples, sem tabela/classe/endpoint, frases curtas, passo a passo.
-- Seções: o que é e para que serve · como funciona (passo a passo do usuário, status) · regras (quem pode o quê,
-  prazos, aprovações) · como configurar e dar acesso · com quem conversa · como testar · perguntas frequentes ·
-  glossário.
-- Cada parágrafo/pergunta guarda os IDs de origem (`<!-- fonte: RN-012, UC-003 -->`); na tela, "ver detalhe técnico"
-  abre o item na ER. Lint: parágrafo sem fonte = aviso; termo técnico proibido (nome de tabela/classe/endpoint) = erro.
-- **Perguntas frequentes** vêm das perguntas reais do "Pergunte" sobre o módulo (fila `ArchitectureQuestion`) — a
-  resposta cita os IDs; **glossário** vem dos `GLO` (0053).
-- Aprovado e publicado como os outros; **substitui** o Guia antigo (`guia-*`) do projeto no modo Simples.
-- Ao republicar um documento técnico, o guia fica marcado "desatualizado" (lista os IDs que mudaram) até a próxima
-  sessão do guia.
+### 3. Visão prática (não técnica) — 7º documento, depois de todos os obrigatórios
+Ideia do usuário (2026-10-04): depois dos 6 documentos, uma última etapa que **depende de todos os documentos
+obrigatórios publicados** e gera a visão amigável que fica na Base Solvace — responde as perguntas práticas do dia a
+dia e é o guia do sistema.
+- Tipo `pratica` — **"Visão prática (não técnica)"**, seção `re-pratica`, público `human` (vai para o modo Simples, a
+  busca de pessoas e o "Pergunte"; não entra nas análises de bug). **Exigido** para o módulo contar como completo
+  (resposta 2), mas só pode ser iniciado quando os demais obrigatórios estão publicados — a API recusa a sessão antes
+  disso, e a tela/`Como gerar` mostra o que falta. No `tudo`, é o último.
+- Gerado **só a partir do que está publicado** na ER do módulo (sem ler código), com linguagem de quem usa o sistema:
+  sem tabela, classe, endpoint ou caminho de arquivo; nome de tela e de menu como o usuário vê.
+- Conteúdo e tipos de item (novos no contrato do índice):
+  - **O que é e onde fica**: para que serve, quem usa, se é **legado ou revamp** (e onde convivem), como habilitar.
+  - **Como chegar**: caminho de menu até cada tela (`TELA-…` da ER) — "Menu → Melhoria → A3 → Novo".
+  - **Como fazer** — itens **`TUT-…`** (passo a passo por tarefa: criar um RCA, aprovar, reabrir, exportar, configurar
+    um tipo…), cada passo com a tela e o que o usuário vê, incluindo mensagens de erro comuns e o que fazer.
+  - **Perguntas práticas** — itens **`FAQ-…`**: "o SA3 é legado ou revamp?", "como saber se um usuário logou com
+    sucesso?", "por que o botão X não aparece?", "quem recebe o e-mail?" — vindas das perguntas reais do "Pergunte"
+    sobre o módulo (`ArchitectureQuestion`), das lacunas registradas e das dúvidas recorrentes nos cards (sugestões).
+    Pergunta que depende de outro módulo responde com o que a ER dele publicou e aponta o módulo (ex.: login).
+  - **Regras em linguagem simples**, **como configurar e dar acesso**, **como testar** (QA), **glossário** (dos `GLO`
+    da 0053).
+- **Assertividade (o core da Solvace)**: toda afirmação, passo de `TUT` e resposta de `FAQ` cita os IDs da ER de onde
+  veio (`<!-- fonte: RN-012, TELA-003 -->`); lint: item sem fonte = **erro**, termo técnico proibido = erro, fonte que
+  aponta para item removido = erro. Nada de "a confirmar" escondido: o que a ER não cobre vira `GAP` na ER (não é
+  inventado na visão prática). Na tela, "ver detalhe técnico" abre o item de origem.
+- **Validação por perguntas reais**: antes do envio, a skill roda as perguntas do "Pergunte" já feitas sobre o módulo
+  (e uma bateria mínima por módulo, como a da 0040) contra o documento e mostra quais ficam sem resposta — o revisor vê
+  essa cobertura de perguntas na revisão, como a cobertura do código.
+- Aprovado e publicado como os outros; **substitui** o Guia antigo (`guia-*`) do projeto no modo Simples e alimenta o
+  "Pergunte" (respostas citando `FAQ`/`TUT`).
+- Ao republicar um documento técnico, a visão prática fica marcada "desatualizada" (lista os IDs de origem que mudaram)
+  até a próxima sessão.
 
 ### 4. Armadilhas — o que a operação ensinou
 - A ER descreve o sistema "como é"; armadilhas (o que quebra, causas raiz já vistas, configurações que confundem,
@@ -96,17 +113,22 @@ quando a seção antiga está desatualizada ou diz outra coisa, a informação c
 
 ## Migração do que já existe
 - Seções antigas: nada é apagado; viram "substituídas" só quando a ER do módulo cobrir (§2).
-- Guia antigo (`guia-*`): continua no modo Simples até o `guia` da ER ser publicado.
-- Armadilhas antigas (`090-armadilhas`) e sugestões pendentes: ver pergunta 1.
+- Guia antigo (`guia-*`): continua no modo Simples até a visão prática (`pratica`) da ER ser publicada.
+- Armadilhas antigas (`090-armadilhas`) e sugestões pendentes: **migração automática** (resposta 1) — quando o módulo
+  publica o documento que as cobre, a IA (no Claude Code da sessão, sem custo de API do PRMake) liga cada armadilha/
+  sugestão ao item mais provável (`ReverseTrap` ou sugestão por item); o que não tiver item claro fica numa lista
+  "sem item" no módulo, e tudo que foi ligado automaticamente aparece marcado para conferência na tela.
 
 ## Fora do escopo
 - Apagar a base antiga; mudar o Knowledge Center (fonte externa); rodar a ER pelo executor.
+- ER dos projetos transversais (`ecossistema`, `operacao-plataforma`, `infra-aws`, `login`, `regras-de-negocio`) —
+  **vão ganhar ER própria depois** (resposta 4), numa feature seguinte com modelos de documento próprios; até lá ficam
+  na base antiga, e as perguntas práticas que dependem deles (ex.: login) apontam para essa base.
 
-## Perguntas em aberto
-1. Armadilhas existentes (`090-armadilhas` de cada projeto) e sugestões pendentes: migrar **automaticamente** para
-   `ReverseTrap`/sugestões por item quando o módulo tiver ER (a IA liga cada uma ao item mais provável, com revisão), ou
-   **só na próxima sessão "melhorar"** de cada módulo?
-2. O `guia` entra nos documentos **exigidos** para o módulo contar como completo (`ReverseEngineeringRequiredDocs`)?
-3. Seções antigas substituídas: manter visíveis na tela como histórico (proposta) ou esconder de vez?
-4. Projetos transversais (`ecossistema`, `operacao-plataforma`, `infra-aws`, `login`, `regras-de-negocio`): ficam na
-   base antiga (proposta) ou ganham ER própria depois?
+## Respostas do usuário (2026-10-04)
+1. Armadilhas e sugestões existentes: migração **automática** (ver "Migração").
+2. A visão prática é **exigida** para o módulo ser completo — e só começa com os demais obrigatórios publicados.
+3. Seções substituídas ficam **visíveis como histórico** na tela.
+4. Projetos transversais **ganham ER própria depois** (feature seguinte). "Isso aqui é muito importante que de fato
+   seja muito assertivo, pois é o core da Solvace como um todo" → regras de fonte obrigatória e validação por perguntas
+   reais na visão prática (§3).
