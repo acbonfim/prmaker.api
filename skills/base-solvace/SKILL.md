@@ -12,6 +12,19 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh      # Knowledge Center: search <
 ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | project | section | get | stale | guia | lacunas | resolver; learn <card> (todos)
 ```
 
+## Engenharia reversa por modulo (0052) — consulte PRIMEIRO
+Modulos com engenharia reversa publicada (documentos `re-funcional`, `re-arquitetura`, `re-uiux`, `re-visao`,
+`re-spec-arquitetura`, `re-design`, aprovados no PRMake) tem cada regra, caso de uso, tela, endpoint, tabela e integracao
+como **item com ID** (`revamp-kaizen#RN-012`). Leia por item, nunca o documento inteiro:
+- MCP (preferido; com `card` registra a consulta): `prmake_base_search(query, module, kinds, card)` → referencias;
+  `prmake_base_get(refs, card)` → so o texto; `prmake_base_impact(tabela|item|modulo)` → quem mais usa;
+  `prmake_base_module(module)` → ficha do modulo e IDs.
+- Offline (espelho): `bash $KB re find <termos> [--module m] [--kind RN]` e `bash $KB re get <modulo>#<ID> [--card N]`;
+  o `kb.sh index` marca `RE n/6` nos projetos que tem.
+- Gerar/melhorar a engenharia reversa de um modulo: skill `engenharia-reversa` (Claude aberto no repositorio do modulo;
+  a tela Engenharia reversa do PRMake mostra o passo a passo e o andamento ao vivo). Divergencia/lacuna achada numa
+  analise: `arch.sh suggest <modulo> re-<doc> nota.md --kind divergence|gap --card <card>` citando o ID.
+
 ## Consultar (toda analise — e o que economiza tokens)
 1. **Indice filtrado primeiro**: `bash $KB index <modulo tela termos>` traz so os projetos/artigos que casam (linha
    completa, com as secoes; `⇄ d/u` = depende de d, usado por u). Sem termos, `bash $KB index` e o indice compacto

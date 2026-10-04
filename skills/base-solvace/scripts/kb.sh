@@ -13,6 +13,11 @@
 #   show <projeto> [secao]    sem secao: a ficha do projeto (resumo, depende de / usado por, com evidencia) e as secoes;
 #                             com secao: imprime a secao (chave ou parte do nome)
 #   find <termo> [max=20]     onde o termo aparece no espelho (arquivo:linha, trecho curto)
+#   re find <termos> [--module m] [--kind RN]
+#                             ENGENHARIA REVERSA (0052) no espelho: itens publicados (modulo#ID, tipo, titulo, tabelas)
+#                             — offline, pelo reverse/<modulo>.tsv. Na analise prefira o MCP prmake_base_search (registra)
+#   re get <modulo>#<ID> [...] [--card N]
+#                             so o bloco do item (do documento re-* do espelho); --card registra a consulta no PRMake
 #   status                    hash local x publicado, quantidades, idade do espelho e agendamento
 #   agendar install|uninstall|status|run
 #                             sincronizacao em segundo plano (LaunchAgent, a cada KB_SYNC_INTERVAL=7200 s): Knowledge
@@ -205,6 +210,60 @@ case "$CMD" in
     T="${1:?termo}"; MAX="${2:-20}"
     [[ -d "$KB" ]] || die "espelho vazio — rode kb.sh sync"
     grep -rIin --include='*.md' -- "$T" "$KB" 2>/dev/null | sed "s|$KB/||" | cut -c1-220 | head -n "$MAX" ;;
+  re)
+    SUB="${1:-}"; shift || true
+    [[ -d "$KB/reverse" ]] || { do_sync >/dev/null 2>&1; [[ -d "$KB/reverse" ]] || die "nenhuma engenharia reversa publicada no espelho (kb.sh sync)"; }
+    case "$SUB" in
+      find)
+        MODF=""; KINDF=""; TERMS=()
+        while [[ $# -gt 0 ]]; do case "$1" in --module) MODF="$2"; shift 2;; --kind) KINDF="$2"; shift 2;; *) TERMS+=("$1"); shift;; esac; done
+        python3 - "$KB/reverse" "$MODF" "$KINDF" "${TERMS[@]:-}" <<'PY'
+import os, sys, unicodedata, re
+root, mod, kinds, terms = sys.argv[1], sys.argv[2], sys.argv[3], [t for t in sys.argv[4:] if t]
+def n(t): return "".join(c for c in unicodedata.normalize("NFD", t or "") if unicodedata.category(c) != "Mn").lower()
+kinds = {k.strip().upper() for k in kinds.split(",") if k.strip()}
+words = [w[:-2] if len(w) > 5 and not re.search(r"[\d_]", w) else w for w in re.findall(r"[\w-]{3,}", n(" ".join(terms)))]
+hits = []
+for f in sorted(os.listdir(root)):
+    if not f.endswith(".tsv") or (mod and not f.startswith(mod)): continue
+    m = f[:-4]
+    for line in open(os.path.join(root, f), encoding="utf-8").read().splitlines()[1:]:
+        c = line.split("\t")
+        if len(c) < 4 or (kinds and c[1] not in kinds): continue
+        text = n(" ".join(c))
+        score = sum((4 if w in n(c[3]) else 0) + (2 if w in n(" ".join(c[4:])) else 0) + (1 if w in text else 0) for w in words)
+        if words and score == 0: continue
+        hits.append((score, f"{m}#{c[0]} [{c[1]}] {c[3]}" + (f" · {c[4]}" if len(c) > 4 and c[4] else "") + f" ({c[2]})"))
+hits.sort(key=lambda h: -h[0])
+print("\n".join(h[1] for h in hits[:25]) or "Nada no indice da engenharia reversa.")
+PY
+        ;;
+      get)
+        CARDF=""; REFS=()
+        while [[ $# -gt 0 ]]; do case "$1" in --card) CARDF="$2"; shift 2;; *) REFS+=("$1"); shift;; esac; done
+        [[ ${#REFS[@]} -gt 0 ]] || die "uso: kb.sh re get <modulo>#<ID> [...]"
+        for R in "${REFS[@]}"; do
+          M="${R%%#*}"; ID="${R#*#}"; [[ "$M" == "$R" ]] && die "use <modulo>#<ID> (ex.: revamp-kaizen#RN-012)"
+          DOC="$(awk -F'\t' -v id="$ID" '$1 == id { print $3; exit }' "$KB/reverse/$M.tsv" 2>/dev/null)"
+          [[ -n "$DOC" ]] || { echo "--- $R: nao encontrado no espelho"; continue; }
+          F="$(ls "$KB/projects/$M" 2>/dev/null | grep -- "-re-$DOC.md$" | head -1)"
+          echo "--- $R ($DOC)"
+          awk -v id="$ID" '
+            /^```/ { fence = !fence }
+            !fence && /^#+ / { lvl = index($0, " ") - 1
+              if (on && lvl <= start) exit
+              t = $0; sub(/^#+ +/, "", t); gsub(/[*`]/, "", t)
+              if (!on && index(t, id) == 1) { on = 1; start = lvl } }
+            on { print }' "$KB/projects/$M/$F"
+        done
+        if [[ -n "$CARDF" ]] && tk="$(token)"; then
+          jq -n --arg c "$CARDF" --args '{card: $c, refs: $ARGS.positional}' "${REFS[@]}" > "${TMPDIR:-/tmp}/kb-consulted.$$"
+          curl -s --max-time 10 -o /dev/null -X POST "$BASE/ReverseEngineering/consulted" -H "x-api-key: $tk" -H 'content-type: application/json' \
+            --data-binary "@${TMPDIR:-/tmp}/kb-consulted.$$" 2>/dev/null; rm -f "${TMPDIR:-/tmp}/kb-consulted.$$"
+        fi
+        ;;
+      *) die "uso: kb.sh re find <termos> [--module m] [--kind RN] | kb.sh re get <modulo>#<ID> [--card N]" ;;
+    esac ;;
   status)
     echo "local: $(local_hash || echo nenhum) em $KB"
     A="$(age)"; if (( A < 999999 )); then echo "conferido com o PRMake ha $(( A / 60 )) min"; else echo "nunca conferido"; fi
