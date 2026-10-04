@@ -35,7 +35,47 @@ public interface IKnowledgeRepository
     Task<ArchitectureQuestion?> GetQuestionAsync(Guid id, CancellationToken cancellationToken);
     Task<List<ArchitectureQuestion>> GetQuestionsAsync(string? status, CancellationToken cancellationToken);
 
+    // Engenharia reversa por módulo (0052)
+    Task<List<ReverseModule>> GetReverseModulesAsync(CancellationToken cancellationToken);
+    Task<ReverseModule?> GetReverseModuleForUpdateAsync(string key, CancellationToken cancellationToken);
+    void AddReverseModule(ReverseModule module);
+    /// <summary>Cabeças das revisões (sem conteúdo), filtros opcionais; mais recentes primeiro.</summary>
+    Task<List<domain.Responses.ReverseRevisionHead>> GetRevisionHeadsAsync(string? moduleKey, string? docType, IReadOnlyCollection<string>? statuses,
+        CancellationToken cancellationToken);
+    Task<ReverseRevision?> GetRevisionAsync(Guid id, bool tracked, CancellationToken cancellationToken);
+    Task<ReverseRevision?> GetOpenRevisionForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
+    Task<List<ReverseRevision>> GetPublishedRevisionsForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
+    Task<int> GetMaxRevisionNumberAsync(string moduleKey, string docType, CancellationToken cancellationToken);
+    void AddRevision(ReverseRevision revision);
+    /// <summary>Anexos do módulo sem o conteúdo dos arquivos.</summary>
+    Task<List<domain.Responses.ReverseAssetResponse>> GetAssetHeadsAsync(string moduleKey, CancellationToken cancellationToken);
+    Task<ReverseAsset?> GetAssetAsync(Guid id, bool tracked, CancellationToken cancellationToken);
+    void AddAsset(ReverseAsset asset);
+    /// <summary>Itens publicados (todos, ou de um módulo), sem rastreamento.</summary>
+    Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken);
+    /// <summary>Marca barata para saber se o índice mudou (quantidade + última atualização).</summary>
+    Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken);
+    Task<List<ReverseIndexEntry>> GetIndexEntriesForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
+    void AddIndexEntry(ReverseIndexEntry entry);
+    void RemoveIndexEntries(IEnumerable<ReverseIndexEntry> entries);
+    Task<ReverseCardContext?> GetCardContextAsync(string cardNumber, bool tracked, CancellationToken cancellationToken);
+    void AddCardContext(ReverseCardContext context);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Configuração da engenharia reversa (0052) — plugin "Skills Configurations".</summary>
+public interface IReverseSettingsProvider
+{
+    Task<ReverseSettings> GetAsync(CancellationToken cancellationToken);
+}
+
+/// <param name="Templates">Modelos que substituem os do código (tipo → markdown).</param>
+public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
+    IReadOnlyDictionary<string, string> Templates)
+{
+    public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
+        new Dictionary<string, string>());
 }
 
 /// <summary>Configuração efetiva do KC (plugin "Knowledge Center Configurations"): ambiente ativo + regras extras do filtro.</summary>

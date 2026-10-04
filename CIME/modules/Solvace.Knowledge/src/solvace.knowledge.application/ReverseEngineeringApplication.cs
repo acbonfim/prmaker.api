@@ -1,0 +1,870 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using solvace.knowledge.application.Contracts;
+using solvace.knowledge.domain.Entities;
+using solvace.knowledge.domain.Requests;
+using solvace.knowledge.domain.Responses;
+using solvace.knowledge.domain.Reverse;
+
+namespace solvace.knowledge.application;
+
+/// <summary>
+/// Engenharia reversa por módulo (0052): cada módulo (projeto legado/revamp da Base Solvace) tem os documentos de
+/// <see cref="ReverseDocTypes"/>. A skill abre uma sessão (rascunho), envia para revisão, um aprovador aprova e publica:
+/// o documento vira a seção <c>re-&lt;tipo&gt;</c> do projeto (espelho, busca, Pergunte) e os itens com ID vão para o
+/// índice por item, que as análises consultam pelo MCP sem ler o documento inteiro nem o código.
+/// </summary>
+public partial class ReverseEngineeringApplication(IKnowledgeRepository repository, IReverseSettingsProvider settingsProvider) : IReverseEngineeringApplication
+{
+    /// <summary>Tipos de projeto que são "módulo" na tela (as visões transversais ficam de fora).</summary>
+    public static readonly IReadOnlySet<string> ModuleKinds = new HashSet<string> { "legacy", "revamp", "frontend", "integration", "auth" };
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    // ── Configuração e tipos ────────────────────────────────────────────────────────────────────
+
+    public async Task<ReverseSettingsResponse> GetSettingsAsync(IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        return new ReverseSettingsResponse
+        {
+            ApproverRoles = s.ApproverRoles.ToList(), RequiredDocs = s.RequiredDocs.ToList(), GateStep = s.GateStep, MinCoverage = s.MinCoverage,
+            CanApprove = CanApprove(s, userRoles),
+            Kinds = ReverseItemKinds.All.Select(k => new ReverseItemKindResponse { Prefix = k.Prefix, Label = k.Label, Plural = k.Plural }).ToList()
+        };
+    }
+
+    public static bool CanApprove(ReverseSettings settings, IReadOnlyCollection<string> userRoles) =>
+        userRoles.Any(r => settings.ApproverRoles.Contains(r, StringComparer.OrdinalIgnoreCase));
+
+    public async Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        return ReverseDocTypes.All.Select(t => ToDocType(t, s)).ToList();
+    }
+
+    private static ReverseDocTypeResponse ToDocType(ReverseDocType t, ReverseSettings s) => new()
+    {
+        Key = t.Key, Title = t.Title, SectionKey = t.SectionKey, Order = t.Order, Required = s.RequiredDocs.Contains(t.Key), Kinds = t.Kinds.ToList(),
+        Headings = t.Headings.Select(h => h.Title).ToList(), Purpose = t.Purpose,
+        Template = (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
+                   + "\n\n" + ReverseDocTypes.ItemGuide.Trim()
+    };
+
+    // ── Módulos ─────────────────────────────────────────────────────────────────────────────────
+
+    public async Task<List<ReverseModuleSummaryResponse>> ListModulesAsync(CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var projects = (await repository.GetProjectsAsync(cancellationToken)).Where(p => ModuleKinds.Contains(p.Kind)).ToList();
+        var modules = (await repository.GetReverseModulesAsync(cancellationToken)).ToDictionary(m => m.Key);
+        var open = (await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
+            .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var items = entries.Where(e => !e.Removed).GroupBy(e => e.ModuleKey).ToDictionary(g => g.Key, g => g.Count());
+        var suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+            .Where(x => x.SectionKey?.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal) == true)
+            .GroupBy(x => (x.ProjectKey, x.SectionKey!)).ToDictionary(g => g.Key, g => g.Count());
+
+        return projects
+            .OrderBy(p => p.BusinessArea ?? p.DisplayName ?? p.Name).ThenBy(p => p.Kind).ThenBy(p => p.Name)
+            .Select(p =>
+            {
+                var summary = new ReverseModuleSummaryResponse();
+                FillSummary(summary, p, modules.GetValueOrDefault(p.Key), s, open, items.GetValueOrDefault(p.Key), suggestions);
+                return summary;
+            }).ToList();
+    }
+
+    private static readonly string[] OpenStatuses =
+        [ReverseRevisionStatus.Draft, ReverseRevisionStatus.Review, ReverseRevisionStatus.Changes, ReverseRevisionStatus.Approved];
+
+    private static void FillSummary(ReverseModuleSummaryResponse summary, ArchitectureProject p, ReverseModule? module, ReverseSettings s,
+        IReadOnlyDictionary<(string, string), ReverseRevisionHead> open, int items, IReadOnlyDictionary<(string, string), int> suggestions)
+    {
+        summary.Key = p.Key;
+        summary.Name = p.Name;
+        summary.DisplayName = p.DisplayName;
+        summary.BusinessArea = p.BusinessArea;
+        summary.ProjectKind = p.Kind;
+        summary.World = World(p.Kind);
+        summary.Aliases = module?.Aliases ?? [];
+        summary.Items = items;
+        summary.Docs = ReverseDocTypes.All.Select(t =>
+        {
+            var section = p.Sections.FirstOrDefault(x => x.Key == t.SectionKey);
+            var head = open.GetValueOrDefault((p.Key, t.Key));
+            return new ReverseDocStatusResponse
+            {
+                Type = t.Key, Title = t.Title, Required = s.RequiredDocs.Contains(t.Key),
+                Published = section is null ? null : new ReversePublishedInfo
+                {
+                    Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Content.Length
+                },
+                Open = head,
+                State = head?.Status ?? (section is null ? "none" : ReverseRevisionStatus.Published),
+                PendingSuggestions = suggestions.GetValueOrDefault((p.Key, t.SectionKey))
+            };
+        }).ToList();
+        summary.RequiredCount = s.RequiredDocs.Count;
+        summary.PublishedRequired = summary.Docs.Count(d => d.Required && d.Published is not null);
+        summary.Complete = summary.RequiredCount > 0 && summary.PublishedRequired == summary.RequiredCount;
+        summary.InReview = summary.Docs.Count(d => d.Open?.Status is ReverseRevisionStatus.Review or ReverseRevisionStatus.Approved);
+    }
+
+    public static string World(string kind) => kind switch
+    {
+        "legacy" => "legado",
+        "revamp" => "revamp",
+        "frontend" => "front",
+        "integration" => "integração",
+        "auth" => "login",
+        _ => kind
+    };
+
+    public async Task<ReverseModuleResponse> GetModuleAsync(string key, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var all = await repository.GetProjectsAsync(cancellationToken);
+        var project = FindProject(all, key);
+        var module = (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key);
+        var open = (await repository.GetRevisionHeadsAsync(project.Key, null, OpenStatuses, cancellationToken))
+            .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
+        var entries = (await ReverseSearch.EntriesAsync(repository, cancellationToken)).Where(e => e.ModuleKey == project.Key && !e.Removed).ToList();
+        var suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+            .Where(x => x.ProjectKey == project.Key && x.SectionKey is not null)
+            .GroupBy(x => (x.ProjectKey, x.SectionKey!)).ToDictionary(g => g.Key, g => g.Count());
+
+        var response = new ReverseModuleResponse();
+        FillSummary(response, project, module, s, open, entries.Count, suggestions);
+        foreach (var doc in response.Docs.Where(d => d.Published is not null))
+            doc.Published!.Items = entries.Count(e => e.DocType == doc.Type);
+        response.Repository = project.Repository;
+        response.Summary = project.Summary;
+        response.Configured = module is not null;
+        response.Sources = module?.Sources ?? DefaultSources(project);
+        response.Notes = module?.Notes;
+        response.Assets = WithDownload(await repository.GetAssetHeadsAsync(project.Key, cancellationToken));
+        response.ItemsByKind = entries.GroupBy(e => e.Kind).OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count());
+        response.Relations = project.Relations;
+        response.UsedBy = all.Where(p => p.Key != project.Key)
+            .SelectMany(p => p.Relations.Where(r => r.Target == project.Key)
+                .Select(r => new ArchitectureIncomingRelation { Source = p.Key, Kind = r.Kind, Detail = r.Detail, Evidence = r.Evidence }))
+            .ToList();
+        response.Siblings = project.BusinessArea is null
+            ? []
+            : all.Where(p => p.Key != project.Key && p.BusinessArea == project.BusinessArea && ModuleKinds.Contains(p.Kind)).Select(p => p.Key).ToList();
+        response.CanApprove = CanApprove(s, userRoles);
+        return response;
+    }
+
+    /// <summary>Fontes sugeridas enquanto o módulo não foi configurado: o repositório do projeto (nome pela URL).</summary>
+    public static List<ReverseSource> DefaultSources(ArchitectureProject project)
+    {
+        var repo = RepoName(project.Repository);
+        if (repo is null && project.Kind == "legacy") repo = "edv-solvace";
+        return repo is null ? [] : [new ReverseSource { Repository = repo, Role = "backend", Notes = "sugerido pelo projeto — confirme" }];
+    }
+
+    private static string? RepoName(string? repository)
+    {
+        if (string.IsNullOrWhiteSpace(repository)) return null;
+        var value = repository.Trim().TrimEnd('/');
+        if (value.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) value = value[..^4];
+        var slash = value.LastIndexOfAny(['/', ':']);
+        return slash >= 0 ? value[(slash + 1)..] : value;
+    }
+
+    private static List<ReverseAssetResponse> WithDownload(List<ReverseAssetResponse> assets)
+    {
+        foreach (var a in assets.Where(a => a.FileName is not null)) a.Download = $"ReverseEngineering/assets/{a.Id}/file";
+        return assets;
+    }
+
+    public async Task<ReverseModuleResponse> UpsertModuleAsync(string key, UpsertReverseModuleRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        await RequireApproverAsync(userRoles, "configurar o módulo", cancellationToken);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var module = await EnsureModuleAsync(project, actor, cancellationToken);
+        module.Update(request.Sources, request.Aliases, request.Notes, actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return await GetModuleAsync(project.Key, userRoles, cancellationToken);
+    }
+
+    private async Task<ReverseModule> EnsureModuleAsync(ArchitectureProject project, string actor, CancellationToken cancellationToken)
+    {
+        var module = await repository.GetReverseModuleForUpdateAsync(project.Key, cancellationToken);
+        if (module is not null) return module;
+        module = new ReverseModule(project.Key, actor, DateTimeOffset.UtcNow);
+        module.Update(DefaultSources(project), DefaultAliases(project), null, actor, DateTimeOffset.UtcNow);
+        repository.AddReverseModule(module);
+        return module;
+    }
+
+    /// <summary>Apelidos iniciais: nome amigável e área de negócio (o campo Module do card costuma usar esses nomes).</summary>
+    private static List<string> DefaultAliases(ArchitectureProject p) =>
+        new[] { p.DisplayName, p.Kind == "revamp" && p.DisplayName is not null ? $"{p.DisplayName} (Revamp)" : null }
+            .Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a!).ToList();
+
+    // ── Documentos publicados ───────────────────────────────────────────────────────────────────
+
+    public async Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var type = ReverseDocTypes.Get(docType);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+        return new ReverseDocResponse
+        {
+            ModuleKey = project.Key,
+            Type = ToDocType(type, s),
+            Content = section?.Content,
+            Published = section is null ? null : new ReversePublishedInfo
+            {
+                Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Content.Length,
+                Items = ReverseDocParser.Parse(section.Content).Count(i => !i.Removed)
+            },
+            Items = section is null ? [] : ReverseDocParser.Parse(section.Content).Select(ToItemHead).ToList(),
+            Revisions = await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken),
+            Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+                .Where(x => x.ProjectKey == project.Key && x.SectionKey == type.SectionKey).Select(ToSuggestion).ToList()
+        };
+    }
+
+    private static ReverseItemHead ToItemHead(ReverseItem i) => new() { Id = i.Id, Kind = i.Kind, Title = i.Title, Level = i.Level, Removed = i.Removed };
+
+    // ── Sessão (rascunho) e revisões ────────────────────────────────────────────────────────────
+
+    public async Task<ReverseSessionResponse> StartSessionAsync(string key, string docType, StartReverseSessionRequest request, string actor,
+        IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var type = ReverseDocTypes.Get(docType);
+        var all = await repository.GetProjectsAsync(cancellationToken);
+        var project = FindProject(all, key);
+        await EnsureModuleAsync(project, actor, cancellationToken);
+        var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+
+        var revision = await repository.GetOpenRevisionForUpdateAsync(project.Key, type.Key, cancellationToken);
+        var resumed = revision is not null;
+        if (revision is null)
+        {
+            var mode = ReverseRevisionMode.Normalize(request.Mode ?? (section is null ? "new" : "improve"));
+            var number = await repository.GetMaxRevisionNumberAsync(project.Key, type.Key, cancellationToken) + 1;
+            revision = new ReverseRevision(project.Key, type.Key, number, mode, mode == "improve" ? section?.Content : null, section?.Version, actor, DateTimeOffset.UtcNow);
+            repository.AddRevision(revision);
+        }
+        await repository.SaveChangesAsync(cancellationToken);
+
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var lastChanges = (await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken))
+            .FirstOrDefault(r => r.ReviewNote is not null && r.Status is ReverseRevisionStatus.Changes or ReverseRevisionStatus.Discarded or ReverseRevisionStatus.Review);
+        return new ReverseSessionResponse
+        {
+            Revision = await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken),
+            Resumed = resumed,
+            Module = await GetModuleAsync(project.Key, userRoles, cancellationToken),
+            DocType = ToDocType(type, s),
+            Published = section?.Content,
+            PublishedVersion = section?.Version,
+            Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+                .Where(x => x.ProjectKey == project.Key).Take(40).Select(ToSuggestion).ToList(),
+            ReviewNote = revision.ReviewNote ?? lastChanges?.ReviewNote,
+            OtherDocIds = OtherDocIds(entries, project.Key, type.Key),
+            Related = RenderRelated(project, all, entries),
+            ExistingSections = project.Sections.Where(x => x.IsForLlm && !x.Key.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal))
+                .OrderBy(x => x.Order)
+                .Select(x => new ArchitectureSectionSummaryResponse { Id = x.Id, Key = x.Key, Title = x.Title, Order = x.Order, Version = x.Version, Length = x.Content.Length })
+                .ToList(),
+            MinCoverage = s.MinCoverage
+        };
+    }
+
+    private static Dictionary<string, string> OtherDocIds(IReadOnlyList<ReverseIndexEntry> entries, string moduleKey, string docType) =>
+        entries.Where(e => e.ModuleKey == moduleKey && e.DocType != docType && !e.Removed && e.Kind != "GAP")
+            .GroupBy(e => e.ItemId).ToDictionary(g => g.Key, g => g.First().DocType);
+
+    /// <summary>
+    /// Itens dos módulos ligados a este (dependências e quem o usa): integrações, endpoints, eventos e tabelas — e os itens
+    /// de outros módulos que citam este. Texto enxuto: uma linha por item.
+    /// </summary>
+    private static string RenderRelated(ArchitectureProject project, List<ArchitectureProject> all, IReadOnlyList<ReverseIndexEntry> entries)
+    {
+        var related = project.Relations.Select(r => r.Target)
+            .Concat(all.Where(p => p.Relations.Any(r => r.Target == project.Key)).Select(p => p.Key))
+            .Where(k => k != project.Key).Distinct().ToHashSet();
+        var sb = new StringBuilder();
+        var lines = 0;
+        foreach (var e in entries.Where(e => !e.Removed && related.Contains(e.ModuleKey) && e.Kind is "INT" or "API" or "EVT" or "DB")
+                     .OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId))
+        {
+            if (lines++ >= 250) { sb.AppendLine("… (mais itens: prmake_base_search)"); break; }
+            sb.AppendLine($"- {e.Ref} [{e.Kind}] {e.Title}{(e.Tables.Count > 0 ? " · " + string.Join(", ", e.Tables.Take(4)) : "")}");
+        }
+        var citing = entries.Where(e => !e.Removed && e.ModuleKey != project.Key
+                                        && (e.Modules.Contains(project.Key) || e.Refs.Any(r => r.StartsWith(project.Key + "#", StringComparison.Ordinal)))).ToList();
+        if (citing.Count > 0)
+        {
+            sb.AppendLine().AppendLine($"Itens de outros módulos que citam {project.Key}:");
+            foreach (var e in citing.Take(120)) sb.AppendLine($"- {e.Ref} [{e.Kind}] {e.Title}");
+        }
+        return sb.Length == 0 ? "(nenhum módulo relacionado com engenharia reversa publicada ainda — use as relações da ficha do projeto)" : sb.ToString();
+    }
+
+    public async Task<List<ReverseRevisionHead>> ListRevisionsAsync(string? moduleKey, string? docType, string? status, CancellationToken cancellationToken)
+    {
+        var statuses = status switch
+        {
+            null or "" or "all" => null,
+            "open" => OpenStatuses,
+            "pending" => new[] { ReverseRevisionStatus.Review, ReverseRevisionStatus.Approved },
+            _ => status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        };
+        var heads = await repository.GetRevisionHeadsAsync(
+            string.IsNullOrWhiteSpace(moduleKey) ? null : ArchitectureProject.NormalizeKey(moduleKey),
+            string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key, statuses, cancellationToken);
+        var names = (await repository.GetProjectsAsync(cancellationToken)).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+        foreach (var h in heads) h.ModuleName = names.GetValueOrDefault(h.ModuleKey);
+        return heads;
+    }
+
+    public async Task<ReverseRevisionResponse> GetRevisionAsync(Guid id, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var revision = await repository.GetRevisionAsync(id, tracked: false, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        return await ToRevisionAsync(revision, project, s, userRoles, withDiff: true, cancellationToken);
+    }
+
+    public async Task<ReverseRevisionResponse> SaveRevisionAsync(Guid id, SaveReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        var approver = CanApprove(s, userRoles);
+        if (!approver && !string.Equals(revision.CreatedBy, actor, StringComparison.OrdinalIgnoreCase)
+                      && revision.Status is not (ReverseRevisionStatus.Draft or ReverseRevisionStatus.Changes))
+            throw new DomainException("Só quem abriu a sessão ou um aprovador edita uma revisão enviada.");
+        revision.Save(request.Content, request.Summary, Raw(request.Coverage), request.CoverageRatio, Raw(request.Session), approver, actor, DateTimeOffset.UtcNow);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        revision.SetLint(JsonSerializer.Serialize(await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken), Json));
+        await repository.SaveChangesAsync(cancellationToken);
+        return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
+    }
+
+    public async Task<ReverseLintResult> LintAsync(string key, LintReverseDocumentRequest request, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        return await LintAsync(project, ReverseDocTypes.Get(request.DocType).Key, request.Content, request.CoverageRatio, s, cancellationToken);
+    }
+
+    private async Task<ReverseLintResult> LintAsync(ArchitectureProject project, string docType, string content, double? coverage, ReverseSettings s,
+        CancellationToken cancellationToken)
+    {
+        var type = ReverseDocTypes.Get(docType);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var published = entries.Where(e => e.ModuleKey == project.Key && e.DocType == type.Key).Select(e => e.ItemId).ToList();
+        return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage);
+    }
+
+    public async Task<ReverseRevisionResponse> SubmitAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        var lint = await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken);
+        revision.SetLint(JsonSerializer.Serialize(lint, Json));
+        if (!lint.Ok)
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+            throw new DomainException("O documento não passou na checagem — corrija e envie de novo: " + string.Join(" ", lint.Errors));
+        }
+        revision.Submit(actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
+    }
+
+    public async Task<ReverseRevisionResponse> ReviewAsync(Guid id, ReviewReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await RequireApproverAsync(userRoles, "revisar", cancellationToken);
+        var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        revision.Review(request.Action, request.Note, actor, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Publica a revisão aprovada: grava a seção <c>re-&lt;tipo&gt;</c> (versão nova), reconstrói o índice do documento,
+    /// funde as integrações (<c>INT</c> com <c>**Módulos:**</c>) nas relações do projeto e marca a publicada anterior como
+    /// substituída.
+    /// </summary>
+    public async Task<ReverseRevisionResponse> PublishAsync(Guid id, PublishReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await RequireApproverAsync(userRoles, "publicar", cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        if (request.Approve && revision.Status == ReverseRevisionStatus.Review) revision.Review("approve", request.Note, actor, now);
+        if (revision.Status != ReverseRevisionStatus.Approved)
+            throw new DomainException($"Só revisão aprovada pode ser publicada (a #{revision.Number} está {ReverseRevision.Label(revision.Status)}).");
+        var type = ReverseDocTypes.Get(revision.DocType);
+        var lint = ReverseLint.Run(type, revision.Content);
+        if (lint.Errors.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", lint.Errors));
+
+        var project = await repository.GetProjectForUpdateAsync(revision.ModuleKey, cancellationToken);
+        if (project is null || project.IsDeleted) throw new KnowledgeNotFoundException($"Projeto '{revision.ModuleKey}' não encontrado.");
+        var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+        if (section is null)
+        {
+            section = new ArchitectureSection(project.Id, type.SectionKey, ArchitectureSectionAudience.Llm);
+            project.Sections.Add(section);
+            repository.AddSection(section);
+        }
+        var note = $"engenharia reversa: revisão #{revision.Number} ({revision.Mode}) aprovada por {revision.ReviewedBy ?? actor}, publicada por {actor}";
+        var version = section.Write(type.Title, revision.Content, type.Order, ArchitectureSource.Skill, note, actor, now);
+        if (version is not null) repository.AddVersion(version);
+        project.Touch(actor, now);
+
+        foreach (var previous in await repository.GetPublishedRevisionsForUpdateAsync(revision.ModuleKey, revision.DocType, cancellationToken))
+            if (previous.Id != revision.Id) previous.Supersede(now);
+        revision.MarkPublished(section.Version, actor, now);
+
+        var items = ReverseDocParser.Parse(section.Content);
+        await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken);
+        if (type.Key == "arquitetura") MergeIntegrations(project, items);
+        await repository.SaveChangesAsync(cancellationToken);
+        ReverseSearch.Invalidate();
+
+        var fresh = FindProject(await repository.GetProjectsAsync(cancellationToken), project.Key);
+        return await ToRevisionAsync(revision, fresh, s, userRoles, withDiff: false, cancellationToken);
+    }
+
+    /// <summary>Troca os itens do índice de um documento (usado ao publicar e quando a seção re-* é editada pela Base Solvace).</summary>
+    public static async Task ReplaceIndexAsync(IKnowledgeRepository repository, string moduleKey, string docType, List<ReverseItem> items, int sectionVersion,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        repository.RemoveIndexEntries(await repository.GetIndexEntriesForUpdateAsync(moduleKey, docType, cancellationToken));
+        foreach (var item in items.GroupBy(i => i.Id).Select(g => g.First()))
+            repository.AddIndexEntry(new ReverseIndexEntry(moduleKey, docType, item, sectionVersion, now));
+    }
+
+    /// <summary>Integrações do levantamento viram relações do grafo (evidência <c>re#INT-n</c>); as do extrator ficam.</summary>
+    public static void MergeIntegrations(ArchitectureProject project, List<ReverseItem> items)
+    {
+        var fromDoc = items.Where(i => i.Kind == "INT" && !i.Removed)
+            .SelectMany(i => i.Modules.Where(m => m != project.Key).Select(m => new ArchitectureRelation
+            {
+                Target = m, Kind = RelationKind(i.Body), Detail = i.Title, Evidence = $"re#{i.Id}"
+            }));
+        var kept = project.Relations.Where(r => r.Evidence?.StartsWith("re#", StringComparison.Ordinal) != true);
+        project.SetRelations(kept.Concat(fromDoc).Take(ArchitectureProject.MaxRelations).ToList());
+    }
+
+    private static string RelationKind(string body)
+    {
+        var b = ArchitectureSearch.Normalize(body);
+        if (b.Contains("sqs") || b.Contains("fila")) return "queue";
+        if (b.Contains("sns") || b.Contains("evento") || b.Contains("event")) return "event";
+        if (b.Contains("banco") || b.Contains("tabela") || b.Contains(" sql")) return "database";
+        if (b.Contains("http") || b.Contains("rest") || b.Contains("endpoint") || b.Contains("api ")) return "http";
+        if (b.Contains("pacote") || b.Contains("nuget") || b.Contains("npm")) return "package";
+        if (b.Contains("front")) return "frontend";
+        return "other";
+    }
+
+    private async Task<ReverseRevisionResponse> ToRevisionAsync(ReverseRevision r, ArchitectureProject project, ReverseSettings s, IReadOnlyCollection<string> userRoles,
+        bool withDiff, CancellationToken cancellationToken)
+    {
+        var type = ReverseDocTypes.Get(r.DocType);
+        var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+        ReverseLintResult? lint = null;
+        if (r.Lint is not null)
+            try { lint = JsonSerializer.Deserialize<ReverseLintResult>(r.Lint, Json); }
+            catch (JsonException) { }
+        await Task.CompletedTask;
+        return new ReverseRevisionResponse
+        {
+            Id = r.Id, ModuleKey = r.ModuleKey, ModuleName = project.DisplayName ?? project.Name, DocType = r.DocType, Number = r.Number, Mode = r.Mode,
+            Status = r.Status, Summary = r.Summary, CoverageRatio = r.CoverageRatio, Length = r.Content.Length, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy,
+            UpdatedAt = r.UpdatedAt, UpdatedBy = r.UpdatedBy, SubmittedAt = r.SubmittedAt, SubmittedBy = r.SubmittedBy, ReviewedAt = r.ReviewedAt,
+            ReviewedBy = r.ReviewedBy, PublishedAt = r.PublishedAt, PublishedBy = r.PublishedBy, ReviewNote = r.ReviewNote, Content = r.Content, Lint = lint,
+            Coverage = Element(r.Coverage), Session = Element(r.Session), BaseVersion = r.BaseVersion, PublishedVersion = r.PublishedVersion,
+            CurrentPublishedVersion = section?.Version,
+            PublishedChangedSinceBase = r.IsOpen && section is not null && r.BaseVersion != section.Version,
+            Diff = withDiff ? Diff(section?.Content ?? string.Empty, r.Content) : null,
+            CanApprove = CanApprove(s, userRoles)
+        };
+    }
+
+    /// <summary>Diferença por item (ID): o que o revisor precisa ver — itens novos, removidos e alterados.</summary>
+    public static ReverseRevisionDiff Diff(string published, string draft)
+    {
+        var before = ReverseDocParser.Parse(published).GroupBy(i => i.Id).ToDictionary(g => g.Key, g => g.First());
+        var after = ReverseDocParser.Parse(draft).GroupBy(i => i.Id).ToDictionary(g => g.Key, g => g.First());
+        var diff = new ReverseRevisionDiff();
+        foreach (var (id, item) in after)
+        {
+            if (!before.TryGetValue(id, out var old))
+            {
+                diff.Added++;
+                if (diff.Items.Count < 400) diff.Items.Add(new ReverseItemDiff { Id = id, Title = item.Title, Change = "added", After = Cap(item.Body) });
+            }
+            else if (item.Removed && !old.Removed)
+            {
+                diff.Removed++;
+                if (diff.Items.Count < 400) diff.Items.Add(new ReverseItemDiff { Id = id, Title = item.Title, Change = "removed", Before = Cap(old.Body), After = Cap(item.Body) });
+            }
+            else if (Squash(item.Body) != Squash(old.Body))
+            {
+                diff.Changed++;
+                if (diff.Items.Count < 400) diff.Items.Add(new ReverseItemDiff { Id = id, Title = item.Title, Change = "changed", Before = Cap(old.Body), After = Cap(item.Body) });
+            }
+            else diff.Unchanged++;
+        }
+        foreach (var (id, old) in before.Where(b => !after.ContainsKey(b.Key)))
+        {
+            diff.Removed++;
+            if (diff.Items.Count < 400) diff.Items.Add(new ReverseItemDiff { Id = id, Title = old.Title, Change = "removed", Before = Cap(old.Body) });
+        }
+        diff.OtherTextChanged = Squash(OutsideItems(published)) != Squash(OutsideItems(draft));
+        diff.Items = diff.Items.OrderBy(i => i.Change switch { "removed" => 0, "changed" => 1, _ => 2 }).ThenBy(i => i.Id, StringComparer.Ordinal).ToList();
+        return diff;
+    }
+
+    private static string OutsideItems(string content)
+    {
+        var text = content;
+        foreach (var item in ReverseDocParser.Parse(content)) text = text.Replace(item.Body, string.Empty);
+        return text;
+    }
+
+    private static string Squash(string value) => Spaces().Replace(value ?? string.Empty, " ").Trim();
+
+    private static string Cap(string value) => value.Length <= 4000 ? value : value[..4000] + "\n…(cortado)";
+
+    // ── Anexos de UI/UX ─────────────────────────────────────────────────────────────────────────
+
+    public async Task<ReverseAssetResponse> AddLinkAsync(string key, CreateReverseAssetLinkRequest request, string actor, CancellationToken cancellationToken)
+    {
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var asset = ReverseAsset.Link(project.Key, request.Kind, request.Title, request.Url, request.Notes, request.Screens, actor, DateTimeOffset.UtcNow);
+        repository.AddAsset(asset);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToAsset(asset);
+    }
+
+    public async Task<ReverseAssetResponse> AddFileAsync(string key, string title, string fileName, string contentType, byte[] data, string? notes,
+        IEnumerable<string>? screens, string actor, CancellationToken cancellationToken)
+    {
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var asset = ReverseAsset.File(project.Key, title, fileName, contentType, data, notes, screens, actor, DateTimeOffset.UtcNow);
+        repository.AddAsset(asset);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ToAsset(asset);
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)> GetAssetFileAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var asset = await repository.GetAssetAsync(id, tracked: false, cancellationToken);
+        if (asset?.Data is null) throw new KnowledgeNotFoundException("Arquivo não encontrado.");
+        return (asset.FileName ?? "arquivo", asset.ContentType ?? "application/octet-stream", asset.Data);
+    }
+
+    public async Task DeleteAssetAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var asset = await repository.GetAssetAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Anexo não encontrado.");
+        if (!CanApprove(s, userRoles) && !string.Equals(asset.CreatedBy, actor, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Só quem anexou ou um aprovador remove o anexo.");
+        asset.Delete();
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    private static ReverseAssetResponse ToAsset(ReverseAsset a) => new()
+    {
+        Id = a.Id, ModuleKey = a.ModuleKey, Kind = a.Kind, Title = a.Title, Url = a.Url, FileName = a.FileName, ContentType = a.ContentType, Size = a.Size,
+        Notes = a.Notes, Screens = a.Screens, CreatedAt = a.CreatedAt, CreatedBy = a.CreatedBy,
+        Download = a.FileName is null ? null : $"ReverseEngineering/assets/{a.Id}/file"
+    };
+
+    // ── Índice por item ─────────────────────────────────────────────────────────────────────────
+
+    public async Task<List<ReverseIndexHit>> SearchAsync(string? query, IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType,
+        int limit, bool includeRemoved, CancellationToken cancellationToken)
+    {
+        var names = await ModuleNamesAsync(cancellationToken);
+        var normalizedModules = modules?.Where(m => !string.IsNullOrWhiteSpace(m)).Select(ArchitectureProject.NormalizeKey).ToList();
+        var normalizedKinds = kinds?.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim().ToUpperInvariant()).ToList();
+        var doc = string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            // Sem termos: lista o índice filtrado (ex.: todas as regras de um módulo).
+            var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+            return entries.Where(e => (normalizedModules is not { Count: > 0 } || normalizedModules.Contains(e.ModuleKey))
+                                      && (normalizedKinds is not { Count: > 0 } || normalizedKinds.Contains(e.Kind))
+                                      && (doc is null || e.DocType == doc) && (includeRemoved || !e.Removed))
+                .Take(Math.Clamp(limit, 1, 2000)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
+        }
+        return await ReverseSearch.RunAsync(repository, query, normalizedModules, normalizedKinds, doc, limit, includeRemoved, names, cancellationToken);
+    }
+
+    public async Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken)
+    {
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var names = await ModuleNamesAsync(cancellationToken);
+        var module = string.IsNullOrWhiteSpace(defaultModule) ? null : ArchitectureProject.NormalizeKey(defaultModule);
+        var result = new List<ReverseItemResponse>();
+        foreach (var raw in refs.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().Take(20))
+        {
+            var parsed = ReverseItemKinds.ParseRef(raw) ?? throw new DomainException($"Referência inválida: '{raw}' (use <módulo>#RN-012).");
+            var target = parsed.Module ?? module;
+            var matches = entries.Where(e => e.ItemId == parsed.Id && (target is null || e.ModuleKey == target)).ToList();
+            if (matches.Count == 0) throw new KnowledgeNotFoundException($"Item {(target is null ? "" : target + "#")}{parsed.Id} não encontrado no índice publicado.");
+            if (matches.Count > 1 && target is null)
+                throw new DomainException($"{parsed.Id} existe em {matches.Count} módulos ({string.Join(", ", matches.Select(m => m.ModuleKey).Take(8))}) — use <módulo>#{parsed.Id}.");
+            var e = matches[0];
+            var hit = ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body));
+            result.Add(new ReverseItemResponse
+            {
+                Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
+                KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
+                Removed = hit.Removed, Body = e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
+                ReferencedBy = entries.Where(x => x.Id != e.Id && (x.Refs.Contains(e.Ref) || (x.ModuleKey == e.ModuleKey && x.Refs.Contains(e.ItemId))))
+                    .Select(x => x.Ref).Take(40).ToList()
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Impacto entre módulos (item 9 da spec): itens de qualquer módulo que citam uma tabela (TB_…), um item
+    /// (<c>módulo#ID</c>), um módulo (chave) ou um termo nas tags.
+    /// </summary>
+    public async Task<List<ReverseIndexHit>> ImpactAsync(string term, int limit, CancellationToken cancellationToken)
+    {
+        var value = (term ?? string.Empty).Trim();
+        if (value.Length < 2) throw new DomainException("Informe uma tabela (TB_…), um item (módulo#RN-012), um módulo ou um termo.");
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var names = await ModuleNamesAsync(cancellationToken);
+        var parsed = ReverseItemKinds.ParseRef(value);
+        var lower = value.ToLowerInvariant();
+        var upper = value.ToUpperInvariant();
+        IEnumerable<ReverseIndexEntry> hits = parsed is { } p
+            ? entries.Where(e => e.Refs.Contains(p.Module is null ? p.Id : $"{p.Module}#{p.Id}")
+                                 || (p.Module is not null && e.ModuleKey == p.Module && e.Refs.Contains(p.Id)))
+            : entries.Where(e => e.Tables.Contains(upper) || e.Modules.Contains(lower)
+                                 || e.Refs.Any(r => r.StartsWith(lower + "#", StringComparison.Ordinal))
+                                 || e.Tags.Any(t => t.Equals(value, StringComparison.OrdinalIgnoreCase)));
+        return hits.Where(e => !e.Removed).OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId)
+            .Take(Math.Clamp(limit, 1, 500)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
+    }
+
+    private async Task<Dictionary<string, string>> ModuleNamesAsync(CancellationToken cancellationToken) =>
+        (await repository.GetProjectsAsync(cancellationToken)).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+
+    // ── Card (analisar-bug) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Pacote compacto para o <c>contexto</c> da analisar-bug: os módulos do card (pelo campo Module, apelidos e área), o
+    /// estado da engenharia reversa e os itens que casam com o título/repro — com o texto dos primeiros. Registra o card
+    /// (a trava da investigação usa).
+    /// </summary>
+    public async Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var all = await repository.GetProjectsAsync(cancellationToken);
+        var reverseModules = await repository.GetReverseModulesAsync(cancellationToken);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        var names = all.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+        var matched = MatchModules(moduleField, all, reverseModules);
+
+        var withRe = entries.Select(e => e.ModuleKey).ToHashSet();
+        if (matched.Count == 0 && !string.IsNullOrWhiteSpace(query))
+            matched = (await ReverseSearch.RunAsync(repository, query, null, null, null, 30, false, names, cancellationToken))
+                .GroupBy(h => h.ModuleKey).OrderByDescending(g => g.Sum(h => h.Score)).Take(2).Select(g => g.Key).ToList();
+
+        bool IsComplete(ArchitectureProject p) => s.RequiredDocs.Count > 0
+                                                  && s.RequiredDocs.All(d => ReverseDocTypes.ByKey.TryGetValue(d, out var t) && p.Sections.Any(x => x.Key == t.SectionKey));
+        var projects = matched.Select(k => all.FirstOrDefault(p => p.Key == k)).Where(p => p is not null).Select(p => p!).ToList();
+        var complete = projects.Any(IsComplete);
+
+        var now = DateTimeOffset.UtcNow;
+        if (!string.IsNullOrWhiteSpace(card))
+        {
+            var ctx = await repository.GetCardContextAsync(card.Trim(), tracked: true, cancellationToken);
+            if (ctx is null)
+            {
+                ctx = new ReverseCardContext(card, now);
+                repository.AddCardContext(ctx);
+            }
+            ctx.SetModules(projects.Select(p => p.Key), complete, now);
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("=== ENGENHARIA REVERSA (Base Solvace) — consulte ANTES do código");
+        if (projects.Count == 0)
+        {
+            sb.AppendLine($"Nenhum módulo da engenharia reversa casou com o card (Module: '{moduleField}'). Ache pelo índice: prmake_base_search(\"<tela/termo>\") — ou kb.sh index <termos>.");
+            return sb.ToString();
+        }
+        foreach (var p in projects)
+        {
+            var published = ReverseDocTypes.All.Where(t => p.Sections.Any(x => x.Key == t.SectionKey))
+                .Select(t => $"{t.Key} v{p.Sections.First(x => x.Key == t.SectionKey).Version}").ToList();
+            var state = IsComplete(p) ? "COMPLETA" : published.Count > 0 ? "parcial" : "não publicada";
+            sb.AppendLine($"Módulo: {p.Key} ({names[p.Key]}) — engenharia reversa {state}" + (published.Count > 0 ? $": {string.Join(", ", published)}" : "")
+                          + (withRe.Contains(p.Key) ? $" · {entries.Count(e => e.ModuleKey == p.Key && !e.Removed)} itens" : ""));
+            var pair = all.Where(x => x.Key != p.Key && x.BusinessArea is not null && x.BusinessArea == p.BusinessArea && ModuleKinds.Contains(x.Kind)).Select(x => x.Key).ToList();
+            if (pair.Count > 0) sb.AppendLine($"  par/mesma área: {string.Join(", ", pair)}");
+        }
+
+        var moduleKeys = projects.Select(p => p.Key).Where(withRe.Contains).ToList();
+        if (moduleKeys.Count == 0)
+        {
+            sb.AppendLine("Sem itens publicados para esses módulos: use a base antiga (kb.sh show <projeto> modulos) e registre as lacunas (arch.sh suggest <projeto> re-funcional lacuna.md --kind gap --card <card>).");
+            return sb.ToString();
+        }
+        var hits = string.IsNullOrWhiteSpace(query)
+            ? []
+            : await ReverseSearch.RunAsync(repository, query, moduleKeys, null, null, 10, false, names, cancellationToken);
+        if (hits.Count == 0)
+        {
+            sb.AppendLine("Nenhum item casou com o título/repro — procure pelo assunto: prmake_base_search(query, module) (regras: kinds=RN; telas: TELA; casos de uso: UC).");
+        }
+        else
+        {
+            sb.AppendLine("Itens que casam com o card (texto inteiro: prmake_base_get(refs, card)):");
+            foreach (var h in hits) sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")}");
+            var budget = 5000;
+            sb.AppendLine("Texto dos primeiros:");
+            foreach (var h in hits.Take(3))
+            {
+                var body = entries.First(e => e.Ref == h.Ref).Body;
+                if (body.Length > 1800) body = body[..1800] + "\n…(prmake_base_get para o resto)";
+                if (budget - body.Length < 0) break;
+                budget -= body.Length;
+                sb.AppendLine($"--- {h.Ref}").AppendLine(body);
+            }
+        }
+        sb.AppendLine(complete
+            ? $"REGRA: módulo com engenharia reversa completa — a investigação parte destes itens; código só para confirmar o 'Onde:' citado. Cite os IDs (RN-…/UC-…) no advance de '{s.GateStep ?? "investigar-codigo"}' (ou 'lacuna: <o que faltou>' e a sugestão na seção re-*)."
+            : "Use os itens acima antes do código; o que faltar → lacuna (arch.sh suggest <projeto> re-funcional lacuna.md --kind gap --card <card>).");
+        return sb.ToString();
+    }
+
+    /// <summary>Módulos do card: apelido exato; senão nome/área/sufixo da chave; "(Revamp)"/"(Legado)" escolhem o mundo.</summary>
+    public static List<string> MatchModules(string? moduleField, List<ArchitectureProject> all, List<ReverseModule> modules)
+    {
+        if (string.IsNullOrWhiteSpace(moduleField)) return [];
+        var field = moduleField.Trim();
+        var byAlias = modules.Where(m => m.Aliases.Any(a => a.Equals(field, StringComparison.OrdinalIgnoreCase))).Select(m => m.Key).ToList();
+        if (byAlias.Count > 0) return byAlias;
+
+        var normalized = ArchitectureSearch.Normalize(field);
+        var wantRevamp = normalized.Contains("revamp") || normalized.Contains("novo") || normalized.Contains("new");
+        var wantLegacy = normalized.Contains("legad") || normalized.Contains("legacy") || normalized.Contains("antigo");
+        var core = WorldWords().Replace(normalized, " ").Trim();
+        if (core.Length < 2) return [];
+        var candidates = all.Where(p => ModuleKinds.Contains(p.Kind)).ToList();
+        var direct = candidates.Where(p =>
+            ArchitectureSearch.Normalize(p.DisplayName ?? "") == core
+            || ArchitectureSearch.Normalize(p.BusinessArea ?? "") == core
+            || p.Key.EndsWith("-" + core.Replace(' ', '-'), StringComparison.Ordinal)
+            || p.Keywords.Any(k => ArchitectureSearch.Normalize(k) == core)).ToList();
+        var areas = direct.Select(p => p.BusinessArea).Where(a => a is not null).ToHashSet();
+        var result = direct.Concat(candidates.Where(p => p.BusinessArea is not null && areas.Contains(p.BusinessArea))).Distinct().ToList();
+        if (wantRevamp && result.Any(p => p.Kind == "revamp")) result = result.Where(p => p.Kind is "revamp" or "frontend").ToList();
+        else if (wantLegacy && result.Any(p => p.Kind == "legacy")) result = result.Where(p => p.Kind == "legacy").ToList();
+        return result.OrderBy(p => p.Kind == "revamp" ? 0 : 1).Select(p => p.Key).Take(4).ToList();
+    }
+
+    public async Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(card)) return;
+        var now = DateTimeOffset.UtcNow;
+        var ctx = await repository.GetCardContextAsync(card.Trim(), tracked: true, cancellationToken);
+        if (ctx is null)
+        {
+            ctx = new ReverseCardContext(card, now);
+            repository.AddCardContext(ctx);
+        }
+        ctx.Consulted(refs, now);
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Trava da investigação (0052): card de módulo com engenharia reversa completa só conclui a etapa configurada depois
+    /// de consultar a base (MCP/REST com o card) ou citando um item/lacuna na mensagem. null = pode seguir.
+    /// </summary>
+    public async Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(s.GateStep) || !string.Equals(stepKey?.Trim(), s.GateStep, StringComparison.OrdinalIgnoreCase)) return null;
+        var ctx = await repository.GetCardContextAsync((card ?? string.Empty).Trim(), tracked: false, cancellationToken);
+        if (ctx is null || !ctx.Complete || ctx.ConsultedAt is not null) return null;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            var cited = CitedRefs().Matches(message).Select(m => m.Value).ToList();
+            if (cited.Count > 0 || message.Contains("lacuna", StringComparison.OrdinalIgnoreCase))
+            {
+                await RecordConsultedAsync(card!, cited, cancellationToken);
+                return null;
+            }
+        }
+        return $"O card {card} é do módulo {string.Join(", ", ctx.Modules)}, que tem engenharia reversa completa: antes de concluir '{s.GateStep}', "
+               + $"consulte a base (prmake_base_search / prmake_base_get com card={card}) e cite no resumo os itens usados (RN-…, UC-…, API-…), "
+               + "ou escreva 'lacuna: <o que a base não cobre>' e registre a sugestão na seção re-* do módulo.";
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────────────────────────
+
+    private async Task<ReverseSettings> RequireApproverAsync(IReadOnlyCollection<string> userRoles, string what, CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        if (!CanApprove(s, userRoles))
+            throw new ReverseForbiddenException($"Só {string.Join(" ou ", s.ApproverRoles)} pode {what} (configuração ReverseEngineeringApproverRoles).");
+        return s;
+    }
+
+    private static ArchitectureProject FindProject(List<ArchitectureProject> all, string key)
+    {
+        var normalized = ArchitectureProject.NormalizeKey(key);
+        return all.FirstOrDefault(p => p.Key == normalized)
+               ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado na Base Solvace — crie o projeto antes (arch.sh project).");
+    }
+
+    private static string? Raw(JsonElement? element) =>
+        element is { } e && e.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null) ? e.GetRawText() : null;
+
+    private static JsonElement? Element(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonDocument.Parse(json).RootElement.Clone(); }
+        catch (JsonException) { return null; }
+    }
+
+    private static ArchitectureSuggestionResponse ToSuggestion(ArchitectureSuggestion s) => new()
+    {
+        Id = s.Id, ProjectKey = s.ProjectKey, SectionKey = s.SectionKey, Kind = s.Kind, Content = s.Content, CardNumber = s.CardNumber,
+        Status = s.Status, CreatedBy = s.CreatedBy, CreatedAt = s.CreatedAt, ResolvedBy = s.ResolvedBy, ResolvedAt = s.ResolvedAt,
+        ResolutionNote = s.ResolutionNote
+    };
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Spaces();
+
+    [GeneratedRegex(@"\b(?:revamp|legado|legacy|novo|antigo|new|old)\b|[()\[\]]")]
+    private static partial Regex WorldWords();
+
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|FN|UC|RN|DB|UI)-\d{1,4}\b")]
+    private static partial Regex CitedRefs();
+}
+
+/// <summary>Ação que exige papel de aprovador (403 no REST).</summary>
+public class ReverseForbiddenException(string message) : Exception(message);
