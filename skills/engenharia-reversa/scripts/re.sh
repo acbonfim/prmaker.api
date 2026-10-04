@@ -83,7 +83,8 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
   local overrides=(); while [[ $# -gt 0 ]]; do [[ "$1" == --path ]] && overrides+=("$2"); shift; done
   local kind; kind="$(jq -r '.projectKind' "$TMP/module.json")"
   local n=0 missing=0
-  while IFS=$'\t' read -r repo sub role; do
+  # separador \x1f (nao e espaco): campo vazio (fonte sem subpasta) nao colapsa como o tab no read
+  while IFS=$'\x1f' read -r repo sub role; do
     [[ -z "$repo" ]] && continue
     for o in "${overrides[@]:-}"; do [[ "${o%%=*}" == "$repo" ]] && sub="${o#*=}"; done
     local root; root="$(repo_path "$repo")" || { echo "FALTA: repositorio '$repo' nao esta no mapa da maquina — clone/fixe com: prmake-skills.sh repos set $repo <pasta>" >&2; missing=1; continue; }
@@ -94,7 +95,7 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
     local dir="$root${sub:+/$sub}"
     [[ -d "$dir" ]] || { echo "FALTA: pasta nao existe: $dir (fonte $repo/${sub})" >&2; missing=1; continue; }
     printf '%s\t%s\n' "${role:-backend}" "$dir"; n=$((n + 1))
-  done < <(jq -r '.sources[] | [.repository, (.path // ""), .role] | @tsv' "$TMP/module.json")
+  done < <(jq -r '.sources[] | [.repository, (.path // ""), .role] | join("\u001f")' "$TMP/module.json")
   for o in "${overrides[@]:-}"; do
     [[ -z "$o" ]] && continue
     jq -e --arg r "${o%%=*}" '.sources | any(.repository == $r)' "$TMP/module.json" >/dev/null && continue
@@ -212,7 +213,7 @@ case "$CMD" in
       "Itens deste documento: " + (.docType.kinds | join(", ")) + " (+ GAP) · cobertura minima do inventario: \(.minCoverage * 100 | floor)%",
       (if .reviewNote then "NOTA DO REVISOR (resolva primeiro): \(.reviewNote)" else empty end),
       (if .revision.publishedChangedSinceBase then "AVISO: a versao publicada mudou depois que este rascunho comecou — compare com publicado.md" else empty end)' "$D/sessao.json"
-    progress "$MOD" "$DOC" "$(jq -c --arg h "$(hostname 2>/dev/null | cut -d. -f1)" '{log: "Claude em \($h): pacote da sessao baixado (\(.suggestions|length) sugestoes, \(.module.assets|length) anexos\(if .publishedVersion then ", publicado v\(.publishedVersion)" else "" end))", kind: "progress"}' "$D/sessao.json")"
+    progress "$MOD" "$DOC" "$(jq -c --arg h "${USER:-?}@$(hostname -s 2>/dev/null || echo maquina)" '{log: "Claude em \($h): pacote da sessao baixado (\(.suggestions|length) sugestoes, \(.module.assets|length) anexos\(if .publishedVersion then ", publicado v\(.publishedVersion)" else "" end))", kind: "progress"}' "$D/sessao.json")"
     echo "Andamento ao vivo na tela: re.sh etapa|atividade|log (o inventario, a checagem e o rascunho ja reportam sozinhos)."
     ;;
 
