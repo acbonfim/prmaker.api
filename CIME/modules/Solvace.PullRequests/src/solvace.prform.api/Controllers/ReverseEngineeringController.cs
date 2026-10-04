@@ -19,8 +19,15 @@ namespace solvace.prform.Controllers;
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
-public class ReverseEngineeringController(IReverseEngineeringApplication application, solvace.timeline.application.Contracts.IUserRepository users) : ControllerBase
+public class ReverseEngineeringController(IReverseEngineeringApplication application, solvace.timeline.application.Contracts.IUserRepository users,
+    Cime.BuildingBlocks.RealTime.IRealTimeNotifier realTime, ILogger<ReverseEngineeringController> logger) : ControllerBase
 {
+    /// <summary>Grupo do tempo real de um módulo (a tela do módulo assina) e o da lista de módulos.</summary>
+    public static string Group(string moduleKey) => $"reverse:{moduleKey}";
+    public const string ListGroup = "reverse";
+    /// <summary>Evento: a revisão mudou (andamento, rascunho, envio, revisão, publicação) — payload = cabeça da revisão.</summary>
+    public const string RevisionEvent = "reverseRevision";
+
     [HttpGet("settings")]
     public Task<ActionResult<ReverseSettingsResponse>> Settings(CancellationToken ct) =>
         Run<ReverseSettingsResponse>(async () => Ok(await application.GetSettingsAsync(Roles(), ct)));
@@ -51,7 +58,12 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     [HttpPost("modules/{key}/docs/{doc}/sessions")]
     public Task<ActionResult<ReverseSessionResponse>> StartSession([FromRoute] string key, [FromRoute] string doc,
         [FromBody] StartReverseSessionRequest? request, CancellationToken ct) =>
-        Run<ReverseSessionResponse>(async () => Ok(await application.StartSessionAsync(key, doc, request ?? new(), await ActorAsync(ct), Roles(), ct)));
+        Run<ReverseSessionResponse>(async () =>
+        {
+            var session = await application.StartSessionAsync(key, doc, request ?? new(), await ActorAsync(ct), Roles(), ct);
+            await NotifyAsync(session.Revision);
+            return Ok(session);
+        });
 
     /// <summary>Checagem do documento sem gravar (a skill confere antes de enviar).</summary>
     [HttpPost("modules/{key}/lint")]
@@ -71,22 +83,27 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     [HttpPut("revisions/{id:guid}")]
     [RequestSizeLimit(4 * 1024 * 1024)]
     public Task<ActionResult<ReverseRevisionResponse>> SaveRevision([FromRoute] Guid id, [FromBody] SaveReverseRevisionRequest request, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.SaveRevisionAsync(id, request, await ActorAsync(ct), Roles(), ct)));
+        Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SaveRevisionAsync(id, request, await ActorAsync(ct), Roles(), ct))));
+
+    /// <summary>Andamento da sessão do Claude (etapa, atividade do momento, registro) — a tela mostra ao vivo.</summary>
+    [HttpPost("revisions/{id:guid}/progress")]
+    public Task<ActionResult<ReverseRevisionHead>> Progress([FromRoute] Guid id, [FromBody] ReverseProgressUpdate request, CancellationToken ct) =>
+        Run<ReverseRevisionHead>(async () => Ok(await NotifyAsync(await application.ReportProgressAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 
     /// <summary>Envia para revisão (a checagem estrutural barra erros).</summary>
     [HttpPost("revisions/{id:guid}/submit")]
     public Task<ActionResult<ReverseRevisionResponse>> Submit([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.SubmitAsync(id, await ActorAsync(ct), Roles(), ct)));
+        Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SubmitAsync(id, await ActorAsync(ct), Roles(), ct))));
 
     /// <summary>approve | changes (com nota) | discard.</summary>
     [HttpPost("revisions/{id:guid}/review")]
     public Task<ActionResult<ReverseRevisionResponse>> Review([FromRoute] Guid id, [FromBody] ReviewReverseRevisionRequest request, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.ReviewAsync(id, request, await ActorAsync(ct), Roles(), ct)));
+        Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.ReviewAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 
     /// <summary>Publica a revisão aprovada na Base Solvace (seção re-*, índice por item, integrações no grafo).</summary>
     [HttpPost("revisions/{id:guid}/publish")]
     public Task<ActionResult<ReverseRevisionResponse>> Publish([FromRoute] Guid id, [FromBody] PublishReverseRevisionRequest? request, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.PublishAsync(id, request ?? new(), await ActorAsync(ct), Roles(), ct)));
+        Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.PublishAsync(id, request ?? new(), await ActorAsync(ct), Roles(), ct))));
 
     // ── UI/UX ───────────────────────────────────────────────────────────────────────────────────
 
@@ -177,6 +194,26 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
             await application.RecordConsultedAsync(request.Card, request.Refs, ct);
             return Ok(new { ok = true });
         });
+
+    /// <summary>Avisa a tela do módulo e a lista (sem o conteúdo do documento). Falha no tempo real não derruba a gravação.</summary>
+    private async Task<T> NotifyAsync<T>(T revision) where T : ReverseRevisionHead
+    {
+        try
+        {
+            var head = new ReverseRevisionHead
+            {
+                Id = revision.Id, ModuleKey = revision.ModuleKey, ModuleName = revision.ModuleName, DocType = revision.DocType, Number = revision.Number,
+                Mode = revision.Mode, Status = revision.Status, Summary = revision.Summary, CoverageRatio = revision.CoverageRatio, Length = revision.Length,
+                CreatedAt = revision.CreatedAt, CreatedBy = revision.CreatedBy, UpdatedAt = revision.UpdatedAt, UpdatedBy = revision.UpdatedBy,
+                SubmittedAt = revision.SubmittedAt, ReviewedBy = revision.ReviewedBy, PublishedAt = revision.PublishedAt, PublishedBy = revision.PublishedBy,
+                ReviewNote = revision.ReviewNote, Progress = revision.Progress, ProgressAt = revision.ProgressAt
+            };
+            await realTime.NotifyGroupAsync(Group(revision.ModuleKey), RevisionEvent, head);
+            await realTime.NotifyGroupAsync(ListGroup, RevisionEvent, new { head.Id, head.ModuleKey, head.DocType, head.Number, head.Status, head.ProgressAt });
+        }
+        catch (Exception e) { logger.LogWarning(e, "Tempo real da engenharia reversa falhou"); }
+        return revision;
+    }
 
     private static List<string>? Split(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();

@@ -63,6 +63,8 @@ public interface IReverseEngineeringApplication
     Task<List<ReverseRevisionHead>> ListRevisionsAsync(string? moduleKey, string? docType, string? status, CancellationToken cancellationToken);
     Task<ReverseRevisionResponse> GetRevisionAsync(Guid id, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseRevisionResponse> SaveRevisionAsync(Guid id, SaveReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    Task<ReverseRevisionHead> ReportProgressAsync(Guid id, domain.Reverse.ReverseProgressUpdate update, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken);
     Task<domain.Reverse.ReverseLintResult> LintAsync(string key, LintReverseDocumentRequest request, CancellationToken cancellationToken);
     Task<ReverseRevisionResponse> SubmitAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseRevisionResponse> ReviewAsync(Guid id, ReviewReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);

@@ -12,7 +12,7 @@ using solvace.knowledge.infra.Contexts;
 namespace solvace.knowledge.infra.Migrations
 {
     [DbContext(typeof(KnowledgeContext))]
-    [Migration("20261004170150_ReverseEngineering")]
+    [Migration("20261004172526_ReverseEngineering")]
     partial class ReverseEngineering
     {
         /// <inheritdoc />
@@ -718,6 +718,12 @@ namespace solvace.knowledge.infra.Migrations
 
                     b.Property<int>("Number")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Progress")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("ProgressAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");

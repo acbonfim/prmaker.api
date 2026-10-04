@@ -53,7 +53,7 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
                 Id = r.Id, ModuleKey = r.ModuleKey, DocType = r.DocType, Number = r.Number, Mode = r.Mode, Status = r.Status, Summary = r.Summary,
                 CoverageRatio = r.CoverageRatio, Length = r.Content.Length, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy, UpdatedAt = r.UpdatedAt,
                 UpdatedBy = r.UpdatedBy, SubmittedAt = r.SubmittedAt, ReviewedBy = r.ReviewedBy, PublishedAt = r.PublishedAt, PublishedBy = r.PublishedBy,
-                ReviewNote = r.ReviewNote
+                ReviewNote = r.ReviewNote, ProgressRaw = r.Progress, ProgressAt = r.ProgressAt
             }).ToList());
 
     public Task<ReverseRevision?> GetRevisionAsync(Guid id, bool tracked, CancellationToken cancellationToken) => Task.FromResult(_revisions.FirstOrDefault(r => r.Id == id));

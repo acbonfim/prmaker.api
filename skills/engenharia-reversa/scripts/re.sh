@@ -20,6 +20,10 @@
 #                                     grava o rascunho no PRMake (sem enviar)
 #   submit <modulo> <doc> [arquivo] --summary "o que mudou"
 #                                     grava e envia para revisao (aprovacao na tela)
+#   etapa <modulo> <doc> <chave> <pending|running|completed|failed|skipped> [--title T] [--detail D]
+#                                     ANDAMENTO ao vivo na tela (chaves: inventario, leitura, checagem; areas: area:<nome>)
+#   atividade <modulo> <doc> "texto"  o que esta fazendo agora (aparece na tela, linha "agora")
+#   log <modulo> <doc> "texto" [info|progress|warning|error]
 #   ids <modulo>                      IDs ja usados no modulo (publicados + rascunhos locais) — para nao repetir
 #   find <termos> [--module m] [--kind RN,UC] [--card N]
 #   get <ref> [ref...] [--card N]     itens publicados (modulo#RN-012) com o texto
@@ -112,7 +116,33 @@ revision_id() { # <modulo> <doc>
   jq -r '.revision.id' "$s"
 }
 
+# Andamento ao vivo (0052): nunca derruba o comando — sem rede, a tela so fica sem a novidade.
+progress() { # <modulo> <doc> <json>
+  local s; s="$(docdir "$1" "$2")/sessao.json"
+  [[ -s "$s" ]] || return 0
+  printf '%s' "$3" > "$TMP/progress.json"
+  curl -s --max-time 15 -o /dev/null -X POST "$BASE/ReverseEngineering/revisions/$(jq -r '.revision.id' "$s")/progress" \
+    -H "x-api-key: $TK" -H 'content-type: application/json' --data-binary "@$TMP/progress.json" 2>/dev/null || true
+}
+# Documentos com sessao aberta nesta maquina para o modulo (o inventario e do modulo; o andamento vai para cada um).
+open_docs() { local d; for d in "$(moddir "$1")"/*/sessao.json; do [[ -s "$d" ]] && basename "$(dirname "$d")"; done; }
+
 case "$CMD" in
+  etapa)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; KEY="${3:?etapa}"; ST="${4:?status}"
+    jq -n --arg k "$KEY" --arg s "$ST" --arg t "$(opt --title "" "$@")" --arg d "$(opt --detail "" "$@")" \
+      '{step: $k, status: $s} + (if $t == "" then {} else {title: $t} end) + (if $d == "" then {} else {detail: $d} end)' > "$TMP/body"
+    progress "$MOD" "$DOC" "$(cat "$TMP/body")"; echo "OK $KEY -> $ST"
+    ;;
+  atividade)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"
+    progress "$MOD" "$DOC" "$(jq -n --arg a "${3:?texto}" '{activity: $a}')"; echo "OK"
+    ;;
+  log)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"
+    progress "$MOD" "$DOC" "$(jq -n --arg l "${3:?texto}" --arg k "${4:-info}" '{log: $l, kind: $k}')"; echo "OK"
+    ;;
+
   modulo)
     if [[ -n "${1:-}" ]]; then api GET "/modules/$(urlenc "$1")"; check; jq -r '.key' "$TMP/resp"; exit 0; fi
     remote="$(git remote get-url origin 2>/dev/null)" || die "fora de um repositorio git — informe o modulo: re.sh modulo <chave>"
@@ -182,6 +212,8 @@ case "$CMD" in
       "Itens deste documento: " + (.docType.kinds | join(", ")) + " (+ GAP) · cobertura minima do inventario: \(.minCoverage * 100 | floor)%",
       (if .reviewNote then "NOTA DO REVISOR (resolva primeiro): \(.reviewNote)" else empty end),
       (if .revision.publishedChangedSinceBase then "AVISO: a versao publicada mudou depois que este rascunho comecou — compare com publicado.md" else empty end)' "$D/sessao.json"
+    progress "$MOD" "$DOC" "$(jq -c --arg h "$(hostname 2>/dev/null | cut -d. -f1)" '{log: "Claude em \($h): pacote da sessao baixado (\(.suggestions|length) sugestoes, \(.module.assets|length) anexos\(if .publishedVersion then ", publicado v\(.publishedVersion)" else "" end))", kind: "progress"}' "$D/sessao.json")"
+    echo "Andamento ao vivo na tela: re.sh etapa|atividade|log (o inventario, a checagem e o rascunho ja reportam sozinhos)."
     ;;
 
   fontes)
@@ -197,8 +229,13 @@ case "$CMD" in
     [[ -s "$TMP/sources" ]] || die "sem fontes locais para o inventario de $MOD"
     [[ $rc -eq 0 ]] || echo "AVISO: parte das fontes ficou de fora (acima) — o inventario cobre so o que foi encontrado" >&2
     mkdir -p "$(moddir "$MOD")"
+    for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"inventario","status":"running","activity":"Inventario do codigo (sem LLM)"}'; done
     args=(); while IFS=$'\t' read -r role dir; do args+=("$role=$dir"); done < "$TMP/sources"
-    python3 "$TOOL_PY" inventario "$(moddir "$MOD")/inventario.json" "${args[@]}" || die "falha no inventario"
+    python3 "$TOOL_PY" inventario "$(moddir "$MOD")/inventario.json" "${args[@]}" || {
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"inventario","status":"failed"}'; done
+      die "falha no inventario"; }
+    DETAIL="$(jq -r '"\(.counts | to_entries | map(.value) | add // 0) itens: " + ([.counts | to_entries | sort_by(-.value)[] | "\(.value) \(.key)"] | join(", "))' "$(moddir "$MOD")/inventario.json")"
+    for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "inventario", status: "completed", detail: $dt, log: ("Inventario: " + $dt), kind: "progress"}')"; done
     # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio)
     while IFS=$'\t' read -r role dir; do
       printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$dir" rev-parse --short HEAD 2>/dev/null)@$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"
@@ -208,6 +245,7 @@ case "$CMD" in
   check)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; F="$(doc_file "$MOD" "$DOC" "${3:-}")"
     INV="$(moddir "$MOD")/inventario.json"; RATIO=null
+    progress "$MOD" "$DOC" '{"step":"checagem","status":"running","activity":"Checando estrutura e cobertura do inventario"}'
     if [[ -s "$INV" ]]; then
       python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}"
       RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
@@ -219,6 +257,10 @@ case "$CMD" in
     jq -r '"Checagem do PRMake: \(.items) itens (" + ([.byKind | to_entries[] | "\(.key) \(.value)"] | join(", ")) + ")",
       (if (.errors|length) > 0 then "ERROS (barram o envio):", (.errors[] | "  - " + .) else "Sem erros." end),
       (if (.warnings|length) > 0 then "Avisos:", (.warnings[] | "  - " + .) else empty end)' "$TMP/resp"
+    progress "$MOD" "$DOC" "$(jq -c --argjson r "$RATIO" '{step: "checagem", status: (if (.errors|length) == 0 then "completed" else "running" end),
+      detail: ("\(.items) itens · cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end) · \(.errors|length) erro(s), \(.warnings|length) aviso(s)"),
+      log: ("Checagem: \(.items) itens, cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end), \(.errors|length) erro(s)"),
+      kind: (if (.errors|length) == 0 then "progress" else "warning" end)}' "$TMP/resp")"
     [[ "$(jq '.errors|length' "$TMP/resp")" == 0 ]]
     ;;
 
@@ -247,6 +289,7 @@ case "$CMD" in
         "Aprovacao: PRMake -> Engenharia reversa -> \(.moduleName // .moduleKey) -> \(.docType) (aprovar e publicar)."' "$TMP/resp"
     else
       jq -r '"Rascunho gravado: revisao #\(.number) (\(.status)), \(.length) caracteres" + (if .lint and (.lint.errors|length) > 0 then " — \(.lint.errors|length) erro(s) de checagem: re.sh check" else "" end)' "$TMP/resp"
+      progress "$MOD" "$DOC" "$(jq -c '{log: ("Rascunho gravado (visivel na tela): \(.lint.items // 0) itens" + (if .coverageRatio then ", cobertura \(.coverageRatio * 100 | floor)%" else "" end)), kind: "progress"}' "$TMP/resp")"
     fi
     ;;
 

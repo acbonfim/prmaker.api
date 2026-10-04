@@ -47,6 +47,11 @@ public class ReverseRevisionHead
     public DateTimeOffset? PublishedAt { get; set; }
     public string? PublishedBy { get; set; }
     public string? ReviewNote { get; set; }
+    /// <summary>Andamento da sessão do Claude (etapas, atividade, registro) — ao vivo na tela.</summary>
+    public ReverseProgress? Progress { get; set; }
+    public DateTimeOffset? ProgressAt { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ProgressRaw { get; set; }
 }
 
 public class ReversePublishedInfo

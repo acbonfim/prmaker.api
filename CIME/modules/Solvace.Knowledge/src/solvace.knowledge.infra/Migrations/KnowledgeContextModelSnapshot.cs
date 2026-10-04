@@ -716,6 +716,12 @@ namespace solvace.knowledge.infra.Migrations
                     b.Property<int>("Number")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Progress")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("ProgressAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 

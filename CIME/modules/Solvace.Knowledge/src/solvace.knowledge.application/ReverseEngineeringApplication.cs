@@ -59,7 +59,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var s = await settingsProvider.GetAsync(cancellationToken);
         var projects = (await repository.GetProjectsAsync(cancellationToken)).Where(p => ModuleKinds.Contains(p.Kind)).ToList();
         var modules = (await repository.GetReverseModulesAsync(cancellationToken)).ToDictionary(m => m.Key);
-        var open = (await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
+        var open = WithProgress(await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var items = entries.Where(e => !e.Removed).GroupBy(e => e.ModuleKey).ToDictionary(g => g.Key, g => g.Count());
@@ -75,6 +75,18 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 FillSummary(summary, p, modules.GetValueOrDefault(p.Key), s, open, items.GetValueOrDefault(p.Key), suggestions);
                 return summary;
             }).ToList();
+    }
+
+    /// <summary>Andamento das revisões abertas (o JSON vem cru do banco).</summary>
+    private static List<ReverseRevisionHead> WithProgress(List<ReverseRevisionHead> heads)
+    {
+        foreach (var h in heads)
+        {
+            if (h.ProgressRaw is not null && ReverseRevisionStatus.IsOpen(h.Status))
+                h.Progress = ReverseProgress.Parse(h.ProgressRaw, h.ProgressAt ?? h.UpdatedAt);
+            h.ProgressRaw = null;
+        }
+        return heads;
     }
 
     private static readonly string[] OpenStatuses =
@@ -129,7 +141,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var all = await repository.GetProjectsAsync(cancellationToken);
         var project = FindProject(all, key);
         var module = (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key);
-        var open = (await repository.GetRevisionHeadsAsync(project.Key, null, OpenStatuses, cancellationToken))
+        var open = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
         var entries = (await ReverseSearch.EntriesAsync(repository, cancellationToken)).Where(e => e.ModuleKey == project.Key && !e.Removed).ToList();
         var suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
@@ -227,7 +239,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 Items = ReverseDocParser.Parse(section.Content).Count(i => !i.Removed)
             },
             Items = section is null ? [] : ReverseDocParser.Parse(section.Content).Select(ToItemHead).ToList(),
-            Revisions = await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken),
+            Revisions = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken)),
             Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
                 .Where(x => x.ProjectKey == project.Key && x.SectionKey == type.SectionKey).Select(ToSuggestion).ToList()
         };
@@ -249,6 +261,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
         var revision = await repository.GetOpenRevisionForUpdateAsync(project.Key, type.Key, cancellationToken);
         var resumed = revision is not null;
+        if (revision is not null && revision.Status is ReverseRevisionStatus.Draft or ReverseRevisionStatus.Changes)
+            revision.Resumed(actor, DateTimeOffset.UtcNow);
         if (revision is null)
         {
             var mode = ReverseRevisionMode.Normalize(request.Mode ?? (section is null ? "new" : "improve"));
@@ -322,9 +336,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             "pending" => new[] { ReverseRevisionStatus.Review, ReverseRevisionStatus.Approved },
             _ => status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         };
-        var heads = await repository.GetRevisionHeadsAsync(
+        var heads = WithProgress(await repository.GetRevisionHeadsAsync(
             string.IsNullOrWhiteSpace(moduleKey) ? null : ArchitectureProject.NormalizeKey(moduleKey),
-            string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key, statuses, cancellationToken);
+            string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key, statuses, cancellationToken));
         var names = (await repository.GetProjectsAsync(cancellationToken)).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
         foreach (var h in heads) h.ModuleName = names.GetValueOrDefault(h.ModuleKey);
         return heads;
@@ -352,6 +366,22 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         revision.SetLint(JsonSerializer.Serialize(await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken), Json));
         await repository.SaveChangesAsync(cancellationToken);
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
+    }
+
+    /// <summary>Andamento da sessão (etapa, atividade, registro) — quem abriu a sessão ou um aprovador.</summary>
+    public async Task<ReverseRevisionHead> ReportProgressAsync(Guid id, ReverseProgressUpdate update, string actor, IReadOnlyCollection<string> userRoles,
+        CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
+        var progress = revision.ReportProgress(update, DateTimeOffset.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+        return new ReverseRevisionHead
+        {
+            Id = revision.Id, ModuleKey = revision.ModuleKey, DocType = revision.DocType, Number = revision.Number, Mode = revision.Mode, Status = revision.Status,
+            CoverageRatio = revision.CoverageRatio, Length = revision.Content.Length, CreatedAt = revision.CreatedAt, CreatedBy = revision.CreatedBy,
+            UpdatedAt = revision.UpdatedAt, UpdatedBy = revision.UpdatedBy, Progress = progress, ProgressAt = revision.ProgressAt
+        };
     }
 
     public async Task<ReverseLintResult> LintAsync(string key, LintReverseDocumentRequest request, CancellationToken cancellationToken)
@@ -493,6 +523,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Status = r.Status, Summary = r.Summary, CoverageRatio = r.CoverageRatio, Length = r.Content.Length, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy,
             UpdatedAt = r.UpdatedAt, UpdatedBy = r.UpdatedBy, SubmittedAt = r.SubmittedAt, SubmittedBy = r.SubmittedBy, ReviewedAt = r.ReviewedAt,
             ReviewedBy = r.ReviewedBy, PublishedAt = r.PublishedAt, PublishedBy = r.PublishedBy, ReviewNote = r.ReviewNote, Content = r.Content, Lint = lint,
+            Progress = r.Progress is null ? null : ReverseProgress.Parse(r.Progress, r.ProgressAt ?? r.UpdatedAt), ProgressAt = r.ProgressAt,
             Coverage = Element(r.Coverage), Session = Element(r.Session), BaseVersion = r.BaseVersion, PublishedVersion = r.PublishedVersion,
             CurrentPublishedVersion = section?.Version,
             PublishedChangedSinceBase = r.IsOpen && section is not null && r.BaseVersion != section.Version,

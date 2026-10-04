@@ -119,6 +119,9 @@ public class ReverseRevision
     /// <summary>Versão da seção publicada a partir da qual o rascunho foi escrito (para avisar se mudou no meio).</summary>
     public int? BaseVersion { get; private set; }
     public int? PublishedVersion { get; private set; }
+    /// <summary>Andamento da sessão do Claude (JSON de <see cref="ReverseProgress"/>) — a tela mostra ao vivo.</summary>
+    public string? Progress { get; private set; }
+    public DateTimeOffset? ProgressAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -143,7 +146,24 @@ public class ReverseRevision
         BaseVersion = baseVersion;
         CreatedAt = UpdatedAt = now;
         CreatedBy = UpdatedBy = actor;
+        Progress = ReverseProgress.Initial(now).Serialize();
+        ProgressAt = now;
     }
+
+    /// <summary>Etapa/atividade/registro da sessão (só com a revisão aberta).</summary>
+    public ReverseProgress ReportProgress(ReverseProgressUpdate update, DateTimeOffset now)
+    {
+        if (!IsOpen) throw new DomainException($"A revisão #{Number} está {Label(Status)} — o andamento é da sessão aberta.");
+        var progress = ReverseProgress.Parse(Progress, now);
+        progress.Apply(update, now);
+        Progress = progress.Serialize();
+        ProgressAt = now;
+        return progress;
+    }
+
+    /// <summary>Retomada: nova sessão do Claude na mesma revisão — registra no andamento.</summary>
+    public void Resumed(string actor, DateTimeOffset now) =>
+        ReportProgress(new ReverseProgressUpdate { Log = $"Sessão retomada por {actor}", Kind = "progress" }, now);
 
     public bool IsOpen => ReverseRevisionStatus.IsOpen(Status);
 
@@ -178,6 +198,16 @@ public class ReverseRevision
             throw new DomainException($"Só rascunho ou revisão com ajustes pedidos vai para revisão (a #{Number} está {Label(Status)}).");
         if (Content.Trim().Length == 0) throw new DomainException("O documento está vazio.");
         Status = ReverseRevisionStatus.Review;
+        var progress = ReverseProgress.Parse(Progress, now);
+        foreach (var step in progress.Steps.Where(s => s.Key is "checagem" or "envio" && s.Status != "completed"))
+        {
+            step.Status = "completed";
+            step.FinishedAt = now;
+        }
+        progress.Activity = null;
+        progress.Logs.Add(new ReverseProgressLog { At = now, Text = $"Enviado para revisão por {actor}", Kind = "progress" });
+        Progress = progress.Serialize();
+        ProgressAt = now;
         SubmittedAt = now;
         SubmittedBy = actor;
         UpdatedAt = now;

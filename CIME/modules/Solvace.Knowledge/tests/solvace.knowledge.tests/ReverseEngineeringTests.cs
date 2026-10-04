@@ -185,4 +185,27 @@ public class ReverseEngineeringTests
             Assert.All(type.Kinds, k => Assert.True(ReverseItemKinds.IsKind(k), k));
         }
     }
+
+    [Fact]
+    public void Progress_tracks_steps_areas_activity_and_logs_live()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = new ReverseRevision("revamp-kaizen", "funcional", 1, "new", null, null, "dev", now);
+        r.ReportProgress(new ReverseProgressUpdate { Step = "inventario", Status = "completed", Detail = "434 itens" }, now);
+        r.ReportProgress(new ReverseProgressUpdate { Step = "area:aprovacao", Title = "Área: Aprovação", Status = "running", Activity = "Lendo KaizenWorkflowService" }, now);
+        var p = r.ReportProgress(new ReverseProgressUpdate { Step = "area:cadastro", Title = "Área: Cadastro", Status = "pending", Log = "senha=abc123 vazou?", Kind = "warning" }, now);
+        Assert.Equal(["sessao", "inventario", "leitura", "area:aprovacao", "area:cadastro", "checagem", "envio"], p.Steps.Select(x => x.Key));
+        Assert.Equal("running", p.Steps.Single(x => x.Key == "leitura").Status);
+        Assert.Equal("Lendo KaizenWorkflowService", p.Activity);
+        Assert.DoesNotContain("abc123", p.Logs.Single().Text);
+        Assert.Throws<DomainException>(() => r.ReportProgress(new ReverseProgressUpdate { Step = "x", Status = "voando" }, now));
+
+        r.Save("## a", null, null, null, null, false, "dev", now);
+        r.Submit("dev", now);
+        var after = ReverseProgress.Parse(r.Progress, now);
+        Assert.Equal("completed", after.Steps.Single(x => x.Key == "envio").Status);
+        Assert.Null(after.Activity);
+        r.Review("discard", null, "gestor", now);
+        Assert.Throws<DomainException>(() => r.ReportProgress(new ReverseProgressUpdate { Log = "x" }, now));
+    }
 }

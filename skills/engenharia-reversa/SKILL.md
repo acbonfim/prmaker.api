@@ -27,6 +27,19 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh           # Knowledge Center (reg
 | `/engenharia-reversa refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa status` | `bash $RE status <modulo>` |
 
+## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
+A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → leitura e escrita, com uma
+subetapa por area → checagem → envio), a linha "agora" e um registro curto. `start`, `inventario`, `check`, `save` e
+`submit` ja reportam sozinhos; o resto e voce:
+- Antes de ler/escrever: `bash $RE etapa <m> <doc> leitura running --detail "N areas: A, B, C"`.
+- Cada area: `bash $RE etapa <m> <doc> area:<nome> running --title "Area: <Nome>"` ao comecar (inclusive ao despachar o
+  subagente dela) e `... area:<nome> completed --detail "12 RN, 4 UC, 3 TELA"` ao terminar.
+- Mudou de assunto (arquivo/fluxo novo): `bash $RE atividade <m> <doc> "Lendo KaizenWorkflowService — regras de etapa"`
+  (curto, sem comando nem segredo). Achado/decisao relevante: `bash $RE log <m> <doc> "..." progress|warning`.
+- **Grave o rascunho a cada area concluida** (`bash $RE save <m> <doc>`): a tela mostra o documento crescendo.
+- Terminou a leitura: `bash $RE etapa <m> <doc> leitura completed --detail "<itens por tipo>"`.
+Agrupe numa chamada de Bash (`... && ...`) para nao gastar turnos so com andamento.
+
 ## Fluxo de um documento
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet engenharia-reversa 2>/dev/null || true`
 (se atualizou, releia esta SKILL.md).

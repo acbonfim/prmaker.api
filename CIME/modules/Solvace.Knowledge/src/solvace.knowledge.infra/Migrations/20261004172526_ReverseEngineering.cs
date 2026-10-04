@@ -122,6 +122,8 @@ namespace solvace.knowledge.infra.Migrations
                     ReviewNote = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
                     BaseVersion = table.Column<int>(type: "integer", nullable: true),
                     PublishedVersion = table.Column<int>(type: "integer", nullable: true),
+                    Progress = table.Column<string>(type: "jsonb", nullable: true),
+                    ProgressAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     CreatedBy = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),

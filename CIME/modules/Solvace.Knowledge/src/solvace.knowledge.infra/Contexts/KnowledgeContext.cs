@@ -184,6 +184,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Lint).HasColumnType("jsonb");
             entity.Property(e => e.Coverage).HasColumnType("jsonb");
             entity.Property(e => e.Session).HasColumnType("jsonb");
+            entity.Property(e => e.Progress).HasColumnType("jsonb");
             entity.Property(e => e.ReviewNote).HasMaxLength(ReverseRevision.MaxNoteLength);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
