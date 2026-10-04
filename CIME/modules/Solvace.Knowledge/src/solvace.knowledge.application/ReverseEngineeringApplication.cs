@@ -473,8 +473,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         if (revision.Status != ReverseRevisionStatus.Approved)
             throw new DomainException($"Só revisão aprovada pode ser publicada (a #{revision.Number} está {ReverseRevision.Label(revision.Status)}).");
         var type = ReverseDocTypes.Get(revision.DocType);
+        // A estrutura (seções obrigatórias) foi checada no envio; aqui só barra o grave — assim uma revisão enviada antes de
+        // o modelo ganhar uma seção nova (0053: glossário, banco de dados) continua publicável.
         var lint = ReverseLint.Run(type, revision.Content);
-        if (lint.Errors.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", lint.Errors));
+        var blocking = lint.Errors.Where(e => !e.StartsWith("Faltam seções obrigatórias", StringComparison.Ordinal)).ToList();
+        if (blocking.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", blocking));
 
         var project = await repository.GetProjectForUpdateAsync(revision.ModuleKey, cancellationToken);
         if (project is null || project.IsDeleted) throw new KnowledgeNotFoundException($"Projeto '{revision.ModuleKey}' não encontrado.");

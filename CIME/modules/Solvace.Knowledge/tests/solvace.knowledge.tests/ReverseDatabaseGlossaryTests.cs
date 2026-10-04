@@ -185,4 +185,18 @@ public class ReverseDatabaseGlossaryTests
         public Task<KnowledgeSettings> GetAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new KnowledgeSettings("dev", domain.Filtering.KnowledgeFilterOptions.None));
     }
+
+    [Fact]
+    public async Task A_revision_submitted_before_the_template_gained_a_section_can_still_be_published()
+    {
+        var (app, repo) = Create();
+        var session = await app.StartSessionAsync("legado-rca", "funcional", new StartReverseSessionRequest(), "dev", Dev, default);
+        await app.SaveRevisionAsync(session.Revision.Id, new SaveReverseRevisionRequest { Content = Funcional }, "dev", Dev, default);
+        await app.SubmitAsync(session.Revision.Id, "dev", Dev, default);
+        // conteúdo sem a seção nova (como se tivesse sido enviado antes da 0053)
+        var revision = (await repo.GetRevisionAsync(session.Revision.Id, true, default))!;
+        typeof(ReverseRevision).GetProperty(nameof(ReverseRevision.Content))!.SetValue(revision, Funcional.Replace("## Glossário", "## Outra"));
+        var published = await app.PublishAsync(session.Revision.Id, new PublishReverseRevisionRequest { Approve = true }, "gestor", Approver, default);
+        Assert.Equal(ReverseRevisionStatus.Published, published.Status);
+    }
 }
