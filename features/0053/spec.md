@@ -1,7 +1,7 @@
 # Feature 0053 — Engenharia reversa do banco (DEMO) e glossário por módulo
 
-> **Status: especificada — não iniciar** até terminar o piloto da engenharia reversa do SA3 legado (`legado-rca`),
-> que está em andamento com a 0052. O piloto pode trazer ajustes para esta spec.
+> **Status: implementada em 2026-10-04** (ver `status.md`). Pendente: leitura real da DEMO (a VPN estava desligada
+> durante a execução — o catálogo foi testado com um `sql-query.sh` falso).
 
 ## Contexto
 A 0052 (engenharia reversa por módulo) cobre bem o código (endpoints, validações, telas, tabelas citadas), mas no

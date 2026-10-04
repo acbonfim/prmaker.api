@@ -529,8 +529,22 @@ def termos(inv_path, banco_dir, exclusions, out, other_modules=()):
 
 
 def afetados(doc_path, files, objects):
+    """
+    Itens do documento publicado afetados pelo que mudou: objeto do banco citado, ou arquivo alterado cujas LINHAS
+    alteradas (lado antigo do diff) caem perto do arquivo:linha que o item cita (±10). Item que cita o arquivo sem linha
+    conta como afetado. files: "arquivo<TAB>ini-fim,ini-fim" (ou só o arquivo = mudou inteiro).
+    """
     doc = open(doc_path, encoding="utf-8").read()
-    bases = {os.path.basename(f).lower() for f in files if f.strip()}
+    ranges = {}
+    for f in files:
+        if not f.strip():
+            continue
+        name, _, spans = f.partition("\t")
+        rs = []
+        for span in filter(None, spans.split(",")):
+            a, _, b = span.partition("-")
+            rs.append((int(a), int(b or a)))
+        ranges.setdefault(os.path.basename(name).lower(), []).extend(rs or [(0, 10 ** 9)])
     objs = {o.strip().upper() for o in objects if o.strip()}
     blocks, current, buf = [], None, []
     for line in doc.splitlines():
@@ -546,9 +560,17 @@ def afetados(doc_path, files, objects):
         blocks.append((current, "\n".join(buf)))
     hits = []
     for item, body in blocks:
-        why = sorted({b for b in bases if b in body.lower()} | {o for o in objs if o in body.upper()})
+        why = set(o for o in objs if o in body.upper())
+        low = body.lower()
+        for base, rs in ranges.items():
+            if base not in low:
+                continue
+            cited = [(int(mm.group(1)), int(mm.group(2) or mm.group(1)))
+                     for mm in re.finditer(re.escape(base) + r":(\d+)(?:-(\d+))?", low)]
+            if not cited or any(ca - 10 <= b and a <= cb + 10 for ca, cb in cited for a, b in rs):
+                why.add(base)
         if why:
-            hits.append((item, why))
+            hits.append((item, sorted(why)))
     for item, why in hits:
         print(f"{item}\t{', '.join(why[:6])}")
     return hits

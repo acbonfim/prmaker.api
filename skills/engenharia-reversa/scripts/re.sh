@@ -320,7 +320,14 @@ case "$CMD" in
       CH="$(git -C "$path" diff --name-status "$sha"..HEAD -- . 2>/dev/null)"
       echo "- $role \`$path\` desde $sha: $(printf '%s' "$CH" | grep -c . | tr -d ' ') arquivo(s)" >> "$OUT"
       printf '%s\n' "$CH" | grep . | sed 's/^/  - /' | head -200 >> "$OUT"
-      printf '%s\n' "$CH" | awk -F'\t' 'NF>1 {print $NF}' >> "$TMP/arquivos"
+      # linhas alteradas (lado antigo = o que o documento publicado cita) por arquivo: "arquivo<TAB>ini-fim,ini-fim"
+      git -C "$path" diff -U0 "$sha"..HEAD -- . 2>/dev/null | awk '
+        /^--- a\// { f = substr($0, 7); next }
+        /^--- \/dev\/null/ { f = ""; next }
+        /^\+\+\+ b\// { if (f == "") f = substr($0, 7); next }
+        /^@@/ { split($2, o, ","); a = substr(o[1], 2) + 0; n = (o[2] == "" ? 1 : o[2] + 0); if (n == 0) n = 1;
+                r[f] = r[f] (r[f] == "" ? "" : ",") a "-" (a + n - 1) }
+        END { for (k in r) print k "\t" r[k] }' >> "$TMP/arquivos"
     done < <(jq -r '.publishedSession.sources[]? | [.role, .path, .commit] | join("\u001f")' "$D/sessao.json")
     echo >> "$OUT"; echo "## Banco ($(jq -r '.referenceDatabase.environment // "DEMO"' "$D/sessao.json"))" >> "$OUT"
     CAT="$(moddir "$MOD")/banco/catalogo.json"
@@ -380,7 +387,9 @@ case "$CMD" in
     CAT="$(moddir "$MOD")/banco/catalogo.json"
     if [[ -s "$CAT" ]]; then python3 "$BANCO_PY" snapshot "$CAT" > "$TMP/snapshot.json"; else echo 'null' > "$TMP/snapshot.json"; fi
     DEC="$(opt --sugestoes "" "$@")"
-    if [[ -n "$DEC" ]]; then [[ -s "$DEC" ]] || die "arquivo de decisoes nao encontrado: $DEC"; jq -e 'type == "array"' "$DEC" >/dev/null || die "$DEC precisa ser uma lista JSON"; cp "$DEC" "$TMP/decisoes.json"; else echo 'null' > "$TMP/decisoes.json"; fi
+    if [[ -n "$DEC" ]]; then [[ -s "$DEC" ]] || die "arquivo de decisoes nao encontrado: $DEC"; jq -e 'type == "array"' "$DEC" >/dev/null || die "$DEC precisa ser uma lista JSON"
+      jq -e 'all(.[]; ((.suggestionId // .id // "") | test("^[0-9a-fA-F-]{36}$")))' "$DEC" >/dev/null || die "$DEC: toda decisao precisa do suggestionId (o id da sugestao em sugestoes.md)"
+      cp "$DEC" "$TMP/decisoes.json"; else echo 'null' > "$TMP/decisoes.json"; fi
     jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
       --slurpfile dec "$TMP/decisoes.json" --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
       {content: $c,
