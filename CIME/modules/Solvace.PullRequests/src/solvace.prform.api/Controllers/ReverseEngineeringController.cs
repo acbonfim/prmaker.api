@@ -175,6 +175,49 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
             return NoContent();
         });
 
+    // ── 0054: armadilhas, sugestões por item, divergências com o KC ─────────────────────────────
+
+    [HttpGet("traps")]
+    public Task<ActionResult<List<ReverseTrapResponse>>> Traps([FromQuery] string? module, CancellationToken ct) =>
+        Run<List<ReverseTrapResponse>>(async () => Ok(await application.ListTrapsAsync(module, ct)));
+
+    /// <summary>Armadilhas novas (lote) ligadas a itens. Quem não aprova — e toda migração automática — cria "a conferir".</summary>
+    [HttpPost("modules/{key}/traps")]
+    public Task<ActionResult<List<ReverseTrapResponse>>> CreateTraps([FromRoute] string key, [FromBody] List<CreateReverseTrapRequest> request, CancellationToken ct) =>
+        Run<List<ReverseTrapResponse>>(async () => Ok(await application.CreateTrapsAsync(key, request, await ActorAsync(ct), Roles(), ct)));
+
+    [HttpPut("traps/{id:guid}")]
+    public Task<ActionResult<ReverseTrapResponse>> UpdateTrap([FromRoute] Guid id, [FromBody] UpdateReverseTrapRequest request, CancellationToken ct) =>
+        Run<ReverseTrapResponse>(async () => Ok(await application.UpdateTrapAsync(id, request, await ActorAsync(ct), Roles(), ct)));
+
+    [HttpDelete("traps/{id:guid}")]
+    public Task<ActionResult<object>> DeleteTrap([FromRoute] Guid id, CancellationToken ct) =>
+        Run<object>(async () =>
+        {
+            await application.DeleteTrapAsync(id, await ActorAsync(ct), Roles(), ct);
+            return NoContent();
+        });
+
+    /// <summary>A skill ligou as armadilhas antigas e as sugestões aos itens — a seção antiga sai do espelho.</summary>
+    [HttpPost("modules/{key}/traps/migrated")]
+    public Task<ActionResult<ReverseModuleResponse>> TrapsMigrated([FromRoute] string key, CancellationToken ct) =>
+        Run<ReverseModuleResponse>(async () => Ok(await application.MarkTrapsMigratedAsync(key, await ActorAsync(ct), Roles(), ct)));
+
+    /// <summary>Sugestão → armadilha (aprovador).</summary>
+    [HttpPost("suggestions/{id:guid}/to-trap")]
+    public Task<ActionResult<ReverseTrapResponse>> SuggestionToTrap([FromRoute] Guid id, [FromBody] CreateReverseTrapRequest? request, CancellationToken ct) =>
+        Run<ReverseTrapResponse>(async () => Ok(await application.SuggestionToTrapAsync(id, request?.Title, await ActorAsync(ct), Roles(), ct)));
+
+    /// <summary>Liga a sugestão a um item/documento da engenharia reversa (migração, análises).</summary>
+    [HttpPost("suggestions/{id:guid}/item")]
+    public Task<ActionResult<ArchitectureSuggestionResponse>> LinkSuggestion([FromRoute] Guid id, [FromBody] LinkSuggestionItemRequest request, CancellationToken ct) =>
+        Run<ArchitectureSuggestionResponse>(async () => Ok(await application.LinkSuggestionAsync(id, request, ct)));
+
+    /// <summary>Divergências entre o Knowledge Center e o código (para o time de produto).</summary>
+    [HttpGet("kc-divergences")]
+    public Task<ActionResult<List<ArchitectureSuggestionResponse>>> KcDivergences(CancellationToken ct) =>
+        Run<List<ArchitectureSuggestionResponse>>(async () => Ok(await application.KcDivergencesAsync(ct)));
+
     // ── Índice por item ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Busca nos itens publicados (q vazio = lista filtrada). module/kind aceitam vários (separados por vírgula).</summary>

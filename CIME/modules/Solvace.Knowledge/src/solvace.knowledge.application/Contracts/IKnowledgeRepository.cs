@@ -58,6 +58,10 @@ public interface IKnowledgeRepository
     Task<List<ReverseIndexEntry>> GetIndexEntriesForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
     void AddIndexEntry(ReverseIndexEntry entry);
     void RemoveIndexEntries(IEnumerable<ReverseIndexEntry> entries);
+    /// <summary>0054: armadilhas (todas ou de um módulo), sem as removidas.</summary>
+    Task<List<ReverseTrap>> GetTrapsAsync(string? moduleKey, CancellationToken cancellationToken);
+    Task<ReverseTrap?> GetTrapForUpdateAsync(Guid id, CancellationToken cancellationToken);
+    void AddTrap(ReverseTrap trap);
     Task<ReverseCardContext?> GetCardContextAsync(string cardNumber, bool tracked, CancellationToken cancellationToken);
     void AddCardContext(ReverseCardContext context);
 
@@ -79,11 +83,32 @@ public sealed record ReverseReferenceDatabase(string Environment, string Host, s
 
 /// <param name="Templates">Modelos que substituem os do código (tipo → markdown).</param>
 /// <param name="GlossaryExclusions">Palavras genéricas de interface fora da cobertura de termos do glossário (0053).</param>
+/// <param name="Supersedes">0054: seção antiga da Base Solvace → documentos da engenharia reversa que a substituem (todos
+/// publicados = substituída). <c>guia-*</c> vale para as seções do Guia; <c>@armadilhas</c> = armadilhas migradas.</param>
 public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
-    IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null)
+    IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null)
 {
     public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
-        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions);
+        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes);
+
+    /// <summary>Documentos exigidos que são técnicos (a visão prática fica de fora: é para pessoas, não para as análises).</summary>
+    public IReadOnlyList<string> TechnicalRequired => RequiredDocs.Where(d => d != domain.Reverse.ReverseDocTypes.Practical).ToList();
+
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultSupersedes { get; } = new Dictionary<string, IReadOnlyList<string>>
+    {
+        ["visao-geral"] = ["visao", "arquitetura"],
+        ["modulos"] = ["funcional", "uiux"],
+        ["dados"] = ["arquitetura"],
+        ["integracoes"] = ["arquitetura"],
+        ["infra"] = ["arquitetura"],
+        ["autenticacao"] = ["arquitetura"],
+        ["jobs"] = ["arquitetura"],
+        ["regras-de-negocio"] = ["funcional"],
+        ["operacao"] = ["funcional"],
+        ["armadilhas"] = ["@armadilhas"],
+        ["guia-*"] = [domain.Reverse.ReverseDocTypes.Practical]
+    };
 
     /// <summary>Palavras de interface que não são conceito do domínio (o plugin pode trocar a lista).</summary>
     public static IReadOnlyList<string> DefaultGlossaryExclusions { get; } =

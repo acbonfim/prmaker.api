@@ -34,8 +34,10 @@ public static partial class ReverseLint
 
     /// <param name="publishedIds">IDs do documento publicado (para avisar o que sumiu).</param>
     /// <param name="otherDocIds">IDs definidos nos outros documentos publicados do módulo (ID → tipo do documento).</param>
+    /// <param name="removedIds">0054: IDs que existem no módulo mas estão "(removido)" — a visão prática não pode citá-los.</param>
     public static ReverseLintResult Run(ReverseDocType type, string content, IReadOnlyCollection<string>? publishedIds = null,
-        IReadOnlyDictionary<string, string>? otherDocIds = null, double? coverage = null, double minCoverage = 0)
+        IReadOnlyDictionary<string, string>? otherDocIds = null, double? coverage = null, double minCoverage = 0,
+        IReadOnlyCollection<string>? removedIds = null)
     {
         var result = new ReverseLintResult { Coverage = coverage };
         var text = content ?? string.Empty;
@@ -96,14 +98,55 @@ public static partial class ReverseLint
         if (result.UnknownRefs.Count > 0)
             result.Warnings.Add($"Referências a itens que não existem no módulo (ainda): {Join(result.UnknownRefs)}.");
 
+        if (type.Derived) PracticalChecks(result, items, text, removedIds);
+
         var secret = SecretPattern().Match(text);
         if (secret.Success)
             result.Errors.Add("O texto parece conter credencial/segredo (senha, connection string, chave ou token) — só nomes de recursos e chaves.");
 
         if (coverage is { } c && minCoverage > 0 && c < minCoverage)
-            result.Warnings.Add($"Cobertura do inventário {c:P0} abaixo do mínimo {minCoverage:P0} — itens do código sem menção no documento.");
+            result.Warnings.Add(type.Derived
+                ? $"Perguntas reais respondidas {c:P0} abaixo do mínimo {minCoverage:P0} — responda com FAQ/TUT (com a fonte) ou registre a lacuna no documento técnico."
+                : $"Cobertura do inventário {c:P0} abaixo do mínimo {minCoverage:P0} — itens do código sem menção no documento.");
         return result;
     }
+
+    /// <summary>
+    /// Visão prática (0054 — "o core da Solvace, tem que ser assertivo"): todo passo/resposta cita a fonte publicada
+    /// (<c>&lt;!-- fonte: RN-012 --&gt;</c>); referência a item inexistente ou removido e termo técnico no texto são erro.
+    /// </summary>
+    private static void PracticalChecks(ReverseLintResult result, List<ReverseItem> items, string text, IReadOnlyCollection<string>? removedIds)
+    {
+        var withoutSource = items.Where(i => !i.Removed && i.Kind is "TUT" or "FAQ"
+                                             && (!SourceMarker().IsMatch(i.Body) || i.Refs.Count == 0)).Select(i => i.Id).ToList();
+        if (withoutSource.Count > 0)
+            result.Errors.Add($"Passo a passo/pergunta sem a fonte publicada (<!-- fonte: RN-012, TELA-003 -->): {Join(withoutSource)}.");
+        var allSources = SourceMarker().Matches(text).Count;
+        if (allSources == 0)
+            result.Errors.Add("Nenhuma fonte citada — cada afirmação da visão prática termina com <!-- fonte: <IDs publicados> -->.");
+        if (result.UnknownRefs.Count > 0)
+        {
+            result.Errors.Add($"Fonte que não existe na engenharia reversa publicada do módulo: {Join(result.UnknownRefs)}.");
+            result.Warnings.RemoveAll(w => w.StartsWith("Referências a itens que não existem", StringComparison.Ordinal));
+        }
+        if (removedIds is { Count: > 0 })
+        {
+            var removed = items.SelectMany(i => i.Refs).Where(r => !r.Contains('#') && removedIds.Contains(r)).Distinct().OrderBy(r => r).ToList();
+            if (removed.Count > 0) result.Errors.Add($"Fonte que aponta para item removido: {Join(removed)}.");
+        }
+        var technical = TechnicalTerm().Matches(HtmlComment().Replace(text, " ")).Select(m => m.Value.Trim()).Distinct().Take(15).ToList();
+        if (technical.Count > 0)
+            result.Errors.Add($"Termo técnico no texto da visão prática (escreva como o usuário vê a tela): {string.Join(", ", technical)}.");
+    }
+
+    [GeneratedRegex(@"<!--\s*fonte\s*:", RegexOptions.IgnoreCase)]
+    private static partial Regex SourceMarker();
+
+    [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
+    private static partial Regex HtmlComment();
+
+    [GeneratedRegex(@"\bTB_[A-Z0-9_]+\b|\bdbo\.\w+|\b(?:VW|STP|USP|TRG)_\w+|\b[\w/.-]+\.(?:cs|cshtml|asp|aspx|ts|html|sql|js|json)\b|/api/\S*|\b[A-Z][a-zA-Z]+(?:Controller|Service|Repository|Handler)\b|\b(?:GET|POST|PUT|PATCH|DELETE)\s+/")]
+    private static partial Regex TechnicalTerm();
 
     /// <summary>Sem acento e em minúsculas (para casar os cabeçalhos obrigatórios).</summary>
     public static string Normalize(string value)

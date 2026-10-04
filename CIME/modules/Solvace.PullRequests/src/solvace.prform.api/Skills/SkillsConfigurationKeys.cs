@@ -38,4 +38,6 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringReferenceDatabase = "ReverseEngineeringReferenceDatabase";
     /// <summary>0053: palavras genéricas de interface fora da cobertura de termos do glossário (JSON: lista).</summary>
     public const string ReverseEngineeringGlossaryExclusions = "ReverseEngineeringGlossaryExclusions";
+    /// <summary>0054: seção antiga da Base Solvace → documentos da engenharia reversa que a substituem (JSON).</summary>
+    public const string ReverseEngineeringSupersedes = "ReverseEngineeringSupersedes";
 }

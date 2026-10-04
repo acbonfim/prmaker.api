@@ -87,6 +87,9 @@ public class ArchitectureProjectResponse
     public List<solvace.knowledge.domain.Entities.ArchitectureRelation> Relations { get; set; } = [];
     /// <summary>Quem depende deste projeto (calculado das relações dos outros).</summary>
     public List<ArchitectureIncomingRelation> UsedBy { get; set; } = [];
+    /// <summary>0054: seções antigas substituídas pela engenharia reversa (chave → por quais documentos) — histórico na tela.</summary>
+    public Dictionary<string, string> SupersededSections { get; set; } = [];
+
 }
 
 public class ArchitectureIncomingRelation
@@ -171,6 +174,8 @@ public class ArchitectureQuestionResponse
 public class ArchitectureSuggestionResponse
 {
     public Guid Id { get; set; }
+    /// <summary>0054: item da engenharia reversa (RN-012).</summary>
+    public string? ItemId { get; set; }
     public string ProjectKey { get; set; } = string.Empty;
     public string? SectionKey { get; set; }
     public string Kind { get; set; } = string.Empty;

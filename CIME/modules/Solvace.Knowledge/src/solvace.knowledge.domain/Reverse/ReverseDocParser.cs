@@ -165,6 +165,6 @@ public static partial class ReverseDocParser
     [GeneratedRegex(@"[\w./\\-]+\.(?:cs|cshtml|razor|asp|aspx|ascx|inc|js|ts|tsx|html|scss|sql|py|json|ya?ml|xml|config|vb|java|go)(?::\d+(?:-\d+)?)?\b")]
     private static partial Regex EvidencePattern();
 
-    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
+    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
     private static partial Regex RefPattern();
 }

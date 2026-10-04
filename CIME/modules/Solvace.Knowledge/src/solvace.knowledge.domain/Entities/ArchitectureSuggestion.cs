@@ -21,6 +21,8 @@ public class ArchitectureSuggestion
     /// <summary>learning (aprendizado da análise) | divergence (base diferente do código) | gap (lacuna: a base não
     /// cobre o assunto e precisa analisar o código — 0038) | other.</summary>
     public string Kind { get; private set; } = "other";
+    /// <summary>0054: item da engenharia reversa a que a sugestão se refere (RN-012) — entra na sessão "melhorar" do documento.</summary>
+    public string? ItemId { get; private set; }
     public string Content { get; private set; } = string.Empty;
     public string? CardNumber { get; private set; }
     public string Status { get; private set; } = ArchitectureSuggestionStatus.Pending;
@@ -40,11 +42,23 @@ public class ArchitectureSuggestion
         Id = Guid.NewGuid();
         ProjectKey = ArchitectureProject.NormalizeKey(projectKey);
         SectionKey = string.IsNullOrWhiteSpace(sectionKey) ? null : ArchitectureProject.NormalizeKey(sectionKey);
-        Kind = (kind ?? "other").Trim().ToLowerInvariant() is "learning" or "divergence" or "gap" ? kind!.Trim().ToLowerInvariant() : "other";
+        // 0054: "kc" = divergência entre o Knowledge Center e o código (lista para o time de produto)
+        Kind = (kind ?? "other").Trim().ToLowerInvariant() is "learning" or "divergence" or "gap" or "kc" ? kind!.Trim().ToLowerInvariant() : "other";
         Content = text;
         CardNumber = string.IsNullOrWhiteSpace(cardNumber) ? null : cardNumber.Trim();
         CreatedBy = actor;
         CreatedAt = now;
+    }
+
+    /// <summary>Liga a sugestão a um item (e ao documento da engenharia reversa) — migração e análises (0054).</summary>
+    public void LinkItem(string? itemId, string? sectionKey)
+    {
+        if (!string.IsNullOrWhiteSpace(itemId))
+        {
+            var parsed = Reverse.ReverseItemKinds.ParseRef(itemId) ?? throw new DomainException($"Item inválido: '{itemId}' (ex.: RN-012).");
+            ItemId = parsed.Id;
+        }
+        if (!string.IsNullOrWhiteSpace(sectionKey)) SectionKey = ArchitectureProject.NormalizeKey(sectionKey);
     }
 
     public void Resolve(string status, string? note, string actor, DateTimeOffset now)

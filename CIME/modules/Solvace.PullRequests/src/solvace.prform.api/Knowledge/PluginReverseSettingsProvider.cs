@@ -45,7 +45,27 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
             Math.Clamp(coverage, 0, 1),
             Templates(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTemplates)),
             Reference(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringReferenceDatabase)) ?? d.ReferenceDatabase,
-            List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGlossaryExclusions)) is { Count: > 0 } ex ? ex : d.GlossaryExclusions);
+            List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGlossaryExclusions)) is { Count: > 0 } ex ? ex : d.GlossaryExclusions,
+            Supersedes(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringSupersedes)) ?? d.Supersedes);
+    }
+
+    /// <summary>{"modulos": ["funcional", "uiux"], "guia-*": ["pratica"], "armadilhas": ["@armadilhas"]} (0054).</summary>
+    private Dictionary<string, IReadOnlyList<string>>? Supersedes(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var map = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+            return map is { Count: > 0 }
+                ? map.Where(kv => kv.Value is { Count: > 0 }).ToDictionary(kv => kv.Key.Trim().ToLowerInvariant(),
+                    kv => (IReadOnlyList<string>)kv.Value.Select(v => v.Trim().ToLowerInvariant()).Where(v => v.Length > 0).ToList())
+                : null;
+        }
+        catch (JsonException)
+        {
+            logger.LogWarning("ReverseEngineeringSupersedes inválido no plugin — usando o mapa padrão.");
+            return null;
+        }
     }
 
     /// <summary>{"environment": "DEMO", "host": "prod", "global": "DB_…_GLOBAL", "locals": ["DB_…_LOCAL_X"]} (0053).</summary>

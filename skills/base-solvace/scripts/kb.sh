@@ -119,7 +119,9 @@ for l in lines:
         kw = next((p[4:] for p in parts if p.startswith("kw: ")), "")
         tok = next((re.search(r"\(~\d+ tok\)", p).group(0) for p in parts if re.search(r"\(~\d+ tok\)", p)), "")
         dep = next((p for p in parts if p.startswith("⇄")), "")
-        projects.append(dict(line=l, key=key, title=title, desc=parts[0], kw=kw, tok=tok, dep=dep))
+        # 0054: qual fonte vale para o modulo — engenharia reversa (itens: kb.sh re get) ou a base antiga (kb.sh show)
+        src = "fonte: ER" if "fonte: engenharia reversa" in rest else ""
+        projects.append(dict(line=l, key=key, title=title, desc=parts[0], kw=kw, tok=tok, dep=dep, src=src))
         continue
     m = ART.match(l)
     if m:
@@ -136,7 +138,7 @@ if not terms.strip():
             p = next(x for x in projects if x["line"] == l)
             short = p["title"].split(" — ")[-1]
             kws = ", ".join(p["kw"].split(", ")[:4])
-            print(f"- {p['key']} · {short} · {kws} {p['tok']}{(' ' + p['dep']) if p['dep'] else ''}".rstrip())
+            print(f"- {p['key']} · {short} · {kws} {p['tok']}{(' ' + p['dep']) if p['dep'] else ''}{(' · ' + p['src']) if p['src'] else ''}".rstrip())
             continue
         m = ART.match(l)
         if m:
@@ -255,6 +257,14 @@ PY
               t = $0; sub(/^#+ +/, "", t); gsub(/[*`]/, "", t)
               if (!on && index(t, id) == 1) { on = 1; start = lvl } }
             on { print }' "$KB/projects/$M/$F"
+          # 0054: armadilhas ligadas ao item (secao de armadilhas do espelho, gerada das armadilhas da engenharia reversa)
+          TF="$(ls "$KB/projects/$M" 2>/dev/null | grep -- "-armadilhas.md$" | head -1)"
+          [[ -n "$TF" ]] && awk -v id="$ID" '
+            function flush() { if (blk != "" && hit) printf "  ARMADILHA: %s\n", blk; blk = ""; hit = 0 }
+            /^## / { flush(); blk = substr($0, 4); next }
+            blk != "" && /^- \*\*Itens:\*\*/ { n = split($0, a, /[ ,]+/); for (i = 1; i <= n; i++) if (a[i] == id) hit = 1; next }
+            blk != "" && NF { blk = blk "\n    " $0 }
+            END { flush() }' "$KB/projects/$M/$TF"
         done
         if [[ -n "$CARDF" ]] && tk="$(token)"; then
           jq -n --arg c "$CARDF" --args '{card: $c, refs: $ARGS.positional}' "${REFS[@]}" > "${TMPDIR:-/tmp}/kb-consulted.$$"

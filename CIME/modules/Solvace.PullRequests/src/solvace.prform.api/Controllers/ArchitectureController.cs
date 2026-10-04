@@ -128,12 +128,19 @@ public class ArchitectureController(IArchitectureApplication application, solvac
 
     /// <summary>"Pergunte à Base Solvace" (0037): a IA entende a pergunta e leva aos trechos que respondem.</summary>
     [HttpPost("ask")]
-    public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request, CancellationToken ct) =>
+    public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request,
+        [FromServices] IReverseEngineeringApplication reverse, CancellationToken ct) =>
         Run<ArchitectureAskResponse>(async () =>
         {
             var response = await ask.AskAsync(request.Question, ct);
             if (response.AiUsed)
+            {
                 await RecordAsync(response.Question, response.Kind, response.Coverage, response.SuggestedSection?.ProjectKey, response.SuggestedSection?.SectionKey, ct);
+                // 0054: sem resposta num módulo com engenharia reversa → vira pergunta prática a responder (visão prática)
+                if (response.Coverage is "not-found" or "partial" && response.SuggestedSection?.ProjectKey is { } project)
+                    try { await reverse.RecordQuestionGapAsync(project, response.Question, await ActorAsync(ct), ct); }
+                    catch (Exception e) when (e is not OperationCanceledException) { logger.LogWarning(e, "Lacuna do Pergunte não virou sugestão"); }
+            }
             return Ok(response);
         });
 

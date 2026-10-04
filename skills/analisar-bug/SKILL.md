@@ -187,8 +187,12 @@ com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
 **9. Aprender e reportar** — se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
 query util) ou mostrou um item da engenharia reversa errado/incompleto, proponha em poucas linhas:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> aprendizado.md --kind learning|divergence
---card <card>` — com engenharia reversa, a secao e o documento do item (`re-funcional`, `re-arquitetura`, `re-uiux`...)
-e o texto cita o ID (`RN-012`): a sugestao entra na proxima sessao `melhorar` do modulo (nunca grava direto). Reporte: card,
+--card <card> --item RN-012` — com engenharia reversa, a secao e o documento do item (`re-funcional`, `re-arquitetura`...)
+e `--item` o ID: entra na proxima sessao `melhorar` do modulo (nunca grava direto). Divergencia entre o Knowledge Center
+e o codigo: `--kind kc` (lista para o time de produto). **Armadilha** (o que deu errado e nao muda o "como o sistema e":
+sintoma, causa, diagnostico): `bash ~/.claude/skills/engenharia-reversa/scripts/re.sh armadilha <projeto> --titulo "..."
+--texto-file t.md --itens RN-012 --cards <card>` (fica "a conferir"). O `contexto` e o `prmake_base_get` ja mostram as
+armadilhas ligadas aos itens — leia antes de investigar. Reporte: card,
 causa raiz, solucao, PRs (links), o que ficou com o usuario e o que falta; tudo esta nos planos do card no PRMake. O custo da sessao vai sozinho ao mudar o status do plano (`bash $PLAN usage` mostra).
 
 ## Retomar um card
