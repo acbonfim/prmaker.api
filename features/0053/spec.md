@@ -26,11 +26,18 @@ Hoje:
 ## Solução
 
 ### 1. Catálogo do banco da DEMO (somente leitura)
-- **Onde**: alias `prod` do `~/.claude/sqlserver-credentials.json` (DEMO fica lá), bancos global e local da DEMO.
-  Host, banco global e banco local vêm da configuração do PRMake (plugin "Skills Configurations", chave nova
-  `ReverseEngineeringReferenceDatabase`, ex. `{"host": "prod", "global": "<banco global da DEMO>", "local": "<banco
-  local da DEMO>", "environment": "DEMO"}`) — nada fixo na skill. *A confirmar: nomes exatos dos bancos e se há mais
-  de um local (uma planta da DEMO basta como referência).*
+- **Onde**: alias `prod` do `~/.claude/sqlserver-credentials.json` (confirmado em 2026-10-04): global
+  `DB_DEMO_PRD_GLOBAL` e os locais `DB_DEMO_PRD_LOCAL_CTB`, `DB_DEMO_PRD_LOCAL_GLB` e `DB_DEMO_PRD_LOCAL_PAR`. Vem da
+  configuração do PRMake (plugin "Skills Configurations", chave nova `ReverseEngineeringReferenceDatabase`:
+  `{"environment": "DEMO", "host": "prod", "global": "DB_DEMO_PRD_GLOBAL", "locals": ["DB_DEMO_PRD_LOCAL_CTB",
+  "DB_DEMO_PRD_LOCAL_GLB", "DB_DEMO_PRD_LOCAL_PAR"]}`) — nada fixo na skill.
+- **Global primeiro, locais junto**: legado **e revamp** usam os mesmos bancos; o foco é o **global** (o local está
+  sendo desativado aos poucos, mas ainda há módulos/casos que usam). O catálogo lê o global e **todos os locais** da
+  DEMO: objeto igual nos locais vira um item só (banco "local"); definição diferente entre locais → item com a
+  diferença registrada e `GAP` (planta divergente). Cada item diz se está no global, no local ou nos dois — e a
+  análise de um card sabe em qual banco olhar.
+- Primeira leitura (2026-10-04): `DB_DEMO_PRD_GLOBAL` tem 442 tabelas, 18 views, 4 triggers e **nenhuma procedure/
+  function** — as procedures estão nos locais (o catálogo não pode ignorar o local).
 - **Como**: pelo `sql-query.sh` existente (validação read-only + transação com ROLLBACK), da máquina de quem roda a
   skill. Sem credencial/VPN → a etapa fica bloqueada no andamento da sessão com o que fazer (nunca segue "sem banco"
   calado) e o documento registra `GAP`.
@@ -43,8 +50,9 @@ Hoje:
   - **definição** de cada um (`sys.sql_modules.definition` / `OBJECT_DEFINITION`) — o corpo, onde está a regra;
   - tabelas: colunas (tipo, nulo, default), PK/FK, índices únicos, **check constraints**, colunas computadas;
   - **jobs do SQL Agent** (`msdb.dbo.sysjobs`, `sysjobsteps`, `sysjobschedules`, `sysschedules`) cujos passos citam
-    os objetos/tabelas do módulo — agenda, passos e comando. *A confirmar: se a credencial lê o `msdb` no RDS; se não,
-    o job vira `GAP` "sem acesso ao msdb".*
+    os objetos/tabelas do módulo — agenda, passos e comando. A credencial do `prod` lê o `msdb` (confirmado pelo
+    usuário). Jobs do servidor atendem vários clientes: só entram os passos que rodam nos bancos da DEMO ou citam
+    objetos do módulo.
   - objetos de **outros módulos** que leem/gravam as tabelas deste (impacto entre módulos — vira `INT`/`**Módulos:**`).
 - **Saída local**: `~/.prmake/reverse/<módulo>/banco/` — um arquivo por objeto (`views/VW_SA3_A3.sql`,
   `procedures/STP_…sql`, `triggers/…sql`, `jobs/<job>.md`, `tabelas/TB_SA3_A3.md`) + `catalogo.json` (lista com tipo,
@@ -80,7 +88,11 @@ Hoje:
     módulo); revamp, os `i18n/*.json` do front do módulo;
   - menus do módulo na DEMO (`TB_WCM_MENU`) — o nome que o usuário vê;
   - siglas e nomes de tabelas/objetos (`TB_SA3_*`, `VW_SA3_*`), nome do módulo no catálogo de módulos;
-  - a cobertura exige os termos mais frequentes no glossário (limite configurável).
+  - **todos os termos necessários, sem número fixo** (decisão do usuário): o inventário monta a lista de termos do
+    módulo — rótulos/títulos/mensagens da tela que nomeiam conceitos do domínio, menus, siglas, nomes de status/tipos
+    e de entidades — e a cobertura do glossário exige **cada** um (nome ou sinônimo de algum `GLO`). Palavras genéricas
+    de interface ("Salvar", "Cancelar", "Filtrar", "Data") ficam fora por uma lista de exclusão configurável; o que o
+    Claude deixar de fora de propósito vai justificado em `GAP`, como na cobertura do código.
 - Item `GLO` com linha **`- **Sinônimos:** SA3, A3, RCA, RCA 1-pager, root cause analysis`** (lida pelo índice).
 - **Busca com sinônimos**: ao publicar, os sinônimos dos `GLO` viram expansão de consulta do módulo — `prmake_base_search
   ("RCA")` acha itens que só dizem "A3"; também na tela Índice e no "Pergunte" da Base Solvace.
@@ -96,9 +108,14 @@ Hoje:
   continua sendo assunto da análise do card).
 - Rodar a engenharia reversa pelo executor (continua no Claude aberto no módulo).
 
-## Perguntas em aberto
-1. Nomes dos bancos global e local da DEMO (e qual planta usar como local de referência).
-2. A credencial do alias `prod` lê `msdb` (jobs)? Se não, quem consegue extrair os jobs?
-3. Revamp: os módulos revamp têm banco próprio por módulo ou usam os mesmos global/local? (define o escopo do catálogo
-   para `revamp-*`.)
-4. Limite de "termos mais frequentes" que o glossário precisa cobrir (sugestão: 50 por módulo).
+## Respostas do usuário (2026-10-04)
+1. DEMO: `DB_DEMO_PRD_GLOBAL` + 3 locais (`CTB`, `GLB`, `PAR`) no alias `prod` — o catálogo lê todos (acima).
+2. A credencial lê o `msdb` — jobs entram.
+3. Revamp usa os mesmos bancos do legado, com foco no global; ainda há casos no local → mesmo catálogo para
+   `revamp-*` e `legado-*`, com global primeiro.
+4. Glossário: todos os termos necessários, sem número fixo (cobertura de 100% da lista de termos do módulo, com
+   exclusões genéricas configuráveis e `GAP` justificado).
+
+## A conferir na execução
+- Os três locais deram timeout na primeira leitura (VPN oscilou) — confirmar o acesso e a contagem de objetos de cada
+  um antes de S1.
