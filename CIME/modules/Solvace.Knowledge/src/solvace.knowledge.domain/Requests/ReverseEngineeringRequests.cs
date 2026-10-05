@@ -76,6 +76,13 @@ public class ReverseConsultedRequest
 }
 
 /// <summary>0054: armadilha nova (ligada a itens). Quem não aprova cria "a conferir".</summary>
+public class UpsertReverseInfraRequest
+{
+    public string Account { get; set; } = string.Empty;
+    /// <summary>Objeto JSON (resumo, recursos do módulo, esteiras, logs, lacunas).</summary>
+    public System.Text.Json.JsonElement Data { get; set; }
+}
+
 public class CreateReverseTrapRequest
 {
     public string Title { get; set; } = string.Empty;

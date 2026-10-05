@@ -84,6 +84,8 @@ public interface IReverseEngineeringApplication
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
     // 0054
+    Task<ReverseInfraResponse?> GetInfraAsync(string key, CancellationToken cancellationToken);
+    Task<ReverseInfraResponse> UpsertInfraAsync(string key, UpsertReverseInfraRequest request, string actor, CancellationToken cancellationToken);
     Task<List<ReverseTrapResponse>> ListTrapsAsync(string? moduleKey, CancellationToken cancellationToken);
     Task<List<ReverseTrapResponse>> CreateTrapsAsync(string key, List<CreateReverseTrapRequest> requests, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseTrapResponse> UpdateTrapAsync(Guid id, UpdateReverseTrapRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);

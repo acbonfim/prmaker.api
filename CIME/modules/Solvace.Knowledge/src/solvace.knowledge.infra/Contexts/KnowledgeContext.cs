@@ -22,6 +22,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
     public DbSet<ReverseIndexEntry> ReverseIndexEntries { get; set; }
     public DbSet<ReverseCardContext> ReverseCardContexts { get; set; }
     public DbSet<ReverseTrap> ReverseTraps { get; set; }
+    public DbSet<ReverseInfraSnapshot> ReverseInfraSnapshots { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -239,6 +240,19 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });
+        });
+
+        // 0059: mapa de infra (AWS) por módulo — um por módulo, substituído a cada leitura
+        modelBuilder.Entity<ReverseInfraSnapshot>(entity =>
+        {
+            entity.ToTable("ReverseInfraSnapshots");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ModuleKey).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
+            entity.Property(e => e.Account).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.Data).IsRequired().HasColumnType("jsonb");
+            entity.Property(e => e.CollectedBy).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.ModuleKey).IsUnique();
         });
 
         // 0054: armadilhas ligadas aos itens da engenharia reversa

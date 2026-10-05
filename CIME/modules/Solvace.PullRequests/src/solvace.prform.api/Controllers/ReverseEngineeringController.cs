@@ -175,6 +175,17 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
             return NoContent();
         });
 
+    // ── 0059: infra (AWS) do módulo ─────────────────────────────────────────────────────────────
+
+    /// <summary>Último mapa de infra lido pela skill (<c>re.sh infra</c>); 204 = ainda não lido.</summary>
+    [HttpGet("modules/{key}/infra")]
+    public Task<ActionResult<ReverseInfraResponse>> Infra([FromRoute] string key, CancellationToken ct) =>
+        Run<ReverseInfraResponse>(async () => await application.GetInfraAsync(key, ct) is { } infra ? (ActionResult)Ok(infra) : NoContent());
+
+    [HttpPut("modules/{key}/infra")]
+    public Task<ActionResult<ReverseInfraResponse>> UpsertInfra([FromRoute] string key, [FromBody] UpsertReverseInfraRequest request, CancellationToken ct) =>
+        Run<ReverseInfraResponse>(async () => Ok(await application.UpsertInfraAsync(key, request, await ActorAsync(ct), ct)));
+
     // ── 0054: armadilhas, sugestões por item, divergências com o KC ─────────────────────────────
 
     [HttpGet("traps")]

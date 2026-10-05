@@ -86,6 +86,10 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     {
         foreach (var e in entries.ToList()) _entries.Remove(e);
     }
+    private readonly List<ReverseInfraSnapshot> _infra = [];
+    public Task<ReverseInfraSnapshot?> GetInfraAsync(string moduleKey, CancellationToken cancellationToken) => Task.FromResult(_infra.FirstOrDefault(i => i.ModuleKey == moduleKey));
+    public Task<ReverseInfraSnapshot?> GetInfraForUpdateAsync(string moduleKey, CancellationToken cancellationToken) => GetInfraAsync(moduleKey, cancellationToken);
+    public void AddInfra(ReverseInfraSnapshot snapshot) => _infra.Add(snapshot);
     private readonly List<ReverseTrap> _traps = [];
     public Task<List<ReverseTrap>> GetTrapsAsync(string? moduleKey, CancellationToken cancellationToken) =>
         Task.FromResult(_traps.Where(t => !t.IsDeleted && (moduleKey == null || t.ModuleKey == moduleKey)).ToList());

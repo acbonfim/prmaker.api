@@ -1020,6 +1020,31 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             .Select(ReverseTrapResponse.From).ToList();
 
     /// <summary>Cria armadilhas (lote). Quem não aprova — e toda migração automática — cria "a conferir".</summary>
+    public async Task<ReverseInfraResponse?> GetInfraAsync(string key, CancellationToken cancellationToken)
+    {
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var snapshot = await repository.GetInfraAsync(project.Key, cancellationToken);
+        return snapshot is null ? null : ReverseInfraResponse.From(snapshot);
+    }
+
+    /// <summary>Qualquer usuário logado que rode a skill no módulo grava (como as sessões); o mapa novo substitui o anterior.</summary>
+    public async Task<ReverseInfraResponse> UpsertInfraAsync(string key, UpsertReverseInfraRequest request, string actor, CancellationToken cancellationToken)
+    {
+        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        if (request.Data.ValueKind != System.Text.Json.JsonValueKind.Object) throw new DomainException("Data deve ser um objeto JSON.");
+        var json = request.Data.GetRawText();
+        var now = DateTimeOffset.UtcNow;
+        var existing = await repository.GetInfraForUpdateAsync(project.Key, cancellationToken);
+        if (existing is null)
+        {
+            existing = new ReverseInfraSnapshot(project.Key, request.Account, json, actor, now);
+            repository.AddInfra(existing);
+        }
+        else existing.Replace(request.Account, json, actor, now);
+        await repository.SaveChangesAsync(cancellationToken);
+        return ReverseInfraResponse.From(existing);
+    }
+
     public async Task<List<ReverseTrapResponse>> CreateTrapsAsync(string key, List<CreateReverseTrapRequest> requests, string actor, IReadOnlyCollection<string> userRoles,
         CancellationToken cancellationToken)
     {

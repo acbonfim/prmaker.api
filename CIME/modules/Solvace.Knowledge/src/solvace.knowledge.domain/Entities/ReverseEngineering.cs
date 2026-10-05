@@ -370,6 +370,38 @@ public class ReverseRevision
 /// engenharia reversa descreve "como o sistema é"; a armadilha, "o que já deu errado" — as análises recebem as duas.
 /// Criada pela análise/migração = a conferir; por aprovador (ou conferida) = confirmada.
 /// </summary>
+public class ReverseInfraSnapshot
+{
+    public const int MaxDataLength = 4_000_000;
+
+    public Guid Id { get; private set; }
+    public string ModuleKey { get; private set; } = string.Empty;
+    public string Account { get; private set; } = string.Empty;
+    /// <summary>JSON montado pela skill (<c>re.sh infra</c>): resumo da conta, recursos ligados ao módulo, esteiras, logs e o que não pôde ser lido. Sem segredo.</summary>
+    public string Data { get; private set; } = "{}";
+    public DateTimeOffset CollectedAt { get; private set; }
+    public string CollectedBy { get; private set; } = string.Empty;
+
+    protected ReverseInfraSnapshot() { }
+
+    public ReverseInfraSnapshot(string moduleKey, string account, string data, string actor, DateTimeOffset now)
+    {
+        Id = Guid.NewGuid();
+        ModuleKey = ArchitectureProject.NormalizeKey(moduleKey);
+        Replace(account, data, actor, now);
+    }
+
+    public void Replace(string account, string data, string actor, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(data)) throw new DomainException("Mapa de infra vazio.");
+        if (data.Length > MaxDataLength) throw new DomainException("Mapa de infra grande demais — envie só os recursos ligados ao módulo.");
+        Account = (account ?? string.Empty).Trim();
+        Data = data;
+        CollectedAt = now;
+        CollectedBy = actor;
+    }
+}
+
 public class ReverseTrap
 {
     public const int MaxTextLength = 6_000;

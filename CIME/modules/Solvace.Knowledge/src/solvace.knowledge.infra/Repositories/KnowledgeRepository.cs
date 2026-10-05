@@ -156,6 +156,14 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
     public void AddIndexEntry(ReverseIndexEntry entry) => context.ReverseIndexEntries.Add(entry);
     public void RemoveIndexEntries(IEnumerable<ReverseIndexEntry> entries) => context.ReverseIndexEntries.RemoveRange(entries);
 
+    public Task<ReverseInfraSnapshot?> GetInfraAsync(string moduleKey, CancellationToken cancellationToken) =>
+        context.ReverseInfraSnapshots.AsNoTracking().FirstOrDefaultAsync(i => i.ModuleKey == moduleKey, cancellationToken);
+
+    public Task<ReverseInfraSnapshot?> GetInfraForUpdateAsync(string moduleKey, CancellationToken cancellationToken) =>
+        context.ReverseInfraSnapshots.FirstOrDefaultAsync(i => i.ModuleKey == moduleKey, cancellationToken);
+
+    public void AddInfra(ReverseInfraSnapshot snapshot) => context.ReverseInfraSnapshots.Add(snapshot);
+
     public Task<List<ReverseTrap>> GetTrapsAsync(string? moduleKey, CancellationToken cancellationToken) =>
         context.ReverseTraps.AsNoTracking().Where(t => !t.IsDeleted && (moduleKey == null || t.ModuleKey == moduleKey))
             .OrderBy(t => t.ModuleKey).ThenBy(t => t.CreatedAt).ToListAsync(cancellationToken);

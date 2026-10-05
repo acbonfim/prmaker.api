@@ -591,6 +591,36 @@ def write_outputs(out, account, region_names, resources, problems, linked, why, 
     open(os.path.join(out, "modulo.md"), "w", encoding="utf-8").write("\n".join(M) + "\n")
 
 
+def build_payload(account, region_names, resources, problems, linked, why, terms, repo_items, profile, module):
+    """O que a tela mostra (0059): so o ligado ao modulo + resumo da conta. Sem segredo: o mesmo filtro dos arquivos locais."""
+    by = defaultdict(int)
+    for r in resources:
+        by[r["svc"]] += 1
+    lg = {r["name"]: r for r in resources if r["svc"] == "log-group"}
+    items, logs, seen = [], [], set()
+    for i in linked:
+        r = resources[i]
+        item = {"service": r["svc"], "label": LABEL.get(r["svc"], r["svc"]), "name": r["name"], "arn": r["arn"], "region": r.get("region", ""),
+                "why": why.get(i, ""), "details": describe(r)}
+        if r.get("stages"):
+            item["stages"] = [{"name": s["name"], "actions": [{"name": a["name"], "provider": a["provider"], "config": a["config"]} for a in s["actions"]]} for s in r["stages"]]
+        if r.get("buildspecInline"):
+            item["buildspec"] = r["buildspecInline"][:2500]
+        items.append(item)
+        g = r.get("logGroup")
+        if g and g not in seen:
+            seen.add(g)
+            logs.append({"resource": f"{r['svc']}:{r['name']}", "group": g, "exists": g in lg, "retention": lg[g]["retention"] if g in lg else None,
+                         "command": f"aws logs tail {g} --since 1h --follow --profile {profile} --region {region_names[0]}"})
+    for g in sorted(n for n in lg if any(norm(t) in norm(n) for t in terms if len(t) >= 3) and n not in seen):
+        logs.append({"resource": "", "group": g, "exists": True, "retention": lg[g]["retention"],
+                     "command": f"aws logs tail {g} --since 1h --profile {profile} --region {region_names[0]}"})
+    return {"account": account, "profile": profile, "regions": region_names, "module": module, "terms": sorted(terms),
+            "summary": {"total": len(resources), "byService": [{"service": s, "label": LABEL.get(s, s), "count": n} for s, n in sorted(by.items(), key=lambda x: -x[1])]},
+            "resources": items, "logs": logs[:300], "denied": [{"call": c, "message": m[:160]} for c, m in problems["denied"]],
+            "failed": [{"call": c, "message": m[:160]} for c, m in problems["failed"]][:50]}
+
+
 def build_inventory(out_json, account, region_names, resources, linked, why, repo_items, profile):
     inv = []
     for i in linked:
@@ -679,8 +709,10 @@ def main():
     repo_items = scan_repo_pipelines(sources)
     os.makedirs(args.out, exist_ok=True)
     total = defaultdict(int)
+    payloads = []
     merged = {"version": 1, "sources": [], "files": {}, "counts": {}, "items": []}
     for acct, profile, resources, problems, linked, why, ts in all_items:
+        payloads.append(build_payload(acct, regions, resources, problems, linked, why, ts, repo_items if acct == all_items[0][0] else [], profile, args.module))
         write_outputs(args.out, acct, regions, resources, problems, linked, why, ts, repo_items if acct == all_items[0][0] else [], profile, args.module)
         tmp = os.path.join(args.out, f".inv-{acct}.json")
         build_inventory(tmp, acct, regions, resources, linked, why, repo_items if acct == all_items[0][0] else [], profile)
@@ -691,6 +723,9 @@ def main():
     for it in merged["items"]:
         total[it["cat"]] += 1
     merged["counts"] = dict(total)
+    pipes = [{"repo": it["repo"], "file": it["name"], "detail": it["detail"], "facts": it["facts"][:25]} for it in repo_items]
+    json.dump({"collectedAt": __import__("datetime").datetime.now().isoformat(timespec="seconds"), "accounts": payloads, "repoPipelines": pipes},
+              open(os.path.join(args.out, "payload.json"), "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(merged, open(os.path.join(os.path.dirname(args.out.rstrip("/")), "inventario-infra.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("Infra: " + ", ".join(f"{n} {k}" for k, n in sorted(total.items(), key=lambda x: -x[1])) + f" -> {args.out}")
     if any(p["denied"] for _, _, _, p, _, _, _ in all_items):
