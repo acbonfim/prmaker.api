@@ -30,6 +30,8 @@ absoluto. `rsync`/`unzip` são opcionais em todos os sistemas (fallback: cp/find
 **Atualização automática**: o instalador coloca um hook `SessionStart` em `~/.claude/settings.json` que roda
 `prmake-skills.sh update --quiet` a cada sessão do Claude Code (só baixa o que mudou; sem rede, não faz nada).
 Arquivo alterado à mão numa skill instalada não é sobrescrito — `prmake-skills.sh status` mostra, `update --force <skill>` substitui.
+Quando o update pula uma skill por isso, o hook imprime um `ATENCAO: skills do PRMake NAO atualizadas — ...` no stdout (o stderr do hook
+SessionStart não chega ao Claude), e o Claude avisa o usuário na sessão em vez de seguir com a versão velha.
 
 **Mudar uma skill** = mudar aqui e fazer o deploy da API. A versão de cada skill é o hash do conteúdo (muda sozinha).
 `skill.json`: `requires` (comandos necessários) e `setup` (`check`/`run`, ex.: o `.venv` do `python-tds` da `analisar-bug`).
