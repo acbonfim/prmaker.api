@@ -39,8 +39,8 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   para quem mais usa. **Sempre com `card`** (registra a consulta). O codigo entra so para **confirmar o `Onde:`** que o
   item cita (Read com offset/limit naquele arquivo:linha) ou quando a base nao tem o assunto — ai e lacuna: diga qual e
   registre (`arch.sh suggest <modulo> re-funcional lacuna.md --kind gap --card <card>`). Modulo com engenharia
-  **COMPLETA**: a etapa `investigar-codigo` so conclui citando no resumo os itens usados (`revamp-kaizen#RN-012`) ou
-  `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
+  **COMPLETA**: a etapa `consultar-base` (0063; em plano antigo, `investigar-codigo`) so conclui citando no resumo os
+  itens usados (`revamp-kaizen#RN-012`) ou `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
   (0055) mede de onde voce leu: engenharia reversa × base antiga × codigo **confirmando** um item (o arquivo que o `Onde:`
   cita) × codigo **explorando** (sem item que o cite — vira candidato a lacuna na tela).
 - **Nunca pule a engenharia reversa pelo `contexto` (0060)**: se ele disser "nao publicada"/"nenhum modulo casou", o campo
@@ -52,6 +52,15 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   fez parte da causa vira lacuna registrada antes de publicar — `arch.sh suggest <modulo> re-<doc> lacuna.md --kind gap
   --card <card> --item <ID do item mais proximo>` (ex.: a conversao de datas do filtro salvo, ao lado de `UI-009`). Diga
   na analise quais lacunas registrou. E isso que faz a proxima analise do mesmo assunto nao precisar do codigo.
+- **Voltar a base sempre que surgir duvida (0063)** — a consulta nao e so no comeco:
+  1. **Antes de abrir um arquivo, funcao ou tabela que nenhum item usado cita**: `prmake_base_search` pelo nome dele
+     (arquivo, metodo, `TB_...`, tela) com o card. Achou item → leia e siga por ele; nao achou → abra o codigo, e o que
+     ele mostrar e parte da causa vira lacuna (regra acima).
+  2. **Hipotese nova, outra tela ou outro modulo no caminho** (ex.: o helper compartilhado, a integracao): volte a
+     `prmake_base_search`/`prmake_base_get` antes do codigo — inclusive em `consultar-ambiente` e `causa-raiz`.
+  3. **Antes de propor solucoes**: `prmake_base_impact` em **cada ponto de alteracao** de cada opcao (arquivo, funcao,
+     tabela, item) e cite o resultado na opcao ("o `getFilters` e usado por N telas em M modulos: ..."). Opcao que
+     mexe em codigo compartilhado sem esse levantamento e estimativa no escuro.
 - **Base antiga (modulo sem engenharia reversa)**: a PRIMEIRA consulta sobre o codigo e a base:
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
@@ -59,7 +68,7 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   caso → busca **so na pasta do modulo** (`revamp-repos.sh where <repo>`; nunca `grep -r` na pasta de todos os
   repositorios) e, ao achar, registre a lacuna
   (`arch.sh suggest <projeto> modulos lacuna.md --kind gap --card <card>`); varredura ampla inevitavel → subagente
-  `Explore` (volta so o resumo). Diga no `advance` de `investigar-codigo` qual secao da base usou.
+  `Explore` (volta so o resumo). Diga no `advance` de `consultar-base` qual secao da base usou.
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
@@ -175,7 +184,9 @@ Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas**
 **Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
 
-**3. Investigar** — comece pelos itens da engenharia reversa que o `contexto` mostrou (`prmake_base_get` com o card;
+**3. Consultar a base e investigar** — duas etapas (0063): `consultar-base` (engenharia reversa, armadilhas, KC — conclui
+citando os itens ou a lacuna) e `investigar-codigo` (confirmar no codigo os `Onde:`; voltar a base a cada duvida). Comece
+pelos itens da engenharia reversa que o `contexto` mostrou (`prmake_base_get` com o card;
 outros assuntos: `prmake_base_search`, termos em PT e EN); `contexto` sem itens → `prmake_base_search` sem `module` antes
 de qualquer outra coisa; sem engenharia reversa de nenhum modulo, pela secao da Base Solvace (`bash $KB show
 <projeto> <secao>`; nenhum casou → `bash $KB index <modulo/tela>`); depois so o codigo apontado; regra de negocio → KC. Reconstrua

@@ -946,7 +946,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             }
         }
         sb.AppendLine(complete
-            ? $"REGRA: módulo com engenharia reversa completa — a investigação parte destes itens; código só para confirmar o 'Onde:' citado. Cite os IDs (RN-…/UC-…) no advance de '{s.GateStep ?? "investigar-codigo"}' (ou 'lacuna: <o que faltou>' e a sugestão na seção re-*)."
+            ? $"REGRA: módulo com engenharia reversa completa — a investigação parte destes itens; código só para confirmar o 'Onde:' citado. Cite os IDs (RN-…/UC-…) no advance de '{GateSteps(s.GateStep).FirstOrDefault() ?? "consultar-base"}' (ou 'lacuna: <o que faltou>' e a sugestão na seção re-*)."
             : "Use os itens acima antes do código; o que faltar → lacuna (arch.sh suggest <projeto> re-funcional lacuna.md --kind gap --card <card>).");
         return sb.ToString();
     }
@@ -1048,7 +1048,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(s.GateStep) || !string.Equals(stepKey?.Trim(), s.GateStep, StringComparison.OrdinalIgnoreCase)) return null;
+        // 0063: a trava aceita uma lista ("consultar-base,investigar-codigo") — planos novos travam na consulta à base,
+        // os antigos (sem essa etapa) continuam travando na investigação.
+        if (!GateSteps(s.GateStep).Contains((stepKey ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)) return null;
         var ctx = await repository.GetCardContextAsync((card ?? string.Empty).Trim(), tracked: false, cancellationToken);
         if (ctx is null || !ctx.Complete || ctx.ConsultedAt is not null) return null;
         if (!string.IsNullOrWhiteSpace(message))
@@ -1060,10 +1062,14 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 return null;
             }
         }
-        return $"O card {card} é do módulo {string.Join(", ", ctx.Modules)}, que tem engenharia reversa completa: antes de concluir '{s.GateStep}', "
+        return $"O card {card} é do módulo {string.Join(", ", ctx.Modules)}, que tem engenharia reversa completa: antes de concluir '{stepKey}', "
                + $"consulte a base (prmake_base_search / prmake_base_get com card={card}) e cite no resumo os itens usados (RN-…, UC-…, API-…), "
                + "ou escreva 'lacuna: <o que a base não cobre>' e registre a sugestão na seção re-* do módulo.";
     }
+
+    /// <summary>Etapas travadas (0063): "consultar-base,investigar-codigo" → as duas; vazio → nenhuma.</summary>
+    public static IReadOnlyList<string> GateSteps(string? gate) =>
+        (gate ?? string.Empty).Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     // ── 0054: armadilhas, sugestões por item, lacunas do Pergunte, divergências com o KC ───────
 

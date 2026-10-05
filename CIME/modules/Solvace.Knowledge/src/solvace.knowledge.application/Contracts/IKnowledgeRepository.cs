@@ -97,7 +97,7 @@ public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadO
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null, string? Translations = null,
     string? Infra = null)
 {
-    public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
+    public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "consultar-base,investigar-codigo", 0.9,
         new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes, DefaultTranslations, DefaultInfra);
 
     /// <summary>0056: traduções do produto no Multilingual do revamp (Aurora PostgreSQL, schema <c>multilingual</c>).</summary>

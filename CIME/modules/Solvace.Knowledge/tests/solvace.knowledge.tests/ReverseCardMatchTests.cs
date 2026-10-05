@@ -130,4 +130,18 @@ public class ReverseCardMatchTests
         module.Update(null, ["Checklist (legado)"], null, "a", now);
         Assert.Equal(["legado-chk"], ReverseEngineeringApplication.MatchModules("Checklist", projects, [module]));
     }
+
+    [Fact]
+    public async Task Gate_0063_applies_to_consultar_base_and_to_old_plans_on_investigar_codigo()
+    {
+        var (app, _) = await CreateAsync();
+        await app.ForCardAsync("75296", "Checklist", "Compliance per Checklist calendar", default);
+        Assert.NotNull(await app.CheckGateAsync("75296", "consultar-base", "li o card", default));
+        Assert.NotNull(await app.CheckGateAsync("75296", "investigar-codigo", "olhei o código", default));
+        Assert.Null(await app.CheckGateAsync("75296", "causa-raiz", "x", default));
+        Assert.Null(await app.CheckGateAsync("75296", "consultar-base", "itens: legado-checklist#REL-031", default));
+        Assert.Null(await app.CheckGateAsync("75296", "investigar-codigo", "sem citar", default)); // já consultou
+        Assert.Equal(["consultar-base", "investigar-codigo"], ReverseEngineeringApplication.GateSteps(" consultar-base , investigar-codigo "));
+        Assert.Empty(ReverseEngineeringApplication.GateSteps(""));
+    }
 }

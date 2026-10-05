@@ -341,12 +341,19 @@ flush_outbox() {
 flush_quiet() { [[ -s "$OUTBOX" ]] && flush_outbox; return 0; }
 
 default_steps() {
-  # Titulos/descricoes aparecem na tela do card no PRMake (por isso com acentuacao).
+  # 0063: as etapas padrao vem do PRMake (Skills Configurations -> AnalysisDefaultSteps); o texto abaixo e so a reserva
+  # para quando a configuracao nao responde. Titulos/descricoes aparecem na tela do card (por isso com acentuacao).
+  [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
+  local cfg; cfg="$( [[ -s "$SETTINGS" ]] && setting AnalysisDefaultSteps 2>/dev/null)"
+  if [[ -n "$cfg" ]] && jq -e 'type == "array" and length > 0 and all(.[]; .key and .title)' <<<"$cfg" >/dev/null 2>&1; then
+    printf '%s\n' "$cfg"; return
+  fi
   cat <<'EOF'
 [
  {"key":"identificar-card","title":"Identificar o card","description":"Descobrir o número do card (branch hotfix/bugfix ou informado) e criar a pasta de artefatos."},
  {"key":"coletar-dados","title":"Ler o card","description":"Buscar título, estado, tipo e repro steps do card no PRMake/Azure DevOps."},
- {"key":"investigar-codigo","title":"Investigar o código","description":"Localizar telas, endpoints, serviços e queries envolvidos (legado edv-solvace ou revamp) e reconstruir o fluxo até o erro."},
+ {"key":"consultar-base","title":"Consultar a Base Solvace","description":"Engenharia reversa do módulo (itens do contexto; prmake_base_search/get com o card, termos em português e inglês), armadilhas e Knowledge Center. Conclui citando os itens usados (módulo#ID) ou “lacuna: o que a base não cobre”."},
+ {"key":"investigar-codigo","title":"Confirmar no código","description":"Confirmar no código os “Onde:” dos itens usados e reconstruir o fluxo até o erro; arquivo sem item que o cite: buscar na base antes de abrir."},
  {"key":"consultar-ambiente","title":"Consultar dados e ambiente","description":"Quando necessário: Cognito (usuário/ambiente) e SQL Server somente leitura."},
  {"key":"causa-raiz","title":"Levantar a causa raiz","description":"Hipóteses priorizadas e pontos suspeitos (caminho:linha); o que é confirmado e o que é hipótese."},
  {"key":"montar-analise","title":"Montar a análise e os scripts","description":"Escrever a análise em markdown e, se houver, os scripts (ex.: SQL de correção e rollback)."},
