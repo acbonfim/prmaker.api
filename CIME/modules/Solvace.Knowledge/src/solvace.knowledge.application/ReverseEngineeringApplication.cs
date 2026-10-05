@@ -866,7 +866,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             matched = (await ReverseSearch.RunAsync(repository, query, null, null, null, 30, false, names, cancellationToken))
                 .GroupBy(h => h.ModuleKey).OrderByDescending(g => g.Sum(h => h.Score)).Take(2).Select(g => g.Key).ToList();
         else if (matched.Count > 0)
-            matched = await RankForCardAsync(matched, moduleField, query, all, withRe, names, cancellationToken);
+            matched = await RankForCardAsync(matched, moduleField, query, all, reverseModules, withRe, names, cancellationToken);
 
         // 0054: "completa" para a análise = os documentos técnicos exigidos (a visão prática é para pessoas)
         var technical = s.TechnicalRequired;
@@ -960,8 +960,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// depois a ordem do campo. Módulo com itens que casam com o card nunca é cortado.
     /// </summary>
     private async Task<List<string>> RankForCardAsync(List<string> matched, string? moduleField, string? query, List<ArchitectureProject> all,
-        HashSet<string> withRe, Dictionary<string, string> names, CancellationToken cancellationToken)
+        List<ReverseModule> reverseModules, HashSet<string> withRe, Dictionary<string, string> names, CancellationToken cancellationToken)
     {
+        // 0060b: quem casa direto com o campo (nome/sufixo/apelido) vem antes dos pares da área — no 75294 o legado-centerline
+        // (relatórios espelhados, mais acertos somados) passou na frente do legado-checklist.
+        var direct = MatchModules(moduleField, all, reverseModules, expandArea: false).ToHashSet();
         var (wantRevamp, wantLegacy) = FieldWorld(moduleField);
         var areas = matched.Select(k => all.FirstOrDefault(p => p.Key == k)?.BusinessArea).Where(a => a is not null).ToHashSet();
         var candidates = matched.Concat(all
@@ -977,7 +980,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 score[g.Key] = g.Sum(h => (double)h.Score);
         var ranked = candidates
             .Where(k => matched.Contains(k) || score.ContainsKey(k))  // par só entra se casou com o card
-            .OrderByDescending(k => score.GetValueOrDefault(k))
+            .OrderByDescending(k => direct.Contains(k) && score.ContainsKey(k))
+            .ThenByDescending(k => score.GetValueOrDefault(k))
             .ThenByDescending(k => withRe.Contains(k))
             .ThenBy(k => matched.IndexOf(k) is var i && i >= 0 ? i : int.MaxValue)
             .ToList();
@@ -993,7 +997,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     }
 
     /// <summary>Módulos do card: apelido exato; senão nome/área/sufixo da chave; "(Revamp)"/"(Legado)" escolhem o mundo.</summary>
-    public static List<string> MatchModules(string? moduleField, List<ArchitectureProject> all, List<ReverseModule> modules)
+    public static List<string> MatchModules(string? moduleField, List<ArchitectureProject> all, List<ReverseModule> modules, bool expandArea = true)
     {
         if (string.IsNullOrWhiteSpace(moduleField)) return [];
         var field = moduleField.Trim();
@@ -1015,7 +1019,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             || p.Key.EndsWith("-" + core.Replace(' ', '-'), StringComparison.Ordinal)
             || aliasKeys.Contains(p.Key)).ToList();
         if (direct.Count == 0) direct = candidates.Where(p => p.Keywords.Any(k => Core(k) == core)).ToList();
-        var areas = direct.Select(p => p.BusinessArea).Where(a => a is not null).ToHashSet();
+        var areas = expandArea ? direct.Select(p => p.BusinessArea).Where(a => a is not null).ToHashSet() : new HashSet<string?>();
         var result = direct.Concat(candidates.Where(p => p.BusinessArea is not null && areas.Contains(p.BusinessArea))).Distinct().ToList();
         if (wantRevamp && result.Any(p => p.Kind == "revamp")) result = result.Where(p => p.Kind is "revamp" or "frontend").ToList();
         else if (wantLegacy && result.Any(p => p.Kind == "legacy")) result = result.Where(p => p.Kind == "legacy").ToList();

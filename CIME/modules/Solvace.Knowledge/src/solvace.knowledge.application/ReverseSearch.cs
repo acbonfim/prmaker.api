@@ -71,6 +71,14 @@ public static partial class ReverseSearch
             .Select(m => ReverseItemKinds.ParseRef(m.Value)).Where(r => r is not null).Select(r => r!.Value).ToList();
         var terms = ArchitectureSearch.Terms(IdPattern().Replace(query ?? string.Empty, " "));
         var hits = new List<ReverseIndexHit>();
+        // 0060b: sinônimos por (módulo, termo) calculados uma vez — antes era por item × termo, varrendo o glossário inteiro do
+        // módulo a cada item (consulta longa do for-card levava 10–40 s e o contexto da analisar-bug desistia em 30 s).
+        var altCache = new Dictionary<(string, string), IReadOnlyList<string>>();
+        IReadOnlyList<string> Alternatives(string module, string term)
+        {
+            if (!altCache.TryGetValue((module, term), out var list)) altCache[(module, term)] = list = synonyms.Alternatives(module, term);
+            return list;
+        }
         foreach (var p in prepared)
         {
             var e = p.Entry;
@@ -86,7 +94,7 @@ public static partial class ReverseSearch
             foreach (var term in terms)
             {
                 // 0053: sinônimos do glossário do módulo — "RCA" casa com "A3".
-                var alts = synonyms.Alternatives(e.ModuleKey, term);
+                var alts = Alternatives(e.ModuleKey, term);
                 bool Has(string text) => ArchitectureSearch.HasTerm(text, term) || alts.Any(a => ArchitectureSearch.HasTerm(text, a));
                 var inTitle = Has(p.Title);
                 var inTags = Has(p.Tags);

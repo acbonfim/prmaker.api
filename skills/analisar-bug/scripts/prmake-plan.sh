@@ -631,7 +631,7 @@ case "$CMD" in
     # 0052: engenharia reversa do modulo do card — os itens que casam com o titulo/repro ja vem com o texto, e o card
     # fica registrado (a etapa investigar-codigo so conclui consultando/citando a base quando o modulo esta completo).
     RE_Q="${CTITLE:-} $(head -c 600 "$DESC" 2>/dev/null | tr '\n\r\t' '   ')"
-    RE_OUT="$(curl -s --max-time 30 -G "$BASE/ReverseEngineering/for-card/$CARD" -H "x-api-key: $TOKEN" \
+    RE_OUT="$(curl -s --max-time 90 -G "$BASE/ReverseEngineering/for-card/$CARD" -H "x-api-key: $TOKEN" \
       --data-urlencode "module=$CMOD" --data-urlencode "q=${RE_Q:0:900}" -w '\n%{http_code}' 2>/dev/null)"
     if [[ "${RE_OUT##*$'\n'}" =~ ^2 ]]; then
       printf '%s\n\n' "${RE_OUT%$'\n'*}"
