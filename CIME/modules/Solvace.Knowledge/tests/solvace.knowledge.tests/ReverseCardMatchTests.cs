@@ -43,6 +43,11 @@ public class ReverseCardMatchTests
         ## Lacunas e pontos a confirmar
         """;
 
+    // Centerline legado: relatórios espelhados do Checklist, com MAIS acertos para o texto do card (caso real do 75294, 0060b)
+    private static readonly string CenterlineLegado = ChecklistLegado
+        .Replace("— Checklist", "— Centerline").Replace("Cumprimento por Checklist", "Cumprimento por Centerline (checklist analytics calendar filter)")
+        .Replace("Compliance per Checklist", "Compliance per Centerline checklist calendar filter");
+
     private static async Task<(ReverseEngineeringApplication, InMemoryKnowledgeRepository)> CreateAsync()
     {
         var repo = new InMemoryKnowledgeRepository();
@@ -68,6 +73,10 @@ public class ReverseCardMatchTests
         await app.SaveRevisionAsync(session.Revision.Id, new SaveReverseRevisionRequest { Content = ChecklistLegado, CoverageRatio = 0.95 }, "dev", Dev, default);
         await app.SubmitAsync(session.Revision.Id, "dev", Dev, default);
         await app.PublishAsync(session.Revision.Id, new PublishReverseRevisionRequest { Approve = true }, "gestor", Approver, default);
+        var cl = await app.StartSessionAsync("legado-centerline", "funcional", new StartReverseSessionRequest(), "dev", Dev, default);
+        await app.SaveRevisionAsync(cl.Revision.Id, new SaveReverseRevisionRequest { Content = CenterlineLegado, CoverageRatio = 0.95 }, "dev", Dev, default);
+        await app.SubmitAsync(cl.Revision.Id, "dev", Dev, default);
+        await app.PublishAsync(cl.Revision.Id, new PublishReverseRevisionRequest { Approve = true }, "gestor", Approver, default);
         return (app, repo);
     }
 
