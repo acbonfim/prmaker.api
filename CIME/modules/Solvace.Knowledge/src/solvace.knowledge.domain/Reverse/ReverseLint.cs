@@ -30,7 +30,7 @@ public sealed class ReverseLintResult
 public static partial class ReverseLint
 {
     /// <summary>Itens que precisam apontar o código (<c>**Onde:**</c> ou um arquivo:linha no bloco).</summary>
-    public static readonly IReadOnlySet<string> NeedEvidence = new HashSet<string> { "RN", "UC", "API", "DB", "EVT", "JOB", "INT", "TELA", "SQL", "TRG" };
+    public static readonly IReadOnlySet<string> NeedEvidence = new HashSet<string> { "RN", "UC", "API", "DB", "EVT", "JOB", "INT", "TELA", "SQL", "TRG", "INF" };
 
     /// <param name="publishedIds">IDs do documento publicado (para avisar o que sumiu).</param>
     /// <param name="otherDocIds">IDs definidos nos outros documentos publicados do módulo (ID → tipo do documento).</param>

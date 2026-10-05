@@ -127,7 +127,7 @@ public static class ReverseDocTypes
             """),
 
         new("arquitetura", "Levantamento de arquitetura", "re-arquitetura", 120,
-            ["TEC", "CMP", "API", "DB", "EVT", "JOB", "INT", "CFG", "SQL", "TRG"],
+            ["TEC", "CMP", "API", "DB", "EVT", "JOB", "INT", "CFG", "SQL", "TRG", "INF"],
             [
                 new("Visão técnica", "visao tecnica"),
                 new("Tecnologias e versões", "tecnologias"),
@@ -185,6 +185,17 @@ public static class ReverseDocTypes
             as tabelas deste (`**Módulos:**`). Jobs do SQL Agent que tocam o módulo entram como `JOB-…` (agenda, passos,
             comando resumido — sem credencial).
 
+            ## Infraestrutura e AWS (opcional)
+            Só quando a etapa de infra foi executada (`re.sh infra` — lê a AWS pelo CLI, somente leitura; sem ela, deixe a
+            seção de fora e registre `GAP` "infra não lida"). Um item por recurso do módulo:
+            `### INF-001 — <serviço> <nome>` (Lambda, bucket S3, esteira CodePipeline/CodeBuild, fila SQS, tópico SNS, regra
+            do EventBridge, banco RDS, grupo de log, segredo...) com **Onde:** `aws <conta>/<região> · <serviço>:<nome>`,
+            para que serve, quem usa/aciona (JOB/API/EVT/INT), configuração relevante (runtime, handler, timeout, agenda,
+            DLQ, retenção), **esteira de deploy** (repositório → branch → build → deploy → ambiente; arquivos `.github/
+            workflows`/`buildspec` com `arquivo:linha`), **segredos consultados** (só o NOME no Secrets Manager e quem lê) e
+            **onde ver os logs** (grupo do CloudWatch + comando `aws logs tail`). Nunca valores de segredo, senhas ou
+            endpoints com credencial.
+
             ## Integrações
             **Cada** integração com outro módulo Solvace ou serviço externo, nos dois sentidos. `### INT-001 — <este> →
             <outro>: <para quê>` com **Módulos** (chave do outro projeto), **Mecanismo** (HTTP, SNS/SQS, banco
@@ -199,7 +210,7 @@ public static class ReverseDocTypes
             Como autentica (Cognito/JWT/sessão ASP), claims usadas, multi-tenant (planta/ambiente), onde cada perfil é checado.
 
             ## Observabilidade e diagnóstico
-            Logs (onde, que mensagens), métricas, consultas SQL úteis de diagnóstico (somente leitura), erros conhecidos.
+            Logs (onde — grupo do CloudWatch e como consultar, ver `INF-…` quando a infra foi mapeada —, que mensagens), métricas, consultas SQL úteis de diagnóstico (somente leitura), erros conhecidos.
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`

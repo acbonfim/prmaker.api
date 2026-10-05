@@ -27,6 +27,8 @@ public static partial class ReverseItemKinds
         // 0053: objetos do banco (lidos da DEMO) — view/procedure/function e trigger.
         new("SQL", "Objeto de banco (view, procedure, function)", "Objetos de banco"),
         new("TRG", "Trigger", "Triggers"),
+        // 0058: recursos de infraestrutura (AWS) lidos pelo CLI na etapa opcional de infra.
+        new("INF", "Recurso de infraestrutura (AWS)", "Infraestrutura (AWS)"),
         new("INT", "Integração", "Integrações"),
         new("TELA", "Tela", "Telas"),
         new("FLX", "Fluxo de navegação", "Fluxos de navegação"),

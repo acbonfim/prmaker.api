@@ -114,6 +114,7 @@ public static partial class ReverseDocParser
     private static List<string> Evidence(string body) =>
         EvidencePattern().Matches(body).Select(m => m.Value.Trim('`', '(', ')', ','))
             .Concat(BankEvidence().Matches(body).Select(m => "banco: " + m.Groups["v"].Value.Replace("**", "").Replace("`", "").Trim()))
+            .Concat(AwsEvidence().Matches(body).Select(m => "aws: " + m.Groups["v"].Value.Replace("**", "").Replace("`", "").Trim()))
             .Select(v => v.Length <= 200 ? v : v[..200])
             .Distinct(StringComparer.Ordinal).Take(30).ToList();
 
@@ -144,6 +145,10 @@ public static partial class ReverseDocParser
     [GeneratedRegex(@"\*\*Sin[ôo]nimos:?\*\*:?\s*(.+)", RegexOptions.IgnoreCase)]
     private static partial Regex SynonymsLine();
 
+    /// <summary>0058: evidência de infraestrutura — <c>**Onde:** aws 367983645102/us-east-1 · lambda:nome</c> (recurso lido pelo AWS CLI).</summary>
+    [GeneratedRegex(@"\*\*Onde:?\*\*:?[^\n]*?\b(?<v>aws\b[^\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex AwsEvidence();
+
     [GeneratedRegex(@"\*\*Onde:?\*\*:?[^\n]*?\b(?<v>banco\b[^\n]+)|\*\*Banco:?\*\*:?\s*(?<v>[^\n]+)", RegexOptions.IgnoreCase)]
     private static partial Regex BankEvidence();
 
@@ -165,6 +170,6 @@ public static partial class ReverseDocParser
     [GeneratedRegex(@"[\w./\\-]+\.(?:cs|cshtml|razor|asp|aspx|ascx|inc|js|ts|tsx|html|scss|sql|py|json|ya?ml|xml|config|vb|java|go)(?::\d+(?:-\d+)?)?\b")]
     private static partial Regex EvidencePattern();
 
-    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
+    [GeneratedRegex(@"(?:(?<module>[a-z0-9][a-z0-9._-]*)#)?\b(?<kind>TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|INF|TUT|FAQ|FN|UC|RN|DB|UI)-(?<num>\d{1,4})\b")]
     private static partial Regex RefPattern();
 }

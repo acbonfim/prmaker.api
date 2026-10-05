@@ -32,7 +32,7 @@ da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve 
 
 ## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
 A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → banco da DEMO → leitura e escrita, com uma
-subetapa por area → checagem → envio), a linha "agora" e um registro curto. `start`, `inventario`, `banco`, `trabalho`, `check`, `save` e
+subetapa por area → checagem → envio), a linha "agora" e um registro curto. `start`, `inventario`, `banco`, `infra`, `trabalho`, `check`, `save` e
 `submit` ja reportam sozinhos; o resto e voce:
 - Antes de ler/escrever: `bash $RE etapa <m> <doc> leitura running --detail "N areas: A, B, C"`.
 - Cada area: `bash $RE etapa <m> <doc> area:<nome> running --title "Area: <Nome>"` ao comecar (inclusive ao despachar o
@@ -79,6 +79,15 @@ ao usuario e so siga sem o banco se ele mandar (e registre `GAP`). Depois `bash 
 `re.sh traducoes`; sem a credencial `~/.claude/multilingual-credentials.json` ele explica como obter e o glossario segue
 com os rotulos do codigo) que o **glossario** precisa cobrir. Como documentar objetos do
 banco e o glossario: `references/banco.md` (leia antes de escrever arquitetura ou funcional).
+
+**3c. Infra na AWS (OPCIONAL, 0058)** — `bash $RE infra <modulo>`: so quando o usuario pedir (ou aceitar a oferta). Le a AWS
+pelo **AWS CLI, somente leitura** (a conta vem da configuracao do PRMake; o perfil e achado na maquina) e mapeia tudo:
+Lambdas, buckets S3, **esteiras de deploy** (CodePipeline/CodeBuild/CodeDeploy + GitHub Actions/buildspec dos repositorios),
+**segredos consultados** (so nomes e ultimo acesso — nunca o valor), **logs no CloudWatch**, filas, topicos, regras,
+bancos etc., ligando ao modulo. Leia `~/.prmake/reverse/<modulo>/infra/modulo.md` e `references/infra.md` antes de escrever
+a secao "Infraestrutura e AWS (opcional)" do levantamento de arquitetura (itens `INF-…`). Sem perfil/permissao a etapa fica
+**falha** no andamento (nao barra): siga e registre `GAP` "infra nao lida". O usuario autoriza a leitura da AWS — confirme
+antes de rodar na primeira vez da sessao.
 
 **4. Ler o codigo e escrever** — `references/escrever.md` (leia **inteiro** antes de escrever; e curto). Resumo:
 - Leia o codigo **de verdade** (controllers → services → repositorios/SP → tabelas; telas → componentes → servicos HTTP).

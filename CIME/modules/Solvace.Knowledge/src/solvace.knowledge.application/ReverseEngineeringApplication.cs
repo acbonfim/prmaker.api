@@ -34,7 +34,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Kinds = ReverseItemKinds.All.Select(k => new ReverseItemKindResponse { Prefix = k.Prefix, Label = k.Label, Plural = k.Plural }).ToList(),
             ReferenceDatabase = ToReference(s.ReferenceDatabase),
             GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
-            Translations = ParseJson(s.Translations ?? ReverseSettings.DefaultTranslations)
+            Translations = ParseJson(s.Translations ?? ReverseSettings.DefaultTranslations),
+            Infra = ParseJson(s.Infra ?? ReverseSettings.DefaultInfra)
         };
     }
 

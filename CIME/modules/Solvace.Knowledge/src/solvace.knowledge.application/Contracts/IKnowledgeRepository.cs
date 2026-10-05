@@ -87,16 +87,24 @@ public sealed record ReverseReferenceDatabase(string Environment, string Host, s
 /// publicados = substituída). <c>guia-*</c> vale para as seções do Guia; <c>@armadilhas</c> = armadilhas migradas.</param>
 /// <param name="Translations">0056: de onde a skill lê as traduções do glossário — o Multilingual do revamp (PostgreSQL),
 /// JSON livre que a skill interpreta (fonte, ambiente, schema, arquivo de credencial, secret, idiomas). Sem segredo.</param>
+/// <param name="Infra">0058: etapa OPCIONAL de infra — contas, perfis do AWS CLI e regiões que a skill consulta (somente leitura).
+/// JSON livre que a skill interpreta. Sem segredo.</param>
 public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
     IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null, string? Translations = null)
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null, string? Translations = null,
+    string? Infra = null)
 {
     public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
-        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes, DefaultTranslations);
+        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes, DefaultTranslations, DefaultInfra);
 
     /// <summary>0056: traduções do produto no Multilingual do revamp (Aurora PostgreSQL, schema <c>multilingual</c>).</summary>
     public const string DefaultTranslations = """
         {"source": "multilingual", "environment": "prod", "schema": "multilingual", "credentials": "~/.claude/multilingual-credentials.json", "secretId": "multilingual/production", "languages": {"pt": "pt-BR", "en": "en-US", "es": "es-ES"}}
+        """;
+
+    /// <summary>0058: a conta (id, não é segredo) manda; a skill acha o perfil do CLI da máquina que entra nela (sts) — sem nome de perfil fixo.</summary>
+    public const string DefaultInfra = """
+        {"accounts": [{"id": "367983645102", "label": "Solvace (revamp)"}], "regions": ["us-east-1"], "readOnly": true}
         """;
 
     /// <summary>Documentos exigidos que são técnicos (a visão prática fica de fora: é para pessoas, não para as análises).</summary>

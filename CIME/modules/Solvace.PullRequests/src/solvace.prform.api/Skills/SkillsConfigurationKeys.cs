@@ -42,4 +42,6 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringSupersedes = "ReverseEngineeringSupersedes";
     /// <summary>0056: de onde vêm as traduções do glossário — o Multilingual do revamp (JSON; credencial só local).</summary>
     public const string ReverseEngineeringTranslations = "ReverseEngineeringTranslations";
+    /// <summary>0058: etapa OPCIONAL de infra da engenharia reversa — contas/perfis/regiões da AWS que o CLI consulta (JSON; só leitura, sem segredo).</summary>
+    public const string ReverseEngineeringInfra = "ReverseEngineeringInfra";
 }

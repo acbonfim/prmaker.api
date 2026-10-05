@@ -330,4 +330,6 @@ public class ReverseSettingsResponse
     public List<string> GlossaryExclusions { get; set; } = [];
     /// <summary>0056: de onde a skill lê as traduções (Multilingual do revamp) — JSON livre, sem segredo.</summary>
     public JsonElement? Translations { get; set; }
+    /// <summary>0058: contas/perfis/regiões da etapa opcional de infra (AWS CLI, somente leitura) — JSON livre, sem segredo.</summary>
+    public JsonElement? Infra { get; set; }
 }

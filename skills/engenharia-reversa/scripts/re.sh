@@ -23,6 +23,10 @@
 #   traducoes <modulo>                TRADUCOES (0056) dos rotulos do modulo no Multilingual do revamp (PostgreSQL, somente
 #                                     leitura; credencial em ~/.claude/multilingual-credentials.json) -> banco/traducoes.json
 #                                     (roda sozinho no fim do `banco`)
+#   infra <modulo> [--account ID] [--profile P] [--region R ...] [--termo T ...] [--so-conta]
+#                                     OPCIONAL (0058): mapeia pelo AWS CLI (SO LEITURA) tudo o que a conta tem — Lambdas, S3, esteiras,
+#                                     segredos (so nomes), logs do CloudWatch, filas, topicos, regras, bancos... — e liga ao modulo;
+#                                     le tambem as esteiras dos repositorios -> $RE_HOME/<modulo>/infra/ + inventario-infra.json
 #   termos <modulo>                   termos do modulo para o GLOSSARIO (rotulos da tela, menus, siglas, traducoes)
 #   trabalho <modulo> <doc>           MELHORAR (0053): o que mudou no codigo (commits) e no banco desde a versao
 #                                     publicada e os itens afetados -> trabalho.md
@@ -65,6 +69,7 @@ BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL_PY="$HERE/re_tool.py"
 BANCO_PY="$HERE/re_banco.py"
+INFRA_PY="$HERE/re_infra.py"
 TRAD_PY="$HERE/re_traducoes.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
@@ -158,7 +163,7 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
 }
 
 # Inventários a mais (0053): banco da DEMO e termos do glossário, quando já foram gerados.
-extra_inv() { local m; m="$(moddir "$1")"; for f in "$m/banco/inventario-banco.json" "$m/inventario-termos.json"; do [[ -s "$f" ]] && printf -- '--extra\n%s\n' "$f"; done; }
+extra_inv() { local m; m="$(moddir "$1")"; for f in "$m/banco/inventario-banco.json" "$m/inventario-termos.json" "$m/inventario-infra.json"; do [[ -s "$f" ]] && printf -- '--extra\n%s\n' "$f"; done; }
 
 doc_file() { # <modulo> <doc> [arquivo]
   local f="${3:-}"; [[ -z "$f" ]] && f="$(docdir "$1" "$2")/documento.md"
@@ -358,6 +363,30 @@ case "$CMD" in
     api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
     [[ -x "$MLG_PY" ]] || die "venv da skill base-solvace nao encontrado ($MLG_PY) — rode: prmake-skills.sh update --force base-solvace"
     "$MLG_PY" "$TRAD_PY" --settings "$TMP/settings.json" --inventario "$D/inventario.json" --catalogo "$D/banco/catalogo.json" --out "$D/banco/traducoes.json"
+    ;;
+
+  infra)
+    # 0058 — etapa OPCIONAL: so roda quando o usuario pede. Somente leitura (list/describe/get); nunca le valor de segredo.
+    MOD="${1:?modulo}"; shift
+    command -v aws >/dev/null || die "AWS CLI nao encontrado (aws) — instale e configure um perfil (aws configure list-profiles)"
+    D="$(moddir "$MOD")"; [[ -s "$D/inventario.json" ]] || die "rode antes: re.sh inventario $MOD (a infra liga os recursos ao que o codigo cita)"
+    api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
+    ARGS=(--module "$MOD" --out "$D/infra" --inventario "$D/inventario.json" --settings "$TMP/settings.json")
+    # sigla do banco (se ja rodou `banco`) ajuda a ligar recursos pelo nome
+    SG="$(jq -r '.sigla // empty' "$D/banco/catalogo.json" 2>/dev/null)"; [[ -n "$SG" ]] && ARGS+=(--sigla "$SG")
+    ARGS+=("$@")
+    for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"infra","title":"Infra na AWS (opcional)","status":"running","activity":"Mapeando a infra na AWS (somente leitura): Lambdas, S3, esteiras, segredos, logs..."}'; done
+    if python3 "$INFRA_PY" "${ARGS[@]}" > "$TMP/infra.out" 2>&1; then
+      cat "$TMP/infra.out"
+      DETAIL="$(grep -m1 '^Infra:' "$TMP/infra.out" | cut -c1-300)"
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "infra", status: "completed", detail: $dt, log: $dt, kind: "progress"}')"; done
+      echo "Leia: $D/infra/modulo.md (recursos do modulo, logs, esteiras) e resumo.md (a conta toda). Guia: references/infra.md"
+    else
+      cat "$TMP/infra.out"
+      MSG="Infra nao mapeada — confira o perfil do AWS CLI (aws sts get-caller-identity) e as permissoes de leitura; a etapa e opcional: o documento segue com GAP 'infra nao lida'"
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg m "$MSG" '{step: "infra", status: "failed", detail: $m, log: $m, kind: "warning"}')"; done
+      die "$MSG"
+    fi
     ;;
 
   termos)
