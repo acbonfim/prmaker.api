@@ -7,7 +7,7 @@ namespace solvace.knowledge.application;
 /// <c>**Sinônimos:**</c>). Um termo da busca que pertence a um grupo também casa com os outros nomes do grupo — "RCA" acha
 /// itens que só dizem "A3". Os grupos valem para o módulo do glossário; <c>"*"</c> junta todos (artigos do KC).
 /// </summary>
-public sealed class ReverseSynonyms
+public sealed partial class ReverseSynonyms
 {
     public static readonly ReverseSynonyms Empty = new([]);
 
@@ -39,6 +39,25 @@ public sealed class ReverseSynonyms
                 result.AddRange(group.Where(name => !Matches(name, term)));
         return result.Distinct().ToList();
     }
+
+    /// <summary>
+    /// 0064b: nomes do glossário (2+ palavras, em qualquer idioma) que aparecem inteiros no texto da consulta — "Compliance per
+    /// Checklist" no card → o grupo inteiro (Cumprimento por Checklist, Cumplimiento por Checklist...). <paramref name="words"/>
+    /// = texto já reduzido a palavras com espaço nas pontas (<see cref="Words"/>).
+    /// </summary>
+    public IReadOnlyList<string[]> GroupsNamedIn(string? module, string words)
+    {
+        if (_groups.Count == 0 || words.Length < 3) return [];
+        IEnumerable<string[]> groups = module is null or "*" ? _groups.Values.SelectMany(g => g) : _groups.TryGetValue(module, out var list) ? list : [];
+        return groups.Where(g => g.Any(name => Words(name) is { Length: > 0 } w && w.Count(c => c == ' ') >= 3 && words.Contains(w, StringComparison.Ordinal))).ToList();
+    }
+
+    /// <summary>" palavra palavra " — só letras e dígitos, minúsculas, sem acento (para casar frase inteira).</summary>
+    public static string Words(string? text) =>
+        " " + string.Join(' ', WordPattern().Matches(ArchitectureSearch.Normalize(text)).Select(m => m.Value)) + " ";
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[a-z0-9]+")]
+    private static partial System.Text.RegularExpressions.Regex WordPattern();
 
     /// <summary>O nome casa com o termo: igual, ou o termo é uma das palavras (radical) do nome.</summary>
     private static bool Matches(string name, string term) =>
