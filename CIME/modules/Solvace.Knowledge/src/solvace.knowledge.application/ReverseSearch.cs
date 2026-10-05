@@ -12,7 +12,7 @@ namespace solvace.knowledge.application;
 /// </summary>
 public static partial class ReverseSearch
 {
-    private sealed record Prepared(ReverseIndexEntry Entry, string Title, string Tags, string Tables, string Body);
+    private sealed record Prepared(ReverseIndexEntry Entry, string Title, string Tags, string Tables, string Body, string TitleWords, string TagWords);
 
     private static readonly object Gate = new();
     private static (int Count, DateTimeOffset? Last) _stamp = (-1, null);
@@ -43,7 +43,9 @@ public static partial class ReverseSearch
             ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
             ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
             ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
-            ArchitectureSearch.Normalize(e.Body))).ToList();
+            ArchitectureSearch.Normalize(e.Body),
+            ReverseSynonyms.Words(e.Title),
+            ReverseSynonyms.Words(string.Join(" | ", e.Tags.Concat(e.Synonyms))))).ToList();
         var synonyms = new ReverseSynonyms(entries);
         lock (Gate)
         {
@@ -79,6 +81,17 @@ public static partial class ReverseSearch
             if (!altCache.TryGetValue((module, term), out var list)) altCache[(module, term)] = list = synonyms.Alternatives(module, term);
             return list;
         }
+        // 0064b: nome de tela/relatório do glossário citado na consulta (qualquer idioma) — com o texto inteiro do card (~30
+        // termos) o item da tela caía no corte de cobertura; agora o item que tem esse nome no título/tags passa e sobe.
+        var queryWords = ReverseSynonyms.Words(query);
+        var phraseCache = new Dictionary<string, string[]>();
+        string[] PhraseNames(string module)
+        {
+            if (!phraseCache.TryGetValue(module, out var names))
+                phraseCache[module] = names = synonyms.GroupsNamedIn(module, queryWords).SelectMany(g => g).Select(ReverseSynonyms.Words)
+                    .Where(w => w.Count(c => c == ' ') >= 3).Distinct().ToArray();
+            return names;
+        }
         foreach (var p in prepared)
         {
             var e = p.Entry;
@@ -109,9 +122,14 @@ public static partial class ReverseSearch
                 matched++;
                 score += (inTitle ? 6 : 0) + (inTags ? 4 : 0) + (inTables ? 5 : 0) + (count > 0 ? 1 + Math.Min(count, 6) * 0.4 : 0);
             }
-            if (terms.Count > 0 && matched == 0 && !exact) continue;
+            var names = PhraseNames(e.ModuleKey);
+            var phraseInTitle = names.Length > 0 && names.Any(n => p.TitleWords.Contains(n, StringComparison.Ordinal));
+            var phrase = phraseInTitle || (names.Length > 0 && names.Any(n => p.TagWords.Contains(n, StringComparison.Ordinal)));
+            if (phrase) score += phraseInTitle ? 40 : 25;
+            if (terms.Count > 0 && matched == 0 && !exact && !phrase) continue;
             if (terms.Count == 0 && !exact && exactIds.Count > 0) continue;
             var coverage = terms.Count == 0 ? 1 : (double)matched / terms.Count;
+            if (phrase) coverage = Math.Max(coverage, 0.8);
             if (!exact && terms.Count >= 3 && coverage < 0.34) continue;
             // Regras e casos de uso respondem mais análises; itens de lacuna por último.
             var kindBoost = e.Kind switch { "RN" or "UC" => 1.25, "API" or "TELA" or "INT" or "DB" => 1.1, "GAP" => 0.8, _ => 1.0 };

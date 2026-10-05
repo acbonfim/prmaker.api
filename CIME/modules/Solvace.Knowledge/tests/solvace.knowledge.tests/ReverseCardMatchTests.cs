@@ -46,7 +46,8 @@ public class ReverseCardMatchTests
     // Centerline legado: relatórios espelhados do Checklist, com MAIS acertos para o texto do card (caso real do 75294, 0060b)
     private static readonly string CenterlineLegado = ChecklistLegado
         .Replace("— Checklist", "— Centerline").Replace("Cumprimento por Checklist", "Cumprimento por Centerline (checklist analytics calendar filter)")
-        .Replace("Compliance per Checklist", "Compliance per Centerline checklist calendar filter");
+        .Replace("Compliance per Checklist", "Compliance per Centerline checklist calendar filter")
+        .Replace("Cumplimiento por Checklist", "Cumplimiento por Centerline");
 
     private static async Task<(ReverseEngineeringApplication, InMemoryKnowledgeRepository)> CreateAsync()
     {
@@ -143,5 +144,22 @@ public class ReverseCardMatchTests
         Assert.Null(await app.CheckGateAsync("75296", "investigar-codigo", "sem citar", default)); // já consultou
         Assert.Equal(["consultar-base", "investigar-codigo"], ReverseEngineeringApplication.GateSteps(" consultar-base , investigar-codigo "));
         Assert.Empty(ReverseEngineeringApplication.GateSteps(""));
+    }
+
+    private const string CardText = "Astellas - dublin- Calendar error - checklist analytics Acessar o ambiente de: Astellas - Dublin Acessar user "
+        + "Versão atual do cliente: 274.2 Acessar o módulo: checklist Acessar a tela: compliance per checklist Manipular algum registro, como, por "
+        + "exemplo: filtro data 21/09/2026 Resultado encontrado: Calendar error Go to checklist module Go to Analytics Go to Compliance per "
+        + "Checklist Click on the filter click on the calendar when clear filters is not selected before going to the calendar option, an error "
+        + "appears for the dates.";
+
+    [Fact]
+    public async Task Screen_name_in_any_language_lifts_the_screen_items_even_with_the_whole_card_text()
+    {
+        var (app, _) = await CreateAsync();
+        var hits = await app.SearchAsync(CardText, ["legado-checklist"], null, null, 5, false, default);
+        Assert.Contains(hits.Take(3), h => h.Ref == "legado-checklist#REL-031");
+        var es = await app.SearchAsync("Cumplimiento por Checklist calendario", null, null, null, 3, false, default);
+        Assert.Equal("legado-checklist", es[0].ModuleKey);
+        Assert.Equal(" compliance per checklist ", ReverseSynonyms.Words("Compliance-per Checklist!"));
     }
 }
