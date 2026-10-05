@@ -597,14 +597,15 @@ def termos(inv_path, banco_dir, exclusions, out, other_modules=()):
         items.append({"cat": "termo", "name": e["term"], "file": e["file"], "line": e["line"], "detail": detail})
         # 0060: o nome EN/ES vira termo exigido (Sinonimos do GLO) — os cards dos clientes vem em ingles ("Compliance per
         # Checklist") e a busca so acha "Cumprimento por Checklist" pelo sinonimo (caso do card 75294).
-        for lang in ("en", "es"):
+        # 0064: portugues (o texto pt-BR do Multilingual, quando difere da chave), ingles e espanhol — os mais usados
+        for lang in ("pt", "en", "es"):
             v = is_term(tr.get(lang)) if tr else None
             if v and norm(v) not in seen:
                 seen.add(norm(v))
                 items.append({"cat": "termo", "name": v, "file": e["file"], "line": e["line"], "detail": f"{lang.upper()} de \"{e['term']}\" (traducao)"})
     with open(out, "w", encoding="utf-8") as fh:
         json.dump({"version": 1, "sources": [], "files": {}, "counts": {"termo": len(items)}, "items": items}, fh, ensure_ascii=False, indent=1)
-    print(f"Termos do módulo para o glossário: {len(items)} ({sum(1 for i in items if '(traducao)' in i['detail'])} nomes EN/ES) -> {out}")
+    print(f"Termos do módulo para o glossário: {len(items)} ({sum(1 for i in items if '(traducao)' in i['detail'])} nomes PT/EN/ES traduzidos) -> {out}")
     if not translations:
         print("AVISO: sem traducoes (banco/traducoes.json) — o glossario fica sem os nomes em ingles/espanhol e os cards em ingles "
               "nao acham as telas/relatorios. Configure ~/.claude/multilingual-credentials.json e rode: re.sh traducoes <modulo> && re.sh termos <modulo>")

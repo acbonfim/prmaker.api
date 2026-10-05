@@ -72,5 +72,8 @@ publicado, "RCA" acha os itens que dizem "A3".
   colar o JSON do secret como vem da AWS:
   `aws secretsmanager get-secret-value --secret-id multilingual/production --query SecretString --output text`
   (`{"prod": {"Host": …, "Port": …, "DbName": …, "UserName": …, "Password": …}}`). Sessão somente leitura.
+- **Reserva (0064)**: sem o bloco de produção, usa as credenciais de `fallbackCredentials` da configuração (padrão:
+  `~/.claude/postgres-credentials-dev.json`, o Multilingual de **dev** — arquivo solto, sem o bloco do ambiente) e avisa.
+  Idiomas: **português, inglês e espanhol** (os mais usados nos cards); o texto pt-BR entra como sinônimo quando difere da chave.
 - Sem credencial ou sem VPN: `re.sh traducoes` explica e o glossário segue com os rótulos do código (a etapa do banco não
   falha por isso). Tradução customizada por cliente (`custom_translation`) fica de fora — a referência é o produto.

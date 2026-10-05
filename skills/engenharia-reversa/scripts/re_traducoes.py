@@ -58,7 +58,9 @@ def credentials(path, env):
     path = os.path.expanduser(path)
     if not os.path.isfile(path):
         return None
-    block = (json.load(open(path, encoding="utf-8")) or {}).get(env) or {}
+    data = json.load(open(path, encoding="utf-8")) or {}
+    # 0064: aceita tambem o arquivo "solto" (sem o bloco do ambiente), como o ~/.claude/postgres-credentials-dev.json
+    block = data.get(env) or (data if any(k in data for k in ("host", "Host")) else {})
     pick = lambda *keys: next((block[k] for k in keys if block.get(k) not in (None, "")), None)
     creds = {"host": pick("host", "Host"), "port": pick("port", "Port") or 5432, "dbname": pick("dbname", "DbName", "database"),
              "user": pick("username", "UserName", "user"), "password": pick("password", "Password")}
@@ -85,6 +87,15 @@ def main():
         print("Traducoes (Multilingual): nenhum rotulo do modulo para traduzir (rode o inventario antes).")
         return 0
     creds = credentials(cred_file, env)
+    if not creds:
+        # 0064: sem a credencial de producao, tenta as de reserva da configuracao (padrao: o Multilingual de DEV da maquina) —
+        # os termos do produto sao os mesmos; avisa que veio de outro ambiente.
+        for fb in cfg.get("fallbackCredentials") or ["~/.claude/postgres-credentials-dev.json"]:
+            c = credentials(fb, env)
+            if c and "multilingual" in (c["dbname"] or "").lower():
+                print(f"AVISO: sem a credencial de {env} ({cred_file}); usando {fb} (banco {c['dbname']} em {c['host'].split('.')[0]}) — confira se e o ambiente esperado")
+                creds, env = c, f"{env}->reserva"
+                break
     if not creds:
         secret = cfg.get("secretId") or "multilingual/production"
         die(f"sem credencial do Multilingual ({env}) em {cred_file} — grave o bloco \"{env}\" com o JSON do secret "

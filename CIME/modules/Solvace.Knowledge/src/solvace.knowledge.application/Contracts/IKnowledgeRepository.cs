@@ -102,7 +102,7 @@ public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadO
 
     /// <summary>0056: traduções do produto no Multilingual do revamp (Aurora PostgreSQL, schema <c>multilingual</c>).</summary>
     public const string DefaultTranslations = """
-        {"source": "multilingual", "environment": "prod", "schema": "multilingual", "credentials": "~/.claude/multilingual-credentials.json", "secretId": "multilingual/production", "languages": {"pt": "pt-BR", "en": "en-US", "es": "es-ES"}}
+        {"source": "multilingual", "environment": "prod", "schema": "multilingual", "credentials": "~/.claude/multilingual-credentials.json", "secretId": "multilingual/production", "languages": {"pt": "pt-BR", "en": "en-US", "es": "es-ES"}, "fallbackCredentials": ["~/.claude/postgres-credentials-dev.json"]}
         """;
 
     /// <summary>0058: a conta (id, não é segredo) manda; a skill acha o perfil do CLI da máquina que entra nela (sts) — sem nome de perfil fixo.</summary>
