@@ -35,18 +35,24 @@ TEXT_EXT = {".cs", ".cshtml", ".razor", ".asp", ".aspx", ".ascx", ".inc", ".js",
             ".config", ".xml", ".vb", ".py"}
 MAX_FILE = 1_500_000
 
+# 0058: etapa opcional de infra (re_infra.py) — recursos da AWS ligados ao modulo e esteiras dos repositorios.
+AWS_CATS = ["esteira"] + ["aws-" + s for s in (
+    "lambda", "s3", "codepipeline", "codebuild", "codedeploy", "secret", "ssm", "log-group", "sqs", "sns", "events-rule", "scheduler", "rds",
+    "rds-cluster", "cognito", "cloudfront", "route53", "acm", "apigateway", "dynamodb", "elasticache", "alarm", "stepfunctions", "ecs", "ecr", "ec2",
+    "beanstalk", "load-balancer", "kms-alias", "codeartifact", "glue-database", "glue-job", "glue-crawler", "ses", "kinesis")]
+
 # Categorias do inventario e os documentos que precisam cobri-las.
 DOC_CATEGORIES = {
     "funcional": ["validacao", "permissao", "endpoint", "enum", "pagina", "handler", "procedure", "termo"],
     "arquitetura": ["endpoint", "tabela", "evento", "job", "config", "http-front", "pagina", "handler", "procedure",
-                    "view", "function", "trigger", "constraint"],
+                    "view", "function", "trigger", "constraint", *AWS_CATS],
     "uiux": ["rota-front", "componente-front", "http-front", "pagina"],
     "design": ["componente-front"],
     "visao": [],
     "spec-arquitetura": ["evento", "job", "trigger"],
 }
 
-ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-(\d{1,4})\b",
+ID_HEADING = re.compile(r"^(#{2,4})\s+\**`?(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|INF|TUT|FAQ|FN|UC|RN|DB|UI)-(\d{1,4})\b",
                         re.IGNORECASE)
 
 
@@ -301,7 +307,7 @@ R_EVIDENCE = re.compile(r"([\w./\\-]+\.(?:cs|cshtml|razor|asp|aspx|ascx|inc|js|t
 GENERIC = {"get", "list", "post", "put", "delete", "patch", "create", "update", "upsert", "index", "search", "find", "save", "remove", "add",
            "edit", "details", "detail", "export", "import", "download", "upload", "getall", "getbyid", "filter", "count", "exists", "all"}
 # Nomes que so contam quando aparecem "fortes" no documento: cabecalho, metadado (**...**), linha de tabela ou `codigo`.
-STRONG_CATS = {"tabela", "enum", "handler", "componente-front", "config", "job", "evento", "procedure"}
+STRONG_CATS = {"tabela", "enum", "handler", "componente-front", "config", "job", "evento", "procedure", *AWS_CATS}
 
 
 def needles(item):
@@ -718,7 +724,7 @@ def main(argv):
             return 2
         with open(argv[2], encoding="utf-8") as fh:
             inv = json.load(fh)
-        # 0053: inventários a mais (banco da DEMO, termos do glossário) — --extra <arquivo> (repetível)
+        # 0053/0058: inventários a mais (banco da DEMO, termos do glossário, infra) — --extra <arquivo> (repetível)
         for i, a in enumerate(argv):
             if a == "--extra" and i + 1 < len(argv) and os.path.exists(argv[i + 1]):
                 with open(argv[i + 1], encoding="utf-8") as fh:
