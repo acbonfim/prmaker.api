@@ -38,6 +38,7 @@ MANIFEST=".prmake-skill.json"
 HOOK_CMD='bash "$HOME/.claude/skills/.prmake/prmake-skills.sh" update --quiet'
 
 QUIET=0
+BLOCKED=()   # skills que o update nao atualizou por terem arquivo alterado a mao (avisadas no stdout do hook)
 FORCE=0
 say()  { [[ $QUIET -eq 1 ]] || echo "$*"; }
 warn() { echo "AVISO: $*" >&2; }
@@ -146,6 +147,7 @@ install_one() { # <nome> <versão> <modo: install|update>
     changed="$(modified_files "$name")"
     if [[ -n "$changed" ]]; then
       warn "$name tem arquivos alterados à mão ($(echo "$changed" | tr '\n' ' ')) — não atualizei. Use: prmake-skills.sh update --force $name"
+      BLOCKED+=("$name (arquivos alterados à mão: $(echo "$changed" | tr '\n' ' ' | sed 's/ $//'))")
       return 0
     fi
   fi
@@ -847,8 +849,12 @@ case "$cmd" in
     if [[ ${#updated[@]} -gt 0 ]]; then
       # No hook SessionStart esta linha vai para o contexto do Claude: ele sabe que deve reler a SKILL.md.
       echo "Skills do PRMake atualizadas: ${updated[*]}. Releia a SKILL.md antes de usar."
-    else
+    elif [[ ${#BLOCKED[@]} -eq 0 ]]; then
       say "Skills do PRMake já estão na versão publicada."
+    fi
+    # O aviso vai no stdout (o stderr do hook SessionStart some): sem isso a skill fica velha sem ninguém saber.
+    if [[ ${#BLOCKED[@]} -gt 0 ]]; then
+      echo "ATENCAO: skills do PRMake NAO atualizadas — ${BLOCKED[*]}. A versao instalada esta desatualizada: avise o usuario e, se ele concordar, rode: bash \"\$HOME/.claude/skills/.prmake/prmake-skills.sh\" update --force <skill>"
     fi
     ;;
 
