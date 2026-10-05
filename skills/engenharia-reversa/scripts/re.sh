@@ -400,7 +400,11 @@ case "$CMD" in
     api GET "/modules"; check
     # nomes de outros módulos (e as siglas de 2–4 letras das palavras-chave deles) não são termos deste módulo
     OUTROS="$(jq -c --arg m "$MOD" '[.[] | select(.key != $m) | (.displayName // .name), .name, .aliases[]] | map(select(. != null)) | unique' "$TMP/resp")"
-    python3 "$TOOL_PY" termos "$INV" --banco "$(moddir "$MOD")/banco" --exclusoes "$EXCL" --outros-modulos "$OUTROS" --out "$(moddir "$MOD")/inventario-termos.json"
+    python3 "$TOOL_PY" termos "$INV" --banco "$(moddir "$MOD")/banco" --exclusoes "$EXCL" --outros-modulos "$OUTROS" --out "$(moddir "$MOD")/inventario-termos.json" | tee "$TMP/termos.out"
+    # 0060: sem traducoes, a tela mostra o aviso (os cards dos clientes vem em ingles)
+    if grep -q '^AVISO: sem traducoes' "$TMP/termos.out"; then
+      for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"log":"Sem traducoes EN/ES do Multilingual: o glossario nao tera os nomes em ingles das telas (cards em ingles nao acham). Configure a credencial e rode re.sh traducoes","kind":"warning"}'; done
+    fi
     ;;
 
   trabalho)

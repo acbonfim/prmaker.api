@@ -54,6 +54,12 @@ título (todo o bloco conta) ou, em qualquer `GAP`, a linha `**Termos:**`:
 - **Termos:** Salvar rascunho, Kaizen, Filtro avançado
 Rótulos genéricos de interface e o nome de outro módulo (Kaizen → legado-kz), não são do domínio do A3.
 ```
+**Nomes em inglês e espanhol (0060) — obrigatórios**: os cards dos clientes vêm em inglês ("Compliance per Checklist",
+"Calendar error"). Com as traduções, o `re.sh termos` exige o nome EN/ES de cada termo nos `**Sinônimos:**` — é o que faz
+a busca das análises achar "Cumprimento por Checklist" a partir do card. Todo `TELA`, `REL` e `FN` leva também o nome da
+tela/relatório/menu em EN e ES nas `**Tags:**`. Sem a credencial do Multilingual o `termos` avisa (e a tela mostra): peça
+a credencial antes de enviar o funcional; sem ela, registre `GAP` "glossário sem nomes EN/ES".
+
 Siglas de 2 caracteres com dígito ou em maiúsculas (`A3`, `5S`) contam como termo. Os sinônimos viram busca:
 publicado, "RCA" acha os itens que dizem "A3".
 
