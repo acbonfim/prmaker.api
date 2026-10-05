@@ -1,8 +1,8 @@
 # Feature 0056 — Ajustes da engenharia reversa: tela da Base Solvace e ferramentas da skill (piloto SA3)
 
-> **Status: especificada — não iniciada.** Pedido do usuário em 2026-10-04: gravar numa demanda os pontos que o Claude
-> achou no teste da 0054 (tela da Base Solvace) e os problemas das ferramentas relatados pela sessão de engenharia
-> reversa do SA3 (`legado-rca`). Perguntas respondidas no mesmo dia (ver "Respostas").
+> **Status: implementada em 2026-10-04** (ver `status.md`). Pedido do usuário: gravar numa demanda os pontos que o
+> Claude achou no teste da 0054 (tela da Base Solvace) e os problemas das ferramentas relatados pela sessão de
+> engenharia reversa do SA3 (`legado-rca`). Pendente: credencial/host reais do Multilingual da DEMO.
 
 ## 1. Tela da Base Solvace com o módulo coberto pela engenharia reversa (achados do T1 da 0054)
 
