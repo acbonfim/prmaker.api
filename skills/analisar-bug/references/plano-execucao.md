@@ -61,8 +61,9 @@ bash $PLAN status <card> completed "" "$CARD_DIR/analises/analise-inicial.md"   
 - **Refine o plano de analise** depois de ler o card (passo 2): ajuste titulos/descricoes ao caso concreto (a
   descricao diz *o que vai ser feito*), remova/cancele (com motivo) o que nao se aplica e acrescente o que
   surgir. Keys: minusculas, numeros, `-`/`_`, estaveis (nunca renomeie uma key).
-Etapas padrao da analise (o `start` cria se voce nao passar outras): `identificar-card`, `coletar-dados`,
-`investigar-codigo`, `consultar-ambiente` (cancele com motivo so se o caso nao depender de dados; se depender, nao
+Etapas padrao da analise (o `start` cria se voce nao passar outras; vem do PRMake — `AnalysisDefaultSteps` do Skills
+Configurations, 0063): `identificar-card`, `coletar-dados`, `consultar-base` (Base Solvace antes do codigo; a trava da
+engenharia reversa vale aqui), `investigar-codigo` (confirmar no codigo), `consultar-ambiente` (cancele com motivo so se o caso nao depender de dados; se depender, nao
 fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
 `montar-analise`, `publicar`, `propor-solucoes`.
 
