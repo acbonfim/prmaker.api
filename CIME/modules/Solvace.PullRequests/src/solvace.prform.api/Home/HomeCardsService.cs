@@ -22,6 +22,9 @@ public sealed partial class HomeCardsService(
     public const int MaxTake = 30;
     public const int MaxParticipants = 8;
 
+    /// <summary>Teto de cards por chamada de <see cref="GetByNumbersAsync"/> — igual ao limite de abas do front.</summary>
+    public const int MaxCardsByNumbers = 10;
+
     /// <summary>Quantos cards cada fonte devolve na busca do "participei" (as mais recentes) antes de juntar.</summary>
     private const int SourceLimit = 150;
     private const int ExcerptLength = 220;
@@ -64,6 +67,27 @@ public sealed partial class HomeCardsService(
         }
 
         return cards.Count == 0 ? [] : await BuildAsync(cards, userId, myName, ct);
+    }
+
+    /// <summary>
+    /// Resumo de cards específicos (abas internas, 0065), na ordem pedida e sem filtro de escopo: a aba pode ser de um card
+    /// de outra pessoa. Números repetidos/vazios são descartados; cards sem nenhum dado voltam com <c>Registered=false</c>.
+    /// </summary>
+    public async Task<IReadOnlyList<HomeCardResponse>> GetByNumbersAsync(Guid userId, IEnumerable<string>? numbers, CancellationToken ct)
+    {
+        var cards = (numbers ?? [])
+            .Select(n => n?.Trim() ?? "")
+            .Where(n => n.Length is > 0 and <= 50)
+            .Distinct()
+            .Take(MaxCardsByNumbers)
+            .ToList();
+        if (cards.Count == 0) return [];
+
+        var myName = await auth.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.FullName)
+            .FirstOrDefaultAsync(ct);
+        return await BuildAsync(cards, userId, myName, ct);
     }
 
     /// <summary>
