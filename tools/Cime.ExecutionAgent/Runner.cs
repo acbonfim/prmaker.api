@@ -71,9 +71,14 @@ public sealed class Runner(AgentConfig config)
 
             try
             {
-                var claim = await client.NextAsync(25, stopping);
+                // polling curto (0057): a requisição não fica aberta no Cloud Run — long-poll mantinha a instância cobrada 24 h
+                var claim = await client.NextAsync(0, stopping);
                 failures = 0;
-                if (claim is null) continue;
+                if (claim is null)
+                {
+                    await Delay(NextPollEvery, stopping);
+                    continue;
+                }
                 StartJob(client, claim, stopping);
             }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -272,6 +277,9 @@ public sealed class Runner(AgentConfig config)
             await Delay(interval, ct);
         }
     }
+
+    /// <summary>Intervalo entre consultas da fila quando está vazia.</summary>
+    private static readonly TimeSpan NextPollEvery = TimeSpan.FromSeconds(10);
 
     private static async Task Delay(TimeSpan delay, CancellationToken ct)
     {
