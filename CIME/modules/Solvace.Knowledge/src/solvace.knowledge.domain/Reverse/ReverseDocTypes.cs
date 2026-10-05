@@ -34,7 +34,8 @@ public static class ReverseDocTypes
         - Linhas de metadados logo abaixo do cabeçalho (o índice do PRMake lê): `- **Onde:** `arquivo:linha`, …`
           (evidência no código — obrigatória em RN, UC, API, DB, EVT, JOB, INT e TELA), `- **Tabelas:** TB_…`,
           `- **Módulos:** revamp-users, legado-usuarios` (outros módulos envolvidos — chave do projeto na Base Solvace),
-          `- **Tags:** termos que alguém usaria para procurar (PT e EN, nomes de tela, siglas)`, `- **KC:** ART-n`,
+          `- **Tags:** termos que alguém usaria para procurar (PT e EN, nomes de tela, siglas)` — em `TELA`, `REL` e `FN`, o nome
+          da tela/relatório/menu **em inglês e espanhol como o cliente vê** (os cards chegam em inglês: "Compliance per Checklist"), `- **KC:** ART-n`,
           `- **Sinônimos:** …` (nos `GLO`: todos os nomes do mesmo conceito — a busca das análises usa).
         - Regra ou comportamento que vive **no banco** (procedure, view, function, trigger, job): a evidência é o banco
           da DEMO — `- **Onde:** banco DEMO <global|local> · dbo.STP_X (linha 42)` — e o item diz em qual banco está.

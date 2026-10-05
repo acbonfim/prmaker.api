@@ -43,6 +43,15 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
   (0055) mede de onde voce leu: engenharia reversa × base antiga × codigo **confirmando** um item (o arquivo que o `Onde:`
   cita) × codigo **explorando** (sem item que o cite — vira candidato a lacuna na tela).
+- **Nunca pule a engenharia reversa pelo `contexto` (0060)**: se ele disser "nao publicada"/"nenhum modulo casou", o campo
+  Module do card pode ter apontado o mundo errado (card 75294: "Checklist" foi para o revamp e a tela era do legado, que
+  tinha engenharia reversa). Antes de `kb.sh`, rode `prmake_base_search` **sem `module`** com o nome da tela/relatorio e
+  os termos do card **em portugues e em ingles** (os cards vem em ingles: "Compliance per Checklist" = "Cumprimento por
+  Checklist"; "calendar" = "calendario/data"). So sem nenhum item, a base antiga.
+- **Lacuna obrigatoria (0060)**: tudo o que voce precisou ler no codigo **sem item que o cite** (codigo "explorando") e
+  fez parte da causa vira lacuna registrada antes de publicar — `arch.sh suggest <modulo> re-<doc> lacuna.md --kind gap
+  --card <card> --item <ID do item mais proximo>` (ex.: a conversao de datas do filtro salvo, ao lado de `UI-009`). Diga
+  na analise quais lacunas registrou. E isso que faz a proxima analise do mesmo assunto nao precisar do codigo.
 - **Base antiga (modulo sem engenharia reversa)**: a PRIMEIRA consulta sobre o codigo e a base:
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
@@ -167,7 +176,8 @@ Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas**
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
 
 **3. Investigar** — comece pelos itens da engenharia reversa que o `contexto` mostrou (`prmake_base_get` com o card;
-outros assuntos: `prmake_base_search`); sem engenharia reversa do modulo, pela secao da Base Solvace (`bash $KB show
+outros assuntos: `prmake_base_search`, termos em PT e EN); `contexto` sem itens → `prmake_base_search` sem `module` antes
+de qualquer outra coisa; sem engenharia reversa de nenhum modulo, pela secao da Base Solvace (`bash $KB show
 <projeto> <secao>`; nenhum casou → `bash $KB index <modulo/tela>`); depois so o codigo apontado; regra de negocio → KC. Reconstrua
 o fluxo, levante hipoteses priorizadas com `caminho:linha`, marque o que e hipotese. Diga em qual mundo/repo esta o
 codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito, localizar codigo fora da base:
@@ -186,7 +196,7 @@ com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
 (perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo
 `branches`, PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
-**9. Aprender e reportar** — se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
+**9. Aprender e reportar** — as lacunas do codigo "explorando" ja foram registradas (regra acima; obrigatorio). Alem disso, se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
 query util) ou mostrou um item da engenharia reversa errado/incompleto, proponha em poucas linhas:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> aprendizado.md --kind learning|divergence
 --card <card> --item RN-012` — com engenharia reversa, a secao e o documento do item (`re-funcional`, `re-arquitetura`...)

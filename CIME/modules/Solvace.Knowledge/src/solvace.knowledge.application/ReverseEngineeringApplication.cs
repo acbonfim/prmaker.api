@@ -861,10 +861,12 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var names = all.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
         var matched = MatchModules(moduleField, all, reverseModules);
 
-        var withRe = entries.Select(e => e.ModuleKey).ToHashSet();
+        var withRe = entries.Where(e => !e.Removed).Select(e => e.ModuleKey).ToHashSet();
         if (matched.Count == 0 && !string.IsNullOrWhiteSpace(query))
             matched = (await ReverseSearch.RunAsync(repository, query, null, null, null, 30, false, names, cancellationToken))
                 .GroupBy(h => h.ModuleKey).OrderByDescending(g => g.Sum(h => h.Score)).Take(2).Select(g => g.Key).ToList();
+        else if (matched.Count > 0)
+            matched = await RankForCardAsync(matched, moduleField, query, all, withRe, names, cancellationToken);
 
         // 0054: "completa" para a análise = os documentos técnicos exigidos (a visão prática é para pessoas)
         var technical = s.TechnicalRequired;
@@ -909,7 +911,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var moduleKeys = projects.Select(p => p.Key).Where(withRe.Contains).ToList();
         if (moduleKeys.Count == 0)
         {
-            sb.AppendLine("Sem itens publicados para esses módulos: use a base antiga (kb.sh show <projeto> modulos) e registre as lacunas (arch.sh suggest <projeto> re-funcional lacuna.md --kind gap --card <card>).");
+            sb.AppendLine("Sem itens publicados para esses módulos nem para os pares da mesma área: procure no índice inteiro ANTES do código — prmake_base_search(\"<tela/termo em PT e EN>\", card) — e só então a base antiga (kb.sh show <projeto> modulos); registre as lacunas (arch.sh suggest <projeto> re-funcional lacuna.md --kind gap --card <card>).");
             return sb.ToString();
         }
         var hits = string.IsNullOrWhiteSpace(query)
@@ -949,6 +951,47 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 0060: ordena os módulos do card para a análise. Bug do card 75294: Module "Checklist" casou com 4 módulos revamp
+    /// (o corte em 4 com revamp primeiro) e o <c>legado-checklist</c> — o único com engenharia reversa publicada, e o da
+    /// tela do card — ficou de fora; o contexto mandou usar a base antiga e a trava da investigação desligou. Agora:
+    /// os pares da mesma área com engenharia reversa entram como candidatos (se o campo não escolheu o mundo), o
+    /// título/repro decide quem vem primeiro (soma do placar da busca por módulo), depois quem tem engenharia reversa,
+    /// depois a ordem do campo. Módulo com itens que casam com o card nunca é cortado.
+    /// </summary>
+    private async Task<List<string>> RankForCardAsync(List<string> matched, string? moduleField, string? query, List<ArchitectureProject> all,
+        HashSet<string> withRe, Dictionary<string, string> names, CancellationToken cancellationToken)
+    {
+        var (wantRevamp, wantLegacy) = FieldWorld(moduleField);
+        var areas = matched.Select(k => all.FirstOrDefault(p => p.Key == k)?.BusinessArea).Where(a => a is not null).ToHashSet();
+        var candidates = matched.Concat(all
+                .Where(p => ModuleKinds.Contains(p.Kind) && withRe.Contains(p.Key) && p.BusinessArea is not null && areas.Contains(p.BusinessArea))
+                .Where(p => !(wantRevamp && p.Kind == "legacy") && !(wantLegacy && p.Kind != "legacy"))
+                .Select(p => p.Key))
+            .Distinct().ToList();
+        var score = new Dictionary<string, double>();
+        var searchable = candidates.Where(withRe.Contains).ToList();
+        if (!string.IsNullOrWhiteSpace(query) && searchable.Count > 0)
+            foreach (var g in (await ReverseSearch.RunAsync(repository, query, searchable, null, null, 40, false, names, cancellationToken))
+                         .Where(h => h.DocType != ReverseDocTypes.Practical).GroupBy(h => h.ModuleKey))
+                score[g.Key] = g.Sum(h => (double)h.Score);
+        var ranked = candidates
+            .Where(k => matched.Contains(k) || score.ContainsKey(k))  // par só entra se casou com o card
+            .OrderByDescending(k => score.GetValueOrDefault(k))
+            .ThenByDescending(k => withRe.Contains(k))
+            .ThenBy(k => matched.IndexOf(k) is var i && i >= 0 ? i : int.MaxValue)
+            .ToList();
+        var keep = ranked.Where(score.ContainsKey).ToList();
+        return keep.Concat(ranked.Where(k => !keep.Contains(k)).Take(Math.Max(0, 4 - keep.Count))).ToList();
+    }
+
+    /// <summary>O campo Module escolhe o mundo? ("Kaizen (Revamp)", "Checklist legado").</summary>
+    public static (bool Revamp, bool Legacy) FieldWorld(string? moduleField)
+    {
+        var n = ArchitectureSearch.Normalize(moduleField ?? string.Empty);
+        return (n.Contains("revamp") || n.Contains("novo") || n.Contains("new"), n.Contains("legad") || n.Contains("legacy") || n.Contains("antigo"));
+    }
+
     /// <summary>Módulos do card: apelido exato; senão nome/área/sufixo da chave; "(Revamp)"/"(Legado)" escolhem o mundo.</summary>
     public static List<string> MatchModules(string? moduleField, List<ArchitectureProject> all, List<ReverseModule> modules)
     {
@@ -958,21 +1001,26 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         if (byAlias.Count > 0) return byAlias;
 
         var normalized = ArchitectureSearch.Normalize(field);
-        var wantRevamp = normalized.Contains("revamp") || normalized.Contains("novo") || normalized.Contains("new");
-        var wantLegacy = normalized.Contains("legad") || normalized.Contains("legacy") || normalized.Contains("antigo");
-        var core = WorldWords().Replace(normalized, " ").Trim();
+        var (wantRevamp, wantLegacy) = FieldWorld(field);
+        var core = Spaces().Replace(WorldWords().Replace(normalized, " "), " ").Trim();
         if (core.Length < 2) return [];
         var candidates = all.Where(p => ModuleKinds.Contains(p.Kind)).ToList();
+        string Core(string? v) => Spaces().Replace(WorldWords().Replace(ArchitectureSearch.Normalize(v ?? ""), " "), " ").Trim();
+        // 0060: nome, área, sufixo da chave ou apelido sem o mundo ("Checklist (legado)" → "checklist") = casamento forte;
+        // palavra-chave igual só vale quando não há forte (antes trazia Plano de Ação/RCA para o card de Checklist).
+        var aliasKeys = modules.Where(m => m.Aliases.Any(a => Core(a) == core)).Select(m => m.Key).ToHashSet();
         var direct = candidates.Where(p =>
-            ArchitectureSearch.Normalize(p.DisplayName ?? "") == core
-            || ArchitectureSearch.Normalize(p.BusinessArea ?? "") == core
+            Core(p.DisplayName) == core
+            || Core(p.BusinessArea) == core
             || p.Key.EndsWith("-" + core.Replace(' ', '-'), StringComparison.Ordinal)
-            || p.Keywords.Any(k => ArchitectureSearch.Normalize(k) == core)).ToList();
+            || aliasKeys.Contains(p.Key)).ToList();
+        if (direct.Count == 0) direct = candidates.Where(p => p.Keywords.Any(k => Core(k) == core)).ToList();
         var areas = direct.Select(p => p.BusinessArea).Where(a => a is not null).ToHashSet();
         var result = direct.Concat(candidates.Where(p => p.BusinessArea is not null && areas.Contains(p.BusinessArea))).Distinct().ToList();
         if (wantRevamp && result.Any(p => p.Kind == "revamp")) result = result.Where(p => p.Kind is "revamp" or "frontend").ToList();
         else if (wantLegacy && result.Any(p => p.Kind == "legacy")) result = result.Where(p => p.Kind == "legacy").ToList();
-        return result.OrderBy(p => p.Kind == "revamp" ? 0 : 1).Select(p => p.Key).Take(4).ToList();
+        // forte primeiro (sem preferir mundo: o título/repro decide no RankForCardAsync), depois os da mesma área
+        return result.OrderBy(p => direct.Contains(p) ? 0 : 1).ThenBy(p => p.Kind == "revamp" ? 0 : 1).Select(p => p.Key).Take(6).ToList();
     }
 
     public async Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken)
