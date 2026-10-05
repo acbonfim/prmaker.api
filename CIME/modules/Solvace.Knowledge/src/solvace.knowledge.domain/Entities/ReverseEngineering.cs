@@ -146,7 +146,18 @@ public static class ReverseRevisionStatus
 public static class ReverseRevisionMode
 {
     public static readonly IReadOnlySet<string> All = new HashSet<string> { "new", "improve", "redo", "manual" };
-    public static string Normalize(string? mode) => All.Contains((mode ?? "new").Trim().ToLowerInvariant()) ? mode!.Trim().ToLowerInvariant() : "new";
+
+    /// <summary>
+    /// 0056: mesma classe de bug do construtor de <see cref="ReverseTrap"/> — "new" (o default) É um valor válido de
+    /// <see cref="All"/>, então um "mode" nulo caía no ramo que tentava usar "mode!" (ainda null) e derrubava com
+    /// NullReferenceException. Hoje nenhuma chamada passa null (o único construtor normaliza antes), mas o parâmetro
+    /// é público e nullable — melhor corrigir do que deixar a próxima chamada cair nisso.
+    /// </summary>
+    public static string Normalize(string? mode)
+    {
+        var normalized = (mode ?? "new").Trim().ToLowerInvariant();
+        return All.Contains(normalized) ? normalized : "new";
+    }
 }
 
 /// <summary>
@@ -387,7 +398,10 @@ public class ReverseTrap
     {
         Id = Guid.NewGuid();
         ModuleKey = ArchitectureProject.NormalizeKey(moduleKey);
-        Origin = Origins.Contains((origin ?? "manual").Trim().ToLowerInvariant()) ? origin!.Trim().ToLowerInvariant() : "manual";
+        // 0056: bug encontrado ao testar — o "!" não troca o null pelo default em tempo de execução; "origin" nulo
+        // (ex.: POST /traps sem o campo, opcional) derrubava com NullReferenceException. Usa o valor já normalizado.
+        var normalizedOrigin = (origin ?? "manual").Trim().ToLowerInvariant();
+        Origin = Origins.Contains(normalizedOrigin) ? normalizedOrigin : "manual";
         CreatedAt = UpdatedAt = now;
         CreatedBy = UpdatedBy = actor;
         Edit(title, text, items, cards, actor, now);

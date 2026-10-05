@@ -46,13 +46,14 @@ public static partial class ArchitectureSearch
         var terms = new List<string>();
         foreach (var raw in WordPattern().Matches(Normalize(query)).Select(m => m.Value))
         {
-            if (StopWords.Contains(raw) || (raw.Length < 3 && !raw.All(char.IsDigit))) continue;
+            // 0056: sigla curta com dígito ("a3", "5s") vale — antes "A3" sumia da busca, do MCP e do Pergunte.
+            if (StopWords.Contains(raw) || (raw.Length < 3 && !raw.Any(char.IsDigit))) continue;
             terms.Add(Stem(raw));
         }
         foreach (var e in extra ?? [])
         {
             var n = Normalize(e).Trim();
-            if (n.Length < 3) continue;
+            if (n.Length < 3 && !(n.Length == 2 && n.Any(char.IsDigit))) continue;
             terms.Add(n.Contains(' ') || n.Contains('_') ? n : Stem(n));
         }
         return terms.Distinct().Take(24).ToList();
@@ -91,15 +92,15 @@ public static partial class ArchitectureSearch
                 {
                     // 0053: o termo casa também pelos sinônimos do glossário do projeto ("RCA" ↔ "A3").
                     var alts = synonyms.Alternatives(project.Key, term);
-                    var inTitle = title.Contains(term) || alts.Any(title.Contains);
-                    var inProject = projectText.Contains(term) || alts.Any(projectText.Contains);
+                    var inTitle = HasTerm(title, term) || alts.Any(a => HasTerm(title, a));
+                    var inProject = HasTerm(projectText, term) || alts.Any(a => HasTerm(projectText, a));
                     var count = Count(text, term, out var pos);
                     foreach (var alt in alts)
                     {
                         if (count > 0) break;
                         count = Count(text, alt, out pos);
                     }
-                    var inHeading = headings.Any(h => h.Title.Contains(term) || alts.Any(h.Title.Contains));
+                    var inHeading = headings.Any(h => HasTerm(h.Title, term) || alts.Any(a => HasTerm(h.Title, a)));
                     if (!inTitle && !inProject && count == 0) continue;
                     matched.Add(term);
                     score += (inTitle ? 6 : 0) + (inProject ? 3 : 0) + (inHeading ? 4 : 0) + (count > 0 ? 1 + Math.Min(count, 6) * 0.4 : 0);
@@ -127,7 +128,7 @@ public static partial class ArchitectureSearch
             foreach (var term in terms)
             {
                 var alts = synonyms.Alternatives("*", term);
-                var inTitle = title.Contains(term) || alts.Any(title.Contains);
+                var inTitle = HasTerm(title, term) || alts.Any(a => HasTerm(title, a));
                 var count = Count(text, term, out var pos);
                 foreach (var alt in alts)
                 {
@@ -161,14 +162,32 @@ public static partial class ArchitectureSearch
         return (text, headings);
     }
 
-    private static int Count(string text, string term, out int first)
+    private static int Count(string text, string term, out int first) => CountTerm(text, term, out first);
+
+    /// <summary>
+    /// Ocorrências do termo no texto (até 50). 0056: termo curto (até 2 caracteres, ex.: "a3") só casa como palavra
+    /// inteira — não dentro de "sa3_registro" nem de um GUID ("9a3c").
+    /// </summary>
+    public static int CountTerm(string text, string term, out int first)
     {
-        first = text.IndexOf(term, StringComparison.Ordinal);
-        if (first < 0) return 0;
+        first = -1;
+        if (string.IsNullOrEmpty(term)) return 0;
         var count = 0;
-        for (var i = first; i >= 0 && count < 50; i = text.IndexOf(term, i + term.Length, StringComparison.Ordinal)) count++;
+        for (var i = text.IndexOf(term, StringComparison.Ordinal); i >= 0 && count < 50; i = text.IndexOf(term, i + term.Length, StringComparison.Ordinal))
+        {
+            if (term.Length <= 2 && !Bounded(text, i, term.Length)) continue;
+            if (first < 0) first = i;
+            count++;
+        }
         return count;
     }
+
+    /// <summary>O texto contém o termo (curto: como palavra inteira — ver <see cref="CountTerm"/>).</summary>
+    public static bool HasTerm(string text, string term) =>
+        term.Length > 2 ? text.Contains(term, StringComparison.Ordinal) : CountTerm(text, term, out _) > 0;
+
+    private static bool Bounded(string text, int start, int length) =>
+        (start == 0 || !char.IsLetterOrDigit(text[start - 1])) && (start + length >= text.Length || !char.IsLetterOrDigit(text[start + length]));
 
     /// <summary>Trecho em volta da posição (sem marcação de markdown) e o cabeçalho anterior a ela, como está no texto.</summary>
     private static (string Snippet, string? Heading) Snippet(string original, string normalized, List<(int Pos, string Title)> headings, int pos)

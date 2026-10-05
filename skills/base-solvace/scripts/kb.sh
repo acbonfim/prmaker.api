@@ -147,7 +147,9 @@ if not terms.strip():
 stop = set("""para com sem uma uns umas dos das nos nas pelo pela que nao when with from that this have into cannot could
 be added account erro error bug card solvace product improvement development team revamp legado
 legacy modulo module tela screen production producao site planta""".split())
-words = [w for w in dict.fromkeys(re.findall(r"[a-z0-9_]{3,}", norm(terms))) if w not in stop]
+# 0056: sigla de 2 caracteres com digito ("a3", "5s") tambem filtra
+words = [w for w in dict.fromkeys(re.findall(r"[a-z0-9_]+", norm(terms)))
+         if w not in stop and (len(w) >= 3 or (len(w) == 2 and any(c.isdigit() for c in w)))]
 def score(text, w): return 1 if re.search(r"(?<![a-z0-9])" + re.escape(w), text) else 0
 def best(items, n):
     # so o que chega perto do melhor resultado (corta o ruido de palavras soltas)

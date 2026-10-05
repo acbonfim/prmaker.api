@@ -46,7 +46,22 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
             Templates(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTemplates)),
             Reference(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringReferenceDatabase)) ?? d.ReferenceDatabase,
             List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGlossaryExclusions)) is { Count: > 0 } ex ? ex : d.GlossaryExclusions,
-            Supersedes(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringSupersedes)) ?? d.Supersedes);
+            Supersedes(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringSupersedes)) ?? d.Supersedes,
+            Translations(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTranslations)) ?? d.Translations);
+    }
+
+    /// <summary>0056: fonte das traduções (JSON objeto); inválido = o padrão (Multilingual do revamp).</summary>
+    private string? Translations(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object) return json;
+        }
+        catch (JsonException) { }
+        logger.LogWarning("ReverseEngineeringTranslations inválido no plugin — usando o Multilingual padrão.");
+        return null;
     }
 
     /// <summary>{"modulos": ["funcional", "uiux"], "guia-*": ["pratica"], "armadilhas": ["@armadilhas"]} (0054).</summary>

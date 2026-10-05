@@ -3,7 +3,7 @@
 
 Tudo passa pelo sql-query.sh da analisar-bug (guarda read-only + transacao com ROLLBACK). Nunca le dados de tabelas de
 negocio: so metadados (sys.*), definicoes de objetos (sys.sql_modules), jobs (msdb) e os textos da interface
-(TB_WCM_LANGUAGE, TB_WCM_MENU, TB_SYS_Application). Para nao esbarrar na guarda (palavras como "delete" ou nomes "sp_"),
+(TB_WCM_MENU, TB_SYS_Application; as traducoes vem do Multilingual do revamp — re_traducoes.py, 0056). Para nao esbarrar na guarda (palavras como "delete" ou nomes "sp_"),
 as consultas nao levam nomes de objetos: le as listas inteiras e filtra aqui; definicoes sao buscadas por object_id.
 
   re_banco.py catalogo --sql <sql-query.sh> --host prod --global DB --local DB [--local DB ...]
@@ -270,8 +270,6 @@ def catalogo(args):
     }
     with open(os.path.join(out, "catalogo.json"), "w", encoding="utf-8") as fh:
         json.dump(catalog, fh, ensure_ascii=False, indent=1)
-    with open(os.path.join(out, "traducoes.json"), "w", encoding="utf-8") as fh:
-        json.dump(ui["translations"], fh, ensure_ascii=False)
     # inventário do banco (mesmo formato do re_tool.py): a cobertura exige cada objeto
     inv = []
     for e in objects:
@@ -295,7 +293,7 @@ def catalogo(args):
         by_kind[e["kind"]] += 1
     print(f"Banco ({catalog['environment']}): " + ", ".join(f"{n} {k}" for k, n in sorted(by_kind.items())) + f", {len(jobs)} jobs"
           + (f" · {sum(1 for e in objects if e['divergent'])} divergentes entre locais" if any(e['divergent'] for e in objects) else "")
-          + f" · {len(ui['menus'])} itens de menu · {len(ui['translations'])} termos traduzidos -> {out}")
+          + f" · {len(ui['menus'])} itens de menu -> {out}")
     if problems:
         print("Problemas (viram GAP no documento): " + "; ".join(problems))
 
@@ -382,8 +380,9 @@ def read_jobs(sql, demo_dbs, module_names, prefixes, sigla, out):
 
 
 def read_interface(sql, global_db, sigla):
-    """Textos da interface do módulo: aplicação (sigla), menus e as traduções (TB_WCM_LANGUAGE) — para o glossário."""
-    result = {"application": None, "menus": [], "translations": []}
+    """Textos da interface do módulo: aplicação (sigla) e menus — para o glossário. As traduções saíram daqui (0056):
+    vêm do Multilingual do revamp (PostgreSQL), lidas pelo re_traducoes.py; o TB_WCM_LANGUAGE é legado."""
+    result = {"application": None, "menus": []}
     try:
         apps = sql.rows(global_db, "SELECT CAST(a.idApplication AS varchar(36)) AS id, a.ApplicationName AS name, a.ApplicationAlias AS alias, "
                                    "a.Description AS description FROM TB_SYS_Application a")
@@ -396,11 +395,6 @@ def read_interface(sql, global_db, sigla):
             result["menus"] = [m for m in menus if (m.get("app") or "").lower() == app["id"].lower()]
     except RuntimeError as e:
         print(f"AVISO: aplicação/menus não lidos: {e}", file=sys.stderr)
-    try:
-        result["translations"] = sql.rows(global_db, "SELECT l.TERM_NAME AS term, l.LANG_PORTUGUESE AS pt, l.LANG_ENGLISH AS en, "
-                                                     "l.LANG_SPANISH AS es FROM TB_WCM_LANGUAGE l", max_rows=400000)
-    except RuntimeError as e:
-        print(f"AVISO: traduções (TB_WCM_LANGUAGE) não lidas: {e}", file=sys.stderr)
     return result
 
 

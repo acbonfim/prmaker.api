@@ -11,7 +11,7 @@
       IDs definidos (### RN-012 ...) em varios documentos locais - para nao repetir ID entre documentos da mesma sessao.
   re_tool.py termos <inventario.json> [--banco <pasta-banco>] [--exclusoes '<json>'] --out <inventario-termos.json>
       Termos do modulo para o GLOSSARIO (0053): rotulos da tela (GetLanguageByName do legado, i18n do front), menus e
-      aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do TB_WCM_LANGUAGE. A cobertura do funcional exige
+      aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do Multilingual do revamp (re_traducoes.py, 0056). A cobertura do funcional exige
       cada termo no glossario (titulo ou Sinonimos de um GLO). Palavras genericas de interface ficam fora (exclusoes).
   re_tool.py perguntas <documento.md> <perguntas.json> [--json saida.json]
       VISAO PRATICA (0054): quais perguntas reais do Pergunte o documento responde (titulo/corpo de um FAQ/TUT com as
@@ -56,7 +56,27 @@ def norm(text):
     return re.sub(r"[^a-z0-9_/.:-]+", " ", text).strip()
 
 
+def repo_root(path):
+    """Raiz do repositorio (pasta com .git) acima do arquivo — o caminho do inventario fica relativo a ela (0056)."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.path.dirname(os.path.abspath(path))
+        d = parent
+
+
 def walk(root):
+    if os.path.isfile(root):  # 0056: fonte arquivo (--path repo=helpers/Sa3Service.cs ou glob expandido)
+        try:
+            if os.path.getsize(root) <= MAX_FILE:
+                with open(root, encoding="utf-8", errors="replace") as fh:
+                    yield root, fh.read()
+        except OSError:
+            pass
+        return
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
         rel_base = os.path.relpath(base, root)
@@ -134,8 +154,9 @@ def add(items, seen, cat, name, path, root, text, index, detail=None):
 def inventory(sources):
     items, seen = [], set()
     files_by_role = defaultdict(int)
-    for role, root in sources:
-        for path, text in walk(root):
+    for role, target in sources:
+        root = repo_root(target) if os.path.isfile(target) else target
+        for path, text in walk(target):
             files_by_role[role] += 1
             ext = os.path.splitext(path)[1].lower()
             if ext == ".cs":
@@ -325,7 +346,14 @@ def needles(item):
             out.append(norm(detail))
         if cat == "tabela" and detail.startswith("DbSet "):
             out.append(norm(detail[6:]))
-    return [n for n in out if len(n) >= 3]
+    # 0056: sigla de 2 caracteres ("A3", "5S") e termo do glossario — antes caia no corte de 3 letras e nunca casava
+    return [n for n in out if len(n) >= 3 or (cat == "termo" and len(n) == 2 and short_term(name))]
+
+
+def short_term(raw):
+    """Sigla curta que vale como termo (0056): 2 caracteres alfanumericos com digito, ou em maiusculas no original."""
+    s = (raw or "").strip()
+    return len(s) == 2 and s.isalnum() and (any(c.isdigit() for c in s) or s.isupper())
 
 
 def strong_text(doc):
@@ -359,11 +387,40 @@ def glossary_text(doc):
     return " \n ".join(out)
 
 
+def glossary_gaps(doc):
+    """
+    Lacunas que listam termos fora do glossario (0056) — o guia (references/banco.md) manda registrar o termo que nao e
+    do dominio, ou e de outro modulo, num GAP com o motivo, e ele conta como coberto. Vale o GAP cujo titulo fala de
+    termos/glossario (todo o bloco) e, em qualquer GAP, a linha "**Termos:** a, b, c". -> [(GAP-ID, texto normalizado)]
+    """
+    out, current, buf, whole = [], None, [], False
+    def flush():
+        if current and buf:
+            out.append((current, norm(" \n ".join(buf))))
+    for line in doc.splitlines():
+        m = ID_HEADING.match(line)
+        if m or re.match(r"^#{1,4}\s", line):
+            flush()
+            current, buf, whole = None, [], False
+            if m and m.group(2).upper() == "GAP":
+                current = f"GAP-{int(m.group(3)):03d}"
+                whole = bool(re.search(r"(?i)termos?|gloss[aá]rio", line))
+                if whole:
+                    buf.append(line)
+            continue
+        if current and (whole or re.search(r"(?i)\*\*termos?:?\*\*", line)):
+            buf.append(line)
+    flush()
+    return out
+
+
 def coverage(inv, doc_text, doc_type, max_missing):
     cats = DOC_CATEGORIES.get(doc_type, [])
     doc_norm = norm(doc_text)
     strong_norm = norm(strong_text(doc_text))
     glossary_norm = norm(glossary_text(doc_text))
+    gaps = glossary_gaps(doc_text)
+    outside = []  # 0056: termos cobertos por estarem numa lacuna "fora do glossário"
     evidence = defaultdict(list)
     for m in R_EVIDENCE.finditer(doc_text):
         start = int(m.group(2))
@@ -385,6 +442,11 @@ def coverage(inv, doc_text, doc_type, max_missing):
             hit = any(s - 5 <= it["line"] <= e + 5 for s, e in evidence.get(base, []))
         if it["cat"] == "termo":
             hit = any(contains(text, n) for n in needles(it))  # termo só conta no glossário (sem evidência de arquivo)
+            if not hit:
+                gap = next((g for g, t in gaps if any(contains(t, n) for n in needles(it))), None)
+                if gap:
+                    hit = True
+                    outside.append({"name": it["name"], "gap": gap})
         if hit:
             covered += 1
             c["covered"] += 1
@@ -392,7 +454,7 @@ def coverage(inv, doc_text, doc_type, max_missing):
             missing.append(it)
     ratio = None if total == 0 else round(covered / total, 4)
     return {"docType": doc_type, "total": total, "covered": covered, "ratio": ratio, "byCategory": by_cat,
-            "missing": missing[:max_missing], "missingCount": len(missing)}
+            "missing": missing[:max_missing], "missingCount": len(missing), "outsideGlossary": outside[:300]}
 
 
 # ── ids e juntar ─────────────────────────────────────────────────────────────────────────────
@@ -585,7 +647,9 @@ STOP = set("a o as os um uma de do da dos das em no na nos nas por para pra com 
 
 
 def words(text):
-    return {w[:-2] if len(w) > 5 else w for w in re.findall(r"[a-z0-9]{3,}", norm(text)) if w not in STOP}
+    # 0056: "a3", "5s" (2 caracteres com digito) tambem contam — "Como criar um A3?" precisa casar com o FAQ do A3
+    return {w[:-2] if len(w) > 5 else w for w in re.findall(r"[a-z0-9]+", norm(text))
+            if w not in STOP and (len(w) >= 3 or (len(w) == 2 and any(c.isdigit() for c in w)))}
 
 
 def perguntas(doc_path, questions_path, out=None):
@@ -637,8 +701,8 @@ def main(argv):
         sources = []
         for spec in argv[3:]:
             role, _, path = spec.partition("=")
-            if not path or not os.path.isdir(path):
-                print(f"ERRO: pasta inexistente: {spec}", file=sys.stderr)
+            if not path or not os.path.exists(path):  # 0056: pasta ou arquivo
+                print(f"ERRO: caminho inexistente: {spec}", file=sys.stderr)
                 return 2
             sources.append((role or "backend", os.path.abspath(path)))
         inv = inventory(sources)
