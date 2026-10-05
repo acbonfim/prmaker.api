@@ -10,6 +10,13 @@ permissions:
   contents: read
   id-token: write
 
+# Um deploy por vez: dois merges seguidos não disputam o mesmo Cloud Run Job de migração nem deixam
+# o run mais antigo terminar por último (código velho no ar). Sem cancel-in-progress o que está rodando
+# termina; dos pendentes, o GitHub mantém só o mais novo — ele já contém os commits dos descartados.
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
 env:
   GCP_REGION: ${{ vars.GCP_REGION }}
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -22,14 +29,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # watch: caminhos que, se mudarem desde o que está no ar, exigem novo build/deploy (vazio = sempre).
+          # migrations: caminhos que, se mudarem desde o que está no ar, exigem rodar o job de migração.
           - name: pullrequest
             service: cime-pullrequest
             dockerfile: CIME/modules/Solvace.PullRequests/src/solvace.prform.api/Dockerfile
             secrets: cime-pullrequest-secrets
+            watch: ""
+            migrations: ":(glob)CIME/modules/**/Migrations/** :(exclude)CIME/modules/Cime.Auth/** CIME/modules/Cime.BuildingBlocks/src/Cime.BuildingBlocks.Persistence"
           - name: auth
             service: cime-auth
             dockerfile: CIME/modules/Cime.Auth/src/cime.auth.api/Dockerfile
             secrets: cime-auth-secrets
+            # A auth.api não referencia outros projetos: só o próprio módulo e o que é da raiz do build.
+            watch: "CIME/modules/Cime.Auth Directory.Build.props global.json .dockerignore"
+            migrations: "CIME/modules/Cime.Auth/src/cime.auth.api/Migrations"
 
     steps:
       - uses: actions/checkout@v4
@@ -41,13 +55,45 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+      # O gcloud já vem instalado no ubuntu-latest (o setup-gcloud custava ~18 s por job).
+
+      # Compara o que está no ar (a tag da imagem da revisão é o SHA do deploy) com este commit.
+      # Qualquer dúvida (serviço novo, tag fora do padrão, SHA que não dá para buscar) = faz tudo.
+      - id: plan
+        name: Planejar (o que mudou desde o que está no ar)
+        env:
+          WATCH: ${{ matrix.watch }}
+          MIGRATIONS: ${{ matrix.migrations }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -uf
+          build=true; migrate=true; reason="execução manual ou sem referência do que está no ar"
+
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            DEPLOYED="$(gcloud run services describe "${SERVICE}" --region "${GCP_REGION}" --project "${GCP_PROJECT_ID}" \
+              --format='value(spec.template.spec.containers[0].image)' 2>/dev/null | sed -n 's/.*:\([0-9a-f]\{40\}\)$/\1/p' || true)"
+
+            if [ -n "${DEPLOYED}" ] && git fetch --no-tags --depth=1 --quiet origin "${DEPLOYED}" 2>/dev/null; then
+              reason="no ar: ${DEPLOYED:0:7}"
+              build=false; migrate=false
+              # Sem WATCH, o serviço sempre faz deploy. Word splitting intencional (set -f: sem glob do shell).
+              if [ -z "${WATCH}" ] || ! git diff --quiet "${DEPLOYED}" "${GITHUB_SHA}" -- ${WATCH}; then build=true; fi
+              if ! git diff --quiet "${DEPLOYED}" "${GITHUB_SHA}" -- ${MIGRATIONS}; then migrate=true; fi
+              # Migração pendente sem build não faz sentido: o código que a usa não subiria.
+              if [ "${migrate}" = "true" ]; then build=true; fi
+            fi
+          fi
+
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+          echo "migrate=${migrate}" >> "$GITHUB_OUTPUT"
+          echo "${SERVICE}: build=${build} migrate=${migrate} (${reason})" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Configurar Docker para o Artifact Registry
+        if: steps.plan.outputs.build == 'true'
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build & Push
+        if: steps.plan.outputs.build == 'true'
         run: |
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${{ matrix.name }}"
           docker build -f "${{ matrix.dockerfile }}" -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
@@ -57,7 +103,10 @@ jobs:
       # Migrações fora do startup (0018): a mesma imagem roda "--migrate" num Cloud Run Job, com a
       # conta de runtime e o secret JSON do serviço montado como no serviço. Falhou → o job sai com
       # erro, o passo falha e o deploy abaixo não acontece (a revisão atual segue servindo).
+      # Só roda quando há migration nova desde o que está no ar (ver "Planejar"): o job leva minutos
+      # para subir no Cloud Run, mesmo quando as migrações em si levam segundos.
       - name: Migrações (Cloud Run Job)
+        if: steps.plan.outputs.migrate == 'true'
         run: |
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${{ matrix.name }}:${GITHUB_SHA}"
           JOB="${{ matrix.service }}-migrate"
@@ -75,6 +124,7 @@ jobs:
           gcloud run jobs execute "${JOB}" --region "${GCP_REGION}" --project "${GCP_PROJECT_ID}" --wait --quiet
 
       - name: Deploy no Cloud Run
+        if: steps.plan.outputs.build == 'true'
         run: |
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${{ matrix.name }}:${GITHUB_SHA}"
           gcloud run deploy "${{ matrix.service }}" \
