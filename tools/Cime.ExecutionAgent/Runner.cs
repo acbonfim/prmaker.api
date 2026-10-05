@@ -188,7 +188,8 @@ public sealed class Runner(AgentConfig config)
         {
             _revoked = true;
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        // timeout do HttpClient também é OperationCanceledException: só o desligamento (ct) interrompe
+        catch (Exception e) when (!ct.IsCancellationRequested)
         {
             Log.Warn($"sinal de vida falhou: {e.Message}");
         }
@@ -206,7 +207,7 @@ public sealed class Runner(AgentConfig config)
             if (problems.Count > 0)
                 Log.Warn($"doctor: problemas em {string.Join(", ", problems)}");
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (!ct.IsCancellationRequested)
         {
             Log.Warn($"doctor falhou: {e.Message}");
         }
@@ -273,7 +274,15 @@ public sealed class Runner(AgentConfig config)
         await Delay(initialDelay ?? TimeSpan.Zero, ct);
         while (!ct.IsCancellationRequested)
         {
-            await action();
+            try
+            {
+                await action();
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                // um laço de fundo nunca morre (sem o sinal de vida o executor não se atualiza nem se reporta)
+                Log.Warn($"tarefa de fundo falhou: {e.Message}");
+            }
             await Delay(interval, ct);
         }
     }
