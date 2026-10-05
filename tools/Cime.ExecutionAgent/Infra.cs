@@ -187,7 +187,7 @@ public sealed class PrmakeClient : IDisposable
     public Task DoctorAsync(DoctorRequest request, CancellationToken ct) =>
         PostAsync("ExecutionWorker/doctor", request, AgentJson.Default.DoctorRequest, AgentJson.Default.WorkerInfo, ct);
 
-    /// <summary>Long-poll: null = nada na fila.</summary>
+    /// <summary>Consulta a fila (<paramref name="waitSeconds"/> = 0: responde na hora): null = nada na fila.</summary>
     public async Task<ClaimResponse?> NextAsync(int waitSeconds, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
