@@ -431,7 +431,7 @@ case "$CMD" in
       RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
     elif [[ -s "$INV" ]]; then
       EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
-      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}" "${EXTRA[@]}"
+      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$(docdir "$MOD" "$DOC")/cobertura.json" --max "${RE_MAX_MISSING:-60}" "${EXTRA[@]+"${EXTRA[@]}"}"
       RATIO="$(jq -r '.ratio // "null"' "$(docdir "$MOD" "$DOC")/cobertura.json")"
     else
       echo "(sem inventario — rode: re.sh inventario $MOD)"
@@ -459,7 +459,7 @@ case "$CMD" in
       python3 "$TOOL_PY" perguntas "$F" "$(docdir "$MOD" "$DOC")/perguntas.json" --json "$COV" >/dev/null
     elif [[ -s "$INV" ]]; then
       EXTRA=(); while IFS= read -r x; do EXTRA+=("$x"); done < <(extra_inv "$MOD")
-      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$COV" --max 0 "${EXTRA[@]}" >/dev/null
+      python3 "$TOOL_PY" cobertura "$INV" "$F" "$DOC" --json "$COV" --max 0 "${EXTRA[@]+"${EXTRA[@]}"}" >/dev/null
     fi
     [[ -s "$COV" ]] || echo '{}' > "$COV"
     FONTES="$(moddir "$MOD")/fontes.tsv"; [[ -s "$FONTES" ]] || : > "$FONTES"

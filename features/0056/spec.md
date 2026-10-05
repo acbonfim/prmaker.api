@@ -125,11 +125,16 @@ Avisos da sessão (texto do usuário):
   células. A tabela já tem rolagem horizontal (`display: block; overflow-x: auto`), mas nunca precisa dela, porque as
   colunas aceitam ficar com 1 caractere.
 - **Esperado, nas duas telas (Engenharia reversa e Base Solvace) e no preview da revisão:**
-  - células com `overflow-wrap: normal` e `word-break: normal`, quebrando só entre palavras;
-  - largura mínima por coluna (~10–14ch);
-  - código inline longo (caminhos, `hdnAction=…`) quebra em `/`, `.`, `_`, `=`; quando não couber, a tabela rola na
-    horizontal em vez de espremer;
-  - cabeçalho sem quebra estranha.
+  - células com `overflow-wrap: normal` e `word-break: normal` (quebra só entre palavras — nunca "anywhere", que
+    reduz a largura mínima da coluna a 1 caractere), com uma largura mínima por coluna (~9ch);
+  - **código/identificador inline nunca quebra** (`white-space: nowrap` no `code`) — um token sem espaços (caminho,
+    `hdnAction=…`) forçando quebra no meio da palavra ficava tão ruim quanto o bug original; sem couber, é a
+    **tabela** que rola na horizontal (já tinha `overflow-x: auto`, só nunca precisava por causa do bug);
+  - cabeçalho sem quebra (`white-space: nowrap` no `th`) e sem a quebra estranha de antes.
+- **Validado** (antes de aplicar) com uma página HTML isolada reproduzindo a tabela do Registro do A3 citada pelo
+  usuário, em duas larguras — confirmou que a primeira tentativa (`overflow-wrap: break-word` + pontos de quebra
+  extras) ainda forçava quebra no meio de identificadores longos; a versão final (`nowrap` no `code`) não quebra
+  nenhuma palavra, só ativa a rolagem da tabela quando preciso.
 - **Teste:** o documento real do SA3 com a tabela de rastreabilidade, em 1366px e 1920px, com print.
 
 ## Fora do escopo
