@@ -41,7 +41,14 @@ Aba inicial e faixa de 30 px · abrir card na aba (nome `#card`, ícones de plan
 
 **Limitações conhecidas**: sem integração com o DevOps (como no teste) a aba mostra "Pull Request" no lugar do título do card; o histórico do navegador é único (trocar de aba usa `replaceUrl`); requisições em andamento de uma tela que acabou de ficar inativa podem gravar no estado compartilhado (janela curta).
 
+### Ajustes pós-entrega (2026-10-05) ✅
+- **Aba da engenharia reversa**: só o ícone da tela + módulo aberto + status (`gerando`, `em revisão`, `ajustes`, `aprovado`, `rascunho`, `completo` ou `x/y` publicados). Nova API em `TabsService`: `setMeta(tabId, {label, status})` e `bindScreen()` (a tela só atualiza a aba quando é a ativa); `Tab.label`/`Tab.status` são gravados com as abas.
+- **Armadilhas, Termos, Como gerar e Fontes e apelidos** viram botões no cabeçalho do módulo que abrem **popover** (PrimeNG, `styleClass="re-popover"`, folha cheia no celular). Como nascem fechados, o item "armadilhas recolhidas" fica atendido; "Termos" só aparece quando há termos a decidir (some o recolher/lembrar do `localStorage`). O "Como gerar" deixou de abrir sozinho em módulo vazio; o link "Ver o passo a passo" do estado vazio abre o popover.
+- **Voltar ao topo**: `app-re-revision` ganhou a saída `decided` (aprovar, publicar, pedir ajustes, descartar — salvar rascunho não conta); a tela rola o `.content-area` para o topo.
+- Teste e2e (Chrome headless + API + Postgres isolado, 15 verificações): aba, 4 popovers abrem/fecham, termo → apelido, troca de aba mantém módulo/status, publicar volta ao topo (798 → 0) e a aba passa a `1/6`. Build dev e produção ok.
+
 ## Log
 
 - 2026-10-05 — Spec, plano e status escritos; worktrees `prform.api-0065` e `prform-app-0065` criados a partir da `master`.
 - 2026-10-05 — B1, F1–F5 implementadas e testadas ponta a ponta (Q1); PRs abertos e mesclados juntos (merge autorizado pelo usuário).
+- 2026-10-05 — Ajustes da engenharia reversa (aba, popovers, topo após decidir); merge autorizado pelo usuário.
