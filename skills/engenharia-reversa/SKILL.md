@@ -1,6 +1,6 @@
 ---
 name: engenharia-reversa
-description: Faz a engenharia reversa PROFUNDA de um modulo Solvace (legado ou revamp, back e front) com o Claude aberto no repositorio do modulo — levantamento funcional, levantamento de arquitetura, UI/UX (com Figma/prototipo), especificacao de visao, especificacao de arquitetura e especificacao de design — com TODAS as regras de negocio, casos de uso, integracoes entre modulos e tecnologias, em itens com ID (RN-012, UC-003, API-004...). Cada documento vai para aprovacao no PRMake e, publicado, fica ativo na Base Solvace (as analises consultam por item, sem ir ao codigo). Use quando o usuario pedir "engenharia reversa do modulo", "levantamento funcional", "levantamento de arquitetura", "especificacao de visao/arquitetura/design", "mapear UI/UX", "melhorar/refazer a engenharia reversa", "/engenharia-reversa".
+description: Faz a engenharia reversa PROFUNDA de um modulo Solvace (legado ou revamp, back e front) com o Claude aberto no repositorio do modulo — levantamento funcional, levantamento de arquitetura, UI/UX (com Figma/prototipo), especificacao de visao, especificacao de arquitetura e especificacao de design — com TODAS as regras de negocio, casos de uso, integracoes entre modulos e tecnologias, em itens com ID (RN-012, UC-003, API-004...). Cada documento vai para aprovacao no PRMake e, publicado, fica ativo na Base Solvace (as analises consultam por item, sem ir ao codigo). Use quando o usuario pedir "engenharia reversa do modulo", "levantamento funcional", "levantamento de arquitetura", "especificacao de visao/arquitetura/design", "mapear UI/UX", "melhorar/refazer a engenharia reversa", "mapear a infra/AWS do modulo" (esteiras, buckets, segredos, logs), "/engenharia-reversa".
 model: opus
 ---
 
@@ -28,6 +28,7 @@ da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve 
 | `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado); a `pratica` so depois que esses forem **publicados** (aprovacao humana) — avise o usuario e pare |
 | `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
+| `/engenharia-reversa <modulo> infra` | **opcional**: mapeia a infra do modulo na AWS (esteiras de deploy, Lambdas, buckets, segredos por nome, logs no CloudWatch) e envia para a aba **Infra** da tela — veja "Infra na AWS" abaixo |
 | `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
 
 ## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
@@ -80,7 +81,8 @@ ao usuario e so siga sem o banco se ele mandar (e registre `GAP`). Depois `bash 
 com os rotulos do codigo) que o **glossario** precisa cobrir. Como documentar objetos do
 banco e o glossario: `references/banco.md` (leia antes de escrever arquitetura ou funcional).
 
-**3c. Infra na AWS (OPCIONAL, 0058)** — `bash $RE infra <modulo>`: so quando o usuario pedir (ou aceitar a oferta). Le a AWS
+**3c. Infra na AWS (OPCIONAL, 0058)** — e o comando `/engenharia-reversa <modulo> infra` (secao "Infra na AWS" abaixo); dentro
+de uma sessao de documento, so quando o usuario pedir (ou aceitar a oferta) — internamente `bash $RE infra <modulo>`. Le a AWS
 pelo **AWS CLI, somente leitura** (a conta vem da configuracao do PRMake; o perfil e achado na maquina) e mapeia tudo:
 Lambdas, buckets S3, **esteiras de deploy** (CodePipeline/CodeBuild/CodeDeploy + GitHub Actions/buildspec dos repositorios),
 **segredos consultados** (so nomes e ultimo acesso — nunca o valor), **logs no CloudWatch**, filas, topicos, regras,
@@ -125,6 +127,21 @@ itens por tipo, cobertura, avisos e onde aprovar. Rascunho intermediario (sem en
   recusada, e o card de origem fica sabendo pela Timeline). Sugestao sem decisao continua pendente.
 - **refazer**: escreva do zero, mas reaproveite o ID de cada assunto que continua existindo (`publicado.md` e
   `bash $RE ids <modulo>` mostram os IDs atuais).
+
+## Infra na AWS (0058/0059) — `/engenharia-reversa <modulo> infra`
+Etapa **opcional**, fora dos documentos: o resultado vai para a aba **Infra** do modulo na tela (recursos, esteiras de deploy,
+segredos so por nome, logs) e serve de fonte para a secao "Infraestrutura e AWS (opcional)" do levantamento de arquitetura.
+1. Atualizar (passo 0) e `bash $RE modulo <modulo>`.
+2. Sem `~/.prmake/reverse/<modulo>/inventario.json`: `bash $RE inventario <modulo>` (mesmas regras do passo 3, inclusive `--path`
+   no legado) — a infra liga os recursos ao que o codigo cita e le as esteiras dos repositorios.
+3. **Confirme com o usuario** antes de ler a AWS (uma vez por sessao): conta e regioes vem do PRMake
+   (`ReverseEngineeringInfra`); o perfil do AWS CLI e achado na maquina. A conta inteira leva ~15 min.
+4. `bash $RE infra <modulo>` (outra conta/regiao: `--account`/`--region`; recurso que o nome nao pega: `--termo <t>`). Ele mapeia,
+   liga ao modulo e **envia para a aba Infra** (substitui a leitura anterior).
+5. Leia `infra/modulo.md` e diga ao usuario: recursos do modulo por servico, esteiras, segredos, grupos de log, o que ficou
+   **sem permissao** (mapa incompleto) e que o resultado esta na aba **Infra** do modulo. Ligacao duvidosa → diga.
+6. Com sessao de `arquitetura` aberta (ou na proxima `melhorar arquitetura`), escreva os itens `INF-…` a partir do `modulo.md`
+   (`references/infra.md`).
 
 ## Visao pratica (0054) — `/engenharia-reversa <modulo> pratica`
 O guia do sistema para quem usa (QA, suporte, gestores, clientes): o que e e onde fica (**legado ou revamp**), como
