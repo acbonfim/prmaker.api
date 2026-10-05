@@ -37,7 +37,8 @@ local, e se diverge entre plantas). A análise de bug usa isso para saber onde o
 
 ## Glossário (seção obrigatória do funcional)
 `re.sh termos <módulo>` monta `inventario-termos.json`: rótulos da tela (legado `GetLanguageByName`, i18n do front),
-menus e aplicação no banco, siglas — com as traduções EN/ES do `TB_WCM_LANGUAGE`. A cobertura do funcional exige **cada
+menus e aplicação no banco, siglas — com as traduções EN/ES do **Multilingual do revamp** (0056: `re.sh traducoes`, que
+roda sozinho no fim do `re.sh banco`; o `TB_WCM_LANGUAGE` do SQL Server é legado). A cobertura do funcional exige **cada
 termo** no glossário (título ou `**Sinônimos:**` de um `GLO`). Junte variações num item só:
 ```
 ### GLO-003 — A3
@@ -55,3 +56,15 @@ Rótulos genéricos de interface e o nome de outro módulo (Kaizen → legado-kz
 ```
 Siglas de 2 caracteres com dígito ou em maiúsculas (`A3`, `5S`) contam como termo. Os sinônimos viram busca:
 publicado, "RCA" acha os itens que dizem "A3".
+
+## Traduções — Multilingual do revamp (0056)
+- Fonte: Aurora PostgreSQL do Multilingual, schema `multilingual` (`term_key` → `translation` → `language`). A chave do
+  termo é o **texto em português** (`term_key_portuguese_br`, o mesmo `TERM_NAME` do legado), então os rótulos do código
+  (`GetLanguageByName("Elaborador")`) casam direto. Só os termos do módulo são lidos (lotes), nunca a tabela inteira.
+- Configuração no PRMake (chave `ReverseEngineeringTranslations`): ambiente, schema, idiomas, o arquivo de credencial e o
+  secret. **Credencial só na máquina**, em `~/.claude/multilingual-credentials.json`, no bloco do ambiente (`prod`) — pode
+  colar o JSON do secret como vem da AWS:
+  `aws secretsmanager get-secret-value --secret-id multilingual/production --query SecretString --output text`
+  (`{"prod": {"Host": …, "Port": …, "DbName": …, "UserName": …, "Password": …}}`). Sessão somente leitura.
+- Sem credencial ou sem VPN: `re.sh traducoes` explica e o glossário segue com os rótulos do código (a etapa do banco não
+  falha por isso). Tradução customizada por cliente (`custom_translation`) fica de fora — a referência é o produto.

@@ -11,7 +11,7 @@
       IDs definidos (### RN-012 ...) em varios documentos locais - para nao repetir ID entre documentos da mesma sessao.
   re_tool.py termos <inventario.json> [--banco <pasta-banco>] [--exclusoes '<json>'] --out <inventario-termos.json>
       Termos do modulo para o GLOSSARIO (0053): rotulos da tela (GetLanguageByName do legado, i18n do front), menus e
-      aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do TB_WCM_LANGUAGE. A cobertura do funcional exige
+      aplicacao do banco da DEMO, siglas; com as traducoes (EN/ES) do Multilingual do revamp (re_traducoes.py, 0056). A cobertura do funcional exige
       cada termo no glossario (titulo ou Sinonimos de um GLO). Palavras genericas de interface ficam fora (exclusoes).
   re_tool.py perguntas <documento.md> <perguntas.json> [--json saida.json]
       VISAO PRATICA (0054): quais perguntas reais do Pergunte o documento responde (titulo/corpo de um FAQ/TUT com as
@@ -56,7 +56,27 @@ def norm(text):
     return re.sub(r"[^a-z0-9_/.:-]+", " ", text).strip()
 
 
+def repo_root(path):
+    """Raiz do repositorio (pasta com .git) acima do arquivo — o caminho do inventario fica relativo a ela (0056)."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.path.dirname(os.path.abspath(path))
+        d = parent
+
+
 def walk(root):
+    if os.path.isfile(root):  # 0056: fonte arquivo (--path repo=helpers/Sa3Service.cs ou glob expandido)
+        try:
+            if os.path.getsize(root) <= MAX_FILE:
+                with open(root, encoding="utf-8", errors="replace") as fh:
+                    yield root, fh.read()
+        except OSError:
+            pass
+        return
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
         rel_base = os.path.relpath(base, root)
@@ -134,8 +154,9 @@ def add(items, seen, cat, name, path, root, text, index, detail=None):
 def inventory(sources):
     items, seen = [], set()
     files_by_role = defaultdict(int)
-    for role, root in sources:
-        for path, text in walk(root):
+    for role, target in sources:
+        root = repo_root(target) if os.path.isfile(target) else target
+        for path, text in walk(target):
             files_by_role[role] += 1
             ext = os.path.splitext(path)[1].lower()
             if ext == ".cs":
@@ -680,8 +701,8 @@ def main(argv):
         sources = []
         for spec in argv[3:]:
             role, _, path = spec.partition("=")
-            if not path or not os.path.isdir(path):
-                print(f"ERRO: pasta inexistente: {spec}", file=sys.stderr)
+            if not path or not os.path.exists(path):  # 0056: pasta ou arquivo
+                print(f"ERRO: caminho inexistente: {spec}", file=sys.stderr)
                 return 2
             sources.append((role or "backend", os.path.abspath(path)))
         inv = inventory(sources)

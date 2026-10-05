@@ -40,4 +40,6 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringGlossaryExclusions = "ReverseEngineeringGlossaryExclusions";
     /// <summary>0054: seção antiga da Base Solvace → documentos da engenharia reversa que a substituem (JSON).</summary>
     public const string ReverseEngineeringSupersedes = "ReverseEngineeringSupersedes";
+    /// <summary>0056: de onde vêm as traduções do glossário — o Multilingual do revamp (JSON; credencial só local).</summary>
+    public const string ReverseEngineeringTranslations = "ReverseEngineeringTranslations";
 }

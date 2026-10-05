@@ -33,8 +33,16 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             CanApprove = CanApprove(s, userRoles),
             Kinds = ReverseItemKinds.All.Select(k => new ReverseItemKindResponse { Prefix = k.Prefix, Label = k.Label, Plural = k.Plural }).ToList(),
             ReferenceDatabase = ToReference(s.ReferenceDatabase),
-            GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList()
+            GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
+            Translations = ParseJson(s.Translations ?? ReverseSettings.DefaultTranslations)
         };
+    }
+
+    private static System.Text.Json.JsonElement? ParseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { using var doc = System.Text.Json.JsonDocument.Parse(json); return doc.RootElement.Clone(); }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private static ReverseReferenceDatabaseResponse? ToReference(ReverseReferenceDatabase? r) => r is null ? null : new()

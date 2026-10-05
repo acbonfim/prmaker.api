@@ -62,7 +62,9 @@ O ponto de partida antigo: `bash $KB show <modulo> <secao>` das secoes listadas.
 legado), permissoes, tabelas, eventos/filas, jobs, handlers, procedures, rotas/componentes/chamadas HTTP do front,
 paginas `.asp`, chaves de config. **E a lista do que o documento precisa cobrir — sem excecao.** Legado (`edv-solvace`)
 exige a subpasta do modulo: `--path edv-solvace=solvace-asp/systems/<sigla>` (veja "Onde esta" em `kb.sh show <modulo>
-modulos`; pode repetir `--path` para `solvace-core/<modulo>`). Revamp: o back (`revamp-<X>`) e o front
+modulos`; pode repetir `--path` para `solvace-core/<modulo>` — a primeira pasta substitui a da tela, as demais somam;
+arquivo e glob tambem somam, ex. `--path edv-solvace='solvace-core/helpers/**/Sa3*.cs'` para os servicos .NET que ficam
+junto com os de outros modulos). Revamp: o back (`revamp-<X>`) e o front
 (`edv-solvace-apps/projects/<x>`) sao fontes do mesmo modulo — fonte faltando: peca ao usuario/aprovador para cadastrar
 na tela (Fontes) ou use `--path`.
 
@@ -73,7 +75,9 @@ views, procedures, functions, **triggers**, colunas/chaves/**check constraints**
 de cada objeto em `~/.prmake/reverse/<modulo>/banco/`. **Nunca** use os scripts `solvace-asp/#database/…` nem migracoes
 versionadas (desatualizados). Sem acesso (VPN/credencial) → a etapa fica **falha no andamento** com o que fazer; diga
 ao usuario e so siga sem o banco se ele mandar (e registre `GAP`). Depois `bash $RE termos <modulo>`: os termos da tela
-(rotulos traduzidos, menus, siglas, traducoes EN/ES) que o **glossario** precisa cobrir. Como documentar objetos do
+(rotulos traduzidos, menus, siglas, traducoes EN/ES do **Multilingual do revamp** — lidas no fim do `banco` pelo
+`re.sh traducoes`; sem a credencial `~/.claude/multilingual-credentials.json` ele explica como obter e o glossario segue
+com os rotulos do codigo) que o **glossario** precisa cobrir. Como documentar objetos do
 banco e o glossario: `references/banco.md` (leia antes de escrever arquitetura ou funcional).
 
 **4. Ler o codigo e escrever** — `references/escrever.md` (leia **inteiro** antes de escrever; e curto). Resumo:

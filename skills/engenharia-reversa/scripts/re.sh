@@ -10,15 +10,19 @@
 #                                     abre/retoma a sessao do documento e grava o pacote em $RE_HOME/<modulo>/<doc>/:
 #                                     modelo.md, publicado.md, sugestoes.md, relacionados.md, nota-revisor.md, anexos/,
 #                                     documento.md (o rascunho — escreva aqui) e sessao.json
-#   fontes <modulo> [--path repo=subpasta ...]
-#                                     pastas locais das fontes (mapa da maquina); legado sem subpasta = erro (o
-#                                     edv-solvace inteiro nao e um modulo)
+#   fontes <modulo> [--path repo=subpasta|arquivo|glob ...]
+#                                     caminhos locais das fontes (mapa da maquina); legado sem subpasta = erro (o
+#                                     edv-solvace inteiro nao e um modulo). --path com PASTA substitui a do repo; com
+#                                     ARQUIVO, GLOB ou outra pasta do mesmo repo soma (0056): --path edv-solvace='solvace-core/helpers/**/Sa3*.cs'
 #   inventario <modulo> [--path repo=subpasta ...]
 #                                     inventario deterministico do codigo -> $RE_HOME/<modulo>/inventario.json
 #   banco <modulo> [--prefix TB_X_ ...] [--sigla X]
 #                                     CATALOGO DO BANCO DA DEMO (0053, somente leitura): views, procedures, functions,
 #                                     triggers, tabelas (colunas, chaves, checks) e jobs do SQL Agent do modulo, global e
 #                                     locais -> $RE_HOME/<modulo>/banco/ (+ inventario-banco.json para a cobertura)
+#   traducoes <modulo>                TRADUCOES (0056) dos rotulos do modulo no Multilingual do revamp (PostgreSQL, somente
+#                                     leitura; credencial em ~/.claude/multilingual-credentials.json) -> banco/traducoes.json
+#                                     (roda sozinho no fim do `banco`)
 #   termos <modulo>                   termos do modulo para o GLOSSARIO (rotulos da tela, menus, siglas, traducoes)
 #   trabalho <modulo> <doc>           MELHORAR (0053): o que mudou no codigo (commits) e no banco desde a versao
 #                                     publicada e os itens afetados -> trabalho.md
@@ -61,6 +65,10 @@ BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL_PY="$HERE/re_tool.py"
 BANCO_PY="$HERE/re_banco.py"
+TRAD_PY="$HERE/re_traducoes.py"
+# 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
+MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
+[[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
 SQL_SH="${RE_SQL:-$HOME/.claude/skills/analisar-bug/scripts/sql-query.sh}"
 RE_HOME="${RE_HOME:-${PRMAKE_HOME:-$HOME/.prmake}/reverse}"
 SKILLS_TOOL="${PRMAKE_SKILLS_TOOL:-$HOME/.claude/skills/.prmake/prmake-skills.sh}"
@@ -91,32 +99,59 @@ repo_path() {
   return 2
 }
 
-# Fontes do modulo -> linhas "papel<TAB>pasta" (aplica --path repo=subpasta).
+# 0056: caminho da fonte -> o que existe: pasta, arquivo ou glob ("helpers/**/Sa3*.cs") expandido em arquivos.
+expand_path() { # <raiz> <sub>
+  python3 - "$1" "$2" <<'PY'
+import glob, os, sys
+root, sub = sys.argv[1], sys.argv[2]
+p = os.path.join(root, sub) if sub else root
+if any(c in sub for c in "*?["):
+    for f in sorted(glob.glob(p, recursive=True)):
+        if os.path.isfile(f):
+            print(f)
+elif os.path.exists(p):
+    print(p)
+PY
+}
+is_pattern() { [[ "$1" == *[\*\?\[]* ]]; }
+
+# Fontes do modulo -> linhas "papel<TAB>caminho" (pasta ou arquivo). --path repo=pasta SUBSTITUI a pasta do repo (como
+# antes); --path repo=arquivo ou repo=glob SOMA (0056: ex. --path edv-solvace=helpers/**/Sa3*.cs mantem systems/sa3).
 resolve_sources() { # <modulo> [--path repo=sub ...]
   local mod="$1"; shift
   api GET "/modules/$(urlenc "$mod")"; check
   cp "$TMP/resp" "$TMP/module.json"
   local overrides=(); while [[ $# -gt 0 ]]; do [[ "$1" == --path ]] && overrides+=("$2"); shift; done
   local kind; kind="$(jq -r '.projectKind' "$TMP/module.json")"
-  local n=0 missing=0
+  local n=0 missing=0 used="|"
   # separador \x1f (nao e espaco): campo vazio (fonte sem subpasta) nao colapsa como o tab no read
   while IFS=$'\x1f' read -r repo sub role; do
     [[ -z "$repo" ]] && continue
-    for o in "${overrides[@]:-}"; do [[ "${o%%=*}" == "$repo" ]] && sub="${o#*=}"; done
     local root; root="$(repo_path "$repo")" || { echo "FALTA: repositorio '$repo' nao esta no mapa da maquina — clone/fixe com: prmake-skills.sh repos set $repo <pasta>" >&2; missing=1; continue; }
+    # a PRIMEIRA --path com pasta deste repo substitui a da tela; as demais (pastas, arquivos, globs) somam abaixo
+    for o in "${overrides[@]:-}"; do
+      if [[ "${o%%=*}" == "$repo" ]] && ! is_pattern "${o#*=}" && [[ -d "$root/${o#*=}" ]]; then sub="${o#*=}"; used="$used$o|"; break; fi
+    done
     if [[ "$kind" == legacy && -z "$sub" && "$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')" == edv-solvace ]]; then
       echo "FALTA: legado sem subpasta — o edv-solvace inteiro nao e o modulo. Veja 'Onde esta' em: kb.sh show $mod modulos; rode com --path edv-solvace=<subpasta> (e peca ao aprovador para gravar as fontes na tela)" >&2
       missing=1; continue
     fi
-    local dir="$root${sub:+/$sub}"
-    [[ -d "$dir" ]] || { echo "FALTA: pasta nao existe: $dir (fonte $repo/${sub})" >&2; missing=1; continue; }
-    printf '%s\t%s\n' "${role:-backend}" "$dir"; n=$((n + 1))
+    local found=0 p
+    while IFS= read -r p; do [[ -n "$p" ]] && { printf '%s\t%s\n' "${role:-backend}" "$p"; n=$((n + 1)); found=1; }; done < <(expand_path "$root" "$sub")
+    [[ $found -eq 1 ]] || { echo "FALTA: nao existe: $root${sub:+/$sub} (fonte $repo/${sub})" >&2; missing=1; }
   done < <(jq -r '.sources[] | [.repository, (.path // ""), .role] | join("\u001f")' "$TMP/module.json")
   for o in "${overrides[@]:-}"; do
     [[ -z "$o" ]] && continue
-    jq -e --arg r "${o%%=*}" '.sources | any(.repository == $r)' "$TMP/module.json" >/dev/null && continue
-    local root; root="$(repo_path "${o%%=*}")" || { echo "FALTA: repositorio '${o%%=*}' nao esta no mapa" >&2; missing=1; continue; }
-    [[ -d "$root/${o#*=}" ]] && { printf 'backend\t%s\n' "$root/${o#*=}"; n=$((n + 1)); }
+    local orepo="${o%%=*}" osub="${o#*=}" oroot orole
+    oroot="$(repo_path "$orepo")" || { echo "FALTA: repositorio '$orepo' nao esta no mapa" >&2; missing=1; continue; }
+    # pasta de um repo que ja e fonte: ja substituiu acima; arquivo/glob soma (mesmo papel da fonte do repo)
+    [[ "$used" == *"|$o|"* ]] && continue
+    if jq -e --arg r "$orepo" '.sources | any(.repository == $r)' "$TMP/module.json" >/dev/null; then
+      orole="$(jq -r --arg r "$orepo" '[.sources[] | select(.repository == $r) | .role][0] // "backend"' "$TMP/module.json")"
+    else orole=backend; fi
+    local found=0 p
+    while IFS= read -r p; do [[ -n "$p" ]] && { printf '%s\t%s\n' "$orole" "$p"; n=$((n + 1)); found=1; }; done < <(expand_path "$oroot" "$osub")
+    [[ $found -eq 1 ]] || { echo "FALTA: --path $o nao encontrou nada" >&2; missing=1; }
   done
   [[ $n -gt 0 ]] || return 3
   return $missing
@@ -273,7 +308,8 @@ case "$CMD" in
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "inventario", status: "completed", detail: $dt, log: ("Inventario: " + $dt), kind: "progress"}')"; done
     # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio)
     while IFS=$'\t' read -r role dir; do
-      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$dir" rev-parse --short HEAD 2>/dev/null)@$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+      g="$dir"; [[ -f "$g" ]] && g="$(dirname "$g")"  # 0056: fonte pode ser um arquivo
+      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short HEAD 2>/dev/null)@$(git -C "$g" rev-parse --abbrev-ref HEAD 2>/dev/null)"
     done < "$TMP/sources" > "$(moddir "$MOD")/fontes.tsv"
     ;;
 
@@ -303,7 +339,9 @@ case "$CMD" in
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg a "Lendo o banco $ENVN (global e locais): ${PREFIXES[*]}" '{step: "banco", status: "running", activity: $a}')"; done
     if python3 "$BANCO_PY" "${ARGS[@]}" > "$TMP/banco.out"; then
       cat "$TMP/banco.out"
-      DETAIL="$(grep -m1 '^Banco' "$TMP/banco.out" | cut -c1-380)"
+      # 0056: traducoes do Multilingual (sem acesso nao barra: o glossario segue com os rotulos do codigo)
+      bash "$0" traducoes "$MOD" 2>&1 | tail -3 | tee -a "$TMP/banco.out"
+      DETAIL="$(grep -m1 '^Banco' "$TMP/banco.out" | cut -c1-300)$(grep -m1 '^Traducoes' "$TMP/banco.out" | sed 's/^/ · /' | cut -c1-120)"
       for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "banco", status: "completed", detail: $dt, log: $dt, kind: "progress"}')"; done
     else
       RC=$?; cat "$TMP/banco.out"
@@ -311,6 +349,15 @@ case "$CMD" in
       for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg m "$MSG" '{step: "banco", status: "failed", detail: $m, log: $m, kind: "error"}')"; done
       die "$MSG" 
     fi
+    ;;
+
+  traducoes)
+    MOD="${1:?modulo}"; D="$(moddir "$MOD")"
+    [[ -s "$D/inventario.json" ]] || die "rode antes: re.sh inventario $MOD"
+    mkdir -p "$D/banco"
+    api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
+    [[ -x "$MLG_PY" ]] || die "venv da skill base-solvace nao encontrado ($MLG_PY) — rode: prmake-skills.sh update --force base-solvace"
+    "$MLG_PY" "$TRAD_PY" --settings "$TMP/settings.json" --inventario "$D/inventario.json" --catalogo "$D/banco/catalogo.json" --out "$D/banco/traducoes.json"
     ;;
 
   termos)
@@ -333,13 +380,15 @@ case "$CMD" in
     while IFS=$'\x1f' read -r role path commit; do
       [[ -z "$path" ]] && continue
       sha="${commit%%@*}"
-      if [[ -z "$sha" || ! -d "$path" ]]; then echo "- $role $path: sem commit gravado/pasta ausente — revise pelo inventario completo" >> "$OUT"; continue; fi
-      if ! git -C "$path" cat-file -e "$sha^{commit}" 2>/dev/null; then echo "- $role $path: commit $sha nao existe mais neste clone — revise pelo inventario completo" >> "$OUT"; continue; fi
-      CH="$(git -C "$path" diff --name-status "$sha"..HEAD -- . 2>/dev/null)"
+      # 0056: fonte arquivo -> git na pasta dele, diff so do arquivo
+      if [[ -f "$path" ]]; then gdir="$(dirname "$path")"; gspec="$(basename "$path")"; else gdir="$path"; gspec="."; fi
+      if [[ -z "$sha" || ! -e "$path" ]]; then echo "- $role $path: sem commit gravado/caminho ausente — revise pelo inventario completo" >> "$OUT"; continue; fi
+      if ! git -C "$gdir" cat-file -e "$sha^{commit}" 2>/dev/null; then echo "- $role $path: commit $sha nao existe mais neste clone — revise pelo inventario completo" >> "$OUT"; continue; fi
+      CH="$(git -C "$gdir" diff --name-status "$sha"..HEAD -- "$gspec" 2>/dev/null)"
       echo "- $role \`$path\` desde $sha: $(printf '%s' "$CH" | grep -c . | tr -d ' ') arquivo(s)" >> "$OUT"
       printf '%s\n' "$CH" | grep . | sed 's/^/  - /' | head -200 >> "$OUT"
       # linhas alteradas (lado antigo = o que o documento publicado cita) por arquivo: "arquivo<TAB>ini-fim,ini-fim"
-      git -C "$path" diff -U0 "$sha"..HEAD -- . 2>/dev/null | awk '
+      git -C "$gdir" diff -U0 "$sha"..HEAD -- "$gspec" 2>/dev/null | awk '
         /^--- a\// { f = substr($0, 7); next }
         /^--- \/dev\/null/ { f = ""; next }
         /^\+\+\+ b\// { if (f == "") f = substr($0, 7); next }

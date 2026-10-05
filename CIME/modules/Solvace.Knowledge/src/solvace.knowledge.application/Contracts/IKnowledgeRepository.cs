@@ -85,12 +85,19 @@ public sealed record ReverseReferenceDatabase(string Environment, string Host, s
 /// <param name="GlossaryExclusions">Palavras genéricas de interface fora da cobertura de termos do glossário (0053).</param>
 /// <param name="Supersedes">0054: seção antiga da Base Solvace → documentos da engenharia reversa que a substituem (todos
 /// publicados = substituída). <c>guia-*</c> vale para as seções do Guia; <c>@armadilhas</c> = armadilhas migradas.</param>
+/// <param name="Translations">0056: de onde a skill lê as traduções do glossário — o Multilingual do revamp (PostgreSQL),
+/// JSON livre que a skill interpreta (fonte, ambiente, schema, arquivo de credencial, secret, idiomas). Sem segredo.</param>
 public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
     IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null)
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null, string? Translations = null)
 {
     public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "investigar-codigo", 0.9,
-        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes);
+        new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes, DefaultTranslations);
+
+    /// <summary>0056: traduções do produto no Multilingual do revamp (Aurora PostgreSQL, schema <c>multilingual</c>).</summary>
+    public const string DefaultTranslations = """
+        {"source": "multilingual", "environment": "prod", "schema": "multilingual", "credentials": "~/.claude/multilingual-credentials.json", "secretId": "multilingual/production", "languages": {"pt": "pt-BR", "en": "en-US", "es": "es-ES"}}
+        """;
 
     /// <summary>Documentos exigidos que são técnicos (a visão prática fica de fora: é para pessoas, não para as análises).</summary>
     public IReadOnlyList<string> TechnicalRequired => RequiredDocs.Where(d => d != domain.Reverse.ReverseDocTypes.Practical).ToList();

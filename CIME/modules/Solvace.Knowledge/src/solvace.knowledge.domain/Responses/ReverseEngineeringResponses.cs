@@ -328,4 +328,6 @@ public class ReverseSettingsResponse
     public List<ReverseItemKindResponse> Kinds { get; set; } = [];
     public ReverseReferenceDatabaseResponse? ReferenceDatabase { get; set; }
     public List<string> GlossaryExclusions { get; set; } = [];
+    /// <summary>0056: de onde a skill lê as traduções (Multilingual do revamp) — JSON livre, sem segredo.</summary>
+    public JsonElement? Translations { get; set; }
 }
