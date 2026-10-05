@@ -45,5 +45,13 @@ termo** no glossário (título ou `**Sinônimos:**` de um `GLO`). Junte variaç�
 - **Onde aparece:** TELA-001, TELA-004, menu "Melhoria → Busca de A3"
 Relatório de análise de causa raiz em uma página (problema → causas → ações → eficácia). No revamp: RCA (revamp-rca).
 ```
-Termo que não é do domínio (sobrou do filtro) ou de outro módulo: liste em `GAP-…` "termos fora do glossário" com o
-motivo — conta como coberto e o revisor vê. Os sinônimos viram busca: publicado, "RCA" acha os itens que dizem "A3".
+Termo que não é do domínio (sobrou do filtro) ou de outro módulo: liste numa lacuna com o motivo — conta como
+coberto e o revisor vê na revisão ("Fora do glossário (em lacuna)"). Vale (0056) o `GAP` com "termos"/"glossário" no
+título (todo o bloco conta) ou, em qualquer `GAP`, a linha `**Termos:**`:
+```
+### GAP-020 — Termos fora do glossário
+- **Termos:** Salvar rascunho, Kaizen, Filtro avançado
+Rótulos genéricos de interface e o nome de outro módulo (Kaizen → legado-kz), não são do domínio do A3.
+```
+Siglas de 2 caracteres com dígito ou em maiúsculas (`A3`, `5S`) contam como termo. Os sinônimos viram busca:
+publicado, "RCA" acha os itens que dizem "A3".

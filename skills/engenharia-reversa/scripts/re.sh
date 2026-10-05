@@ -424,7 +424,7 @@ case "$CMD" in
     jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
       --slurpfile dec "$TMP/decisoes.json" --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
       {content: $c,
-       coverage: ($cov[0] | {total, covered, ratio, byCategory, missingCount, missing: ((.missing // [])[:200])}),
+       coverage: ($cov[0] | {total, covered, ratio, byCategory, missingCount, missing: ((.missing // [])[:200]), outsideGlossary: ((.outsideGlossary // [])[:300])}),
        coverageRatio: ($cov[0].ratio),
        session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]})), inventory: $counts, tool: "re.sh"}
                  + (if $snap[0] == null then {} else {catalog: $snap[0]} end))}

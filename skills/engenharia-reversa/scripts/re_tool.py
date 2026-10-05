@@ -325,7 +325,14 @@ def needles(item):
             out.append(norm(detail))
         if cat == "tabela" and detail.startswith("DbSet "):
             out.append(norm(detail[6:]))
-    return [n for n in out if len(n) >= 3]
+    # 0056: sigla de 2 caracteres ("A3", "5S") e termo do glossario — antes caia no corte de 3 letras e nunca casava
+    return [n for n in out if len(n) >= 3 or (cat == "termo" and len(n) == 2 and short_term(name))]
+
+
+def short_term(raw):
+    """Sigla curta que vale como termo (0056): 2 caracteres alfanumericos com digito, ou em maiusculas no original."""
+    s = (raw or "").strip()
+    return len(s) == 2 and s.isalnum() and (any(c.isdigit() for c in s) or s.isupper())
 
 
 def strong_text(doc):
@@ -359,11 +366,40 @@ def glossary_text(doc):
     return " \n ".join(out)
 
 
+def glossary_gaps(doc):
+    """
+    Lacunas que listam termos fora do glossario (0056) — o guia (references/banco.md) manda registrar o termo que nao e
+    do dominio, ou e de outro modulo, num GAP com o motivo, e ele conta como coberto. Vale o GAP cujo titulo fala de
+    termos/glossario (todo o bloco) e, em qualquer GAP, a linha "**Termos:** a, b, c". -> [(GAP-ID, texto normalizado)]
+    """
+    out, current, buf, whole = [], None, [], False
+    def flush():
+        if current and buf:
+            out.append((current, norm(" \n ".join(buf))))
+    for line in doc.splitlines():
+        m = ID_HEADING.match(line)
+        if m or re.match(r"^#{1,4}\s", line):
+            flush()
+            current, buf, whole = None, [], False
+            if m and m.group(2).upper() == "GAP":
+                current = f"GAP-{int(m.group(3)):03d}"
+                whole = bool(re.search(r"(?i)termos?|gloss[aá]rio", line))
+                if whole:
+                    buf.append(line)
+            continue
+        if current and (whole or re.search(r"(?i)\*\*termos?:?\*\*", line)):
+            buf.append(line)
+    flush()
+    return out
+
+
 def coverage(inv, doc_text, doc_type, max_missing):
     cats = DOC_CATEGORIES.get(doc_type, [])
     doc_norm = norm(doc_text)
     strong_norm = norm(strong_text(doc_text))
     glossary_norm = norm(glossary_text(doc_text))
+    gaps = glossary_gaps(doc_text)
+    outside = []  # 0056: termos cobertos por estarem numa lacuna "fora do glossário"
     evidence = defaultdict(list)
     for m in R_EVIDENCE.finditer(doc_text):
         start = int(m.group(2))
@@ -385,6 +421,11 @@ def coverage(inv, doc_text, doc_type, max_missing):
             hit = any(s - 5 <= it["line"] <= e + 5 for s, e in evidence.get(base, []))
         if it["cat"] == "termo":
             hit = any(contains(text, n) for n in needles(it))  # termo só conta no glossário (sem evidência de arquivo)
+            if not hit:
+                gap = next((g for g, t in gaps if any(contains(t, n) for n in needles(it))), None)
+                if gap:
+                    hit = True
+                    outside.append({"name": it["name"], "gap": gap})
         if hit:
             covered += 1
             c["covered"] += 1
@@ -392,7 +433,7 @@ def coverage(inv, doc_text, doc_type, max_missing):
             missing.append(it)
     ratio = None if total == 0 else round(covered / total, 4)
     return {"docType": doc_type, "total": total, "covered": covered, "ratio": ratio, "byCategory": by_cat,
-            "missing": missing[:max_missing], "missingCount": len(missing)}
+            "missing": missing[:max_missing], "missingCount": len(missing), "outsideGlossary": outside[:300]}
 
 
 # ── ids e juntar ─────────────────────────────────────────────────────────────────────────────
@@ -585,7 +626,9 @@ STOP = set("a o as os um uma de do da dos das em no na nos nas por para pra com 
 
 
 def words(text):
-    return {w[:-2] if len(w) > 5 else w for w in re.findall(r"[a-z0-9]{3,}", norm(text)) if w not in STOP}
+    # 0056: "a3", "5s" (2 caracteres com digito) tambem contam — "Como criar um A3?" precisa casar com o FAQ do A3
+    return {w[:-2] if len(w) > 5 else w for w in re.findall(r"[a-z0-9]+", norm(text))
+            if w not in STOP and (len(w) >= 3 or (len(w) == 2 and any(c.isdigit() for c in w)))}
 
 
 def perguntas(doc_path, questions_path, out=None):

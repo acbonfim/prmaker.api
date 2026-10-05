@@ -87,7 +87,7 @@ public static partial class ReverseSearch
             {
                 // 0053: sinônimos do glossário do módulo — "RCA" casa com "A3".
                 var alts = synonyms.Alternatives(e.ModuleKey, term);
-                bool Has(string text) => text.Contains(term, StringComparison.Ordinal) || alts.Any(a => text.Contains(a, StringComparison.Ordinal));
+                bool Has(string text) => ArchitectureSearch.HasTerm(text, term) || alts.Any(a => ArchitectureSearch.HasTerm(text, a));
                 var inTitle = Has(p.Title);
                 var inTags = Has(p.Tags);
                 var inTables = Has(p.Tables);
@@ -127,13 +127,7 @@ public static partial class ReverseSearch
         return text.Length <= max ? text : text[..max].TrimEnd() + "…";
     }
 
-    private static int Count(string text, string term)
-    {
-        var count = 0;
-        for (var i = text.IndexOf(term, StringComparison.Ordinal); i >= 0 && count < 30; i = text.IndexOf(term, i + term.Length, StringComparison.Ordinal))
-            count++;
-        return count;
-    }
+    private static int Count(string text, string term) => Math.Min(30, ArchitectureSearch.CountTerm(text, term, out _));
 
     [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-\d{1,4}\b", RegexOptions.IgnoreCase)]
     private static partial Regex IdPattern();
