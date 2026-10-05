@@ -49,6 +49,7 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
+builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddMemoryCache();
 // MCP remoto do PRMake (0039): /mcp, Streamable HTTP sem sessão (Cloud Run), autenticado pela x-api-key.
