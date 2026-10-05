@@ -29,6 +29,7 @@ não pega; `--so-conta` mapeia só a conta.
   **esteiras dos repositórios** (GitHub Actions, buildspec, appspec, Dockerfile, serverless.template, com `arquivo:linha`).
 - `resumo.md` — a conta toda (contagem e nomes por serviço) + o que não pôde ser lido.
 - `conta-<id>.json` — tudo, para consulta (`jq`). Contém endpoints de banco: **não copie para o documento**.
+- `payload.json` — o recorte (so o ligado ao modulo + resumo da conta) que o `re.sh infra` envia para a aba **Infra** do modulo na tela.
 - `../inventario-infra.json` — o que a cobertura exige: cada recurso ligado (`aws-<serviço>`) e cada arquivo de esteira.
 
 ## Como escrever (seção "Infraestrutura e AWS (opcional)" do levantamento de arquitetura)

@@ -378,6 +378,10 @@ case "$CMD" in
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"infra","title":"Infra na AWS (opcional)","status":"running","activity":"Mapeando a infra na AWS (somente leitura): Lambdas, S3, esteiras, segredos, logs..."}'; done
     if python3 "$INFRA_PY" "${ARGS[@]}" > "$TMP/infra.out" 2>&1; then
       cat "$TMP/infra.out"
+      # 0059: envia o mapa do modulo para a aba Infra da tela (substitui o anterior); falha aqui nao perde o local
+      jq -c '{account: ([.accounts[].account] | join(",")), data: .}' "$D/infra/payload.json" > "$TMP/infra-body.json"
+      api PUT "/modules/$(urlenc "$MOD")/infra" "$TMP/infra-body.json"
+      if [[ "$CODE" =~ ^2 ]]; then echo "Infra enviada para a aba Infra do modulo na tela."; else echo "AVISO: infra nao enviada para a tela (HTTP $CODE: $(jq -r '.error // .title // .' "$TMP/resp" 2>/dev/null | head -c 200)) — fica so em $D/infra" >&2; fi
       DETAIL="$(grep -m1 '^Infra:' "$TMP/infra.out" | cut -c1-300)"
       for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "infra", status: "completed", detail: $dt, log: $dt, kind: "progress"}')"; done
       echo "Leia: $D/infra/modulo.md (recursos do modulo, logs, esteiras) e resumo.md (a conta toda). Guia: references/infra.md"

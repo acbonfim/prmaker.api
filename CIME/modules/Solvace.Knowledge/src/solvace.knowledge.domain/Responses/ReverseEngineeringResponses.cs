@@ -140,6 +140,23 @@ public class ReverseModuleResponse : ReverseModuleSummaryResponse
     public Dictionary<string, string> SupersededSections { get; set; } = [];
 }
 
+/// <summary>0059: mapa de infra (AWS) do módulo lido pela skill — a tela mostra recursos, esteiras, segredos (nomes) e logs.</summary>
+public class ReverseInfraResponse
+{
+    public string ModuleKey { get; set; } = string.Empty;
+    public string Account { get; set; } = string.Empty;
+    public DateTimeOffset CollectedAt { get; set; }
+    public string CollectedBy { get; set; } = string.Empty;
+    public JsonElement? Data { get; set; }
+
+    public static ReverseInfraResponse From(ReverseInfraSnapshot s)
+    {
+        JsonElement? data = null;
+        try { using var doc = JsonDocument.Parse(s.Data); data = doc.RootElement.Clone(); } catch (JsonException) { }
+        return new() { ModuleKey = s.ModuleKey, Account = s.Account, CollectedAt = s.CollectedAt, CollectedBy = s.CollectedBy, Data = data };
+    }
+}
+
 public class ReverseTrapResponse
 {
     public Guid Id { get; set; }

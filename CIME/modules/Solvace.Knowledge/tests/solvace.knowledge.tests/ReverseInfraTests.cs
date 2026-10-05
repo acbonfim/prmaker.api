@@ -1,4 +1,7 @@
+using solvace.knowledge.application;
 using solvace.knowledge.application.Contracts;
+using solvace.knowledge.domain.Entities;
+using solvace.knowledge.domain.Requests;
 using solvace.knowledge.domain.Reverse;
 using Xunit;
 
@@ -35,5 +38,30 @@ public class ReverseInfraTests
     {
         Assert.Contains("367983645102", ReverseSettings.Default.Infra);
         Assert.DoesNotContain("secret", ReverseSettings.Default.Infra!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class Settings(ReverseSettings value) : IReverseSettingsProvider
+    {
+        public Task<ReverseSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(value);
+    }
+
+    [Fact]
+    public async Task Infra_snapshot_is_stored_per_module_and_replaced_by_the_next_reading()
+    {
+        var repo = new InMemoryKnowledgeRepository();
+        var now = DateTimeOffset.UtcNow;
+        var p = new ArchitectureProject("revamp-kaizen", "admin", now);
+        p.Update("Kaizen", "revamp", null, "resumo", ["kaizen"], null, null, null, "admin", now);
+        repo.AddProject(p);
+        var app = new ReverseEngineeringApplication(repo, new Settings(ReverseSettings.Default));
+
+        Assert.Null(await app.GetInfraAsync("revamp-kaizen", default));
+        static UpsertReverseInfraRequest Req(string json) => new() { Account = "367983645102", Data = System.Text.Json.JsonDocument.Parse(json).RootElement.Clone() };
+        await app.UpsertInfraAsync("revamp-kaizen", Req("""{"resources":[{"name":"a"}]}"""), "dev", default);
+        await app.UpsertInfraAsync("revamp-kaizen", Req("""{"resources":[{"name":"b"}]}"""), "dev2", default);
+        var got = await app.GetInfraAsync("revamp-kaizen", default);
+        Assert.Equal("dev2", got!.CollectedBy);
+        Assert.Contains("\"b\"", got.Data!.Value.GetRawText());
+        await Assert.ThrowsAsync<DomainException>(() => app.UpsertInfraAsync("revamp-kaizen", Req("[1]"), "dev", default));
     }
 }

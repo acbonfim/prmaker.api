@@ -59,6 +59,9 @@ public interface IKnowledgeRepository
     void AddIndexEntry(ReverseIndexEntry entry);
     void RemoveIndexEntries(IEnumerable<ReverseIndexEntry> entries);
     /// <summary>0054: armadilhas (todas ou de um módulo), sem as removidas.</summary>
+    Task<ReverseInfraSnapshot?> GetInfraAsync(string moduleKey, CancellationToken cancellationToken);
+    Task<ReverseInfraSnapshot?> GetInfraForUpdateAsync(string moduleKey, CancellationToken cancellationToken);
+    void AddInfra(ReverseInfraSnapshot snapshot);
     Task<List<ReverseTrap>> GetTrapsAsync(string? moduleKey, CancellationToken cancellationToken);
     Task<ReverseTrap?> GetTrapForUpdateAsync(Guid id, CancellationToken cancellationToken);
     void AddTrap(ReverseTrap trap);
