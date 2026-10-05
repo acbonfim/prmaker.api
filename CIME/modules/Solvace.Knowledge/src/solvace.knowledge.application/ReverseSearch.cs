@@ -88,8 +88,7 @@ public static partial class ReverseSearch
         string[] PhraseNames(string module)
         {
             if (!phraseCache.TryGetValue(module, out var names))
-                phraseCache[module] = names = synonyms.GroupsNamedIn(module, queryWords).SelectMany(g => g).Select(ReverseSynonyms.Words)
-                    .Where(w => w.Count(c => c == ' ') >= 3).Distinct().ToArray();
+                phraseCache[module] = names = synonyms.GroupsNamedIn(module, queryWords).SelectMany(g => g).Distinct().ToArray();
             return names;
         }
         foreach (var p in prepared)

@@ -22,6 +22,10 @@ public sealed partial class ReverseSynonyms
             .Where(x => x.Names.Length >= 2)
             .GroupBy(x => x.ModuleKey)
             .ToDictionary(g => g.Key, g => g.Select(x => x.Names).ToList());
+        // 0064b: nomes do grupo (todos, para casar o item) reduzidos a palavras; o grupo entra se algum nome tiver 2+ palavras
+        _phrases = _groups.ToDictionary(kv => kv.Key, kv => kv.Value
+            .Select(g => (Words: g.Select(Words).Where(w => w.Count(c => c == ' ') >= 3).Distinct().ToArray(), Group: g))
+            .Where(x => x.Words.Length > 0).ToList());
     }
 
     public bool IsEmpty => _groups.Count == 0;
@@ -47,10 +51,14 @@ public sealed partial class ReverseSynonyms
     /// </summary>
     public IReadOnlyList<string[]> GroupsNamedIn(string? module, string words)
     {
-        if (_groups.Count == 0 || words.Length < 3) return [];
-        IEnumerable<string[]> groups = module is null or "*" ? _groups.Values.SelectMany(g => g) : _groups.TryGetValue(module, out var list) ? list : [];
-        return groups.Where(g => g.Any(name => Words(name) is { Length: > 0 } w && w.Count(c => c == ' ') >= 3 && words.Contains(w, StringComparison.Ordinal))).ToList();
+        if (_phrases.Count == 0 || words.Length < 3) return [];
+        IEnumerable<(string[] Words, string[] Group)> groups = module is null or "*" ? _phrases.Values.SelectMany(g => g)
+            : _phrases.TryGetValue(module, out var list) ? list : [];
+        return groups.Where(g => g.Words.Any(w => words.Contains(w, StringComparison.Ordinal))).Select(g => g.Words).ToList();
     }
+
+    /// <summary>Módulo → grupos com os nomes de 2+ palavras já em <see cref="Words"/> (calculado uma vez com o índice).</summary>
+    private readonly Dictionary<string, List<(string[] Words, string[] Group)>> _phrases;
 
     /// <summary>" palavra palavra " — só letras e dígitos, minúsculas, sem acento (para casar frase inteira).</summary>
     public static string Words(string? text) =>
