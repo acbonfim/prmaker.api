@@ -44,6 +44,8 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringTranslations = "ReverseEngineeringTranslations";
     /// <summary>0058: etapa OPCIONAL de infra da engenharia reversa — contas/perfis/regiões da AWS que o CLI consulta (JSON; só leitura, sem segredo).</summary>
     public const string ReverseEngineeringInfra = "ReverseEngineeringInfra";
+    /// <summary>0066: como a engenharia reversa gera — modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato (JSON).</summary>
+    public const string ReverseEngineeringGeneration = "ReverseEngineeringGeneration";
     /// <summary>0063: etapas padrão do plano de análise da analisar-bug (JSON: [{key,title,description,kind?}]) — a skill usa quando o plano nasce.</summary>
     public const string AnalysisDefaultSteps = "AnalysisDefaultSteps";
 }

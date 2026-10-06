@@ -35,9 +35,11 @@ public static partial class ReverseLint
     /// <param name="publishedIds">IDs do documento publicado (para avisar o que sumiu).</param>
     /// <param name="otherDocIds">IDs definidos nos outros documentos publicados do módulo (ID → tipo do documento).</param>
     /// <param name="removedIds">0054: IDs que existem no módulo mas estão "(removido)" — a visão prática não pode citá-los.</param>
+    /// <param name="moduleKey">0066: chave do módulo (origem das integrações).</param>
+    /// <param name="targets">0066: projetos conhecidos — com eles a checagem valida o <c>**Módulos:**</c> e o <c>**Mecanismo:**</c> dos INT.</param>
     public static ReverseLintResult Run(ReverseDocType type, string content, IReadOnlyCollection<string>? publishedIds = null,
         IReadOnlyDictionary<string, string>? otherDocIds = null, double? coverage = null, double minCoverage = 0,
-        IReadOnlyCollection<string>? removedIds = null)
+        IReadOnlyCollection<string>? removedIds = null, string? moduleKey = null, IReadOnlyCollection<IntegrationTarget>? targets = null)
     {
         var result = new ReverseLintResult { Coverage = coverage };
         var text = content ?? string.Empty;
@@ -83,6 +85,7 @@ public static partial class ReverseLint
         var integrationsWithoutModule = items.Where(i => !i.Removed && i.Kind == "INT" && i.Modules.Count == 0).Select(i => i.Id).ToList();
         if (integrationsWithoutModule.Count > 0)
             result.Warnings.Add($"Integrações sem **Módulos:** (o grafo entre módulos não as enxerga): {Join(integrationsWithoutModule)}.");
+        if (targets is { Count: > 0 }) IntegrationChecks(result, items, moduleKey ?? string.Empty, targets);
 
         if (publishedIds is { Count: > 0 })
         {
@@ -109,6 +112,33 @@ public static partial class ReverseLint
                 ? $"Perguntas reais respondidas {c:P0} abaixo do mínimo {minCoverage:P0} — responda com FAQ/TUT (com a fonte) ou registre a lacuna no documento técnico."
                 : $"Cobertura do inventário {c:P0} abaixo do mínimo {minCoverage:P0} — itens do código sem menção no documento.");
         return result;
+    }
+
+    /// <summary>
+    /// 0066: o mapa de ligações sai dos INT — destino que não é chave/nome/apelido de projeto (nem <c>ext:</c>) não entra no mapa,
+    /// e o tipo da ligação sai do <c>**Mecanismo:**</c>. Avisos (não erros): documento antigo continua publicável.
+    /// </summary>
+    private static void IntegrationChecks(ReverseLintResult result, List<ReverseItem> items, string moduleKey, IReadOnlyCollection<IntegrationTarget> targets)
+    {
+        var unresolved = new List<string>();
+        var withoutMechanism = new List<string>();
+        var unknownMechanism = new List<string>();
+        foreach (var item in items.Where(i => !i.Removed && i.Kind == "INT"))
+        {
+            var integration = ReverseIntegrations.Read(moduleKey, item.Id, item.Title, item.Body, targets);
+            unresolved.AddRange(integration.Unresolved.Select(u => $"{item.Id} \"{u}\""));
+            switch (ReverseIntegrations.KnownMechanism(integration.Mechanism))
+            {
+                case null: withoutMechanism.Add(item.Id); break;
+                case false: unknownMechanism.Add(item.Id); break;
+            }
+        }
+        if (unresolved.Count > 0)
+            result.Warnings.Add($"**Módulos:** não reconhecido (fica fora do mapa — use a chave do projeto, como em modulos.tsv, ou ext:<serviço>; o resto vai em **Confirmar:**): {Join(unresolved)}.");
+        if (withoutMechanism.Count > 0)
+            result.Warnings.Add($"Integrações sem **Mecanismo:** (o tipo da ligação no mapa sai dele — {ReverseIntegrations.MechanismVocabulary}): {Join(withoutMechanism)}.");
+        if (unknownMechanism.Count > 0)
+            result.Warnings.Add($"**Mecanismo:** fora do vocabulário ({ReverseIntegrations.MechanismVocabulary}): {Join(unknownMechanism)}.");
     }
 
     /// <summary>

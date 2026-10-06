@@ -35,7 +35,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             ReferenceDatabase = ToReference(s.ReferenceDatabase),
             GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
             Translations = ParseJson(s.Translations ?? ReverseSettings.DefaultTranslations),
-            Infra = ParseJson(s.Infra ?? ReverseSettings.DefaultInfra)
+            Infra = ParseJson(s.Infra ?? ReverseSettings.DefaultInfra),
+            Generation = ParseJson(s.Generation ?? ReverseSettings.DefaultGeneration)
         };
     }
 
@@ -164,8 +165,10 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var all = await repository.GetProjectsAsync(cancellationToken);
+        var modules = await repository.GetReverseModulesAsync(cancellationToken);
+        await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken); // 0066: INT resolvidos
         var project = FindProject(all, key);
-        var module = (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key);
+        var module = modules.FirstOrDefault(m => m.Key == project.Key);
         var open = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
         var entries = (await ReverseSearch.EntriesAsync(repository, cancellationToken)).Where(e => e.ModuleKey == project.Key && !e.Removed).ToList();
@@ -302,6 +305,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var s = await settingsProvider.GetAsync(cancellationToken);
         var type = ReverseDocTypes.Get(docType);
         var all = await repository.GetProjectsAsync(cancellationToken);
+        await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken); // 0066: relacionados pelos INT resolvidos
         var project = FindProject(all, key);
         await EnsureModuleAsync(project, actor, cancellationToken);
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
@@ -479,7 +483,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var published = entries.Where(e => e.ModuleKey == project.Key && e.DocType == type.Key).Select(e => e.ItemId).ToList();
         var removed = entries.Where(e => e.ModuleKey == project.Key && e.Removed).Select(e => e.ItemId).ToHashSet();
-        return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage, removed);
+        // 0066: com os projetos conhecidos, a checagem valida os destinos e o mecanismo das integrações
+        var targets = ReverseRelations.Targets(await repository.GetProjectsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
+        return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage, removed, project.Key, targets);
     }
 
     public async Task<ReverseRevisionResponse> SubmitAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
@@ -553,7 +559,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
         var items = ReverseDocParser.Parse(section.Content);
         await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken);
-        if (type.Key == "arquitetura") MergeIntegrations(project, items);
+        // 0066: as integrações (INT de qualquer documento) são resolvidas na leitura a partir do índice; as relações re# que a
+        // publicação gravava antes (destino em texto livre) saem do projeto quando ele é republicado.
+        DropReverseRelations(project);
 
         // 0053: as sugestões que a sessão aplicou/recusou saem da fila com a revisão que as tratou.
         var resolved = new List<ReverseSuggestionDecisionView>();
@@ -596,28 +604,14 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             repository.AddIndexEntry(new ReverseIndexEntry(moduleKey, docType, item, sectionVersion, now));
     }
 
-    /// <summary>Integrações do levantamento viram relações do grafo (evidência <c>re#INT-n</c>); as do extrator ficam.</summary>
-    public static void MergeIntegrations(ArchitectureProject project, List<ReverseItem> items)
+    /// <summary>
+    /// 0066: tira do projeto as relações <c>re#</c> gravadas pelas publicações antigas — as integrações da engenharia reversa
+    /// agora vêm do índice (<see cref="ReverseRelations"/>), com destino validado e o tipo pelo mecanismo.
+    /// </summary>
+    public static void DropReverseRelations(ArchitectureProject project)
     {
-        var fromDoc = items.Where(i => i.Kind == "INT" && !i.Removed)
-            .SelectMany(i => i.Modules.Where(m => m != project.Key).Select(m => new ArchitectureRelation
-            {
-                Target = m, Kind = RelationKind(i.Body), Detail = i.Title, Evidence = $"re#{i.Id}"
-            }));
-        var kept = project.Relations.Where(r => r.Evidence?.StartsWith("re#", StringComparison.Ordinal) != true);
-        project.SetRelations(kept.Concat(fromDoc).Take(ArchitectureProject.MaxRelations).ToList());
-    }
-
-    private static string RelationKind(string body)
-    {
-        var b = ArchitectureSearch.Normalize(body);
-        if (b.Contains("sqs") || b.Contains("fila")) return "queue";
-        if (b.Contains("sns") || b.Contains("evento") || b.Contains("event")) return "event";
-        if (b.Contains("banco") || b.Contains("tabela") || b.Contains(" sql")) return "database";
-        if (b.Contains("http") || b.Contains("rest") || b.Contains("endpoint") || b.Contains("api ")) return "http";
-        if (b.Contains("pacote") || b.Contains("nuget") || b.Contains("npm")) return "package";
-        if (b.Contains("front")) return "frontend";
-        return "other";
+        if (project.Relations.Any(ReverseRelations.FromReverse))
+            project.SetRelations(project.Relations.Where(r => !ReverseRelations.FromReverse(r)).ToList());
     }
 
     private async Task<ReverseRevisionResponse> ToRevisionAsync(ReverseRevision r, ArchitectureProject project, ReverseSettings s, IReadOnlyCollection<string> userRoles,

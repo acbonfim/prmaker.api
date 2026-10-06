@@ -11,6 +11,13 @@
 - `inventario-banco.json` — o que a cobertura cobra (cada objeto, constraint e job).
 Fonte da verdade = o banco da DEMO (reflete produção). Nunca `solvace-asp/#database/…`.
 
+**Retrato (0066)**: `re.sh retrato banco` baixa uma vez o banco de referência inteiro (objetos, dependências, definições,
+colunas, chaves, checks, jobs, menus) em `~/.prmake/reverse/_retrato/banco/<ambiente>-<host>/`; o `re.sh banco` de cada
+módulo usa o retrato enquanto ele estiver dentro da idade máxima (`snapshotMaxAgeDays`) — sem VPN e sem esperar — e
+avisa quando leu ao vivo. `catalogo.json` diz a origem (`source.kind`: `retrato` com a data, ou `ao-vivo`). **Lacunas da
+coleta** (ex.: sem permissão no `msdb` → jobs do SQL Agent não lidos) aparecem em `problems`: registre `GAP` — nunca
+escreva "o módulo não tem jobs" quando os jobs não foram lidos.
+
 ## No levantamento de arquitetura — seção "Banco de dados: views, procedures, functions, triggers e jobs"
 Um item por objeto do catálogo (os de outro módulo que só leem as tabelas deste: um item curto com `**Módulos:**`):
 ```

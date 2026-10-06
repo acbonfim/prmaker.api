@@ -48,6 +48,10 @@ public static partial class ArchitectureAi
         "package" => "usa peças de código (pacote)",
         "external" => "usa o serviço externo",
         "frontend" => "é a tela de",
+        "cache" => "guarda/lê dados em cache (Redis)",
+        "storage" => "troca arquivos (armazenamento, ex.: S3)",
+        "job" => "é acionado por rotina agendada (job)",
+        "trigger" => "é afetado por gatilho do banco (trigger)",
         _ => "se relaciona com"
     };
 

@@ -30,6 +30,7 @@ da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve 
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa <modulo> infra` | **opcional**: mapeia a infra do modulo na AWS (esteiras de deploy, Lambdas, buckets, segredos por nome, logs no CloudWatch) e envia para a aba **Infra** da tela — veja "Infra na AWS" abaixo |
 | `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
+| `/engenharia-reversa retrato [banco\|infra\|status]` | **0066**: baixa UMA vez o banco de referência inteiro (`re.sh retrato banco`, precisa da VPN) e/ou a conta AWS (`re.sh retrato infra`, ~15 min); os módulos usam o retrato enquanto ele estiver dentro da idade máxima (sem VPN, sem esperar). `status` mostra datas e lacunas da coleta. Rode de novo para atualizar. |
 
 ## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
 A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → banco da DEMO → leitura e escrita, com uma
@@ -69,8 +70,9 @@ junto com os de outros modulos). Revamp: o back (`revamp-<X>`) e o front
 (`edv-solvace-apps/projects/<x>`) sao fontes do mesmo modulo — fonte faltando: peca ao usuario/aprovador para cadastrar
 na tela (Fontes) ou use `--path`.
 
-**3b. Banco da DEMO (0053, todo modulo — legado e revamp)** — `bash $RE banco <modulo>`: le **direto do banco de
-referencia** (a DEMO: global e os locais, configurados no PRMake; somente leitura pelo `sql-query.sh`) as tabelas do
+**3b. Banco da DEMO (0053, todo modulo — legado e revamp)** — `bash $RE banco <modulo>`: le o **retrato** do banco de
+referencia quando existe e esta dentro da idade maxima (0066 — `re.sh retrato banco` baixa uma vez para todos os
+modulos; `--ao-vivo` le direto) ou **direto do banco** (a DEMO: global e os locais, configurados no PRMake; somente leitura pelo `sql-query.sh`) as tabelas do
 modulo (prefixo `TB_<SIGLA>_` deduzido do codigo — confira; `--prefix`/`--sigla` corrigem), e o que depende delas:
 views, procedures, functions, **triggers**, colunas/chaves/**check constraints** e os **jobs do SQL Agent**, com o corpo
 de cada objeto em `~/.prmake/reverse/<modulo>/banco/`. **Nunca** use os scripts `solvace-asp/#database/…` nem migracoes
@@ -91,21 +93,43 @@ a secao "Infraestrutura e AWS (opcional)" do levantamento de arquitetura (itens 
 **falha** no andamento (nao barra): siga e registre `GAP` "infra nao lida". O usuario autoriza a leitura da AWS — confirme
 antes de rodar na primeira vez da sessao.
 
-**4. Ler o codigo e escrever** — `references/escrever.md` (leia **inteiro** antes de escrever; e curto). Resumo:
-- Leia o codigo **de verdade** (controllers → services → repositorios/SP → tabelas; telas → componentes → servicos HTTP).
-  Profundidade > velocidade: cada regra com condicao, valores e mensagem **literais** e o `**Onde:** arquivo:linha`.
-- Modulo grande (inventario > ~150 itens): divida por area funcional e use **subagentes** (`general-purpose`), um por
-  area, cada um com uma **faixa de IDs** (A: RN-001..099, B: RN-100..199...), escrevendo `parte-<area>.md` na pasta do
-  documento com as mesmas secoes `##` do modelo; junte com `python3 ~/.claude/skills/engenharia-reversa/scripts/re_tool.py
-  juntar documento.md parte-*.md` (avisa ID repetido). O contexto principal fica limpo: cada subagente volta so o resumo.
+**4. Ler o codigo e escrever — por AREAS, com pacote de leitura (0066: e o que deixa barato e rapido)** —
+`references/escrever.md` (curto) tem o padrao do item. O custo de um subagente e (chamadas × contexto): area pequena,
+leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codigo** — orquestra e consolida.
+1. `bash $RE areas <m> <doc>` — o script divide o codigo do documento em **areas** que cabem no orcamento (config
+   `areaBudgetKb`), arquivos do mesmo assunto juntos, cada area com uma **faixa de IDs** que nao colide com os do modulo.
+2. `bash $RE pacote <m> <doc>` — um **pacote por area** (`pacotes/pacote-<area>.md`: o codigo inteiro da area em blocos,
+   com o numero real das linhas, os itens do inventario que ela precisa cobrir e as tabelas dela) + o **cartao**
+   (`pacotes/cartao.md`: instrucoes curtas + modelo + chaves dos modulos). Imprime o **modelo dos subagentes** e quantos
+   rodam ao mesmo tempo (config `subagentModel`/`modelByDoc`/`maxParallel`).
+3. Um subagente `general-purpose` **por area**, em segundo plano, com **`model` = o que o `pacote` imprimiu**, no maximo
+   `maxParallel` ao mesmo tempo (despache o proximo quando um terminar — paralelo demais derruba o limite da conta).
+   Prompt (exatamente isto, trocando os campos):
+   `Subagente da engenharia reversa — modulo <m>, documento <doc>, area <area>. Leia NA MESMA RESPOSTA: <D>/pacotes/cartao.md
+   e <D>/pacotes/pacote-<area>.md. Saida: <D>/parte-<area>.md (checkpoint a cada <N> itens; se ja existe, continue dela).
+   Ao terminar: bash ~/.claude/skills/engenharia-reversa/scripts/re.sh faltando <m> <doc> <area>. Responda so o resumo.`
+   Andamento: `etapa ... area:<area> running` ao despachar e `completed --detail "<itens>"` ao voltar.
+4. **Subagente que caiu** (limite de sessao, erro): despache de novo com o MESMO prompt — ele continua da parte gravada.
+5. `bash $RE juntar <m> <doc>` — junta as partes em `documento.md` (sobre o publicado, no melhorar: item reescrito
+   substitui o antigo) e **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas). Pode rodar de novo.
+6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF`, glossario `GLO` a partir de
+   `inventario-termos.json` e dos termos que os subagentes listaram, diagramas mermaid, integracoes consolidadas), lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
+   a partir do pacote, sem subagente.
+- Integracoes: para cada chamada a outro modulo (HTTP, fila/evento, tabela de outro dono, pacote), um `INT-…` com
+  `**Modulos:**` **so com a chave** do outro projeto (`modulos.tsv` do pacote da sessao; servico externo `ext:<nome>`),
+  `**Mecanismo:**` do vocabulario e a evidencia dos dois lados quando o outro repositorio estiver na maquina; use
+  `relacionados.md` e `bash $RE impact <tabela>` para ver o que o outro lado ja publicou. E isso que desenha o mapa.
 - Integracoes: para cada chamada a outro modulo (HTTP, fila/evento, tabela de outro dono, pacote), um `INT-…` com
   `**Modulos:**` (chave do outro projeto) e a evidencia dos dois lados quando o outro repositorio estiver na maquina; use
   `relacionados.md` e `bash $RE impact <tabela>` para ver o que o outro lado ja publicou.
 - Regras de negocio: `bash $KC search <termos do modulo>` — cite `**KC:** ART-n` quando o Knowledge Center documenta a
   regra; divergencia entre KC e codigo vira `GAP`.
 
-**5. Checar ate cobrir** — `bash $RE check <modulo> <doc>`: cobertura do inventario (o que falta, com arquivo:linha) +
-checagem do PRMake (secoes obrigatorias, IDs, evidencia, IDs removidos, referencias). **Repita** escrever → check ate:
+**5. Checar ate cobrir** — `bash $RE check <modulo> <doc>`: cobertura do inventario (o que falta, com arquivo:linha),
+**evidencia conferida nas fontes** (0066: `arquivo:linha` que nao existe e literal que nao aparece no arquivo citado —
+corrija antes de enviar) + checagem do PRMake (secoes obrigatorias, IDs, evidencia, IDs removidos, referencias,
+**Modulos/Mecanismo dos INT**). O que faltar de uma area: `re.sh faltando <m> <doc> <area>` e um subagente com o
+pacote da area (nunca a sessao principal relendo codigo). **Repita** escrever → check ate:
 sem erros e cobertura ≥ a minima (padrao 90%). O que ficar de fora de proposito (codigo morto, infraestrutura) entra em
 `## Lacunas` como `GAP` com o motivo — assim conta como coberto e o revisor sabe.
 
@@ -135,7 +159,9 @@ segredos so por nome, logs) e serve de fonte para a secao "Infraestrutura e AWS 
 2. Sem `~/.prmake/reverse/<modulo>/inventario.json`: `bash $RE inventario <modulo>` (mesmas regras do passo 3, inclusive `--path`
    no legado) — a infra liga os recursos ao que o codigo cita e le as esteiras dos repositorios.
 3. **Confirme com o usuario** antes de ler a AWS (uma vez por sessao): conta e regioes vem do PRMake
-   (`ReverseEngineeringInfra`); o perfil do AWS CLI e achado na maquina. A conta inteira leva ~15 min.
+   (`ReverseEngineeringInfra`); o perfil do AWS CLI e achado na maquina. A conta inteira leva ~15 min — com o **retrato**
+   (0066: `re.sh retrato infra`, uma vez para todos os modulos) o `infra` do modulo usa a leitura guardada enquanto ela
+   estiver dentro da idade maxima e nao chama a AWS (`--ao-vivo` le de novo).
 4. `bash $RE infra <modulo>` (outra conta/regiao: `--account`/`--region`; recurso que o nome nao pega: `--termo <t>`). Ele mapeia,
    liga ao modulo e **envia para a aba Infra** (substitui a leitura anterior).
 5. Leia `infra/modulo.md` e diga ao usuario: recursos do modulo por servico, esteiras, segredos, grupos de log, o que ficou
@@ -177,6 +203,13 @@ modulo (links do Figma/prototipo, imagens, PDFs) vem na sessao (`anexos.md`, arq
 Read). Com o MCP do Figma conectado nesta sessao, leia os frames pelos links; sem ele, use as imagens exportadas. O
 usuario pode anexar pela tela ou aqui: `bash $RE link <modulo> <url> "<titulo>" --screens TELA-001` /
 `bash $RE upload <modulo> <arquivo> "<titulo>"`. Divergencia prototipo × implementado = `GAP`.
+
+## Custo (0066)
+- `bash $RE config` mostra a configuracao da geracao (Skills Configurations → `ReverseEngineeringGeneration`): modelo dos
+  subagentes (padrao `sonnet`; `modelByDoc` troca por documento, ex. `{"design": "haiku"}`), simultaneos, orcamento da
+  area, checkpoint e idade maxima do retrato. Mudou a configuracao: vale na proxima sessao, sem atualizar a skill.
+- Nao gaste turno: agrupe comandos de andamento numa chamada; leia varios arquivos na mesma resposta; nunca releia o que
+  um subagente ja leu — peca a ele (ou ao `faltando`).
 
 ## Regras
 - **Nada inventado.** Nao confirmou no codigo → "a confirmar" + `GAP`. Nunca credenciais, connection strings, tokens ou

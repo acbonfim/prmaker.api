@@ -140,6 +140,10 @@ R_LANG = re.compile(r'GetLanguageByName\(\s*"([^"]{3,300})"\s*\)')
 R_ASP_MSG = re.compile(r'\b(?:strMsg|msg|mensagem|strErro|sErro|erro|strMensagem)\s*=\s*"([^"]{6,250})"', re.I)
 R_PROC = re.compile(r'\b((?:dbo\.)?(?:sp|usp|SP|USP|PR|PRC|prc|proc|PROC|STP|stp)_[A-Za-z0-9_]{3,})\b')
 R_ASP_FORM = re.compile(r'Request\.(?:Form|QueryString)\(\s*"(\w+)"\s*\)', re.I)
+# 0066: legado .NET Core (solvace-core): mensagens das views vêm de ewcmAlert/ewcmConfirm com o texto traduzido por
+# LanguageHelper.GetLanguageByTerm(..., "texto"), e as chamadas ao back por Url.Content("~/Controller/Acao").
+R_VIEW_MSG = re.compile(r'ewcm\w*(?:Alert|Confirm)\s*\(\s*[\'"]?[^;\n]{0,60}?GetLanguageByTerm\([^,\n]+,\s*"([^"\n]{4,300})"')
+R_URL_CONTENT = re.compile(r'Url\.Content\(\s*"~/([^"\n]{3,200})"\s*\)')
 
 
 def add(items, seen, cat, name, path, root, text, index, detail=None):
@@ -243,6 +247,11 @@ def inventory(sources):
                     add(items, seen, "http-front", f"{m.group(1).upper()} {url}", path, root, text, m.start())
                 for m in R_NG_VALIDATOR.finditer(text):
                     add(items, seen, "validacao", f"{m.group(1)} [Validators.{m.group(2)}]", path, root, text, m.start(), "formulario")
+            if ext in (".cshtml", ".razor", ".js", ".html"):
+                for m in R_VIEW_MSG.finditer(text):
+                    add(items, seen, "validacao", m.group(1), path, root, text, m.start(), "mensagem na tela")
+                for m in R_URL_CONTENT.finditer(text):
+                    add(items, seen, "http-front", "~/" + m.group(1), path, root, text, m.start(), "chamada da view")
             if ext in (".asp", ".inc", ".aspx", ".vb", ".cshtml", ".js", ".cs"):
                 for m in R_LANG.finditer(text):  # rótulos traduzidos da tela (legado) — matéria-prima do glossário
                     add(items, seen, "rotulo", m.group(1), path, root, text, m.start(), "GetLanguageByName")

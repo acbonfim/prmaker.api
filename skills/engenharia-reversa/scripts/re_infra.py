@@ -9,6 +9,9 @@ EventBridge, bancos, Cognito, CloudFront, DNS, alarmes etc. Depois liga os recur
 codigo cita, relacoes de um salto) e le as esteiras que vivem nos repositorios (GitHub Actions, buildspec, Dockerfile,
 serverless.template, appspec).
 
+0066: --retrato-dir guarda/le o RETRATO da conta (conta-<id>.json): lida uma vez, reaproveitada pelos modulos enquanto
+estiver dentro de --retrato-max-dias (re.sh retrato infra atualiza).
+
 Saida em <pasta>/ (por padrao ~/.prmake/reverse/<modulo>/infra/):
   conta-<id>.json        tudo o que a conta tem (referencia; NAO entra na cobertura)
   resumo.md              contagem e nomes por servico + o que nao deu para ler (sem permissao)
@@ -650,6 +653,39 @@ def resolve_profile(account, wanted):
     return None, None
 
 
+def snapshot_path(folder, account):
+    return os.path.join(folder, f"conta-{account}.json")
+
+
+def load_snapshot(folder, account, regions, max_days):
+    """0066: retrato da conta, se existir, cobrir as regioes pedidas e estiver dentro da idade maxima."""
+    from datetime import datetime
+    if not folder or not account or max_days <= 0:
+        return None
+    p = snapshot_path(folder, account)
+    if not os.path.exists(p):
+        return None
+    try:
+        snap = json.load(open(p, encoding="utf-8"))
+        age = (datetime.now() - datetime.fromisoformat(snap["collectedAt"])).total_seconds() / 86400
+    except (ValueError, KeyError, OSError):
+        return None
+    if age > max_days or not set(regions) <= set(snap.get("regions", [])):
+        return None
+    return snap
+
+
+def save_snapshot(folder, account, profile, regions, resources, problems):
+    from datetime import datetime
+    os.makedirs(folder, exist_ok=True)
+    tmp = snapshot_path(folder, account) + ".tmp"
+    json.dump({"version": 1, "account": account, "profile": profile, "regions": regions, "collectedAt": datetime.now().isoformat(timespec="seconds"),
+               "resources": resources, "problems": {"denied": problems["denied"], "failed": problems["failed"]}},
+              open(tmp, "w", encoding="utf-8"), ensure_ascii=False)
+    os.replace(tmp, snapshot_path(folder, account))
+    print(f"  retrato da conta {account} gravado em {snapshot_path(folder, account)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--module", required=True)
@@ -663,6 +699,10 @@ def main():
     ap.add_argument("--termo", action="append", default=[], help="termo extra que liga recurso ao modulo")
     ap.add_argument("--recurso", action="append", default=[], help="ARN/nome de recurso a incluir de qualquer forma")
     ap.add_argument("--so-conta", action="store_true", help="so mapear a conta (sem ligar ao modulo)")
+    # 0066: retrato da conta — lida uma vez (~15 min) e reaproveitada pelos modulos enquanto estiver dentro da idade maxima
+    ap.add_argument("--retrato-dir", help="pasta dos retratos da conta (conta-<id>.json)")
+    ap.add_argument("--retrato-max-dias", type=float, default=7.0, help="idade maxima do retrato para ser usado (0 = sempre ler a AWS)")
+    ap.add_argument("--gravar-retrato", action="store_true", help="grava o retrato da conta lida")
     args = ap.parse_args()
 
     cfg = {}
@@ -674,6 +714,17 @@ def main():
 
     all_items, any_ok = [], False
     for account in accounts:
+        snap = load_snapshot(args.retrato_dir, account, regions, args.retrato_max_dias)
+        if snap:
+            acct, profile, resources, problems = snap["account"], snap["profile"], snap["resources"], snap["problems"]
+            problems = {"denied": [tuple(x) for x in problems.get("denied", [])], "failed": [tuple(x) for x in problems.get("failed", [])]}
+            print(f"Conta {acct} · do RETRATO de {snap['collectedAt']} (sem ler a AWS; re.sh retrato infra atualiza) · {len(resources)} recursos")
+            any_ok = True
+            ts, code = terms_for(args.module, args.sigla, inventario, args.termo)
+            linked, why = ([], {}) if args.so_conta else link(resources, ts, code, set(args.recurso) | {r["name"] for r in resources if r["name"] in args.recurso})
+            all_items.append((acct, profile, resources, problems, linked, why, ts))
+            print(f"  {len(linked)} ligados a {args.module}")
+            continue
         profile, ident = resolve_profile(account, args.profile)
         if not profile:
             print(f"ERRO: nenhum perfil do AWS CLI entra na conta {account or '(qualquer)'} — rode `aws configure list-profiles` e `aws sts get-caller-identity --profile <p>`", file=sys.stderr)
@@ -698,6 +749,8 @@ def main():
             problems["denied"] += [(f"{region} {c}", m) for c, m in a.denied]
             problems["failed"] += [(f"{region} {c}", m) for c, m in a.failed]
         any_ok = True
+        if args.gravar_retrato and args.retrato_dir:
+            save_snapshot(args.retrato_dir, acct, profile, regions, resources, problems)
         ts, code = terms_for(args.module, args.sigla, inventario, args.termo)
         linked, why = ([], {}) if args.so_conta else link(resources, ts, code, set(args.recurso) | {r["name"] for r in resources if r["name"] in args.recurso})
         all_items.append((acct, profile, resources, problems, linked, why, ts))

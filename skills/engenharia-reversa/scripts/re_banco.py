@@ -10,6 +10,12 @@ as consultas nao levam nomes de objetos: le as listas inteiras e filtra aqui; de
                        --prefix TB_SA3_ [--prefix ...] --sigla SA3 [--inventario inventario.json] --out <pasta-banco>
   re_banco.py diff <catalogo-antigo.json|snapshot.json> <catalogo-novo.json>
   re_banco.py snapshot <catalogo.json>          (versao enxuta para guardar na revisao publicada)
+  re_banco.py retrato --sql <sql-query.sh> --host prod --global DB --local DB [--local DB ...] --out <pasta-retrato>
+                       [--environment DEMO]
+      0066: RETRATO do banco de referencia inteiro, uma vez (objetos, dependencias, definicoes, colunas, chaves, checks,
+      eventos de trigger, jobs do SQL Agent, aplicacoes e menus) -> <pasta>/retrato.json.gz + meta.json. O `catalogo`
+      com --retrato <pasta> le daqui (sem VPN, sem esperar) em vez do banco.
+  re_banco.py retrato-info <pasta-retrato>      (data, bancos, contagens e lacunas da coleta)
 """
 import hashlib
 import json
@@ -58,6 +64,137 @@ class Sql:
         return rows
 
 
+class LiveSource:
+    """Lê os metadados direto do banco (sql-query.sh)."""
+
+    def __init__(self, sql):
+        self.sql = sql
+
+    def objects(self, db):
+        return self.sql.rows(db, "SELECT o.object_id AS id, o.name, o.type, SCHEMA_NAME(o.schema_id) AS sch, o.parent_object_id AS parent, "
+                                 "CONVERT(varchar(19), o.create_date, 120) AS created, CONVERT(varchar(19), o.modify_date, 120) AS modified "
+                                 "FROM sys.objects o WHERE o.is_ms_shipped = 0 AND o.type IN ('U','V','P','FN','IF','TF','TR')")
+
+    def deps(self, db):
+        return self.sql.rows(db, "SELECT d.referencing_id AS src, d.referenced_id AS dst, d.referenced_entity_name AS name "
+                                 "FROM sys.sql_expression_dependencies d")
+
+    def defs(self, db, ids):
+        return self.sql.by_ids(db, "SELECT m.object_id AS id, m.definition FROM sys.sql_modules m WHERE m.object_id IN ({ids})", ids)
+
+    def trigger_events(self, db, ids):
+        return self.sql.by_ids(db, "SELECT e.object_id AS id, e.type_desc AS ev FROM sys.trigger_events e WHERE e.object_id IN ({ids})", ids)
+
+    def columns(self, db, tids):
+        return self.sql.by_ids(db, "SELECT c.object_id AS tid, c.column_id AS pos, c.name, t.name AS tipo, c.max_length AS len, c.precision AS prec, "
+                                   "c.scale, c.is_nullable AS nulo, c.is_identity AS ident, c.is_computed AS calc, dc.definition AS padrao, "
+                                   "cc.definition AS formula FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id "
+                                   "LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id "
+                                   "LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id "
+                                   "WHERE c.object_id IN ({ids})", tids)
+
+    def indexes(self, db, tids):
+        return self.sql.by_ids(db, "SELECT i.object_id AS tid, i.name AS idx, i.is_primary_key AS pk, i.is_unique AS uq, c.name AS col, "
+                                   "ic.key_ordinal AS ord FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id = i.object_id "
+                                   "AND ic.index_id = i.index_id JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+                                   "WHERE (i.is_primary_key = 1 OR i.is_unique = 1) AND i.object_id IN ({ids})", tids)
+
+    def fks(self, db, tids):
+        return self.sql.by_ids(db, "SELECT fk.name, fk.parent_object_id AS tid, OBJECT_NAME(fk.referenced_object_id) AS ref, pc.name AS col, "
+                                   "rc.name AS refcol FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
+                                   "JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id "
+                                   "JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id "
+                                   "WHERE fk.parent_object_id IN ({ids})", tids)
+
+    def checks(self, db, tids):
+        return self.sql.by_ids(db, "SELECT k.parent_object_id AS tid, k.name, k.definition FROM sys.check_constraints k "
+                                   "WHERE k.parent_object_id IN ({ids})", tids)
+
+    def job_steps(self):
+        return self.sql.rows("msdb", "SELECT CAST(j.job_id AS varchar(36)) AS jid, j.name AS job, j.enabled, j.description, s.step_id, s.step_name, "
+                                     "s.subsystem, s.database_name AS db, s.command FROM msdb.dbo.sysjobs j JOIN msdb.dbo.sysjobsteps s ON s.job_id = j.job_id")
+
+    def job_schedules(self):
+        return self.sql.rows("msdb", "SELECT CAST(js.job_id AS varchar(36)) AS jid, sc.name, sc.enabled, sc.freq_type, sc.freq_interval, sc.freq_subday_type, "
+                                     "sc.freq_subday_interval, sc.active_start_time FROM msdb.dbo.sysjobschedules js "
+                                     "JOIN msdb.dbo.sysschedules sc ON sc.schedule_id = js.schedule_id")
+
+    def applications(self, db):
+        return self.sql.rows(db, "SELECT CAST(a.idApplication AS varchar(36)) AS id, a.ApplicationName AS name, a.ApplicationAlias AS alias, "
+                                 "a.Description AS description FROM TB_SYS_Application a")
+
+    def menus(self, db):
+        return self.sql.rows(db, "SELECT CAST(m.APPLICATION_ID AS varchar(36)) AS app, g.MENU_GROUP_NAME AS grp, m.MENU_DESC AS item, "
+                                 "m.TARGET_PATH AS path, m.TARGET_PATH_NEW AS pathNew FROM TB_WCM_MENU m "
+                                 "LEFT JOIN TB_WCM_MENU_GROUP g ON g.MENU_GROUP_ID = m.MENU_GROUP_ID WHERE m.ACTIVE = 1")
+
+
+class SnapshotSource:
+    """0066: os mesmos metadados lidos do retrato (re_banco.py retrato) — sem banco. Banco/parte que faltou na coleta
+    levanta o mesmo erro que o banco daria (vira lacuna no catalogo)."""
+
+    def __init__(self, folder):
+        import gzip
+        with gzip.open(os.path.join(folder, "retrato.json.gz"), "rt", encoding="utf-8") as fh:
+            self.data = json.load(fh)
+        self.meta = self.data.get("meta", {})
+
+    def _db(self, db):
+        d = self.data["dbs"].get(db)
+        if d is None:
+            err = self.data.get("errors", {}).get(db)
+            raise RuntimeError(f"{db}: {'fora do retrato' if not err else err}")
+        return d
+
+    def _by(self, db, key, field, ids):
+        ids = {int(i) for i in ids}
+        return [r for r in self._db(db).get(key, []) if int(r.get(field) or 0) in ids]
+
+    def objects(self, db):
+        return self._db(db)["objects"]
+
+    def deps(self, db):
+        return self._db(db)["deps"]
+
+    def defs(self, db, ids):
+        defs = self._db(db).get("defs", {})
+        return [{"id": int(i), "definition": defs.get(str(i), "")} for i in ids if str(i) in defs]
+
+    def trigger_events(self, db, ids):
+        return self._by(db, "triggerEvents", "id", ids)
+
+    def columns(self, db, tids):
+        return self._by(db, "columns", "tid", tids)
+
+    def indexes(self, db, tids):
+        return self._by(db, "indexes", "tid", tids)
+
+    def fks(self, db, tids):
+        return self._by(db, "fks", "tid", tids)
+
+    def checks(self, db, tids):
+        return self._by(db, "checks", "tid", tids)
+
+    def _msdb(self, key):
+        if "msdb" in self.data.get("errors", {}):
+            raise RuntimeError(f"msdb: {self.data['errors']['msdb']}")
+        return self.data.get("msdb", {}).get(key, [])
+
+    def job_steps(self):
+        return self._msdb("steps")
+
+    def job_schedules(self):
+        return self._msdb("schedules")
+
+    def applications(self, db):
+        if "interface" in self.data.get("errors", {}):
+            raise RuntimeError(self.data["errors"]["interface"])
+        return self.data.get("interface", {}).get("applications", [])
+
+    def menus(self, db):
+        return self.data.get("interface", {}).get("menus", [])
+
+
 def norm_def(text):
     return re.sub(r"\s+", " ", (text or "").strip()).lower()
 
@@ -89,7 +226,7 @@ def inventory_names(path):
 
 
 def catalogo(args):
-    sql = Sql(args["sql"], args["host"])
+    sql = SnapshotSource(args["retrato"]) if args.get("retrato") else LiveSource(Sql(args["sql"], args["host"]))
     prefixes = [p.upper() for p in args["prefix"]]
     sigla = (args.get("sigla") or "").upper()
     cited_tables, cited_procs = inventory_names(args.get("inventario"))
@@ -99,11 +236,8 @@ def catalogo(args):
     problems = []
     for scope, db in dbs:
         try:
-            objs = sql.rows(db, "SELECT o.object_id AS id, o.name, o.type, SCHEMA_NAME(o.schema_id) AS sch, o.parent_object_id AS parent, "
-                                "CONVERT(varchar(19), o.create_date, 120) AS created, CONVERT(varchar(19), o.modify_date, 120) AS modified "
-                                "FROM sys.objects o WHERE o.is_ms_shipped = 0 AND o.type IN ('U','V','P','FN','IF','TF','TR')")
-            deps = sql.rows(db, "SELECT d.referencing_id AS src, d.referenced_id AS dst, d.referenced_entity_name AS name "
-                                "FROM sys.sql_expression_dependencies d")
+            objs = sql.objects(db)
+            deps = sql.deps(db)
         except RuntimeError as e:
             problems.append(str(e))
             print(f"AVISO: sem acesso a {db}: {e}", file=sys.stderr)
@@ -170,29 +304,16 @@ def catalogo(args):
     defs, events = {}, defaultdict(list)
     for db, info in per_db.items():
         ids = [i for (d, i) in selected if d == db and info["objects"][i]["type"].strip() != "U"]
-        for r in sql.by_ids(db, "SELECT m.object_id AS id, m.definition FROM sys.sql_modules m WHERE m.object_id IN ({ids})", ids):
+        for r in sql.defs(db, ids):
             defs[(db, r["id"])] = mask(r["definition"] or "")
         trg = [i for i in ids if info["objects"][i]["type"].strip() == "TR"]
-        for r in sql.by_ids(db, "SELECT e.object_id AS id, e.type_desc AS ev FROM sys.trigger_events e WHERE e.object_id IN ({ids})", trg):
+        for r in sql.trigger_events(db, trg):
             events[(db, r["id"])].append(r["ev"])
         tids = [i for (d, i) in selected if d == db and info["objects"][i]["type"].strip() == "U"]
-        info["columns"] = sql.by_ids(db, "SELECT c.object_id AS tid, c.column_id AS pos, c.name, t.name AS tipo, c.max_length AS len, c.precision AS prec, "
-                                         "c.scale, c.is_nullable AS nulo, c.is_identity AS ident, c.is_computed AS calc, dc.definition AS padrao, "
-                                         "cc.definition AS formula FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id "
-                                         "LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id "
-                                         "LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id "
-                                         "WHERE c.object_id IN ({ids})", tids)
-        info["indexes"] = sql.by_ids(db, "SELECT i.object_id AS tid, i.name AS idx, i.is_primary_key AS pk, i.is_unique AS uq, c.name AS col, "
-                                         "ic.key_ordinal AS ord FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id = i.object_id "
-                                         "AND ic.index_id = i.index_id JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
-                                         "WHERE (i.is_primary_key = 1 OR i.is_unique = 1) AND i.object_id IN ({ids})", tids)
-        info["fks"] = sql.by_ids(db, "SELECT fk.name, fk.parent_object_id AS tid, OBJECT_NAME(fk.referenced_object_id) AS ref, pc.name AS col, "
-                                     "rc.name AS refcol FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
-                                     "JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id "
-                                     "JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id "
-                                     "WHERE fk.parent_object_id IN ({ids})", tids)
-        info["checks"] = sql.by_ids(db, "SELECT k.parent_object_id AS tid, k.name, k.definition FROM sys.check_constraints k "
-                                        "WHERE k.parent_object_id IN ({ids})", tids)
+        info["columns"] = sql.columns(db, tids)
+        info["indexes"] = sql.indexes(db, tids)
+        info["fks"] = sql.fks(db, tids)
+        info["checks"] = sql.checks(db, tids)
 
     # agrupa por nome: global x locais, igual x divergente entre locais
     grouped = defaultdict(list)
@@ -263,9 +384,12 @@ def catalogo(args):
 
     ui = read_interface(sql, args["global"], sigla)
 
+    if isinstance(sql, SnapshotSource):  # 0066: o catálogo diz de quando é o retrato e herda as lacunas da coleta
+        problems = list(dict.fromkeys(problems + [f"retrato: {p}" for p in sql.meta.get("problems", [])]))
     catalog = {
         "version": 1, "environment": args.get("environment") or "DEMO", "host": args["host"], "global": args["global"],
         "locals": args["local"], "prefixes": prefixes, "sigla": sigla, "problems": problems,
+        "source": ({"kind": "retrato", "collectedAt": sql.meta.get("collectedAt")} if isinstance(sql, SnapshotSource) else {"kind": "ao-vivo"}),
         "objects": objects, "jobs": jobs, "menus": ui["menus"], "application": ui["application"],
     }
     with open(os.path.join(out, "catalogo.json"), "w", encoding="utf-8") as fh:
@@ -339,11 +463,8 @@ def write_table(out, entry, occ, per_db):
 
 
 def read_jobs(sql, demo_dbs, module_names, prefixes, sigla, out):
-    steps = sql.rows("msdb", "SELECT CAST(j.job_id AS varchar(36)) AS jid, j.name AS job, j.enabled, j.description, s.step_id, s.step_name, "
-                             "s.subsystem, s.database_name AS db, s.command FROM msdb.dbo.sysjobs j JOIN msdb.dbo.sysjobsteps s ON s.job_id = j.job_id")
-    sched = sql.rows("msdb", "SELECT CAST(js.job_id AS varchar(36)) AS jid, sc.name, sc.enabled, sc.freq_type, sc.freq_interval, sc.freq_subday_type, "
-                             "sc.freq_subday_interval, sc.active_start_time FROM msdb.dbo.sysjobschedules js "
-                             "JOIN msdb.dbo.sysschedules sc ON sc.schedule_id = js.schedule_id")
+    steps = sql.job_steps()
+    sched = sql.job_schedules()
     names = [n for n in module_names if len(n) >= 5]
     pattern = re.compile("|".join([re.escape(n) for n in names] + [re.escape(p) for p in prefixes] + ([re.escape(sigla)] if sigla else [])), re.I) if (names or prefixes) else None
     demo = {d.upper() for d in demo_dbs}
@@ -384,14 +505,11 @@ def read_interface(sql, global_db, sigla):
     vêm do Multilingual do revamp (PostgreSQL), lidas pelo re_traducoes.py; o TB_WCM_LANGUAGE é legado."""
     result = {"application": None, "menus": []}
     try:
-        apps = sql.rows(global_db, "SELECT CAST(a.idApplication AS varchar(36)) AS id, a.ApplicationName AS name, a.ApplicationAlias AS alias, "
-                                   "a.Description AS description FROM TB_SYS_Application a")
+        apps = sql.applications(global_db)
         app = next((a for a in apps if (a.get("alias") or "").upper() == sigla), None) if sigla else None
         result["application"] = app
         if app:
-            menus = sql.rows(global_db, "SELECT CAST(m.APPLICATION_ID AS varchar(36)) AS app, g.MENU_GROUP_NAME AS grp, m.MENU_DESC AS item, "
-                                        "m.TARGET_PATH AS path, m.TARGET_PATH_NEW AS pathNew FROM TB_WCM_MENU m "
-                                        "LEFT JOIN TB_WCM_MENU_GROUP g ON g.MENU_GROUP_ID = m.MENU_GROUP_ID WHERE m.ACTIVE = 1")
+            menus = sql.menus(global_db)
             result["menus"] = [m for m in menus if (m.get("app") or "").lower() == app["id"].lower()]
     except RuntimeError as e:
         print(f"AVISO: aplicação/menus não lidos: {e}", file=sys.stderr)
@@ -424,6 +542,83 @@ def diff(old, new):
     return res
 
 
+def retrato(args):
+    """0066: baixa uma vez o banco de referência inteiro (só metadados e definições — nunca dados de negócio)."""
+    import gzip
+    from datetime import datetime
+    live = LiveSource(Sql(args["sql"], args["host"]))
+    out = args["out"]
+    os.makedirs(out, exist_ok=True)
+    dbs = [args["global"]] + args["local"]
+    data = {"version": 1, "dbs": {}, "errors": {}, "msdb": {}, "interface": {}}
+    problems = []
+    for db in dbs:
+        try:
+            objs = live.objects(db)
+            deps = live.deps(db)
+        except RuntimeError as e:
+            data["errors"][db] = str(e)
+            problems.append(str(e))
+            print(f"AVISO: sem acesso a {db}: {e}", file=sys.stderr)
+            continue
+        modules = [o["id"] for o in objs if o["type"].strip() != "U"]
+        tables = [o["id"] for o in objs if o["type"].strip() == "U"]
+        triggers = [o["id"] for o in objs if o["type"].strip() == "TR"]
+        entry = {"objects": objs, "deps": deps}
+        try:
+            entry["defs"] = {str(r["id"]): mask(r["definition"] or "") for r in live.defs(db, modules)}
+            entry["triggerEvents"] = live.trigger_events(db, triggers)
+            entry["columns"] = live.columns(db, tables)
+            entry["indexes"] = live.indexes(db, tables)
+            entry["fks"] = live.fks(db, tables)
+            entry["checks"] = live.checks(db, tables)
+        except RuntimeError as e:
+            problems.append(f"{db} (parcial): {e}")
+            print(f"AVISO: {db} lido em parte: {e}", file=sys.stderr)
+        data["dbs"][db] = entry
+        print(f"  {db}: {len(objs)} objetos, {len(deps)} dependências, {len(entry.get('defs', {}))} definições, "
+              f"{len(entry.get('columns', []))} colunas", file=sys.stderr)
+    if not data["dbs"]:
+        die("nenhum banco respondeu — VPN ligada? credencial do alias '%s'? (%s)" % (args["host"], "; ".join(problems)), 3)
+    try:
+        data["msdb"] = {"steps": [dict(s, command=mask(s.get("command") or "")) for s in live.job_steps()], "schedules": live.job_schedules()}
+    except RuntimeError as e:
+        data["errors"]["msdb"] = str(e)
+        problems.append(f"jobs do SQL Agent não lidos ({e}) — peça leitura em msdb.dbo.sysjobs/sysjobsteps/sysjobschedules")
+    try:
+        data["interface"] = {"applications": live.applications(args["global"]), "menus": live.menus(args["global"])}
+    except RuntimeError as e:
+        data["errors"]["interface"] = str(e)
+        problems.append(f"aplicações/menus não lidos: {e}")
+    meta = {"collectedAt": datetime.now().isoformat(timespec="seconds"), "environment": args.get("environment") or "DEMO",
+            "host": args["host"], "global": args["global"], "locals": args["local"], "problems": problems,
+            "counts": {db: {"objects": len(d["objects"]), "definitions": len(d.get("defs", {})), "columns": len(d.get("columns", []))}
+                       for db, d in data["dbs"].items()},
+            "jobs": len({s["jid"] for s in data["msdb"].get("steps", [])})}
+    data["meta"] = meta
+    tmp = os.path.join(out, "retrato.json.gz.tmp")
+    with gzip.open(tmp, "wt", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False)
+    os.replace(tmp, os.path.join(out, "retrato.json.gz"))
+    with open(os.path.join(out, "meta.json"), "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, ensure_ascii=False, indent=1)
+    size = os.path.getsize(os.path.join(out, "retrato.json.gz")) // 1024
+    print(f"Retrato do banco ({meta['environment']} {args['host']}): " + ", ".join(f"{db} {c['objects']} objetos" for db, c in meta["counts"].items())
+          + f", {meta['jobs']} jobs · {size} KB -> {out}")
+    if problems:
+        print("Lacunas da coleta (o catálogo dos módulos avisa): " + "; ".join(problems))
+
+
+def retrato_info(folder):
+    p = os.path.join(folder, "meta.json")
+    if not os.path.exists(p):
+        print(f"Sem retrato em {folder}")
+        return 1
+    meta = json.load(open(p, encoding="utf-8"))
+    print(json.dumps(meta, ensure_ascii=False, indent=1))
+    return 0
+
+
 def parse_args(argv):
     args = {"prefix": [], "local": []}
     i = 0
@@ -450,7 +645,7 @@ def main(argv):
     cmd = argv[1]
     if cmd == "catalogo":
         args = parse_args(argv[2:])
-        for req in ("sql", "host", "global", "out"):
+        for req in ("host", "global", "out") if args.get("retrato") else ("sql", "host", "global", "out"):
             if not args.get(req):
                 die(f"falta --{req}")
         if not args["prefix"] and not args.get("sigla"):
@@ -458,6 +653,15 @@ def main(argv):
         os.makedirs(args["out"], exist_ok=True)
         catalogo(args)
         return 0
+    if cmd == "retrato":
+        args = parse_args(argv[2:])
+        for req in ("sql", "host", "global", "out"):
+            if not args.get(req):
+                die(f"falta --{req}")
+        retrato(args)
+        return 0
+    if cmd == "retrato-info":
+        return retrato_info(argv[2])
     if cmd == "snapshot":
         print(json.dumps(snapshot(json.load(open(argv[2], encoding="utf-8"))), ensure_ascii=False))
         return 0

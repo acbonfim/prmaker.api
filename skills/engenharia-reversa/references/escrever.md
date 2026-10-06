@@ -39,7 +39,21 @@ Rotas (inventario `rota-front`) → componente → template (campos, botoes, men
 traduzidas (`GetLanguageByName`) = validacoes literais; `_inc_*.asp` = trechos compartilhados. `solvace-core/<modulo>`
 (.NET Core MVC): controllers → services → SP. Cite a pagina e a linha.
 
-## Subagentes (modulo grande)
+## Integracao (`INT`) — e o que desenha o mapa de ligacoes (0066)
+```
+### INT-004 — Checklist → Plano de Acao: lista os planos ligados ao checklist
+- **Modulos:** legado-actionplan
+- **Mecanismo:** pacote/biblioteca `helpers` (ActionPlanHelper) lendo o banco local
+- **Contrato:** sincrono, na abertura da aba Planos; `ListPlansByApplicationId(systemId, checklistId)` → VW_ACP_PLAN
+- **Onde:** `Controllers/ChecklistController.cs:650` → `helpers/Helpers/ActionPlanHelper.cs:200`
+- **Se falhar:** 500 e a aba Planos fica vazia
+- **Confirmar:** filtro de status no revamp
+```
+`**Modulos:**` so com chaves (`modulos.tsv`) ou `ext:<servico>`; o resto (duvida, nome que nao achou) vai em `**Confirmar:**`.
+
+## Subagentes (modulo grande — 0066: pacotes e cartao)
+Use `re.sh areas` + `re.sh pacote` (SKILL.md, passo 4): o subagente le o cartao e o pacote da area numa resposta, nao
+explora o codigo e grava a parte com checkpoint. O texto abaixo vale para quando nao houver pacote.
 Prompt de cada subagente: modulo, documento, a area (pastas/arquivos do inventario dessa area), a faixa de IDs, o
 `modelo.md` (secoes e formato do item), "leia o codigo de verdade, valores literais, evidencia arquivo:linha, nada
 inventado", e "grave em `<pasta>/parte-<area>.md` e responda so: itens por tipo, lacunas, duvidas". Depois `juntar`,

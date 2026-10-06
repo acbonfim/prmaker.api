@@ -349,4 +349,6 @@ public class ReverseSettingsResponse
     public JsonElement? Translations { get; set; }
     /// <summary>0058: contas/perfis/regiões da etapa opcional de infra (AWS CLI, somente leitura) — JSON livre, sem segredo.</summary>
     public JsonElement? Infra { get; set; }
+    /// <summary>0066: como a skill gera (modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato).</summary>
+    public JsonElement? Generation { get; set; }
 }
