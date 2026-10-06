@@ -273,6 +273,32 @@ class TestCodeTests(unittest.TestCase):
         self.assertEqual({"src/App/UserService.cs", "src/App/Latest.cs"}, set(files))
 
 
+class DedupeTests(unittest.TestCase):
+    def test_same_kind_and_title_from_two_areas_becomes_one_with_references_remapped(self):
+        d = tempfile.mkdtemp()
+        doc = os.path.join(d, "doc.md")
+        write(doc, textwrap.dedent('''\
+            ## Endpoints
+            ### API-1201 — GET /users/{id}
+            curto
+            ### API-2305 — GET /users/{id}
+            mais completo: retorna o usuário com perfis e times
+            ### API-2306 — POST /users
+            cria
+            ## Regras de negócio
+            ### RN-1210 — Usuário inativo não entra
+            ver API-1201 e API-2306
+            ### RN-2310 — Usuário inativo não entra
+            regra igual, mas RN não é fundida (regras parecidas podem ser diferentes)
+            '''))
+        mapping = re_pacote.dedupe(doc)
+        text = open(doc, encoding="utf-8").read()
+        self.assertEqual({"API-1201": "API-2305"}, mapping)
+        self.assertNotIn("### API-1201", text)
+        self.assertIn("ver API-2305 e API-2306", text)
+        self.assertEqual(2, text.count("Usuário inativo não entra"))
+
+
 class JoinTests(unittest.TestCase):
     BASE = textwrap.dedent('''\
         # Levantamento funcional — kaizen
