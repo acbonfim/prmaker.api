@@ -182,6 +182,126 @@ def chunks(lines, lang, limit):
     return out
 
 
+def method_block(lines, line, lang, max_lines=160):
+    """(ini, fim) 0-based do método/função que contém a linha (1-based): sobe até a assinatura, desce até fechar as chaves."""
+    n = len(lines)
+    i = max(0, min(n - 1, line - 1))
+    rx = R_BLOCK_START.get(lang)
+    # o inventário pode apontar o atributo ([HttpPost]) logo acima da assinatura: olha primeiro algumas linhas abaixo
+    start = next((j for j in range(i, min(n, i + 6)) if rx and rx.search(lines[j])), None)
+    if start is None:
+        start = next((j for j in range(i, max(-1, i - 60), -1) if rx and rx.search(lines[j])), None)
+    if start is None:
+        return max(0, i - 15), min(n - 1, i + 40)
+    if lang == "vb":
+        end = next((k for k in range(start + 1, min(n, start + max_lines)) if R_BLOCK_END_VB.search(lines[k])), min(n - 1, start + 60))
+        return start, end
+    depth, opened = 0, False
+    for k in range(start, min(n, start + max_lines)):
+        code = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|//.*$', "", lines[k])
+        for ch in code:
+            if ch == "{":
+                depth += 1
+                opened = True
+            elif ch == "}":
+                depth -= 1
+        if opened and depth <= 0:
+            return start, k
+    return start, min(n - 1, start + max_lines - 1)
+
+
+def route_key(name):
+    """'~/Report/GetX', 'POST Report/GetX', 'GET api/report/x/{id}' → 'report/getx' (os dois últimos segmentos)."""
+    raw = name.split(" ", 1)[-1] if re.match(r"^[A-Z]+ ", name) else name
+    m = re.match(r"^(\w+?)Controller\.(\w+)$", raw)  # sem rota no atributo: "ReportController.GetX"
+    if m:
+        raw = f"{m.group(1)}/{m.group(2)}"
+    segs = [x for x in re.sub(r"\{[^}]*\}|\?.*$", "", raw.lstrip("~")).strip("/").lower().split("/") if x and x != ".."]
+    return "/".join(segs[-2:]) if len(segs) >= 2 else ""
+
+
+def support_blocks(inv, area, max_bytes=40 * 1024):
+    """0066: métodos chamados pela área que moram em arquivos de outra área (a view chama ~/Report/GetX → ReportController.GetX)."""
+    spans = defaultdict(list)
+    for u in area["units"]:
+        spans[u["file"]] += [tuple(r) for r in u["ranges"]]
+    calls = {route_key(it["name"]) for it in inv["items"] if it["cat"] == "http-front" and it.get("file") in spans
+             and any(a <= it["line"] <= b for a, b in spans[it["file"]])}
+    calls.discard("")
+    roots, cache, out, used = source_roots(inv), {}, [], 0
+    for it in inv["items"]:
+        if it["cat"] != "endpoint" or route_key(it["name"]) not in calls:
+            continue
+        f = it.get("file") or ""
+        if f in spans and any(a <= it["line"] <= b for a, b in spans[f]):
+            continue  # já está no pacote
+        path = resolve_file(f, roots, cache)
+        if not path:
+            continue
+        lines = read_lines(path)
+        a, b = method_block(lines, it["line"], lang_of(path))
+        size = excerpt_bytes(lines, [(a, b)])
+        if used + size > max_bytes:
+            break
+        used += size
+        out.append((f, a, b, lines))
+    # um salto a mais: o controller costuma só repassar para o service/repositório — traz o método chamado
+    seen = {(f, a) for f, a, _, _ in out}
+    for f, a, b, lines in list(out):
+        for owner, method in set(R_SERVICE_CALL.findall("\n".join(lines[a:b + 1]))):
+            hit = find_method(inv, method, owner, roots, cache)
+            if not hit:
+                continue
+            hf, ha, hb, hlines = hit
+            if (hf, ha) in seen or (hf in spans and any(x <= ha + 1 <= y for x, y in spans[hf])):
+                continue
+            size = excerpt_bytes(hlines, [(ha, hb)])
+            if used + size > max_bytes:
+                return out
+            used += size
+            seen.add((hf, ha))
+            out.append((hf, ha, hb, hlines))
+    return out
+
+
+R_SERVICE_CALL = re.compile(r"\b_?(\w*(?:Service|Repository|Helper|Business|Bll|Dal))\.(\w+)\s*\(", re.I)
+_methods_cache = {}
+
+
+def find_method(inv, method, owner, roots, cache):
+    """Declaração do método (C#) num arquivo cujo nome lembra o dono (ReportService → ReportService.cs); senão em qualquer .cs."""
+    key = (id(inv), method, owner.lower())
+    if key in _methods_cache:
+        return _methods_cache[key]
+    files = [p for r in roots for p in walk_cs(r)]
+    owner_name = owner.lstrip("_").lower()
+    files.sort(key=lambda p: (owner_name.replace("_", "") not in os.path.basename(p).lower(), p))
+    decl = re.compile(r"^\s*(?:public|private|protected|internal)[^=;(]*\b" + re.escape(method) + r"\s*(?:<[^>]*>)?\s*\(")
+    result = None
+    for p in files[:400]:
+        lines = read_lines(p)
+        for k, ln in enumerate(lines):
+            if decl.search(ln):
+                a, b = method_block(lines, k + 1, "cs", 220)
+                rel = next((os.path.relpath(p, r) for r in roots if p.startswith(r)), p)
+                result = (rel, a, b, lines)
+                break
+        if result:
+            break
+    _methods_cache[key] = result
+    return result
+
+
+def walk_cs(root):
+    if os.path.isfile(root):
+        return [root] if root.endswith(".cs") else []
+    out = []
+    for base, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
+        out += [os.path.join(base, f) for f in files if f.endswith(".cs")]
+    return out
+
+
 def excerpt_bytes(lines, ranges):
     return sum(sum(len(lines[k]) + 7 for k in range(a, b + 1)) for a, b in ranges)
 
@@ -354,6 +474,16 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
                 L.append(f"{k + 1:>5}| {lines[k]}")
             L.append("```")
             L.append("")
+    support = support_blocks(inv, area)
+    if support:
+        L += ["## Apoio — ações chamadas por esta área que estão em outros arquivos (só o método)", ""]
+        for f, a, b, lines in support:
+            ext = os.path.splitext(f)[1].lower()
+            L.append(f"### `{f}` — linhas {a + 1}-{b + 1} (apoio)")
+            L.append("```" + LANG.get(ext, ""))
+            for k in range(a, b + 1):
+                L.append(f"{k + 1:>5}| {lines[k]}")
+            L += ["```", ""]
     tables = tables_of_area(inv, area)
     if banco_dir and tables:
         L += ["## Tabelas da área (banco de referência)", ""]
@@ -417,6 +547,21 @@ def faltando(inv, plan, area_name, parte, max_show=80):
 
 R_EVIDENCE = re.compile(r"`?([\w./\\-]+\.(?:cs|cshtml|razor|asp|aspx|ascx|inc|js|ts|html|sql|json|ya?ml|xml|config|vb|py)):(\d+)(?:-(\d+))?")
 R_LITERAL = re.compile(r'"([^"\n]{12,200})"|“([^”\n]{12,200})”')
+
+
+def literals(body):
+    """Textos entre aspas, linha a linha e em pares (aspas sem par na linha não contam; nada de markdown dentro)."""
+    out = []
+    for line in body.splitlines():
+        line = line.replace("“", '"').replace("”", '"')
+        parts = line.split('"')
+        if len(parts) < 3 or len(parts) % 2 == 0:
+            continue
+        for k in range(1, len(parts), 2):
+            lit = parts[k].strip()
+            if 12 <= len(lit) <= 200 and "`" not in lit and "**" not in lit:
+                out.append(lit)
+    return out
 
 
 def file_index(roots):
@@ -485,8 +630,7 @@ def evidencia(doc_path, inv, out=None, max_show=40):
             continue
         text = "\n".join("\n".join(lines_cache[c]) for c in set(cited_files))
         flat = re_tool.norm(text)
-        for lm in R_LITERAL.finditer(body):
-            lit = lm.group(1) or lm.group(2)
+        for lit in literals(body):
             if not re.search(r"[A-Za-zÀ-ú]{3,}\s+[A-Za-zÀ-ú]{2,}", lit) or "{" in lit or "/" in lit[:2]:
                 continue
             if re_tool.norm(lit)[:60] not in flat:

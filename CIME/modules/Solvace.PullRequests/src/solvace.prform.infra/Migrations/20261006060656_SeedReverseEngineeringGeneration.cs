@@ -14,7 +14,7 @@ namespace solvace.prform.infra.Migrations
         private const string SkillsPlugin = "Skills Configurations";
 
         private const string SkillsOptions = """
-{"ReverseEngineeringGeneration": "{\"subagentModel\": \"sonnet\", \"modelByDoc\": {}, \"maxParallel\": 3, \"areaBudgetKb\": 90, \"checkpointEvery\": 10, \"snapshotMaxAgeDays\": 7, \"smallFileLines\": 400, \"blockMaxLines\": 220}"}
+{"ReverseEngineeringGeneration": "{\"subagentModel\": \"sonnet\", \"modelByDoc\": {}, \"maxParallel\": 5, \"areaBudgetKb\": 90, \"checkpointEvery\": 10, \"snapshotMaxAgeDays\": 7, \"smallFileLines\": 400, \"blockMaxLines\": 220}"}
 """;
         private const string SkillsFieldSettings = """
 {"ReverseEngineeringGeneration": {"Label": "Engenharia reversa: como a skill gera (JSON: subagentModel sonnet|haiku|opus, modelByDoc {\"design\": \"haiku\"}, maxParallel, areaBudgetKb, checkpointEvery, snapshotMaxAgeDays, smallFileLines, blockMaxLines)"}}

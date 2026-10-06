@@ -106,7 +106,7 @@ public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadO
     /// (KB do pacote de leitura), checkpoint (itens), idade máxima do retrato do banco/AWS (dias) e o corte dos trechos.
     /// </summary>
     public const string DefaultGeneration = """
-        {"subagentModel": "sonnet", "modelByDoc": {}, "maxParallel": 3, "areaBudgetKb": 90, "checkpointEvery": 10, "snapshotMaxAgeDays": 7, "smallFileLines": 400, "blockMaxLines": 220}
+        {"subagentModel": "sonnet", "modelByDoc": {}, "maxParallel": 5, "areaBudgetKb": 90, "checkpointEvery": 10, "snapshotMaxAgeDays": 7, "smallFileLines": 400, "blockMaxLines": 220}
         """;
 
     /// <summary>0056: traduções do produto no Multilingual do revamp (Aurora PostgreSQL, schema <c>multilingual</c>).</summary>

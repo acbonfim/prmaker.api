@@ -54,6 +54,9 @@ public class ReverseIntegrationsTests
     [InlineData("job do SQL Agent `JOB_CHK_GERA_INSPECAO`", "job")]
     [InlineData("arquivo/S3 bucket de anexos", "storage")]
     [InlineData("trigger `TR_CHK_INSPECTION` na tabela", "trigger")]
+    [InlineData("código em processo (`ActionPlanHelper`)", "package")]
+    [InlineData("web component `solvace-feed` falando com /Feed/", "frontend")]
+    [InlineData("modal do app + leitura de `VW_ACP_PLAN`", "frontend")]
     public void Kind_comes_from_the_first_mechanism_word(string mechanism, string kind) =>
         Assert.Equal(kind, ReverseIntegrations.KindOf(mechanism));
 

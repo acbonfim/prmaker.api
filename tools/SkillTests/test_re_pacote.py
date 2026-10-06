@@ -72,7 +72,7 @@ class Module:
         self.root = os.path.join(self.tmp.name, "kaizen")
         write(os.path.join(self.root, "Controllers", "IdeiaController.cs"), CONTROLLER)
         write(os.path.join(self.root, "Views", "kz_reg_ideia.cshtml"), big_view())
-        write(os.path.join(self.root, "Views", "kz_lst_ideia.cshtml"), "<div>lista</div>\n<script>\nfunction listar(){ ewcmAlert('@LanguageHelper.GetLanguageByTerm(x, \"Nenhuma ideia encontrada na busca\")'); }\n</script>\n")
+        write(os.path.join(self.root, "Views", "kz_lst_ideia.cshtml"), "<div>lista</div>\n<script>\nfunction listar(){ ewcmAlert('@LanguageHelper.GetLanguageByTerm(x, \"Nenhuma ideia encontrada na busca\")'); }\nfunction salvar(){ $.post('@Url.Content(\"~/Ideia/Salvar\")', {}); }\n</script>\n")
         write(os.path.join(self.root, "wwwroot", "lib", "jquery.min.js"), "function x(){}\n")
         self.inv = re_tool.inventory([("backend", self.root)])
 
@@ -129,6 +129,12 @@ class AreaTests(unittest.TestCase):
         self.assertIn("/doc/parte-", text)
         self.assertIn("    9|             if (m.Aprovador == null)", text)
         self.assertGreater(n, 0)
+
+    def test_pack_brings_the_called_action_from_another_area_as_support(self):
+        rel = os.path.join("Views", "kz_lst_ideia.cshtml")
+        lst = {"units": [{"file": rel, "ranges": [[1, 6]]}]}  # área só com a view; o controller está em outra
+        blocks = re_pacote.support_blocks(self.m.inv, lst)
+        self.assertTrue(any(f.endswith("IdeiaController.cs") and "Salvar" in "\n".join(lines[a:b + 1]) for f, a, b, lines in blocks))
 
     def test_cartao_joins_instructions_template_and_module_keys(self):
         d = tempfile.mkdtemp()

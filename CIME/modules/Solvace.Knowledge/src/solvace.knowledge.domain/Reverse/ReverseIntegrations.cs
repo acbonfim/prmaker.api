@@ -45,8 +45,9 @@ public static partial class ReverseIntegrations
         ("trigger", ["trigger", "gatilho"]),
         ("database", ["banco", "tabela", "view", "procedure", "function", "sql", "database", "replica", "sincroniza"]),
         ("http", ["http", "rest", "api", "endpoint", "rota", "url", "chamada", "graphql", "soap", "webservice"]),
-        ("package", ["pacote", "nuget", "npm", "biblioteca", "helpers", "dll", "projeto compartilhado", "library", "shared"]),
-        ("frontend", ["front", "iframe", "navegador", "tela", "link", "redireciona", "componente", "widget"]),
+        ("package", ["pacote", "nuget", "npm", "biblioteca", "helpers", "helper", "dll", "projeto compartilhado", "library", "shared",
+            "codigo em processo", "em processo", "in-process", "mesmo processo", "chamada de codigo"]),
+        ("frontend", ["front", "iframe", "navegador", "tela", "link", "redireciona", "componente", "component", "widget", "modal"]),
         ("external", ["externo", "terceiro", "saas", "servico externo"])
     ];
 

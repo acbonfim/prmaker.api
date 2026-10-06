@@ -581,7 +581,7 @@ case "$CMD" in
   config)
     load_config
     jq -r '"Geracao (ReverseEngineeringGeneration): " + ((.generation // {}) | tojson)' "$RE_HOME/_config.json"
-    echo "Modelo dos subagentes: $(gen subagentModel sonnet) · por documento: $(gen modelByDoc '{}') · simultaneos: $(gen maxParallel 3) · area: $(gen areaBudgetKb 90) KB · checkpoint: $(gen checkpointEvery 10) itens · retrato: $(gen snapshotMaxAgeDays 7) dias"
+    echo "Modelo dos subagentes: $(gen subagentModel sonnet) · por documento: $(gen modelByDoc '{}') · simultaneos: $(gen maxParallel 5) · area: $(gen areaBudgetKb 90) KB · checkpoint: $(gen checkpointEvery 10) itens · retrato: $(gen snapshotMaxAgeDays 7) dias"
     ;;
 
   areas)
@@ -606,7 +606,7 @@ case "$CMD" in
     python3 "$PAC_PY" pacote "$D/areas.json" "$D/pacotes" --banco "$(moddir "$MOD")/banco" --parte-dir "$D" ${AREA:+--area "$AREA"}
     python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$D/modelo.md" "$D/modulos.tsv" --out "$D/pacotes/cartao.md" >/dev/null
     MODEL="$(jq -r --arg d "$DOC" --arg m "$(gen subagentModel sonnet)" '(.generation.modelByDoc // {})[$d] // $m' "$RE_HOME/_config.json" 2>/dev/null)"
-    echo "Cartao do subagente: $D/pacotes/cartao.md · modelo dos subagentes: ${MODEL:-sonnet} · ate $(gen maxParallel 3) ao mesmo tempo"
+    echo "Cartao do subagente: $D/pacotes/cartao.md · modelo dos subagentes: ${MODEL:-sonnet} · ate $(gen maxParallel 5) ao mesmo tempo"
     ;;
 
   faltando)

@@ -112,8 +112,8 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
 4. **Subagente que caiu** (limite de sessao, erro): despache de novo com o MESMO prompt — ele continua da parte gravada.
 5. `bash $RE juntar <m> <doc>` — junta as partes em `documento.md` (sobre o publicado, no melhorar: item reescrito
    substitui o antigo) e **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas). Pode rodar de novo.
-6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, diagramas mermaid, integracoes consolidadas,
-   glossario), lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
+6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF`, glossario `GLO` a partir de
+   `inventario-termos.json` e dos termos que os subagentes listaram, diagramas mermaid, integracoes consolidadas), lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
    a partir do pacote, sem subagente.
 - Integracoes: para cada chamada a outro modulo (HTTP, fila/evento, tabela de outro dono, pacote), um `INT-…` com
   `**Modulos:**` **so com a chave** do outro projeto (`modulos.tsv` do pacote da sessao; servico externo `ext:<nome>`),
