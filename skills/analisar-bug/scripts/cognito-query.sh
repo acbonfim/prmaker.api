@@ -5,8 +5,8 @@
 # e consulta usuarios/grupos.
 #
 # Uso:
-#   cognito-query.sh pools [filtro]
-#       lista pools cujo nome contem <filtro> (sem filtro = todos). So leitura.
+#   cognito-query.sh pools [filtro] [--refresh]
+#       lista pools cujo nome contem <filtro> (sem filtro = todos). So leitura. --refresh relista na AWS.
 #   cognito-query.sh user <ambiente> <emailOuUsername>
 #       resolve o pool do <ambiente> e retorna o usuario (atributos, status, enabled, grupos).
 #   cognito-query.sh groups <ambiente> <username>
@@ -17,6 +17,9 @@
 # Env opcional:
 #   AWS_REGION      = regiao (default us-east-1)
 #   AWS_PROFILE     = profile do AWS CLI (senao usa o default/credenciais do ambiente)
+#
+# 0069: a lista de pools (id/nome) fica em cache por 24 h em ~/.prmake/cache (paginar ~190 pools custa 4 chamadas, e
+# a AWS ja levou 25-30 s por chamada); ambiente fora do cache relista uma vez. Toda chamada tem timeout.
 set -euo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -30,7 +33,7 @@ case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
 esac
 
 REGION="${AWS_REGION:-us-east-1}"
-AWS=(aws --region "$REGION")
+AWS=(aws --region "$REGION" --cli-connect-timeout 10 --cli-read-timeout 30)
 [[ -n "${AWS_PROFILE:-}" ]] && AWS+=(--profile "$AWS_PROFILE")
 
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -52,11 +55,27 @@ list_all_pools() {
   done
 }
 
+# --- lista de pools em cache (24 h); --refresh ou ambiente fora do cache relistam na AWS ---
+CACHE_DIR="${PRMAKE_HOME:-$HOME/.prmake}/cache"
+CACHE="$CACHE_DIR/cognito-pools-$REGION${AWS_PROFILE:+-$AWS_PROFILE}.tsv"
+cached_pools() {
+  if [[ "${1:-}" != refresh && -s "$CACHE" && -n "$(find "$CACHE" -mmin -1440 2>/dev/null)" ]]; then
+    cat "$CACHE"; return
+  fi
+  local all
+  all="$(list_all_pools)" || exit 1
+  if mkdir -p "$CACHE_DIR" 2>/dev/null; then printf '%s\n' "$all" > "$CACHE.tmp.$$" && mv "$CACHE.tmp.$$" "$CACHE"; fi
+  printf '%s\n' "$all"
+}
+
 # --- resolve UserPoolId a partir do nome do ambiente: match exato, senao unico substring ---
 resolve_pool() {
   local env="$1" all exact subs n
   [[ -n "$env" ]] || die "informe o ambiente (nome do pool)"
-  all="$(list_all_pools)"
+  all="$(cached_pools)" || exit 1
+  if ! awk -F'\t' -v e="$env" 'index(tolower($2),tolower(e)){f=1} END{exit !f}' <<< "$all"; then
+    all="$(cached_pools refresh)" || exit 1   # pool novo depois do cache
+  fi
   exact="$(echo "$all" | awk -F'\t' -v e="$env" '$2==e{print $1}')"
   if [[ -n "$exact" ]]; then printf '%s' "$exact"; return; fi
   subs="$(echo "$all" | awk -F'\t' -v e="$env" 'index(tolower($2),tolower(e)){print}')"
@@ -70,9 +89,11 @@ resolve_pool() {
 CMD="${1:-}"; shift || true
 case "$CMD" in
   pools)
-    FILTER="${1:-}"
-    if [[ -z "$FILTER" ]]; then list_all_pools | sort -t$'\t' -k2;
-    else list_all_pools | awk -F'\t' -v f="$FILTER" 'index(tolower($2),tolower(f))' | sort -t$'\t' -k2; fi
+    FILTER=""; MODE=""
+    for A in "$@"; do if [[ "$A" == --refresh ]]; then MODE=refresh; else FILTER="$A"; fi; done
+    ALL="$(cached_pools $MODE)" || exit 1
+    if [[ -z "$FILTER" ]]; then sort -t$'\t' -k2 <<< "$ALL";
+    else awk -F'\t' -v f="$FILTER" 'index(tolower($2),tolower(f))' <<< "$ALL" | sort -t$'\t' -k2; fi
     ;;
 
   pool-id)

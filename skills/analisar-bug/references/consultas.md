@@ -88,7 +88,8 @@ bash ~/.claude/skills/analisar-bug/scripts/cognito-query.sh pool-id takeda
 ```
 
 O script resolve o pool pelo **nome exato** do ambiente; se nao houver exato, tenta substring unico
-(se ambiguo, lista candidatos). Requer AWS CLI autenticado (HTTP/erro de credencial = rode
+(se ambiguo, lista candidatos). A lista de pools fica em cache por 24 h (`~/.prmake/cache`; ambiente novo relista
+sozinho, `pools <filtro> --refresh` forca): nao rode `pools` antes do `user`/`groups` — eles ja resolvem o pool. Requer AWS CLI autenticado (HTTP/erro de credencial = rode
 `aws sso login`/configure o profile). Estas consultas sao **somente leitura**. Trate os dados do
 usuario como sensiveis (PII): use o que for relevante para a analise e evite despejar dados pessoais
 desnecessarios na timeline.

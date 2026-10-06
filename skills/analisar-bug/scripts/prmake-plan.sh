@@ -1160,15 +1160,23 @@ case "$CMD" in
     [[ -d "$REPO_DIR/.git" || -f "$REPO_DIR/.git" ]] || die "nao e um repositorio git: $REPO_DIR"
     REPO_DIR="$(cd "$REPO_DIR" && pwd)"
     WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD/$(basename "$REPO_DIR")"
-    if [[ -e "$WT/.git" ]]; then
-      echo "$WT"; exit 0
+    if [[ ! -e "$WT/.git" ]]; then
+      mkdir -p "$(dirname "$WT")"
+      git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
+      if git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$BR"; then
+        git -C "$REPO_DIR" worktree add "$WT" "$BR" >&2 || die "nao consegui criar o worktree em $WT"
+      else
+        git -C "$REPO_DIR" worktree add -b "$BR" "$WT" "origin/$BASE_BR" >&2 || die "nao consegui criar o worktree em $WT"
+      fi
     fi
-    mkdir -p "$(dirname "$WT")"
-    git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
-    if git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$BR"; then
-      git -C "$REPO_DIR" worktree add "$WT" "$BR" >&2 || die "nao consegui criar o worktree em $WT"
-    else
-      git -C "$REPO_DIR" worktree add -b "$BR" "$WT" "origin/$BASE_BR" >&2 || die "nao consegui criar o worktree em $WT"
+    # 0069: testes (test-changed.sh) usam o node_modules do clone principal — so o link, ignorado pelo git; o
+    # "worktree remove --force" do executor apaga o link, nao o alvo. Git Bash: o ln -s copiaria a pasta, nao liga.
+    if [[ -f "$WT/package.json" && -d "$REPO_DIR/node_modules" && ! -e "$WT/node_modules" ]] \
+       && git -C "$WT" check-ignore -q node_modules 2>/dev/null; then
+      case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        *) ln -s "$REPO_DIR/node_modules" "$WT/node_modules" 2>/dev/null || true ;;
+      esac
     fi
     echo "$WT"
     ;;
