@@ -94,6 +94,10 @@ documento. Funcional enviado em 26 min. Ajustes:
   base); no `juntar`, os IDs dos outros documentos são lidos de novo — a arquitetura do SOC, gerada em paralelo com o
   funcional, colidiu GAP/CFG e a sessão principal teve de renumerar à mão.
 
+### Ajustes 3 (`feature/0066-ajustes3`)
+- Código de teste fora do inventário e das áreas (`tests/`, `*.Tests`/`*.UnitTests`, `*Test(s).cs`, `.spec/.test.ts`):
+  no revamp-users eram 768 KB de 2.003 KB (38%) e 11 das 28 áreas por documento; agora 17 áreas e ~1,4 MB.
+
 ## Log
 
 - 2026-10-06 — spec/plan/status criados a partir da análise da sessão (card 75294, sessões do `legado-checklist`).
