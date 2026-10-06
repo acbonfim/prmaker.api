@@ -148,6 +148,19 @@ public class ExecutionWorkerStateResponse
     public bool DoctorRequested { get; set; }
     /// <summary>Pedidos que o PRMake ainda considera deste executor (o executor reconcilia com os processos dele).</summary>
     public List<Guid> ActiveRequestIds { get; set; } = [];
+    /// <summary>0068: há pedido que este executor pode pegar agora — ele chama o next (cobre o que fica pronto com o tempo).</summary>
+    public bool QueueReady { get; set; }
+}
+
+/// <summary>0068: conexão do executor ao relay de tempo real.</summary>
+public class ExecutionWorkerRealTimeResponse
+{
+    /// <summary>URL do hub; nula = sem relay (desenvolvimento) — o executor segue consultando a fila.</summary>
+    public string? Url { get; set; }
+    public string? AccessToken { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public string Group { get; set; } = string.Empty;
+    public string Event { get; set; } = string.Empty;
 }
 
 public class ExecutionUserSettingsResponse
