@@ -41,7 +41,7 @@ public static class ArchitectureSectionAudience
 public class ArchitectureSection
 {
     public const int MaxTitleLength = 200;
-    public const int MaxContentLength = 600_000; // 0052: documento da engenharia reversa (re-*) é profundo
+    public const int MaxContentLength = 2_000_000; // 0052: documento da engenharia reversa (re-*) é profundo; 0066: 600 mil forçava compactar (perdia detalhe e custava mais que gerar)
     public const int MaxNoteLength = 500;
 
     public Guid Id { get; private set; }
