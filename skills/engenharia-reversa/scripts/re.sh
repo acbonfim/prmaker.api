@@ -675,7 +675,9 @@ case "$CMD" in
       for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" && "$o" != "$D/documento.md" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done
     } | sort -u > "$TMP/ids-agora.txt"
     [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
+    python3 "$PAC_PY" repetidos "$D/documento.md"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
     [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
+    python3 "$PAC_PY" tamanho "$D/documento.md"
     progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"
     [[ $RC -eq 0 ]] || echo "AVISO: IDs repetidos entre partes (acima) — renumere numa das partes e junte de novo" >&2
     ;;

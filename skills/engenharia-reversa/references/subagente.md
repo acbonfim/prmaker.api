@@ -18,6 +18,12 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
 6. **Responda só o resumo** (até 8 linhas): itens por tipo, GAPs, dúvidas, armadilhas vistas (elas não entram no documento).
 
 ## Regras do conteúdo
+- **Só as seções dos seus itens.** Nada de Resumo do módulo, Perfis, "Integrações com outros módulos" em prosa,
+  Glossário ou visão geral — cada área escrevia a sua versão e o documento inchava (o revamp-users passou de 878 mil
+  caracteres). O que é do módulo inteiro é consolidado uma vez só (especiais e sessão principal).
+- **Dono de cada item:** endpoint (`API`) só da área que tem a ROTA/controller no pacote (chamada a endpoint de outro
+  arquivo = cite pelo nome); integração com serviço externo/tecnologia (`ext:s3`, `ext:redis`, Cognito, DynamoDB…) é do
+  especial `modulo` — a área só cria `INT` com outro MÓDULO Solvace quando a chamada está no código do pacote.
 - **Só os tipos que o cabeçalho do pacote lista.** O que é do módulo inteiro tem subagente próprio (glossário; banco:
   tabelas, objetos, triggers e jobs; módulo: tecnologias, configuração, segurança, observabilidade, infra) ou é da sessão
   principal (perfis `PRF`, resumo) — **não crie**: cite pelo nome; liste no resumo final os perfis que viu (`arquivo:linha`).

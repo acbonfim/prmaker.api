@@ -98,6 +98,15 @@ documento. Funcional enviado em 26 min. Ajustes:
 - Código de teste fora do inventário e das áreas (`tests/`, `*.Tests`/`*.UnitTests`, `*Test(s).cs`, `.spec/.test.ts`):
   no revamp-users eram 768 KB de 2.003 KB (38%) e 11 das 28 áreas por documento; agora 17 áreas e ~1,4 MB.
 
+### Ajustes 4 (limite e inchaço)
+- O limite de 600 mil caracteres por documento era só validação (coluna `text`, servidor aceita 30 MB): virou 2 milhões
+  (#111). No revamp-users o funcional passou (878 mil) e as sessões compactaram as partes para 60%: 17 subagentes e
+  38 M de leitura de cache (mais que gerar) e itens fundidos/removidos.
+- Causa do inchaço: cada área colava a sua versão das seções do módulo (resumo, perfis, integrações em prosa) e repetia
+  endpoints/integrações externas. Cartão: área só escreve as seções dos seus itens; API é de quem tem a rota no pacote;
+  INT com `ext:` é do especial `modulo`. `juntar` funde repetidos (mesmo tipo e título, referências remapeadas — nos
+  documentos reais ainda achou 21 API + 2 INT e 9 CFG) e mostra o tamanho × limite; a SKILL proíbe compactar regras.
+
 ## Log
 
 - 2026-10-06 — spec/plan/status criados a partir da análise da sessão (card 75294, sessões do `legado-checklist`).

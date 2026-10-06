@@ -24,6 +24,9 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
       confere a evidência: cada `arquivo:linha` existe nas fontes e os literais citados aparecem no arquivo citado.
   re_pacote.py juntar <saida.md> [--base documento.md] <parte1.md> [parte2.md ...]
       junta as partes das áreas sobre a base (o item reescrito numa parte substitui o da base — modo melhorar).
+  re_pacote.py repetidos <documento.md> [--out saida.md]
+      funde itens do mesmo tipo e mesmo título vindos de áreas diferentes (API, INT, DB, TEC, CFG, GLO…), referências juntas.
+  re_pacote.py tamanho <documento.md>         tamanho × limite do PRMake (2 milhões de caracteres)
   re_pacote.py compactar <documento.md> --areas areas.json [--ids ids.txt] [--out saida.md]
       depois de juntar as partes: os IDs das faixas das áreas viram a sequência de cada tipo (referências trocadas junto).
 """
@@ -564,6 +567,9 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
          f"- **Arquivos:** {len(area['files'])} · trechos com o número da linha real (use-o no `**Onde:** arquivo:linha`)."]
     allowed, taken = area_kinds(plan)
     if plan.get("kinds"):
+        if "API" in allowed:
+            L.append("- **API:** só os endpoints cuja ROTA/controller está neste pacote. **INT:** só com outro módulo Solvace, quando a "
+                     "chamada está neste pacote — integração com serviço externo/tecnologia (`ext:`) é do especial `modulo`.")
         L.append(f"- **Tipos que esta área cria:** {', '.join(allowed)}. **Não crie** {', '.join(taken) or '—'} (têm subagente próprio ou são da "
                  "sessão principal: cite pelo nome) nem tipos de outros documentos (tela, endpoint, tabela… no documento certo — aqui só referencie).")
     L.append("")
@@ -720,11 +726,13 @@ def banco_packs(plan, banco_dir, out_dir, parte_dir, budget_kb):
 
 def modulo_pack(plan, inv, out_dir, parte_dir, moddir):
     """Arquitetura: o que é do módulo inteiro — tecnologias, configuração (só nomes), segurança, observabilidade e infra."""
-    entry = add_special(plan, "modulo", ["TEC", "CMP", "CFG", "NFR", "ADR", "INF"])
+    entry = add_special(plan, "modulo", ["TEC", "CMP", "CFG", "NFR", "ADR", "INF", "INT (só ext:)"])
     L = special_header(plan, entry, parte_dir, out_dir, "módulo inteiro",
                        "`## Tecnologias e componentes` (TEC/CMP), `## Configuração e segredos (só nomes)` (CFG), `## Segurança e autenticação`, "
                        "`## Observabilidade e diagnóstico`, `## Infraestrutura e AWS (opcional)` (INF), `## Decisões e requisitos` (ADR/NFR) e lacunas")
-    L += ["Nunca valores de segredo (senha, connection string, token): só o NOME da chave e para que serve.", ""]
+    L += ["Nunca valores de segredo (senha, connection string, token): só o NOME da chave e para que serve.",
+          "As integrações com serviços externos/tecnologias (`INT` com `**Módulos:** ext:s3`, `ext:redis`, Cognito, DynamoDB, SES…) "
+          "são suas — uma por serviço, com os usos (as áreas não criam).", ""]
     files = set()
     for s in inv.get("sources", []):
         p = s.get("path") or ""
@@ -1165,6 +1173,57 @@ def juntar(out, base, parts):
     return 1 if dups else 0
 
 
+# ── itens repetidos entre partes (0066-ajustes4) ─────────────────────────────────────────────────────
+
+DEDUPE_KINDS = {"API", "INT", "DB", "SQL", "TRG", "TEC", "CMP", "CFG", "GLO", "PRF", "EVT", "JOB", "INF"}
+MAX_DOC_CHARS = 2_000_000   # o PRMake recusa acima disso (ArchitectureSection/ReverseRevision.MaxContentLength)
+
+
+def dedupe(doc_path, out=None):
+    """
+    Itens do mesmo tipo com o MESMO título (sem acento/caixa) vindos de áreas diferentes: fica o mais completo, os outros
+    saem e as referências locais passam a apontar para ele. Só tipos "do módulo" (endpoint, integração, tabela, tecnologia,
+    configuração, termo, perfil…), onde título igual é o mesmo assunto.
+    """
+    text = open(doc_path, encoding="utf-8").read()
+    groups = defaultdict(list)
+    for iid, kind, title, body in blocks_by_id(text):
+        if kind in DEDUPE_KINDS:
+            key = re.sub(r"\s+", " ", re_tool.norm(re.sub(r"\(.*?\)$", "", title))).strip()
+            if key:
+                groups[(kind, key)].append((iid, len(body)))
+    mapping = {}
+    for (_, _), ids in groups.items():
+        if len({i for i, _ in ids}) < 2:
+            continue
+        keep = max(ids, key=lambda x: x[1])[0]
+        for i, _ in ids:
+            if i != keep:
+                mapping[i] = keep
+    if not mapping:
+        print("Repetidos: nenhum item repetido entre as partes.")
+        return {}
+    text = drop_items(text, set(mapping))
+
+    def repl(m):
+        key = f"{m.group(1)}-{int(m.group(2)):03d}"
+        return mapping.get(key, m.group(0))
+    with open(out or doc_path, "w", encoding="utf-8") as fh:
+        fh.write(R_LOCAL_REF.sub(repl, text))
+    by_kind = Counter(k.split("-")[0] for k in mapping)
+    print(f"Repetidos: {len(mapping)} itens fundidos (" + ", ".join(f"{n} {k}" for k, n in sorted(by_kind.items())) + ") — referências apontam para o que ficou")
+    return mapping
+
+
+def size_report(doc_path):
+    n = len(open(doc_path, encoding="utf-8").read())
+    pct = n / MAX_DOC_CHARS
+    print(f"Tamanho: {n:,} caracteres ({pct:.0%} do limite do PRMake de {MAX_DOC_CHARS:,})".replace(",", "."))
+    if pct > 0.8:
+        print("AVISO: perto do limite — confira itens repetidos e seções coladas por área antes de enviar (não compacte o texto das regras)")
+    return n
+
+
 # ── compactar IDs ─────────────────────────────────────────────────────────────────────────────────
 
 R_LOCAL_REF = re.compile(r"(?<![#\w-])(TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|INF|TUT|FAQ|FN|UC|RN|DB|UI)-(\d{1,4})\b")
@@ -1310,6 +1369,12 @@ def main(argv):
     if cmd == "juntar":
         parts = [a for a in argv[3:] if not a.startswith("--") and a != opt(argv, "--base")]
         return juntar(argv[2], opt(argv, "--base"), parts)
+    if cmd == "repetidos":
+        dedupe(argv[2], opt(argv, "--out"))
+        return 0
+    if cmd == "tamanho":
+        size_report(argv[2])
+        return 0
     if cmd == "compactar":
         used = open(opt(argv, "--ids"), encoding="utf-8").read().split() if opt(argv, "--ids") and os.path.exists(opt(argv, "--ids")) else []
         base = int(opt(argv, "--base")) if opt(argv, "--base") else json.load(open(opt(argv, "--areas"), encoding="utf-8")).get("idBase", 0)

@@ -123,7 +123,10 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
    Andamento: `etapa ... area:<area> running` ao despachar e `completed --detail "<itens>"` ao voltar.
 4. **Subagente que caiu** (limite de sessao, erro): despache de novo com o MESMO prompt — ele continua da parte gravada.
 5. `bash $RE juntar <m> <doc>` — junta as partes em `documento.md` (sobre o publicado, no melhorar: item reescrito
-   substitui o antigo) e **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas). Pode rodar de novo.
+   substitui o antigo), **funde itens repetidos** entre areas (mesmo tipo e titulo: API, INT, DB, TEC, CFG, GLO…),
+   **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas) e mostra o **tamanho** × o limite do PRMake
+   (2 milhoes de caracteres). Pode rodar de novo. **Nunca compacte o texto das regras** para caber: se passar do
+   limite, procure secoes coladas por area e itens repetidos; ainda assim grande → diga ao usuario.
 6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF` a partir dos resumos dos
    subagentes, diagramas mermaid, integracoes consolidadas) — **sem ler o `documento.md` inteiro** (centenas de KB a cada
    resposta): use o `check`, `grep -n '^## \|^### ' documento.md` e leia so o trecho que vai editar, lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
