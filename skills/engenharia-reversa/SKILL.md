@@ -60,7 +60,9 @@ referencie, nao redefina), `relacionados.md` (itens dos modulos com quem este co
 O ponto de partida antigo: `bash $KB show <modulo> <secao>` das secoes listadas. Retomada (`RETOMADA`): continue o
 `documento.md` local.
 
-**3. Inventario (sem LLM)** — `bash $RE inventario <modulo>`: endpoints, validacoes e mensagens (back, front e alerts do
+**3. Inventario (sem LLM)** — `bash $RE inventario <modulo>` (0067: le a **master atualizada** de cada repositorio — `git fetch`
+e uma copia so de leitura em `<clone>/../.prmake-wt/master/<repo>`; o clone de trabalho nao e tocado e a branch em que
+ele estiver nao importa. `--local` so para documentar uma branch que ainda nao entrou na master): endpoints, validacoes e mensagens (back, front e alerts do
 legado), permissoes, tabelas, eventos/filas, jobs, handlers, procedures, rotas/componentes/chamadas HTTP do front,
 paginas `.asp`, chaves de config. **E a lista do que o documento precisa cobrir — sem excecao.** Legado (`edv-solvace`)
 exige a subpasta do modulo: `--path edv-solvace=solvace-asp/systems/<sigla>` (veja "Onde esta" em `kb.sh show <modulo>

@@ -65,7 +65,7 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   `kb.sh show <projeto> modulos` do mundo certo — legado (`legado-<modulo>`: telas → `.asp`/controller → service/SP)
   ou revamp (`revamp-<modulo>`); o `contexto` mostra os dois. So entao os arquivos que ela aponta. Outro modulo:
   `kb.sh index <termos>`; nao sabe o mundo: `kb.sh show edv-solvace modulos` (glossario de siglas → projeto). Base sem o
-  caso → busca **so na pasta do modulo** (`revamp-repos.sh where <repo>`; nunca `grep -r` na pasta de todos os
+  caso → busca **so na pasta do modulo, na copia da master** (`revamp-repos.sh master <repo>`; nunca `grep -r` na pasta de todos os
   repositorios) e, ao achar, registre a lacuna
   (`arch.sh suggest <projeto> modulos lacuna.md --kind gap --card <card>`); varredura ampla inevitavel → subagente
   `Explore` (volta so o resumo). Diga no `advance` de `consultar-base` qual secao da base usou.
@@ -183,6 +183,13 @@ refazer), mostra os campos do card e os repro steps (inteiros em `$CARD_DIR/dado
 Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas** (`steps`) para este caso concreto.
 **Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
+
+**Codigo da analise = a master atualizada (0067)**: o clone de trabalho pode estar em outra branch (hotfix de outro card)
+ou desatualizado. Para LER codigo na analise: `M=$(bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh master
+<repo>)` — faz `git fetch` e devolve a mesma pasta numa copia so de leitura em `origin/master`
+(`<pasta>/../.prmake-wt/master/<repo>`), sem tocar no clone; leia e busque dentro de `$M`. Cite `arquivo:linha` relativos
+ao repositorio (iguais aos do clone) e diga na analise o commit da master lido. A correcao continua no worktree do card
+(criado de `origin/<base>`).
 
 **3. Consultar a base e investigar** — duas etapas (0063): `consultar-base` (engenharia reversa, armadilhas, KC — conclui
 citando os itens ou a lacuna) e `investigar-codigo` (confirmar no codigo os `Onde:`; voltar a base a cada duvida). Comece
