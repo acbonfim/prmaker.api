@@ -589,7 +589,10 @@ case "$CMD" in
     INV="$(moddir "$MOD")/inventario.json"; [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD"
     load_config >/dev/null 2>&1 || true
     BUDGET="$(opt --orcamento "$(gen areaBudgetKb 90)" "$@")"
-    bash "$0" ids "$MOD" 2>/dev/null | cut -f1 > "$TMP/ids.txt" || true
+    # IDs usados = publicados + os documento.md desta maquina (partes, pacotes e modelos tem IDs de faixa/exemplo: fora)
+    { bash "$0" ids "$MOD" 2>/dev/null | grep 'publicado' | cut -f1
+      for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done
+    } | sort -u > "$TMP/ids.txt"
     cp "$TMP/ids.txt" "$D/ids-usados.txt"
     EXTRA=(); for f in "$(moddir "$MOD")/banco/inventario-banco.json" "$(moddir "$MOD")/inventario-infra.json"; do [[ -s "$f" ]] && EXTRA+=(--extra "$f"); done
     python3 "$PAC_PY" areas "$INV" "$DOC" "${EXTRA[@]+"${EXTRA[@]}"}" --ids "$TMP/ids.txt" --modulo "$MOD" --orcamento-kb "$BUDGET" \
@@ -604,6 +607,21 @@ case "$CMD" in
     mkdir -p "$D/pacotes"
     AREA="$(opt --area "" "$@")"
     TIPOS="$(jq -r '(.docType.kinds // []) | join(",")' "$D/sessao.json" 2>/dev/null)"
+    if [[ "$DOC" == visao || "$DOC" == spec-arquitetura ]]; then
+      # 0066-ajustes2: sintese — itens dos levantamentos (rascunho local desta maquina, senao o publicado), sem codigo
+      mkdir -p "$D/fontes"; FONTES=()
+      for src in funcional arquitetura uiux; do
+        L="$(moddir "$MOD")/$src/documento.md"
+        if [[ -s "$L" ]]; then FONTES+=(--fonte "$src=$L"); continue; fi
+        api GET "/modules/$(urlenc "$MOD")/docs/$src"
+        if [[ "$CODE" =~ ^2 ]] && jq -e '.content // empty' "$TMP/resp" >/dev/null; then jq -r '.content' "$TMP/resp" > "$D/fontes/$src.md"; FONTES+=(--fonte "$src=$D/fontes/$src.md"); fi
+      done
+      [[ -n "$TIPOS" ]] && jq --arg t "$TIPOS" '.kinds = ($t | split(","))' "$D/areas.json" > "$TMP/a.json" && cp "$TMP/a.json" "$D/areas.json"
+      python3 "$PAC_PY" sintese "$D/areas.json" "$D/pacotes" "${FONTES[@]+"${FONTES[@]}"}" --parte-dir "$D" || die "sem levantamentos para a sintese"
+      python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$D/modelo.md" "$D/modulos.tsv" --out "$D/pacotes/cartao.md" >/dev/null
+      echo "Sintese: UM subagente (area 'sintese', pacote-sintese.md) escreve o documento — ou voce mesmo, sem ler codigo."
+      exit 0
+    fi
     python3 "$PAC_PY" pacote "$D/areas.json" "$D/pacotes" --banco "$(moddir "$MOD")/banco" --parte-dir "$D" ${AREA:+--area "$AREA"} ${TIPOS:+--tipos "$TIPOS"}
     # 0066-ajustes: o que e do modulo inteiro tem subagente proprio, despachado junto com as areas (nao a cauda da sessao
     # principal): funcional → glossario; arquitetura → banco (catalogo/retrato) e modulo (tecnologias, configuracao, seguranca...)
@@ -634,6 +652,13 @@ case "$CMD" in
     [[ -s "$D/documento.base.md" ]] || { [[ -s "$D/documento.md" ]] && cp "$D/documento.md" "$D/documento.base.md"; }
     BASEDOC=(); [[ -s "$D/documento.base.md" ]] && BASEDOC=(--base "$D/documento.base.md")
     python3 "$PAC_PY" juntar "$D/documento.md" "${BASEDOC[@]+"${BASEDOC[@]}"}" "${PARTS[@]}"; RC=$?
+    # 0066-ajustes2: IDs usados lidos AGORA (publicados + rascunhos locais dos outros documentos) — com dois documentos
+    # gerados em paralelo, a lista do momento do `areas` nao via os IDs novos do outro (GAP/CFG colidiam)
+    # (o proprio documento fica de fora — senao juntar de novo mudaria a numeracao)
+    { bash "$0" ids "$MOD" 2>/dev/null | grep 'publicado' | cut -f1
+      for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" && "$o" != "$D/documento.md" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done
+    } | sort -u > "$TMP/ids-agora.txt"
+    [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
     [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
     progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"
     [[ $RC -eq 0 ]] || echo "AVISO: IDs repetidos entre partes (acima) — renumere numa das partes e junte de novo" >&2
