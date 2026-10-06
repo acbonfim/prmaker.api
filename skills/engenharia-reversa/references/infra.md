@@ -5,6 +5,11 @@ o código sozinho não mostra: onde roda, quem faz o deploy, quais buckets e seg
 Só roda quando o usuário pede (ou aceita a oferta ao fim da leitura). Sem ela o documento segue e registra
 `GAP` "infra não lida".
 
+**Retrato (0066)**: `re.sh retrato infra` lê a conta inteira uma vez (~15 min) e guarda em
+`~/.prmake/reverse/_retrato/infra/conta-<id>.json`; o `re.sh infra <módulo>` usa esse retrato enquanto ele estiver
+dentro da idade máxima (`snapshotMaxAgeDays`) e só liga os recursos ao módulo (segundos, sem chamar a AWS).
+`--ao-vivo` lê a AWS de novo (e atualiza o retrato).
+
 ## O que é lido (apenas list/describe/get)
 Lambda (config, gatilhos, **nomes** das variáveis), S3 (região, versionamento, notificações), **esteiras** (CodePipeline:
 estágios/ações/última execução; CodeBuild: origem, imagem, buildspec com valores mascarados; CodeDeploy), **Secrets

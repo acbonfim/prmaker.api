@@ -47,6 +47,17 @@
 #   migrar <modulo> <migracao.json>   liga as armadilhas antigas e as sugestoes sem item aos itens (0054):
 #                                     {"traps":[{title,text,items,cards}], "suggestions":[{id,itemId,sectionKey}]}
 #   ids <modulo>                      IDs ja usados no modulo (publicados + rascunhos locais) — para nao repetir
+#   config                            0066: como gerar (modelo dos subagentes, paralelismo, orcamento da area, checkpoint, idade do
+#                                     retrato) — Skills Configurations -> ReverseEngineeringGeneration
+#   areas <modulo> <doc> [--orcamento KB]
+#                                     0066: divide o codigo do documento em AREAS que cabem no orcamento, com faixa de IDs -> areas.json
+#   pacote <modulo> <doc> [--area A]  0066: pacote de leitura por area (codigo inteiro em blocos, com linha) + cartao do subagente
+#   faltando <modulo> <doc> <area>    0066: o que a parte da area ainda nao cobre (checkpoint/retomada)
+#   juntar <modulo> <doc>             0066: junta parte-*.md em documento.md e compacta os IDs das faixas (referencias juntas)
+#   evidencia <modulo> <doc> [arq]    0066: confere arquivo:linha e literais citados contra as fontes (tambem roda no check)
+#   retrato banco|infra|status [--forcar]
+#                                     0066: RETRATO do banco de referencia inteiro e da conta AWS, uma vez; banco/infra dos modulos
+#                                     usam o retrato enquanto ele estiver dentro da idade maxima (--ao-vivo forca a leitura direta)
 #   find <termos> [--module m] [--kind RN,UC] [--card N]
 #   get <ref> [ref...] [--card N]     itens publicados (modulo#RN-012) com o texto
 #   impact <termo>                    quem usa a tabela/item/modulo
@@ -71,6 +82,7 @@ TOOL_PY="$HERE/re_tool.py"
 BANCO_PY="$HERE/re_banco.py"
 INFRA_PY="$HERE/re_infra.py"
 TRAD_PY="$HERE/re_traducoes.py"
+PAC_PY="$HERE/re_pacote.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -93,6 +105,7 @@ opt() { local name="$1" def="$2"; shift 2; while [[ $# -gt 0 ]]; do [[ "$1" == "
 urlenc() { jq -rn --arg v "$1" '$v|@uri'; }
 positional() { local out=(); while [[ $# -gt 0 ]]; do case "$1" in --*) shift 2;; *) out+=("$1"); shift;; esac; done; printf '%s\n' "${out[@]:-}"; }
 moddir() { printf '%s/%s' "$RE_HOME" "$1"; }
+RETRATO="$RE_HOME/_retrato"
 docdir() { printf '%s/%s/%s' "$RE_HOME" "$1" "$2"; }
 
 # Pasta local de um repositorio pelo mapa da maquina (0048). Exit 2/3 do mapa = fora do mapa/ambiguo.
@@ -175,6 +188,22 @@ revision_id() { # <modulo> <doc>
   [[ -s "$s" ]] || die "sem sessao aberta para $1/$2 — rode: re.sh start $1 $2"
   jq -r '.revision.id' "$s"
 }
+
+# 0066: configuracao da geracao (ReverseEngineeringGeneration) — guardada em $RE_HOME/_config.json (vale sem rede).
+load_config() {
+  mkdir -p "$RE_HOME"
+  api GET "/settings"
+  if [[ "$CODE" =~ ^2 ]]; then cp "$TMP/resp" "$RE_HOME/_config.json"; fi
+  [[ -s "$RE_HOME/_config.json" ]] || echo '{}' > "$RE_HOME/_config.json"
+}
+gen() { # <chave> <padrao> — valor da configuracao de geracao
+  [[ -s "$RE_HOME/_config.json" ]] || load_config
+  local v; v="$(jq -r --arg k "$1" '(.generation // {})[$k] // empty | if type == "object" then tojson else tostring end' "$RE_HOME/_config.json" 2>/dev/null)"
+  printf '%s' "${v:-$2}"
+}
+# idade (dias, com fracao) de um arquivo do retrato; 9999 se nao existe
+age_days() { python3 -c 'import os,sys,time;p=sys.argv[1];print(round((time.time()-os.path.getmtime(p))/86400,2) if os.path.exists(p) else 9999)' "$1"; }
+fresh() { python3 -c 'import sys;sys.exit(0 if float(sys.argv[1]) <= float(sys.argv[2]) else 1)' "$(age_days "$1")" "$2"; }
 
 # Andamento ao vivo (0052): nunca derruba o comando — sem rede, a tela so fica sem a novidade.
 progress() { # <modulo> <doc> <json>
@@ -262,9 +291,15 @@ case "$CMD" in
     jq -r '.questions[] | "- (\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
     jq -r '.traps[] | "## \(.title)\(if .needsReview then " (a conferir)" else "" end)\n- itens: \(.items | join(", ")) · cards: \(.cards | join(", "))\n\n\(.text)\n"' "$D/sessao.json" > "$D/armadilhas.md"
     jq -r '.legacyTraps // ""' "$D/sessao.json" > "$D/armadilhas-antigas.md"
+    # 0066: chaves validas para **Modulos:** dos INT (a checagem avisa chave desconhecida; o mapa so usa chave valida)
+    api GET "/modules"; if [[ "$CODE" =~ ^2 ]]; then
+      jq -r '.[] | [.key, (.displayName // .name // ""), ((.aliases // []) | join(", "))] | @tsv' "$TMP/resp" > "$D/modulos.tsv"; fi
+    load_config >/dev/null 2>&1 || true
     # rascunho: retomado (conteudo do PRMake) ou o ponto de partida; nunca sobrescreve um documento local mais novo
     if [[ "$(jq -r '.resumed' "$D/sessao.json")" == false || ! -s "$D/documento.md" ]]; then
       [[ -s "$D/documento.md" ]] && mv "$D/documento.md" "$D/documento.anterior.md"
+      rm -f "$D/documento.base.md" "$D/areas.json"; rm -rf "$D/pacotes"   # 0066: sessao nova = areas/pacotes/base novos
+      if ls "$D"/parte-*.md >/dev/null 2>&1; then mkdir -p "$D/partes-anteriores"; mv "$D"/parte-*.md "$D/partes-anteriores/"; fi
       jq -r '.revision.content' "$D/sessao.json" > "$D/documento.md"
     fi
     for id in $(jq -r '.module.assets[] | select(.download) | .id' "$D/sessao.json"); do
@@ -325,8 +360,8 @@ case "$CMD" in
     jq -e '.referenceDatabase.global' "$TMP/settings.json" >/dev/null || die "banco de referencia nao configurado (Skills Configurations -> ReverseEngineeringReferenceDatabase)"
     INV="$(moddir "$MOD")/inventario.json"
     [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD (o banco usa as tabelas e procedures citadas no codigo)"
-    PREFIXES=(); SIGLA="$(opt --sigla "" "$@")"
-    while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && PREFIXES+=("$2"); shift; done
+    PREFIXES=(); SIGLA="$(opt --sigla "" "$@")"; LIVE=0; ALLARGS=" $* "
+    while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && PREFIXES+=("$2"); [[ "$1" == --ao-vivo ]] && LIVE=1; shift; done
     if [[ ${#PREFIXES[@]} -eq 0 ]]; then
       # prefixos TB_<SIGLA>_ mais citados pelo código do módulo (fora os compartilhados: WCM, SYS, GLB, EMP, MLG…)
       while IFS= read -r p; do [[ -n "$p" ]] && PREFIXES+=("$p"); done < <(jq -r '[.items[] | select(.cat == "tabela") | .name | ascii_upcase
@@ -341,6 +376,14 @@ case "$CMD" in
     while IFS= read -r l; do ARGS+=(--local "$l"); done < <(jq -r '.referenceDatabase.locals[]?' "$TMP/settings.json")
     for p in "${PREFIXES[@]}"; do ARGS+=(--prefix "$p"); done
     echo "Banco de referencia $ENVN ($HOSTA): prefixos ${PREFIXES[*]} · sigla $SIGLA"
+    # 0066: retrato do banco (re.sh retrato banco) dentro da idade maxima = sem VPN e sem esperar; --ao-vivo le direto
+    RDIR="$RETRATO/banco/$ENVN-$HOSTA"; MAXD="$(gen snapshotMaxAgeDays 7)"
+    if [[ $LIVE -eq 0 ]] && fresh "$RDIR/meta.json" "$MAXD" \
+       && jq -e --arg g "$(jq -r '.referenceDatabase.global' "$TMP/settings.json")" '.global == $g' "$RDIR/meta.json" >/dev/null 2>&1; then
+      ARGS+=(--retrato "$RDIR"); echo "Usando o RETRATO do banco de $(jq -r '.collectedAt' "$RDIR/meta.json") (atualize com: re.sh retrato banco; leitura direta: --ao-vivo)"
+    elif [[ $LIVE -eq 0 ]]; then
+      echo "Sem retrato do banco (ou mais velho que $MAXD dias) — lendo ao vivo. Dica: re.sh retrato banco (uma vez para todos os modulos)"
+    fi
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg a "Lendo o banco $ENVN (global e locais): ${PREFIXES[*]}" '{step: "banco", status: "running", activity: $a}')"; done
     if python3 "$BANCO_PY" "${ARGS[@]}" > "$TMP/banco.out"; then
       cat "$TMP/banco.out"
@@ -372,9 +415,12 @@ case "$CMD" in
     D="$(moddir "$MOD")"; [[ -s "$D/inventario.json" ]] || die "rode antes: re.sh inventario $MOD (a infra liga os recursos ao que o codigo cita)"
     api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
     ARGS=(--module "$MOD" --out "$D/infra" --inventario "$D/inventario.json" --settings "$TMP/settings.json")
+    # 0066: retrato da conta (re.sh retrato infra) dentro da idade maxima = sem os ~15 min de leitura; --ao-vivo le a AWS
+    if [[ " $* " == *" --ao-vivo "* ]]; then ARGS+=(--retrato-dir "$RETRATO/infra" --retrato-max-dias 0 --gravar-retrato)
+    else ARGS+=(--retrato-dir "$RETRATO/infra" --retrato-max-dias "$(gen snapshotMaxAgeDays 7)" --gravar-retrato); fi
     # sigla do banco (se ja rodou `banco`) ajuda a ligar recursos pelo nome
     SG="$(jq -r '.sigla // empty' "$D/banco/catalogo.json" 2>/dev/null)"; [[ -n "$SG" ]] && ARGS+=(--sigla "$SG")
-    ARGS+=("$@")
+    for a in "$@"; do [[ "$a" == --ao-vivo ]] || ARGS+=("$a"); done
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"infra","title":"Infra na AWS (opcional)","status":"running","activity":"Mapeando a infra na AWS (somente leitura): Lambdas, S3, esteiras, segredos, logs..."}'; done
     if python3 "$INFRA_PY" "${ARGS[@]}" > "$TMP/infra.out" 2>&1; then
       cat "$TMP/infra.out"
@@ -473,6 +519,10 @@ case "$CMD" in
     else
       echo "(sem inventario — rode: re.sh inventario $MOD)"
     fi
+    # 0066: evidencia (arquivo:linha e literais) conferida nas fontes — aviso para o revisor, nao barra
+    if [[ "$DOC" != pratica && -s "$(moddir "$MOD")/inventario.json" ]]; then
+      python3 "$PAC_PY" evidencia "$F" "$(moddir "$MOD")/inventario.json" --json "$(docdir "$MOD" "$DOC")/evidencia.json" --max "${RE_MAX_EVIDENCE:-25}" || true
+    fi
     jq -n --arg d "$DOC" --rawfile c "$F" --argjson r "$RATIO" '{docType: $d, content: $c, coverageRatio: $r}' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/lint" "$TMP/body"; check
     jq -r '"Checagem do PRMake: \(.items) itens (" + ([.byKind | to_entries[] | "\(.key) \(.value)"] | join(", ")) + ")",
@@ -526,6 +576,97 @@ case "$CMD" in
       jq -r '"Rascunho gravado: revisao #\(.number) (\(.status)), \(.length) caracteres" + (if .lint and (.lint.errors|length) > 0 then " — \(.lint.errors|length) erro(s) de checagem: re.sh check" else "" end)' "$TMP/resp"
       progress "$MOD" "$DOC" "$(jq -c '{log: ("Rascunho gravado (visivel na tela): \(.lint.items // 0) itens" + (if .coverageRatio then ", cobertura \(.coverageRatio * 100 | floor)%" else "" end)), kind: "progress"}' "$TMP/resp")"
     fi
+    ;;
+
+  config)
+    load_config
+    jq -r '"Geracao (ReverseEngineeringGeneration): " + ((.generation // {}) | tojson)' "$RE_HOME/_config.json"
+    echo "Modelo dos subagentes: $(gen subagentModel sonnet) · por documento: $(gen modelByDoc '{}') · simultaneos: $(gen maxParallel 3) · area: $(gen areaBudgetKb 90) KB · checkpoint: $(gen checkpointEvery 10) itens · retrato: $(gen snapshotMaxAgeDays 7) dias"
+    ;;
+
+  areas)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"; mkdir -p "$D"
+    INV="$(moddir "$MOD")/inventario.json"; [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD"
+    load_config >/dev/null 2>&1 || true
+    BUDGET="$(opt --orcamento "$(gen areaBudgetKb 90)" "$@")"
+    bash "$0" ids "$MOD" 2>/dev/null | cut -f1 > "$TMP/ids.txt" || true
+    cp "$TMP/ids.txt" "$D/ids-usados.txt"
+    EXTRA=(); for f in "$(moddir "$MOD")/banco/inventario-banco.json" "$(moddir "$MOD")/inventario-infra.json"; do [[ -s "$f" ]] && EXTRA+=(--extra "$f"); done
+    python3 "$PAC_PY" areas "$INV" "$DOC" "${EXTRA[@]+"${EXTRA[@]}"}" --ids "$TMP/ids.txt" --modulo "$MOD" --orcamento-kb "$BUDGET" \
+      --checkpoint "$(gen checkpointEvery 10)" --out "$D/areas.json" | tee "$TMP/areas.out"
+    N="$(jq '.areas | length' "$D/areas.json")"
+    progress "$MOD" "$DOC" "$(jq -n --arg d "$(head -1 "$TMP/areas.out")" --argjson n "$N" '{step: "leitura", status: "running", detail: "\($n) areas (pacotes de leitura)", log: $d, kind: "progress"}')"
+    ;;
+
+  pacote)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"
+    [[ -s "$D/areas.json" ]] || die "rode antes: re.sh areas $MOD $DOC"
+    mkdir -p "$D/pacotes"
+    AREA="$(opt --area "" "$@")"
+    python3 "$PAC_PY" pacote "$D/areas.json" "$D/pacotes" --banco "$(moddir "$MOD")/banco" --parte-dir "$D" ${AREA:+--area "$AREA"}
+    python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$D/modelo.md" "$D/modulos.tsv" --out "$D/pacotes/cartao.md" >/dev/null
+    MODEL="$(jq -r --arg d "$DOC" --arg m "$(gen subagentModel sonnet)" '(.generation.modelByDoc // {})[$d] // $m' "$RE_HOME/_config.json" 2>/dev/null)"
+    echo "Cartao do subagente: $D/pacotes/cartao.md · modelo dos subagentes: ${MODEL:-sonnet} · ate $(gen maxParallel 3) ao mesmo tempo"
+    ;;
+
+  faltando)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; AREA="${3:?area}"; D="$(docdir "$MOD" "$DOC")"
+    [[ -s "$D/areas.json" ]] || die "rode antes: re.sh areas $MOD $DOC"
+    python3 "$PAC_PY" faltando "$D/areas.json" "$AREA" "$D/parte-$AREA.md"
+    ;;
+
+  juntar)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"
+    PARTS=(); for f in "$D"/parte-*.md; do [[ -s "$f" ]] && PARTS+=("$f"); done
+    [[ ${#PARTS[@]} -gt 0 ]] || die "nenhuma parte-*.md em $D"
+    # o publicado (modo melhorar) entra primeiro: as partes completam/atualizam as secoes dele
+    # a base e o documento de ANTES da primeira juntada (publicado no melhorar, ou o que a sessao escreveu): juntar de novo
+    # parte sempre dela — senao os IDs ja compactados duplicariam os das partes
+    [[ -s "$D/documento.base.md" ]] || { [[ -s "$D/documento.md" ]] && cp "$D/documento.md" "$D/documento.base.md"; }
+    BASEDOC=(); [[ -s "$D/documento.base.md" ]] && BASEDOC=(--base "$D/documento.base.md")
+    python3 "$PAC_PY" juntar "$D/documento.md" "${BASEDOC[@]+"${BASEDOC[@]}"}" "${PARTS[@]}"; RC=$?
+    [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
+    progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"
+    [[ $RC -eq 0 ]] || echo "AVISO: IDs repetidos entre partes (acima) — renumere numa das partes e junte de novo" >&2
+    ;;
+
+  evidencia)
+    MOD="${1:?modulo}"; DOC="${2:?documento}"; F="$(doc_file "$MOD" "$DOC" "${3:-}")"
+    INV="$(moddir "$MOD")/inventario.json"; [[ -s "$INV" ]] || die "rode antes: re.sh inventario $MOD (as fontes vem dele)"
+    python3 "$PAC_PY" evidencia "$F" "$INV" --json "$(docdir "$MOD" "$DOC")/evidencia.json" --max "${RE_MAX_EVIDENCE:-60}"
+    ;;
+
+  retrato)
+    WHAT="${1:-status}"; shift || true
+    case "$WHAT" in
+      status)
+        for f in "$RETRATO"/banco/*/meta.json; do [[ -s "$f" ]] && jq -r --arg a "$(age_days "$f")" '"Banco \(.environment) \(.host) (\(.global) + \(.locals|join(", "))): \(.collectedAt) (\($a) dias) · jobs \(.jobs)" + (if (.problems|length) > 0 then " · lacunas: " + (.problems|join("; ")) else "" end)' "$f"; done
+        for f in "$RETRATO"/infra/conta-*.json; do [[ -s "$f" ]] && jq -r --arg a "$(age_days "$f")" '"AWS conta \(.account) (\(.regions|join(", "))): \(.collectedAt) (\($a) dias) · \(.resources|length) recursos" + (if (.problems.denied|length) > 0 then " · \(.problems.denied|length) leituras sem permissao" else "" end)' "$f"; done
+        ls "$RETRATO"/banco/*/meta.json "$RETRATO"/infra/conta-*.json >/dev/null 2>&1 || echo "Nenhum retrato ainda — re.sh retrato banco · re.sh retrato infra"
+        echo "Idade maxima para uso: $(gen snapshotMaxAgeDays 7) dias (ReverseEngineeringGeneration.snapshotMaxAgeDays)"
+        ;;
+      banco)
+        [[ -f "$SQL_SH" ]] || die "sql-query.sh nao encontrado ($SQL_SH) — instale a skill analisar-bug"
+        api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
+        jq -e '.referenceDatabase.global' "$TMP/settings.json" >/dev/null || die "banco de referencia nao configurado (ReverseEngineeringReferenceDatabase)"
+        ENVN="$(jq -r '.referenceDatabase.environment' "$TMP/settings.json")"; HOSTA="$(jq -r '.referenceDatabase.host' "$TMP/settings.json")"
+        RDIR="$RETRATO/banco/$ENVN-$HOSTA"
+        if [[ " $* " != *" --forcar "* ]] && fresh "$RDIR/meta.json" 1; then echo "Retrato do banco de hoje ja existe ($RDIR) — --forcar para ler de novo"; exit 0; fi
+        ARGS=(retrato --sql "$SQL_SH" --host "$HOSTA" --environment "$ENVN" --global "$(jq -r '.referenceDatabase.global' "$TMP/settings.json")" --out "$RDIR")
+        while IFS= read -r l; do ARGS+=(--local "$l"); done < <(jq -r '.referenceDatabase.locals[]?' "$TMP/settings.json")
+        echo "Retrato do banco $ENVN ($HOSTA) — somente leitura de metadados; leva alguns minutos..."
+        python3 "$BANCO_PY" "${ARGS[@]}" || die "retrato do banco falhou (VPN? credencial do alias $HOSTA?)"
+        ;;
+      infra)
+        command -v aws >/dev/null || die "AWS CLI nao encontrado (aws)"
+        api GET "/settings"; check; cp "$TMP/resp" "$TMP/settings.json"
+        mkdir -p "$RETRATO/infra/_ultima"
+        echo "Retrato da conta AWS (somente leitura; ~15 min)..."
+        python3 "$INFRA_PY" --module _conta --so-conta --out "$RETRATO/infra/_ultima" --settings "$TMP/settings.json" \
+          --retrato-dir "$RETRATO/infra" --retrato-max-dias 0 --gravar-retrato "$@" || die "retrato da AWS falhou (perfil do AWS CLI? aws sts get-caller-identity)"
+        ;;
+      *) die "uso: re.sh retrato banco|infra|status [--forcar]" ;;
+    esac
     ;;
 
   armadilhas)
@@ -614,6 +755,6 @@ case "$CMD" in
     jq -r '"Anexado: [\(.kind)] \(.title) (\(.size) bytes)"' "$TMP/resp"
     ;;
 
-  ""|-h|--help|help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' ;;
+  ""|-h|--help|help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "comando desconhecido: $CMD (re.sh help)" ;;
 esac
