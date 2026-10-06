@@ -603,7 +603,16 @@ case "$CMD" in
     [[ -s "$D/areas.json" ]] || die "rode antes: re.sh areas $MOD $DOC"
     mkdir -p "$D/pacotes"
     AREA="$(opt --area "" "$@")"
-    python3 "$PAC_PY" pacote "$D/areas.json" "$D/pacotes" --banco "$(moddir "$MOD")/banco" --parte-dir "$D" ${AREA:+--area "$AREA"}
+    TIPOS="$(jq -r '(.docType.kinds // []) | join(",")' "$D/sessao.json" 2>/dev/null)"
+    python3 "$PAC_PY" pacote "$D/areas.json" "$D/pacotes" --banco "$(moddir "$MOD")/banco" --parte-dir "$D" ${AREA:+--area "$AREA"} ${TIPOS:+--tipos "$TIPOS"}
+    # 0066-ajustes: o que e do modulo inteiro tem subagente proprio, despachado junto com as areas (nao a cauda da sessao
+    # principal): funcional → glossario; arquitetura → banco (catalogo/retrato) e modulo (tecnologias, configuracao, seguranca...)
+    if [[ -z "$AREA" ]]; then
+      python3 "$PAC_PY" especiais "$D/areas.json" "$D/pacotes" --modulo-dir "$(moddir "$MOD")" --parte-dir "$D" | tee "$TMP/especiais.out"
+      if grep -q 'especial' "$TMP/especiais.out"; then
+        echo "Especiais: despache um subagente para cada um ($(grep -o 'especial [a-z0-9-]*' "$TMP/especiais.out" | cut -d' ' -f2 | paste -sd, -)) JUNTO com as areas — mesmo prompt, trocando a area."
+      fi
+    fi
     python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$D/modelo.md" "$D/modulos.tsv" --out "$D/pacotes/cartao.md" >/dev/null
     MODEL="$(jq -r --arg d "$DOC" --arg m "$(gen subagentModel sonnet)" '(.generation.modelByDoc // {})[$d] // $m' "$RE_HOME/_config.json" 2>/dev/null)"
     echo "Cartao do subagente: $D/pacotes/cartao.md · modelo dos subagentes: ${MODEL:-sonnet} · ate $(gen maxParallel 5) ao mesmo tempo"

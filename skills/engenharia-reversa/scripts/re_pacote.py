@@ -11,6 +11,9 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
   re_pacote.py pacote <areas.json> <pasta-saida> [--area NOME] [--banco <pasta-banco>] [--parte-dir <pasta-doc>]
       um pacote por área (pacote-<area>.md): os itens do inventário que a área precisa cobrir e os TRECHOS do código
       (método inteiro em volta de cada item; arquivo pequeno inteiro), com número de linha, + as tabelas da área.
+  re_pacote.py especiais <areas.json> <pasta-saida> --modulo-dir <pasta-do-modulo> [--parte-dir D]
+      0066-ajustes: pacotes dos SUBAGENTES ESPECIAIS (o que é do módulo inteiro): funcional → glossário; arquitetura →
+      banco (tabelas/objetos/triggers/jobs do catálogo) e módulo (tecnologias, configuração, segurança, observabilidade, infra).
   re_pacote.py cartao <subagente.md> <modelo.md> <modulos.tsv> --out cartao.md
       o cartão do subagente: instruções curtas + o modelo do documento + as chaves dos módulos (para **Módulos:**).
   re_pacote.py faltando <areas.json> <area> <parte.md> [--tipo-doc funcional]
@@ -61,7 +64,8 @@ MAX_SOURCE = 1_500_000
 # Começo de bloco (método/função) por linguagem — o corte dos arquivos grandes cai num começo de bloco.
 R_BLOCK_START = {
     "cs": re.compile(r"^\s*(?:\[[^\]]*\]\s*)*(?:public|private|protected|internal|static|async|override|virtual|sealed|partial|\s)+[\w<>\[\],.?\s]+\s+\w+\s*(?:<[^>]*>)?\s*\("),
-    "js": re.compile(r"^\s*(?:export\s+)?(?:async\s+)?(?:function\s+\w*\s*\(|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>)|\w+\s*:\s*(?:async\s*)?function\s*\(|\$\(\s*(?:document|function))|^\s*<script\b|^\s*@section\b"),
+    "js": re.compile(r"^\s*(?:export\s+)?(?:async\s+)?(?:function\s+\w*\s*\(|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>)|\w+\s*:\s*(?:async\s*)?function\s*\(|\$\(\s*(?:document|function))|^\s*<script\b|^\s*@section\b"
+                     r"|^\s+(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b|return\b)[A-Za-z_]\w*\s*\([^)]*\)\s*\{\s*$"),
     "vb": re.compile(r"^\s*(?:Public\s+|Private\s+)?(?:Function|Sub)\s+\w+", re.I),
 }
 R_BLOCK_END_VB = re.compile(r"^\s*End\s+(?:Function|Sub)\b", re.I)
@@ -302,6 +306,104 @@ def walk_cs(root):
     return out
 
 
+SHARED_DIR_NAMES = {"includes", "view_shared", "shared"}
+VENDOR = re.compile(r"jquery|bootstrap|datatable|dhtmlx|codemirror|moment|select2|chart|echarts|tinymce|ckeditor|fullcalendar|bootbox|anime|"
+                    r"chroma|pdf|xlsx|lodash|swiper|sweetalert|toastr|summernote|fontawesome|leaflet|plugin|vendor|polyfill|templates?|limitless|"
+                    r"calendar|codemirror|gantt|grid|highcharts|d3|three|signalr|jstree|qrcode|crypto|base64|dropzone|cropper|tooltip|flexmonster|toolbar|"
+                    r"kendo|devextreme|syncfusion|handsontable|pivot|gridstack|sortable|masonry|isotope", re.I)
+R_VB_DEF = re.compile(r"^\s*(?:Public\s+|Private\s+)?(?:Function|Sub)\s+(\w+)", re.I | re.M)
+R_JS_DEF = re.compile(r"(?:^|[\s;])function\s+(\w+)\s*\(|^\s*(\w+)\s*[:=]\s*(?:async\s+)?function\s*\(|^\s{2,}(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{\s*$", re.M)
+R_CALL = re.compile(r"(?<![\w])(?:\.)?([A-Za-z_]\w{5,})\s*\(")
+CALL_STOP = {"function", "return", "parseInt", "parseFloat", "toString", "replace", "indexOf", "length", "substring", "substr", "toLowerCase",
+             "toUpperCase", "isNaN", "setTimeout", "setInterval", "encodeURIComponent", "decodeURIComponent", "getElementById", "querySelector",
+             "addEventListener", "preventDefault", "stopPropagation", "JSON", "Request", "Response", "Server", "CreateObject", "Execute", "Convert",
+             "String", "Number", "Object", "Array", "console", "append", "prepend", "remove", "trigger", "change", "submit", "attr", "removeClass",
+             "addClass", "toggleClass", "hasClass", "children", "parent", "closest", "each", "filter", "forEach", "push", "splice", "slice", "split",
+             "trim", "join", "concat", "ToString", "IsNull", "IsNullOrEmpty", "DateAdd", "DateDiff", "CStr", "CInt", "CLng", "FormatNumber",
+             "Response_Write", "ajaxSetup", "serialize", "DataTable", "datepicker", "daterangepicker", "select2", "inputmask", "tooltip", "modal"}
+_shared_cache = {}
+
+
+def shared_roots(inv):
+    """Pastas de código compartilhado do repositório das fontes (includes do ASP, view_shared/shared do core)."""
+    roots, out = set(), []
+    for s in inv.get("sources", []):
+        p = s.get("path") or ""
+        if p and os.path.exists(p):
+            roots.add(re_tool.repo_root(p if os.path.isdir(p) else os.path.dirname(p)))
+    for r in sorted(roots):
+        for base, dirs, _ in os.walk(r):
+            depth = os.path.relpath(base, r).count(os.sep)
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and depth < 3]
+            for d in dirs:
+                if d.lower() in SHARED_DIR_NAMES:
+                    out.append(os.path.join(base, d))
+    return [x for x in out if not any(x != y and x.startswith(y + os.sep) for y in out)]
+
+
+def shared_index(roots):
+    """nome da função → [(arquivo, linha 1-based, linguagem)] — só código da Solvace (bibliotecas de terceiros fora)."""
+    key = tuple(roots)
+    if key in _shared_cache:
+        return _shared_cache[key]
+    idx = defaultdict(list)
+    for r in roots:
+        for base, dirs, files in os.walk(r):
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not VENDOR.search(d)]
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext not in (".asp", ".inc", ".js") or SKIP_NAME.search(f) or VENDOR.search(f):
+                    continue
+                path = os.path.join(base, f)
+                try:
+                    if os.path.getsize(path) > 300 * 1024:
+                        continue
+                    text = open(path, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+                rx, lang = (R_VB_DEF, "vb") if ext in (".asp", ".inc") else (R_JS_DEF, "js")
+                for m in rx.finditer(text):
+                    name = next(g for g in m.groups() if g)
+                    if len(name) >= 6 and name not in CALL_STOP:
+                        idx[name].append((path, text.count("\n", 0, m.start()) + 1 + (1 if text[m.start()] in "\n;" else 0), lang))
+    _shared_cache[key] = idx
+    return idx
+
+
+def shared_blocks(inv, area, max_bytes=30 * 1024, max_funcs=30):
+    """0066-ajustes: funções compartilhadas (includes do ASP/JS) que a área chama e não define — o corpo vai no pacote."""
+    roots = shared_roots(inv)
+    if not roots:
+        return []
+    src_roots, cache = source_roots(inv), {}
+    text = []
+    for u in area["units"]:
+        path = resolve_file(u["file"], src_roots, cache)
+        lines = read_lines(path) if path else []
+        for a, b in u["ranges"]:
+            text.append("\n".join(lines[a - 1:b]))
+    code = "\n".join(text)
+    defined = {next(g for g in m.groups() if g) for rx in (R_VB_DEF, R_JS_DEF) for m in rx.finditer(code)}
+    calls = Counter(m.group(1) for m in R_CALL.finditer(code))
+    idx = shared_index(roots)
+    out, used = [], 0
+    for name, _ in calls.most_common():
+        if name in defined or name in CALL_STOP or name not in idx or len(idx[name]) > 2:
+            continue
+        path, line, lang = idx[name][0]
+        lines = read_lines(path)
+        a, b = method_block(lines, line, lang, 120)
+        size = excerpt_bytes(lines, [(a, b)])
+        if used + size > max_bytes:
+            continue
+        used += size
+        rel = os.path.relpath(path, re_tool.repo_root(path))
+        out.append((rel, a, b, lines))
+        if len(out) >= max_funcs:
+            break
+    return out
+
+
 def excerpt_bytes(lines, ranges):
     return sum(sum(len(lines[k]) + 7 for k in range(a, b + 1)) for a, b in ranges)
 
@@ -340,16 +442,20 @@ def plan_areas(inv, doc_type, budget_kb, small, max_lines, used_ids):
         lines = read_lines(path)
         if not lines:
             continue
-        for a, b in chunks(lines, lang_of(path), max(8 * 1024, budget // 2 if len(lines) > small else budget)):
+        # 0066-ajustes: arquivo que cabe no orçamento vai inteiro (partido entre áreas, o subagente ia atrás da outra metade)
+        whole = excerpt_bytes(lines, [(0, len(lines) - 1)])
+        parts = [(0, len(lines) - 1)] if whole <= budget else chunks(lines, lang_of(path), max(8 * 1024, int(budget * 0.9)))
+        for k, (a, b) in enumerate(parts):
             units.append({"file": rel, "ranges": [(a, b)], "bytes": excerpt_bytes(lines, [(a, b)]), "items": item_count.get(rel, 0),
-                          "stems": stems(rel)})
+                          "stems": stems(rel), "part": k, "parts": len(parts)})
     stem_count = Counter(s for u in units for s in set(u["stems"]))
     for u in units:
         u["key"] = max(u["stems"], key=lambda s: (stem_count[s], -u["stems"].index(s)))
     units.sort(key=lambda u: (u["key"], os.path.dirname(u["file"]), u["file"], u["ranges"][0][0]))
     areas, cur, cur_bytes = [], [], 0
     for u in units:
-        if cur and cur_bytes + u["bytes"] > budget:
+        # o primeiro pedaço de um arquivo grande começa uma área nova (os pedaços do mesmo arquivo ficam em áreas seguidas)
+        if cur and (cur_bytes + u["bytes"] > budget or (u["parts"] > 1 and u["part"] == 0)):
             areas.append(cur)
             cur, cur_bytes = [], 0
         cur.append(u)
@@ -451,7 +557,12 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
          f"- **Faixa de números de ID desta área:** {lo:03d} a {hi:03d} (todos os tipos: RN-{lo:03d}, UC-{lo:03d}, TELA-{lo:03d}…). Item que já",
          "  existe no publicado mantém o ID dele.",
          f"- **Grave em:** `{parte}` (mesmas seções `##` do modelo; a cada ~{plan.get('checkpointEvery', 10)} itens — se o arquivo já existe, continue dele).",
-         f"- **Arquivos:** {len(area['files'])} · trechos com o número da linha real (use-o no `**Onde:** arquivo:linha`).", ""]
+         f"- **Arquivos:** {len(area['files'])} · trechos com o número da linha real (use-o no `**Onde:** arquivo:linha`)."]
+    allowed, taken = area_kinds(plan)
+    if plan.get("kinds"):
+        L.append(f"- **Tipos que esta área cria:** {', '.join(allowed)}. **Não crie** {', '.join(taken) or '—'} (têm subagente próprio ou são da "
+                 "sessão principal: cite pelo nome) nem tipos de outros documentos (tela, endpoint, tabela… no documento certo — aqui só referencie).")
+    L.append("")
     if items:
         L += ["## Itens do inventário que esta área precisa cobrir", ""]
         by_cat = defaultdict(list)
@@ -474,7 +585,7 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
                 L.append(f"{k + 1:>5}| {lines[k]}")
             L.append("```")
             L.append("")
-    support = support_blocks(inv, area)
+    support = support_blocks(inv, area) + shared_blocks(inv, area)
     if support:
         L += ["## Apoio — ações chamadas por esta área que estão em outros arquivos (só o método)", ""]
         for f, a, b, lines in support:
@@ -504,6 +615,250 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
     return out, len(text.encode("utf-8")), len(items)
 
 
+# ── subagentes especiais: o que é do módulo inteiro (0066-ajustes) ─────────────────────────────────
+# Áreas descreviam a mesma tabela/tecnologia/termo várias vezes e a sessão principal (Opus) passava 10–15 min juntando
+# duplicados. O que é do módulo inteiro ganha um subagente próprio, despachado junto com as áreas; as áreas só criam os
+# tipos delas (o cabeçalho do pacote lista quais).
+SPECIALS = {
+    "funcional": [("glossario", ["GLO"])],
+    "arquitetura": [("banco", ["DB", "SQL", "TRG"]), ("modulo", ["TEC", "CMP", "CFG", "NFR", "ADR", "INF"])],
+}
+# tipos que a sessão principal consolida (das listas que os subagentes devolvem no resumo)
+MAIN_KINDS = {"funcional": ["PRF"]}
+
+
+def area_kinds(plan):
+    """Tipos que uma área pode criar = os do documento − os dos especiais − os da sessão principal (+ GAP)."""
+    doc = plan.get("docType", "")
+    kinds = plan.get("kinds") or []
+    taken = {k for _, ks in SPECIALS.get(doc, []) for k in ks} | set(MAIN_KINDS.get(doc, []))
+    return [k for k in kinds if k not in taken] + ["GAP"], sorted(taken)
+
+
+def next_range(plan):
+    """Próxima faixa livre de IDs (depois das áreas e dos especiais já alocados)."""
+    used = [a["idRange"][1] for a in plan["areas"]] + [x["idRange"][1] for x in plan.get("specials", [])]
+    lo = (max(used) + 1) if used else plan.get("idBase", 0) + 1
+    return [lo, lo + 99]
+
+
+def add_special(plan, name, kinds, extra=None):
+    plan.setdefault("specials", [])
+    plan["specials"] = [x for x in plan["specials"] if x["name"] != name]
+    entry = {"name": name, "kinds": kinds, "idRange": next_range(plan)}
+    entry.update(extra or {})
+    plan["specials"].append(entry)
+    return entry
+
+
+def special_header(plan, entry, parte_dir, out_dir, what, sections):
+    lo, hi = entry["idRange"]
+    parte = os.path.join(parte_dir or out_dir, f"parte-{entry['name']}.md")
+    return [f"# Pacote especial `{entry['name']}` — {plan['module']} / {plan['docType']} ({what})", "",
+            f"- **Faixa de números de ID:** {lo:03d} a {hi:03d}. **Tipos que você cria:** {', '.join(entry['kinds'])} (+ GAP). Item já "
+            "publicado mantém o ID.",
+            f"- **Grave em:** `{parte}` com as seções `##` do modelo: {sections}. Checkpoint a cada ~10 itens.",
+            f"- Ao terminar: `re.sh faltando {plan['module']} {plan['docType']} {entry['name']}`.", ""]
+
+
+def banco_packs(plan, banco_dir, out_dir, parte_dir, budget_kb):
+    """Arquitetura: tabelas, views/procedures/functions, triggers e jobs do SQL Agent do catálogo (retrato) — um ou mais pacotes."""
+    cat_path = os.path.join(banco_dir or "", "catalogo.json")
+    if not banco_dir or not os.path.exists(cat_path):
+        return []
+    cat = json.load(open(cat_path, encoding="utf-8"))
+    blocks = []
+    for o in sorted(cat.get("objects", []), key=lambda x: (x["kind"] != "tabela", x["name"])):
+        files = o.get("files") or [o.get("file")]
+        body = []
+        for f in files:
+            fp = os.path.join(banco_dir, f) if f else None
+            if fp and os.path.exists(fp):
+                body.append(open(fp, encoding="utf-8", errors="replace").read().strip()[:12000])
+        head = (f"### {o['kind']} {o['name']} — escopo {o['scope']}{' · DIVERGENTE entre locais' if o.get('divergent') else ''} · {o['reason']}"
+                + (f" · usa: {', '.join(o.get('uses', [])[:12])}" if o.get("uses") else "")
+                + (f" · usado por: {', '.join(o.get('usedBy', [])[:12])}" if o.get("usedBy") else ""))
+        text = head + "\n" + ("```sql\n" + "\n".join(body) + "\n```" if o["kind"] != "tabela" else "\n".join(body)) + "\n"
+        blocks.append((o["name"], o["kind"], text))
+    for j in cat.get("jobs", []):
+        fp = os.path.join(banco_dir, j.get("file", ""))
+        body = open(fp, encoding="utf-8", errors="replace").read()[:8000] if os.path.exists(fp) else ""
+        blocks.append((j["name"], "job", f"### job {j['name']} — {j.get('schedule', '')}\n{body}\n"))
+    budget = budget_kb * 1024
+    packs, cur, size = [], [], 0
+    for b in blocks:
+        if cur and size + len(b[2].encode()) > budget:
+            packs.append(cur)
+            cur, size = [], 0
+        cur.append(b)
+        size += len(b[2].encode())
+    if cur:
+        packs.append(cur)
+    out = []
+    for k, objs in enumerate(packs, 1):
+        name = "banco" if len(packs) == 1 else f"banco-p{k}"
+        entry = add_special(plan, name, ["DB", "SQL", "TRG", "JOB"], {"objects": [n for n, _, _ in objs]})
+        L = special_header(plan, entry, parte_dir, out_dir, "objetos do banco de referência",
+                           "`## Dados` (DB, por tabela), `## Objetos de banco` (SQL), `## Triggers` (TRG), `## Jobs e rotinas` (JOB do SQL Agent) "
+                           "e `## Lacunas e pontos a confirmar`")
+        L += ["Um item por objeto: para que serve, colunas-chave/PK/FK/checks (regras no banco), escopo (global/local, divergente), quem "
+              "usa (outros módulos → `**Módulos:**` com a chave), e o que trigger/job faz \"escondido\". **Onde:** `banco DEMO <escopo> · "
+              "dbo.<objeto>`. As áreas citam as tabelas pelo nome — a descrição é sua.", ""]
+        if cat.get("problems") and k == 1:
+            L += ["## Lacunas da coleta (viram GAP — nunca escreva que não existe o que não foi lido)", ""] + [f"- {p}" for p in cat["problems"]] + [""]
+        L += [t for _, _, t in objs]
+        path = os.path.join(out_dir, f"pacote-{name}.md")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(L) + "\n")
+        out.append((path, len(objs)))
+    return out
+
+
+def modulo_pack(plan, inv, out_dir, parte_dir, moddir):
+    """Arquitetura: o que é do módulo inteiro — tecnologias, configuração (só nomes), segurança, observabilidade e infra."""
+    entry = add_special(plan, "modulo", ["TEC", "CMP", "CFG", "NFR", "ADR", "INF"])
+    L = special_header(plan, entry, parte_dir, out_dir, "módulo inteiro",
+                       "`## Tecnologias e componentes` (TEC/CMP), `## Configuração e segredos (só nomes)` (CFG), `## Segurança e autenticação`, "
+                       "`## Observabilidade e diagnóstico`, `## Infraestrutura e AWS (opcional)` (INF), `## Decisões e requisitos` (ADR/NFR) e lacunas")
+    L += ["Nunca valores de segredo (senha, connection string, token): só o NOME da chave e para que serve.", ""]
+    files = set()
+    for s in inv.get("sources", []):
+        p = s.get("path") or ""
+        if os.path.isdir(p):
+            for base, dirs, fs in os.walk(p):
+                dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
+                for f in fs:
+                    if re.match(r"(appsettings.*\.json|web\.config|global\.asa|.*\.csproj|startup\.cs|program\.cs|serverless.*|buildspec.*|_inc_.*\.asp|default\.asp)$", f, re.I):
+                        files.add(os.path.join(base, f))
+    L += tech_signals(inv)
+    keys = sorted({it["name"] for it in inv["items"] if it["cat"] == "config"})
+    if keys:
+        L += ["## Chaves de configuração citadas no código (nomes)", "", ", ".join(keys[:300]), ""]
+    for fp in sorted(files)[:40]:
+        lines = read_lines(fp)
+        text = "\n".join(lines[:400])
+        text = re.sub(r'(?i)((?:password|pwd|senha|secret|token|key|connectionstring)[^=:]{0,30}[=:]\s*["\']?)[^"\'\s;<]+', r"\1***", text)
+        L += [f"### `{os.path.relpath(fp, re_tool.repo_root(fp))}`", "```", text[:12000], "```", ""]
+    infra = os.path.join(moddir or "", "infra", "modulo.md")
+    if os.path.exists(infra):
+        L += ["## Infra na AWS (re.sh infra — retrato)", "", open(infra, encoding="utf-8", errors="replace").read()[:20000], ""]
+    roots_sh = shared_roots(inv)
+    if roots_sh:
+        L += ["## Bibliotecas compartilhadas do repositório usadas pelo módulo", "", ", ".join(os.path.relpath(r, re_tool.repo_root(r)) for r in roots_sh), ""]
+    path = os.path.join(out_dir, "pacote-modulo.md")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(L) + "\n")
+    return path
+
+
+R_TECH = [
+    ("includes do ASP", re.compile(r'#include\s+(?:file|virtual)\s*=\s*"([^"]+)"', re.I)),
+    ("componentes COM (Server.CreateObject)", re.compile(r'CreateObject\(\s*"([^"]+)"', re.I)),
+    ("scripts carregados pelas telas", re.compile(r'<script[^>]+src\s*=\s*["\']([^"\'?#]+)', re.I)),
+    ("estilos carregados", re.compile(r'<link[^>]+href\s*=\s*["\']([^"\'?#]+\.css)', re.I)),
+    ("namespaces .NET (using)", re.compile(r'^\s*using\s+([A-Z][\w.]+)\s*;', re.M)),
+    ("pacotes NuGet", re.compile(r'PackageReference\s+Include="([^"]+)"(?:\s+Version="([^"]+)")?', re.I)),
+    ("serviços AWS no código", re.compile(r'\b(Amazon\.\w+|AWSSDK\.\w+|S3Client|SQSClient|SNSClient|SimpleEmail\w*)', re.I)),
+]
+
+
+def tech_signals(inv):
+    """Sinais de tecnologia do módulo, contados no código (para o subagente `modulo` escrever TEC/CMP sem ler tudo)."""
+    found = defaultdict(Counter)
+    example = {}
+    for s in inv.get("sources", []):
+        p = s.get("path") or ""
+        files = [p] if os.path.isfile(p) else [os.path.join(b, f) for b, ds, fs in os.walk(p) for f in fs
+                                                if not any(x.lower() in SKIP_PARTS for x in os.path.relpath(b, p).split(os.sep))] if os.path.isdir(p) else []
+        for fp in files:
+            if os.path.splitext(fp)[1].lower() not in CODE_EXT | {".csproj"}:
+                continue
+            text = "\n".join(read_lines(fp))
+            for label, rx in R_TECH:
+                for m in rx.finditer(text):
+                    v = " ".join(g for g in m.groups() if g)
+                    if label.startswith("namespaces") and v.startswith(("System", "Microsoft.AspNetCore.Mvc")):
+                        v = ".".join(v.split(".")[:2])
+                    found[label][v] += 1
+                    example.setdefault((label, v), f"{os.path.basename(fp)}:{text.count(chr(10), 0, m.start()) + 1}")
+    if not found:
+        return []
+    L = ["## Sinais de tecnologia no código (contagem · exemplo)", ""]
+    for label, _ in R_TECH:
+        if found[label]:
+            L.append(f"- **{label}:** " + "; ".join(f"{v} ×{n} ({example[(label, v)]})" for v, n in found[label].most_common(40)))
+    return L + [""]
+
+
+def especiais(plan, out_dir, parte_dir, moddir, budget_kb):
+    """Gera os pacotes especiais do documento (funcional: glossário; arquitetura: banco e módulo)."""
+    doc = plan["docType"]
+    plan["specials"] = []
+    made = []
+    if doc == "funcional":
+        termos = os.path.join(moddir, "inventario-termos.json")
+        if os.path.exists(termos):
+            out, n = glossary_pack(plan, termos, out_dir, parte_dir, os.path.join(moddir, "banco"))
+            made.append(("glossario", out, n))
+    if doc == "arquitetura":
+        for out, n in banco_packs(plan, os.path.join(moddir, "banco"), out_dir, parte_dir, budget_kb):
+            made.append((os.path.basename(out)[len("pacote-"):-3], out, n))
+        made.append(("modulo", modulo_pack(plan, load_inv(plan["inventory"]), out_dir, parte_dir, moddir), 0))
+    return made
+
+
+# ── glossário (subagente próprio, em paralelo com as áreas) ─────────────────────────────────────────
+
+def glossary_pack(plan, termos_path, out_dir, parte_dir, banco_dir=None):
+    """
+    0066-ajustes: o glossário é do módulo inteiro e era escrito por último, em sequência, pela sessão principal. Aqui ele
+    vira um pacote próprio — os termos (com traduções e onde aparecem, com 3 linhas de contexto) — para um subagente
+    escrever junto com as áreas.
+    """
+    inv = load_inv(plan["inventory"])
+    terms = [it for it in json.load(open(termos_path, encoding="utf-8")).get("items", []) if it["cat"] == "termo"]
+    main_terms = [t for t in terms if "(traducao)" not in (t.get("detail") or "")]
+    translations = defaultdict(list)
+    for t in terms:
+        m = re.match(r'^(PT|EN|ES) de "(.+)" \(traducao\)', t.get("detail") or "")
+        if m:
+            translations[m.group(2)].append(f"{m.group(1)}: {t['name']}")
+    roots, cache = source_roots(inv), {}
+    entry = add_special(plan, "glossario", ["GLO"], {"terms": len(main_terms)})
+    lo = entry["idRange"][0]
+    parte = os.path.join(parte_dir or out_dir, "parte-glossario.md")
+    L = [f"# Pacote do glossário — {plan['module']} / {plan['docType']}", "",
+         f"- **Faixa de números de ID:** {lo:03d} a {lo + 99:03d} (`GLO-{lo:03d}`…; `GAP` também). Termo já publicado mantém o ID.",
+         f"- **Grave em:** `{parte}` com as seções `## Glossário` (um `### GLO-… — <termo como o usuário vê>` por conceito) e",
+         "  `## Lacunas e pontos a confirmar` (um `GAP` \"Termos fora do glossário\" com `**Termos:** a, b, c` para o que é genérico de",
+         "  interface ou de outro módulo — assim conta como coberto).",
+         "- Cada GLO: **Sinônimos:** (sigla, nome antigo, as traduções PT/EN/ES abaixo, nome da tabela), o significado NO DOMÍNIO",
+         "  (o que é para quem usa) e onde aparece (`arquivo:linha`, tela). Junte no mesmo GLO os termos que são o mesmo conceito.",
+         f"- Ao terminar: `re.sh faltando {plan['module']} {plan['docType']} glossario` (cobertura dos termos).", "",
+         f"## Termos ({len(main_terms)})", ""]
+    for t in main_terms:
+        extra = "; ".join(translations.get(t["name"], []))
+        L.append(f"### {t['name']}")
+        L.append(f"- fonte: {t.get('detail', '')}{(' · traduções: ' + extra) if extra else ''} · `{t['file']}:{t['line']}`")
+        path = resolve_file(t["file"], roots, cache) if not t["file"].startswith("banco/") else None
+        if path:
+            lines = read_lines(path)
+            a, b = max(0, t["line"] - 2), min(len(lines), t["line"] + 1)
+            snippet = " ⏎ ".join(x.strip()[:160] for x in lines[a:b] if x.strip())
+            if snippet:
+                L.append(f"- contexto: `{snippet[:400]}`")
+        L.append("")
+    if banco_dir and os.path.exists(os.path.join(banco_dir, "catalogo.json")):
+        cat = json.load(open(os.path.join(banco_dir, "catalogo.json"), encoding="utf-8"))
+        menus = [f"{m.get('grp')} › {m.get('item')}" for m in cat.get("menus", [])]
+        if menus:
+            L += ["## Menus do módulo (banco)", "", "; ".join(menus[:80]), ""]
+    out = os.path.join(out_dir, "pacote-glossario.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(L) + "\n")
+    return out, len(main_terms)
+
+
 # ── cartão ────────────────────────────────────────────────────────────────────────────────────────
 
 def cartao(sub_md, modelo_md, modulos_tsv, out):
@@ -521,6 +876,37 @@ def cartao(sub_md, modelo_md, modulos_tsv, out):
 # ── faltando ──────────────────────────────────────────────────────────────────────────────────────
 
 def faltando(inv, plan, area_name, parte, max_show=80):
+    if area_name == "glossario":  # 0066-ajustes: cobertura dos termos (só os títulos/sinônimos dos GLO contam)
+        termos = os.path.join(os.path.dirname(plan["inventory"]), "inventario-termos.json")
+        items = json.load(open(termos, encoding="utf-8")).get("items", []) if os.path.exists(termos) else []
+        doc = open(parte, encoding="utf-8").read() if os.path.exists(parte) else ""
+        if not doc:
+            print(f"Parte do glossário ainda não existe ({parte}): {len(items)} termos a cobrir.")
+            return 0
+        res = re_tool.coverage({"items": items}, doc, "funcional", 5000)
+        print(f"Glossário: {res['covered']}/{res['total']} termos cobertos" + (f" = {res['ratio']:.0%}" if res["ratio"] is not None else ""))
+        for it in res["missing"][:max_show]:
+            print(f"  FALTA {it['name'][:80]} ({it.get('detail', '')[:60]})")
+        return 0
+    special = next((x for x in plan.get("specials", []) if x["name"] == area_name), None)
+    if special and area_name != "glossario":
+        moddir = os.path.dirname(plan["inventory"])
+        if area_name.startswith("banco"):
+            bi = os.path.join(moddir, "banco", "inventario-banco.json")
+            names = {n.upper() for n in special.get("objects", [])}
+            items = [it for it in (json.load(open(bi, encoding="utf-8")).get("items", []) if os.path.exists(bi) else [])
+                     if it["name"].upper() in names or it["cat"] == "constraint"]
+        else:
+            items = [it for it in inv["items"] if it["cat"] == "config" or it["cat"].startswith("aws-") or it["cat"] == "esteira"]
+        doc = open(parte, encoding="utf-8").read() if os.path.exists(parte) else ""
+        if not doc:
+            print(f"Parte ainda não existe ({parte}): {len(items)} itens a cobrir.")
+            return 0
+        res = re_tool.coverage({"items": items}, doc, "arquitetura", 5000)
+        print(f"{area_name}: {res['covered']}/{res['total']} cobertos" + (f" = {res['ratio']:.0%}" if res["ratio"] is not None else ""))
+        for it in res["missing"][:max_show]:
+            print(f"  FALTA [{it['cat']}] {it['name'][:90]}")
+        return 0
     area = next((a for a in plan["areas"] if a["name"] == area_name), None)
     if not area:
         print(f"ERRO: área '{area_name}' não está em areas.json ({', '.join(a['name'] for a in plan['areas'])})", file=sys.stderr)
@@ -776,12 +1162,33 @@ def main(argv):
         out_dir = argv[3]
         os.makedirs(out_dir, exist_ok=True)
         inv = load_inv(plan["inventory"], plan.get("extras", []))
+        if opt(argv, "--tipos"):  # tipos do documento (sessao.json) — o cabeçalho diz quais a área pode criar
+            plan["kinds"] = [k.strip().upper() for k in opt(argv, "--tipos").split(",") if k.strip()]
+            with open(argv[2], "w", encoding="utf-8") as fh:
+                json.dump(plan, fh, ensure_ascii=False, indent=1)
         only = opt(argv, "--area")
         for area in plan["areas"]:
             if only and area["name"] != only:
                 continue
             path, size, n = build_pack(inv, plan, area, out_dir, opt(argv, "--banco"), opt(argv, "--parte-dir"))
             print(f"  pacote {area['name']:<34} {size // 1024:>4} KB · {n:>4} itens a cobrir -> {path}")
+        return 0
+    if cmd == "especiais":
+        plan_path = argv[2]
+        plan = json.load(open(plan_path, encoding="utf-8"))
+        made = especiais(plan, argv[3], opt(argv, "--parte-dir"), opt(argv, "--modulo-dir"), int(opt(argv, "--orcamento-kb", str(plan.get("budgetKb", 90)))))
+        with open(plan_path, "w", encoding="utf-8") as fh:
+            json.dump(plan, fh, ensure_ascii=False, indent=1)
+        for name, out, n in made:
+            print(f"  especial {name:<26} {os.path.getsize(out) // 1024:>4} KB{(' · ' + str(n) + ' objetos/termos') if n else ''} -> {out}")
+        return 0
+    if cmd == "glossario":
+        plan_path = argv[2]
+        plan = json.load(open(plan_path, encoding="utf-8"))
+        out, n = glossary_pack(plan, argv[3], argv[4], opt(argv, "--parte-dir"), opt(argv, "--banco"))
+        with open(plan_path, "w", encoding="utf-8") as fh:
+            json.dump(plan, fh, ensure_ascii=False, indent=1)
+        print(f"  pacote glossario {os.path.getsize(out) // 1024:>4} KB · {n:>4} termos a cobrir -> {out}")
         return 0
     if cmd == "cartao":
         print(cartao(argv[2], argv[3], argv[4] if len(argv) > 4 and not argv[4].startswith("--") else None, opt(argv, "--out", "cartao.md")))

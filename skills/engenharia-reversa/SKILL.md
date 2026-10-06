@@ -103,7 +103,12 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
    (`pacotes/cartao.md`: instrucoes curtas + modelo + chaves dos modulos). Imprime o **modelo dos subagentes** e quantos
    rodam ao mesmo tempo (config `subagentModel`/`modelByDoc`/`maxParallel`).
 3. Um subagente `general-purpose` **por area**, em segundo plano, com **`model` = o que o `pacote` imprimiu**, no maximo
-   `maxParallel` ao mesmo tempo (despache o proximo quando um terminar — paralelo demais derruba o limite da conta).
+   `maxParallel` ao mesmo tempo (despache TODOS de uma vez quando couber; senao o proximo assim que um terminar).
+   **Especiais** (o que e do modulo inteiro — o `pacote` lista): funcional → `glossario`; arquitetura → `banco` (tabelas,
+   views/procedures, triggers e jobs do catalogo/retrato; `banco-p1`, `banco-p2`… se for grande) e `modulo`
+   (tecnologias, configuracao so por nome, seguranca, observabilidade, infra). Um subagente para cada, com o MESMO prompt
+   (trocando a area), despachado junto com as areas. As areas nao criam esses tipos (o cabecalho do pacote diz quais
+   criam) — nada de juntar duplicado depois.
    Prompt (exatamente isto, trocando os campos):
    `Subagente da engenharia reversa — modulo <m>, documento <doc>, area <area>. Leia NA MESMA RESPOSTA: <D>/pacotes/cartao.md
    e <D>/pacotes/pacote-<area>.md. Saida: <D>/parte-<area>.md (checkpoint a cada <N> itens; se ja existe, continue dela).
@@ -112,8 +117,9 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
 4. **Subagente que caiu** (limite de sessao, erro): despache de novo com o MESMO prompt — ele continua da parte gravada.
 5. `bash $RE juntar <m> <doc>` — junta as partes em `documento.md` (sobre o publicado, no melhorar: item reescrito
    substitui o antigo) e **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas). Pode rodar de novo.
-6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF`, glossario `GLO` a partir de
-   `inventario-termos.json` e dos termos que os subagentes listaram, diagramas mermaid, integracoes consolidadas), lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
+6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF` a partir dos resumos dos
+   subagentes, diagramas mermaid, integracoes consolidadas) — **sem ler o `documento.md` inteiro** (centenas de KB a cada
+   resposta): use o `check`, `grep -n '^## \|^### ' documento.md` e leia so o trecho que vai editar, lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
    a partir do pacote, sem subagente.
 - Integracoes: para cada chamada a outro modulo (HTTP, fila/evento, tabela de outro dono, pacote), um `INT-…` com
   `**Modulos:**` **so com a chave** do outro projeto (`modulos.tsv` do pacote da sessao; servico externo `ext:<nome>`),

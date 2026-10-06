@@ -73,6 +73,19 @@ Publicado para as mesmas telas: 19 itens (8 RN); o piloto 2: 26 RN + 12 GAP. Est
 min quando o limite caiu). O tempo por área é dominado pela escrita (saída) — paralelismo é a alavanca de tempo.
 Limite visto: o subagente gravou a parte de uma vez no fim (o checkpoint a cada 10 itens nem sempre é seguido).
 
+### Ajustes depois do SOC (`feature/0066-ajustes`)
+Primeira geração real com o fluxo novo (`legado-soc`, funcional e arquitetura em paralelo, 2026-10-06): áreas em ~10 min
+(13 por documento, 0,3–3,5 M cada), mas a sessão principal (Opus) gastou mais ~13–17 min e ~10 M juntando duplicados do
+que é do módulo inteiro (tabelas/objetos do banco, tecnologias, configuração, glossário) e movendo tipos de outro
+documento. Funcional enviado em 26 min. Ajustes:
+- arquivo que cabe no orçamento não é partido entre áreas (o `soc_busca_ajax.asp` partido fez um subagente ir atrás da
+  outra metade: 29 chamadas, 3,5 M); arquivo grande começa área nova;
+- apoio com as funções compartilhadas do legado que a área chama (`systems/includes` ASP/JS, `view_shared`), sem libs;
+- **subagentes especiais** despachados junto com as áreas: funcional → `glossario`; arquitetura → `banco` (catálogo/
+  retrato: tabelas, objetos, triggers, jobs) e `modulo` (tecnologias com os sinais do código, configuração só por nome,
+  segurança, observabilidade, infra); as áreas recebem a lista dos tipos que criam;
+- `maxParallel` 13 na configuração de produção (já estava; regravado sem mudar as outras 22 chaves).
+
 ## Log
 
 - 2026-10-06 — spec/plan/status criados a partir da análise da sessão (card 75294, sessões do `legado-checklist`).
