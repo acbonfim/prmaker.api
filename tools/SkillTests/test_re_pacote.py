@@ -257,6 +257,22 @@ class SynthesisTests(unittest.TestCase):
         self.assertIn("Abre tudo.", vt)                                  # PRF inteiro (personas)
 
 
+class TestCodeTests(unittest.TestCase):
+    """0066-ajustes3: código de teste fora do inventário e das áreas (revamp-users: 38% do código era teste)."""
+
+    def test_test_projects_and_files_are_skipped_but_lookalikes_are_not(self):
+        d = tempfile.mkdtemp()
+        write(os.path.join(d, "src", "App", "UserService.cs"), 'public class UserService { void A() { throw new DomainException("Usuário inativo não entra."); } }\n')
+        write(os.path.join(d, "src", "App", "Latest.cs"), "public class Latest {}\n")
+        write(os.path.join(d, "tests", "App.Tests", "UserServiceTests.cs"), 'class T { void B() { throw new DomainException("Usuário inativo não entra."); } }\n')
+        write(os.path.join(d, "src", "App.UnitTests", "Other.cs"), "class O {}\n")
+        write(os.path.join(d, "front", "user.component.spec.ts"), "describe('x', () => {});\n")
+        inv = re_tool.inventory([("backend", d)])
+        self.assertEqual(["src/App/UserService.cs"], sorted({it["file"] for it in inv["items"] if it["cat"] == "validacao"}))
+        files = re_pacote.doc_files(inv, "funcional")
+        self.assertEqual({"src/App/UserService.cs", "src/App/Latest.cs"}, set(files))
+
+
 class JoinTests(unittest.TestCase):
     BASE = textwrap.dedent('''\
         # Levantamento funcional — kaizen

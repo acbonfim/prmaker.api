@@ -74,6 +74,20 @@ def repo_root(path):
         d = parent
 
 
+# 0066-ajustes3: código de teste fica fora do inventário e das áreas (no revamp-users era 38% do código — 11 de 28 áreas
+# só de teste, e as mensagens repetidas nos testes viravam itens cobrados pela cobertura)
+TEST_DIR = re.compile(r"^(tests?|testes|__tests__|unittests?|integrationtests?|e2e|specs)$|[._-](unit|integration|functional)?tests?$", re.I)
+TEST_FILE = re.compile(r"Tests?\.(cs|vb)$|TestHelpers?\.cs$|TestFixtures?\.cs$|\.(spec|test)\.(ts|js)$|^test_\w*\.py$|_test\.py$")
+
+
+def is_test_dir(name):
+    return bool(TEST_DIR.search(name))
+
+
+def is_test_file(name):
+    return bool(TEST_FILE.search(name))
+
+
 def walk(root):
     if os.path.isfile(root):  # 0056: fonte arquivo (--path repo=helpers/Sa3Service.cs ou glob expandido)
         try:
@@ -84,13 +98,13 @@ def walk(root):
             pass
         return
     for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".") and not is_test_dir(d)]
         rel_base = os.path.relpath(base, root)
         if any(part in SKIP_DIRS for part in rel_base.split(os.sep)):
             continue
         for name in files:
             ext = os.path.splitext(name)[1].lower()
-            if ext not in TEXT_EXT or name.endswith((".min.js", ".spec.ts", ".d.ts", ".map")) or "Designer" in name:
+            if ext not in TEXT_EXT or name.endswith((".min.js", ".spec.ts", ".d.ts", ".map")) or "Designer" in name or is_test_file(name):
                 continue
             path = os.path.join(base, name)
             try:

@@ -128,14 +128,16 @@ def doc_files(inv, doc_type):
         if not p or not os.path.exists(p):
             continue
         if os.path.isfile(p):
+            if re_tool.is_test_file(os.path.basename(p)):
+                continue
             root = re_tool.repo_root(p)
             out[os.path.relpath(p, root)] = p
             continue
         for base, dirs, files in os.walk(p):
-            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d)]
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
-                if ext not in exts or SKIP_NAME.search(f):
+                if ext not in exts or SKIP_NAME.search(f) or re_tool.is_test_file(f):
                     continue
                 if ext in CONFIG_EXT and not re.match(r"(appsettings|serverless|buildspec|appspec|docker|aws-lambda|template|web\.config)", f, re.I):
                     continue
@@ -151,9 +153,9 @@ def doc_files(inv, doc_type):
             p = s.get("path") or ""
             if os.path.isdir(p):
                 for base, dirs, files in os.walk(p):
-                    dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
+                    dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d)]
                     for f in files:
-                        if f.endswith("Controller.cs"):
+                        if f.endswith("Controller.cs") and not re_tool.is_test_file(f):
                             out.setdefault(os.path.relpath(os.path.join(base, f), p), os.path.join(base, f))
     return out
 
@@ -303,8 +305,8 @@ def walk_cs(root):
         return [root] if root.endswith(".cs") else []
     out = []
     for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
-        out += [os.path.join(base, f) for f in files if f.endswith(".cs")]
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d)]
+        out += [os.path.join(base, f) for f in files if f.endswith(".cs") and not re_tool.is_test_file(f)]
     return out
 
 
@@ -336,7 +338,7 @@ def shared_roots(inv):
     for r in sorted(roots):
         for base, dirs, _ in os.walk(r):
             depth = os.path.relpath(base, r).count(os.sep)
-            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and depth < 3]
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d) and depth < 3]
             for d in dirs:
                 if d.lower() in SHARED_DIR_NAMES:
                     out.append(os.path.join(base, d))
@@ -351,7 +353,7 @@ def shared_index(roots):
     idx = defaultdict(list)
     for r in roots:
         for base, dirs, files in os.walk(r):
-            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not VENDOR.search(d)]
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d) and not VENDOR.search(d)]
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
                 if ext not in (".asp", ".inc", ".js") or SKIP_NAME.search(f) or VENDOR.search(f):
@@ -728,7 +730,7 @@ def modulo_pack(plan, inv, out_dir, parte_dir, moddir):
         p = s.get("path") or ""
         if os.path.isdir(p):
             for base, dirs, fs in os.walk(p):
-                dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".")]
+                dirs[:] = [d for d in dirs if d.lower() not in SKIP_PARTS and not d.startswith(".") and not re_tool.is_test_dir(d)]
                 for f in fs:
                     if re.match(r"(appsettings.*\.json|web\.config|global\.asa|.*\.csproj|startup\.cs|program\.cs|serverless.*|buildspec.*|_inc_.*\.asp|default\.asp)$", f, re.I):
                         files.add(os.path.join(base, f))
@@ -773,7 +775,8 @@ def tech_signals(inv):
         files = [p] if os.path.isfile(p) else [os.path.join(b, f) for b, ds, fs in os.walk(p) for f in fs
                                                 if not any(x.lower() in SKIP_PARTS for x in os.path.relpath(b, p).split(os.sep))] if os.path.isdir(p) else []
         for fp in files:
-            if os.path.splitext(fp)[1].lower() not in CODE_EXT | {".csproj"}:
+            if os.path.splitext(fp)[1].lower() not in CODE_EXT | {".csproj"} or re_tool.is_test_file(os.path.basename(fp)) \
+                    or any(re_tool.is_test_dir(x) for x in os.path.relpath(fp, p if os.path.isdir(p) else os.path.dirname(p)).split(os.sep)[:-1]):
                 continue
             text = "\n".join(read_lines(fp))
             for label, rx in R_TECH:
@@ -1037,7 +1040,7 @@ def file_index(roots):
     idx = defaultdict(list)
     for r in roots:
         for base, dirs, files in os.walk(r):
-            dirs[:] = [d for d in dirs if d not in re_tool.SKIP_DIRS and not d.startswith(".")]
+            dirs[:] = [d for d in dirs if d not in re_tool.SKIP_DIRS and not d.startswith(".") and not re_tool.is_test_dir(d)]
             for f in files:
                 if os.path.splitext(f)[1].lower() in CODE_EXT:
                     idx[f.lower()].append(os.path.join(base, f))
