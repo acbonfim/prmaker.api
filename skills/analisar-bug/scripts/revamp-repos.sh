@@ -16,7 +16,11 @@
 #   revamp-repos.sh where <repo>
 #       imprime a pasta do repositorio (aceita 'revamp-BOS', 'BOS', o nome da pasta). Exit 2 = nao esta no mapa,
 #       3 = mais de um clone/candidato — pergunte ao usuario a pasta e fixe com: prmake-skills.sh repos set <repo> <pasta>
-#   revamp-repos.sh grep <padrao> [escopo]
+#   revamp-repos.sh master <repo|pasta>
+#       0067: a pasta do repositorio numa COPIA SO DE LEITURA em origin/master, atualizada agora (git fetch) — e daqui que a
+#       analise le o codigo (o clone de trabalho pode estar em outra branch ou desatualizado). Nao mexe no clone.
+#   revamp-repos.sh grep <padrao> [escopo]   (0067: escopo <repo> busca na copia da master; all/legacy/revamp, nos clones —
+#                                             so para achar o repositorio: depois leia em `master <repo>`)
 #       busca <padrao> no codigo. escopo: all (default) | revamp | legacy | <repo>. Saida limitada
 #       (3 por arquivo, 80 linhas; env GREP_PER_FILE/GREP_MAX).
 #
@@ -112,6 +116,14 @@ case "$CMD" in
       done
     fi
     ;;
+  master)
+    Q="${1:?informe o repositorio ou a pasta}"
+    if [[ -e "$Q" ]]; then DIR="$Q"; else
+      set +e; DIR="$(bash "$0" where "$Q")"; rc=$?; set -e
+      [[ $rc -eq 0 && -n "$DIR" ]] || exit "${rc:-2}"
+    fi
+    exec bash "$(dirname "${BASH_SOURCE[0]}")/master-wt.sh" "$DIR"
+    ;;
   where)
     Q="${1:?informe o repositorio}"
     if use_map; then
@@ -136,6 +148,8 @@ case "$CMD" in
         *)
           set +e; path="$(bash "$TOOL" repos path "$SCOPE")"; rc=$?; set -e
           [[ $rc -eq 0 ]] || exit $rc
+          # 0067: um repositorio = busca na copia da master atualizada (o clone pode estar em outra branch)
+          path="$(bash "$(dirname "${BASH_SOURCE[0]}")/master-wt.sh" "$path" 2>/dev/null || printf '%s' "$path")"
           do_grep "$PAT" "$path" "$SCOPE" ;;
       esac
     else

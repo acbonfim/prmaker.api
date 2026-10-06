@@ -30,7 +30,9 @@ codigo fora da Base Solvace (3a), Cognito (3b) ou o banco (3c).
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh grep "NomeDaClasseOuMetodo" revamp
 > bash ~/.claude/skills/analisar-bug/scripts/revamp-repos.sh grep "PhysicalLayout" BOS
 > ```
-> Ao achar o repositorio certo, use Grep/Glob/Read direto na pasta dele (`where <repo>`) para aprofundar.
+> Ao achar o repositorio certo, use Grep/Glob/Read na **copia da master** dele (`M=$(revamp-repos.sh master <repo>)` —
+> `git fetch` + copia so de leitura em `origin/master`, 0067) para aprofundar; o clone (`where`) pode estar em outra
+> branch. `grep <padrao> <repo>` ja busca na copia da master; `all/legacy/revamp` busca nos clones (so para achar o repo).
 > Diga na analise **em qual repo/mundo** (legado ou revamp-<modulo>) esta o codigo.
 >
 > **Repositorio fora do mapa ou com mais de um clone** (`where` sai com 2 ou 3; `branches` com 4): nao

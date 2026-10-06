@@ -14,7 +14,9 @@
 #                                     caminhos locais das fontes (mapa da maquina); legado sem subpasta = erro (o
 #                                     edv-solvace inteiro nao e um modulo). --path com PASTA substitui a do repo; com
 #                                     ARQUIVO, GLOB ou outra pasta do mesmo repo soma (0056): --path edv-solvace='solvace-core/helpers/**/Sa3*.cs'
-#   inventario <modulo> [--path repo=subpasta ...]
+#   inventario <modulo> [--path repo=subpasta ...] [--local]
+#                                     0067: le a COPIA DA MASTER atualizada (git fetch; worktree <clone>/../.prmake-wt/master/<repo>),
+#                                     nunca a branch em que o clone estiver; --local (ou RE_LOCAL=1) le o clone como esta
 #                                     inventario deterministico do codigo -> $RE_HOME/<modulo>/inventario.json
 #   banco <modulo> [--prefix TB_X_ ...] [--sigla X]
 #                                     CATALOGO DO BANCO DA DEMO (0053, somente leitura): views, procedures, functions,
@@ -89,6 +91,8 @@ MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 SQL_SH="${RE_SQL:-$HOME/.claude/skills/analisar-bug/scripts/sql-query.sh}"
 RE_HOME="${RE_HOME:-${PRMAKE_HOME:-$HOME/.prmake}/reverse}"
 SKILLS_TOOL="${PRMAKE_SKILLS_TOOL:-$HOME/.claude/skills/.prmake/prmake-skills.sh}"
+# 0067: a engenharia reversa documenta a MASTER atualizada (copia so de leitura, sem mexer no clone de trabalho)
+MASTER_WT="${RE_MASTER_WT:-$HOME/.claude/skills/analisar-bug/scripts/master-wt.sh}"
 CMD="${1:-}"; shift || true
 die() { echo "ERRO: $*" >&2; exit 1; }
 command -v jq >/dev/null || die "jq nao encontrado"
@@ -117,6 +121,13 @@ repo_path() {
   return 2
 }
 
+# 0067: raiz do repositorio na copia da origin/master (git fetch + worktree em <clone>/../.prmake-wt/master/<repo>).
+# RE_LOCAL=1 (ou --local nos comandos) le o clone como esta — so para documentar uma branch que ainda nao entrou na master.
+master_root() { # <pasta do clone>
+  if [[ "${RE_LOCAL:-0}" == 1 || ! -f "$MASTER_WT" ]]; then printf '%s\n' "$1"; return; fi
+  bash "$MASTER_WT" "$1" 2>>"$TMP/master.log" || printf '%s\n' "$1"
+}
+
 # 0056: caminho da fonte -> o que existe: pasta, arquivo ou glob ("helpers/**/Sa3*.cs") expandido em arquivos.
 expand_path() { # <raiz> <sub>
   python3 - "$1" "$2" <<'PY'
@@ -139,13 +150,14 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
   local mod="$1"; shift
   api GET "/modules/$(urlenc "$mod")"; check
   cp "$TMP/resp" "$TMP/module.json"
-  local overrides=(); while [[ $# -gt 0 ]]; do [[ "$1" == --path ]] && overrides+=("$2"); shift; done
+  local overrides=(); while [[ $# -gt 0 ]]; do [[ "$1" == --path ]] && overrides+=("$2"); [[ "$1" == --local ]] && RE_LOCAL=1; shift; done
   local kind; kind="$(jq -r '.projectKind' "$TMP/module.json")"
   local n=0 missing=0 used="|"
   # separador \x1f (nao e espaco): campo vazio (fonte sem subpasta) nao colapsa como o tab no read
   while IFS=$'\x1f' read -r repo sub role; do
     [[ -z "$repo" ]] && continue
     local root; root="$(repo_path "$repo")" || { echo "FALTA: repositorio '$repo' nao esta no mapa da maquina — clone/fixe com: prmake-skills.sh repos set $repo <pasta>" >&2; missing=1; continue; }
+    root="$(master_root "$root")"
     # a PRIMEIRA --path com pasta deste repo substitui a da tela; as demais (pastas, arquivos, globs) somam abaixo
     for o in "${overrides[@]:-}"; do
       if [[ "${o%%=*}" == "$repo" ]] && ! is_pattern "${o#*=}" && [[ -d "$root/${o#*=}" ]]; then sub="${o#*=}"; used="$used$o|"; break; fi
@@ -162,6 +174,7 @@ resolve_sources() { # <modulo> [--path repo=sub ...]
     [[ -z "$o" ]] && continue
     local orepo="${o%%=*}" osub="${o#*=}" oroot orole
     oroot="$(repo_path "$orepo")" || { echo "FALTA: repositorio '$orepo' nao esta no mapa" >&2; missing=1; continue; }
+    oroot="$(master_root "$oroot")"
     # pasta de um repo que ja e fonte: ja substituiu acima; arquivo/glob soma (mesmo papel da fonte do repo)
     [[ "$used" == *"|$o|"* ]] && continue
     if jq -e --arg r "$orepo" '.sources | any(.repository == $r)' "$TMP/module.json" >/dev/null; then
@@ -341,6 +354,8 @@ case "$CMD" in
     mkdir -p "$(moddir "$MOD")"
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"inventario","status":"running","activity":"Inventario do codigo (sem LLM)"}'; done
     args=(); while IFS=$'\t' read -r role dir; do args+=("$role=$dir"); done < "$TMP/sources"
+    [[ -s "$TMP/master.log" ]] && sort -u "$TMP/master.log" | sed 's/^/Codigo: /'
+    [[ "${RE_LOCAL:-0}" == 1 ]] && echo "AVISO: --local — lendo os clones como estao (branch atual), nao a master"
     python3 "$TOOL_PY" inventario "$(moddir "$MOD")/inventario.json" "${args[@]}" || {
       for d in $(open_docs "$MOD"); do progress "$MOD" "$d" '{"step":"inventario","status":"failed"}'; done
       die "falha no inventario"; }
@@ -349,7 +364,8 @@ case "$CMD" in
     # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio)
     while IFS=$'\t' read -r role dir; do
       g="$dir"; [[ -f "$g" ]] && g="$(dirname "$g")"  # 0056: fonte pode ser um arquivo
-      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short HEAD 2>/dev/null)@$(git -C "$g" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+      br="$(git -C "$g" rev-parse --abbrev-ref HEAD 2>/dev/null)"; [[ "$dir" == */.prmake-wt/master/* ]] && br="origin/master"
+      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short HEAD 2>/dev/null)@$br"
     done < "$TMP/sources" > "$(moddir "$MOD")/fontes.tsv"
     ;;
 
