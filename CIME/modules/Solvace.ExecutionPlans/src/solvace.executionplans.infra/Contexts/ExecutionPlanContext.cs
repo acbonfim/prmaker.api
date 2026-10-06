@@ -186,6 +186,9 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.TargetBranch).HasMaxLength(200);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.StatusChangedBy).HasMaxLength(200);
+            entity.Property(e => e.ChecksStatus).HasMaxLength(20);
+            entity.Property(e => e.ChecksFailed).HasMaxLength(ExecutionLink.MaxChecksFailedLength);
+            entity.Property(e => e.ChecksHeadSha).HasMaxLength(64);
             entity.Ignore(e => e.DisplayName);
 
             entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);

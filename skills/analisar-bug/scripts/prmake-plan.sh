@@ -47,6 +47,9 @@
 #   note        <card> <texto|-> [arquivo...] [--step <key>]  o Claude comenta no plano (com anexos)
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
+#   test        <card> <worktree> [<base-ref>]           testes da correcao (0069): so o que mudou, uma vez, com o limite
+#                                                        do PRMake (CorrectionLocalTests/CorrectionTestMaxSeconds); exit
+#                                                        do test-changed.sh (0 ok, 1 falhou, 124 lento, 3 sem runner)
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
 #   wait        <card> [segundos=540]                    espera sair da pausa; exit 0 = continuar, 10 = ainda pausado, 11 = parar
 #   watch       <card> [segundos=28800]                  VIGIA (rode em segundo plano): termina quando algo muda no PRMake
@@ -1179,6 +1182,19 @@ case "$CMD" in
       esac
     fi
     echo "$WT"
+    ;;
+
+  test)
+    # 0069: testes locais da correcao com a configuracao do PRMake — "off" deixa so o CI do PR (que o PRMake acompanha).
+    WT="${1:?worktree do card}"; shift
+    [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
+    MODE="$( [[ -s "$SETTINGS" ]] && setting CorrectionLocalTests 2>/dev/null)"; MODE="$(printf '%s' "${MODE:-changed}" | tr '[:upper:]' '[:lower:]')"
+    MAX="$( [[ -s "$SETTINGS" ]] && setting CorrectionTestMaxSeconds 2>/dev/null)"; [[ "$MAX" =~ ^[0-9]+$ ]] || MAX=420
+    if [[ "$MODE" == off ]]; then
+      echo "DESLIGADO: testes locais desligados no PRMake (CorrectionLocalTests=off) — siga para o PR; o PRMake acompanha o CI."
+      exit 0
+    fi
+    exec bash "$(dirname "$0")/test-changed.sh" "$WT" "$@" --max-seconds "$MAX"
     ;;
 
   notes)

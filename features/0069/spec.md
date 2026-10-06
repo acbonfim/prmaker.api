@@ -35,3 +35,21 @@ Análise de 2026-10-06 dos dois cards tratados pelo executor no dia (transcripts
    A CORRECAO" gravado) também deveria.
    → **depende da 0068** (mexe no mesmo `ExecutionQueueApplication.cs`: `TryClaimAsync`/`PhaseOfAsync`): fica planejada
    (B1) para depois que a 0068 for mesclada.
+
+4. **CI dos PRs no PRMake (B2).** Os ~35 min de jest nas branches de development/qa repetiram o CI do PR
+   (`pr-build-validation.yml`: 52 checks por PR). O PRMake só acompanhava o merge.
+   → a sincronização dos PRs (`SyncPullRequestsAsync`) lê também o CI dos PRs abertos das etapas de PR (check runs +
+   statuses do commit de cabeça, cache de 1 min) e grava no link (`ChecksStatus`, `ChecksFailed`, `ChecksHeadSha`).
+   → **falha que a base já tem não é do card**: o mesmo check vermelho em pelo menos 2 dos 3 PRs recentes para a mesma
+   branch (cache de 10 min). Visto em 06/10: `Run Tests with Coverage (users)` falha em 7 de 7 PRs recentes para
+   development e 5 suítes falham em todo PR para qa — sem isso, todo card acordaria o Claude à toa.
+   → falha nova (ou em commit novo) → marco "❌ CI falhou" na Timeline e retomada do card (origem `checks`, "o CI de
+   um PR falhou"); verde/pendente só atualiza a tela. A skill lê o log (`gh run view --log-failed`), corrige na branch
+   do PR e faz push; falha alheia/instável → registra e não mexe.
+   → tela: "CI rodando / CI ok / CI falhou" no PR da etapa, com os checks que falharam ("já falhava na base" em cinza);
+   MCP `prmake_plan` devolve `ci` e `ciFailed` (`alreadyFailsOnBase`).
+   → **limite**: a sincronização roda quando alguém (tela, skill, `control`) lê o plano. Ler periodicamente os planos
+   aguardando PR fica para o sinal de vida do executor depois da 0068 (B2b).
+
+5. **Configuração no PRMake (B3).** `CorrectionLocalTests` (`changed` | `off`) e `CorrectionTestMaxSeconds` (420) nas
+   Skills Configurations (migração `SeedCorrectionTests`); a skill usa `prmake-plan.sh test <card> <worktree>`.

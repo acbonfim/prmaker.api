@@ -5,6 +5,10 @@
 | S1 | ✅ | Claude | (este commit) |
 | S2 | ✅ | Claude | (este commit) |
 | T1 | ✅ | Claude | (este commit) |
+| B2 | ✅ | Claude | (feature/0069-ci) |
+| B3 | ✅ | Claude | (feature/0069-ci) |
+| F1 | ✅ | Claude | front feature/0069-ci |
+| B2b | ⏳ depois da 0068 | — | — |
 | B1 | ⏳ depois da 0068 | — | — |
 
 ## Notas
@@ -21,3 +25,10 @@
 - Máquina: 16 GB, ~10 GB de swap em uso; cada worker do jest até 2 GB, junto com outras sessões do Claude, Rider,
   Chrome e Teams — provável motivo de 24 s virarem 141–715 s (hipótese, não reproduzida).
 - B1 só depois da 0068 na master.
+- B2/B3: build ok; migrações `PullRequestChecks` (execution) e `SeedCorrectionTests` (prform) aplicadas do zero num
+  Postgres 18 isolado (porta 55469) — seed `changed`/`420` sem apagar as chaves existentes.
+- Regra das falhas da base simulada com `gh api` nos PRs reais do 75349: #13612 (development) falha só `users`, que a
+  base já tem → pendente, sem retomar; #13613 (qa) 5 falhas, todas da base → idem.
+- F1: `ng build --configuration development` ok. Não testado ponta a ponta (sincronização com GitHub falso + tela no
+  navegador) — fica para o teste depois do deploy num card real com PR aberto.
+- SkillTests: 44 OK (`prmake-plan.sh test`: off e limite configurado).

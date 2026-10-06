@@ -533,7 +533,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     /// <summary>Tem algo para o Claude fazer agora: etapa dele em andamento ou pronta (ou um comentário novo do usuário).</summary>
     private static bool HasWorkForClaude(ExecutionPlan plan, string source)
     {
-        if (source == ExecutionRequestSource.Note)
+        if (source is ExecutionRequestSource.Note or ExecutionRequestSource.Checks)
             return true;
         if (plan.Steps.Count == 0)
             return plan.Status is ExecutionStatus.Pending or ExecutionStatus.Running;
@@ -1034,6 +1034,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         ExecutionRequestSource.UserAction => $"{r.RequestedBy} agiu no plano",
         ExecutionRequestSource.Note => $"{r.RequestedBy} comentou no plano",
         ExecutionRequestSource.PullRequest => "PR mesclado",
+        ExecutionRequestSource.Checks => "o CI de um PR falhou",
         ExecutionRequestSource.Rule => "regra automatica",
         _ => $"pedido de {r.RequestedBy}"
     };

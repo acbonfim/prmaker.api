@@ -67,7 +67,13 @@ public partial class PrmakeMcpTools(
                 s.Key, s.Title, s.Status, s.Executor, s.Kind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
-                links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new { l.Kind, title = l.Title ?? l.Url, l.Status, l.Url }).ToList() is { Count: > 0 } ls ? ls : null,
+                links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new
+                {
+                    l.Kind, title = l.Title ?? l.Url, l.Status, l.Url,
+                    // 0069: CI do PR; falha que a base já tem (alreadyFailsOnBase) não é do card
+                    ci = l.ChecksStatus,
+                    ciFailed = l.ChecksFailed.Count > 0 ? l.ChecksFailed.Select(c => new { c.Name, c.Url, alreadyFailsOnBase = c.Preexisting }).ToList() : null
+                }).ToList() is { Count: > 0 } ls ? ls : null,
                 // 0050: arquivos anexados à etapa (pela key) — cite-os pelo nome na etapa, na mensagem final e na Timeline
                 files = plan.Artifacts.Where(a => a.StepKey == s.Key && a.NoteId is null).Select(a => new { a.Name, a.Kind }).ToList() is { Count: > 0 } fs ? fs : null
             }),

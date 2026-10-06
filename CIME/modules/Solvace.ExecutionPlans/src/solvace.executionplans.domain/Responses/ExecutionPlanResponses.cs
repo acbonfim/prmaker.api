@@ -259,6 +259,10 @@ public class ExecutionLinkResponse
     public DateTimeOffset CreatedAt { get; set; }
     public string? StatusChangedBy { get; set; }
     public DateTimeOffset? StatusChangedAt { get; set; }
+    /// <summary>0069: CI do PR aberto — pending | success | failure (null = sem CI).</summary>
+    public string? ChecksStatus { get; set; }
+    public List<ExecutionCheckItem> ChecksFailed { get; set; } = [];
+    public DateTimeOffset? ChecksChangedAt { get; set; }
 }
 
 public class ExecutionLogResponse
@@ -532,7 +536,10 @@ public static class ExecutionPlanMappings
         CreatedBy = l.CreatedBy,
         CreatedAt = l.CreatedAt,
         StatusChangedBy = l.StatusChangedBy,
-        StatusChangedAt = l.StatusChangedAt
+        StatusChangedAt = l.StatusChangedAt,
+        ChecksStatus = l.ChecksStatus,
+        ChecksFailed = l.FailedChecks().ToList(),
+        ChecksChangedAt = l.ChecksChangedAt
     };
 
     public static ExecutionLogResponse ToResponse(this ExecutionLog log) => new()

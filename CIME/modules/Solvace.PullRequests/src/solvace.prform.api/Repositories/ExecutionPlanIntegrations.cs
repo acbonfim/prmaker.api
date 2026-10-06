@@ -1,4 +1,5 @@
 using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
 using solvace.github.application.Contract;
 using solvace.timeline.application.Contracts;
 using solvace.timeline.domain.Entities;
@@ -10,8 +11,17 @@ namespace solvace.prform.Repositories;
 /// PRs do card para o plano de execução (0024): a mesma sincronização da tela (status do GitHub com cache
 /// de 60 s e a credencial pessoal de quem consulta).
 /// </summary>
-public class ExecutionPlanPullRequestSource(IPullRequestGithubApplication github) : IExecutionPullRequestSource
+public class ExecutionPlanPullRequestSource(IPullRequestGithubApplication github, IGitHubService gitHub) : IExecutionPullRequestSource
 {
+    public async Task<CardPullRequestChecks?> GetChecksAsync(string repository, int number, CancellationToken cancellationToken)
+    {
+        var checks = await gitHub.GetPullRequestChecksAsync(repository, number, cancellationToken);
+        if (checks.Error is not null)
+            return null;
+        var state = checks.State == solvace.github.domain.Responses.PullRequestChecksResponse.None ? null : checks.State;
+        return new CardPullRequestChecks(state, checks.HeadSha, checks.Failed.Select(f => new ExecutionCheckItem(f.Name, f.Url, f.Preexisting)).ToList());
+    }
+
     public async Task<IReadOnlyList<CardPullRequest>> ListByCardAsync(string cardNumber, CancellationToken cancellationToken)
     {
         var prs = await github.ListByCard(cardNumber, refreshStatus: true, cancellationToken);

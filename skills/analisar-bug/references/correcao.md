@@ -70,7 +70,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 |---|---|---|---|
 | **Impacto na base (`impacto-na-base`) — com codigo, primeira etapa** | `task` | claude | 0063: `prmake_base_impact` em cada arquivo/funcao/tabela/item que a correcao vai tocar; lista no checkpoint o que mais usa cada ponto (telas, modulos, itens) e vira o roteiro de regressao do `validar`/`validar-qa`. Conclui citando os itens (ou "sem outros usos na base") |
 | Corrigir o codigo — **uma por repositorio** (`corrigir-<repo>`) | `code` | claude | `dependsOn: impacto-na-base`; branches e commits do fluxo abaixo |
-| Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao; testes com `test-changed.sh` (passo 8) |
+| Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao; testes com `$PLAN test` (passo 8) |
 | **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
 | Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | crie com `dependsOn` numa etapa sua que prepara o script (ex.: `preparar-script-<nome>`, `claude`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
@@ -134,16 +134,24 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   na mensagem do commit (`CommitMessagePattern`), na descricao do PR e no plano/Timeline — nunca no codigo.
   Excecao rara: so se o proprio arquivo exigir (ex.: doc obrigatoria de API publica) e, mesmo assim, o minimo.
 - **Validar com testes (0069)** — so os testes do que mudou, **uma vez**:
-  `bash ~/.claude/skills/analisar-bug/scripts/test-changed.sh "$WT"` (timeout do Bash: 600000). Ele acha os specs dos
-  arquivos alterados (o `.spec.ts` ao lado de cada arquivo mudado + specs mudados), roda sem cobertura e encerra o
-  runner no limite (420 s). Resultado → `log` na etapa `validar`:
-  - `OK` / `SEM-SPEC`: conclua a validacao (sem spec: diga que o CI do PR testa).
+  `bash $PLAN test <card> "$WT"` (timeout do Bash: 600000). Ele acha os specs dos arquivos alterados (o `.spec.ts` ao
+  lado de cada arquivo mudado + specs mudados), roda sem cobertura e encerra o runner no limite configurado no PRMake
+  (`CorrectionTestMaxSeconds`, padrao 420 s). Resultado → `log` na etapa `validar`:
+  - `OK` / `SEM-SPEC` / `DESLIGADO`: conclua a validacao (sem spec ou desligado: o CI do PR testa).
   - `FALHOU`: corrija (se a falha e da sua mudanca) e rode o script de novo; falha que ja existia na base: registre e siga.
   - `LENTO` (exit 124) ou `SEM-RUNNER` (exit 3): **nao repita** (nem com `--maxWorkers`, pastas, `npm test`, `npm
     install`): registre no plano e siga para o PR — o CI do PR roda o build e os testes. Sem jest (back .NET/Java): o
     build do projeto alterado basta.
   - **Nunca** rode o jest/`npm test` direto, em pastas inteiras ou na suite toda. Depois do cherry-pick nas branches do
-    fluxo (dev/qa...) **nao teste de novo** — so se resolveu conflito na mao: ai rode o `test-changed.sh` nessa branch.
+    fluxo (dev/qa...) **nao teste de novo** — so se resolveu conflito na mao: ai rode o `$PLAN test` nessa branch.
+- **CI do PR (0069)**: o PRMake acompanha o CI de cada PR do plano e mostra na etapa (CI ✅/⏳/❌). Falha que a base ja
+  tem (o mesmo check vermelho nos PRs recentes para a mesma branch — ex.: `users` em todo PR para development) aparece
+  como "ja falhava na base" e **nao e sua**: nao corrija. So falha nova retoma o card ("o CI de um PR falhou"):
+  `prmake_plan` mostra o PR, o `ci` e os checks (`alreadyFailsOnBase` = da base); `gh pr checks <url-do-pr>` e `gh run view <run-id> --log-failed | tail -120`
+  (o id esta no link do check) dao o log. Falha da sua mudanca → corrija no worktree, na branch daquele PR
+  (`$PLAN test` so dos arquivos da falha), commit no padrao e `push` — o CI roda de novo e o PRMake acompanha. Falha
+  de infraestrutura/instavel ou de outra parte do codigo → `log` (kind `warning`) com o porque e encerre a vez, sem
+  mexer no codigo.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
   1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.

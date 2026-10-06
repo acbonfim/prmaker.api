@@ -145,6 +145,31 @@ class TestChangedTests(unittest.TestCase):
         self.assertEqual(3, r.returncode, r.stdout)
         self.assertIn("SEM-RUNNER", r.stdout)
 
+    def plan_test(self, wt, settings, env=None):
+        card_dir = os.path.join(self.home, ".prmake", "cards", "1")
+        os.makedirs(card_dir, exist_ok=True)
+        with open(os.path.join(card_dir, ".prmake-settings.json"), "w") as f:
+            json.dump({"available": True, "settings": settings}, f)
+        return subprocess.run(["bash", PLAN, "test", "1", wt], capture_output=True, text=True,
+                              env={**ENV, "HOME": self.home, "PRMAKE_TOKEN": "t", "PRMAKE_API_BASE": "http://127.0.0.1:9",
+                                   "FAKE_JEST_ARGS": self.args_file, **(env or {})})
+
+    def test_plan_test_off_skips_local_tests(self):
+        wt = self.worktree()
+        write(os.path.join(wt, "src", "c.ts"), "export const c = 6;\n")
+        r = self.plan_test(wt, {"CorrectionLocalTests": "off"})
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn("DESLIGADO", r.stdout)
+        self.assertFalse(os.path.exists(self.args_file))
+
+    def test_plan_test_uses_the_configured_limit(self):
+        wt = self.worktree()
+        write(os.path.join(wt, "src", "c.ts"), "export const c = 7;\n")
+        pid_file = os.path.join(self.tmp.name, "child2.pid")
+        r = self.plan_test(wt, {"CorrectionLocalTests": "changed", "CorrectionTestMaxSeconds": "2"}, env={"FAKE_JEST_HANG": pid_file})
+        self.assertEqual(124, r.returncode, r.stdout + r.stderr)
+        self.assertIn("nao terminou em 2s", r.stdout)
+
     def test_executor_cleanup_removes_only_the_link(self):
         wt = self.worktree()
         write(os.path.join(wt, "src", "a.ts"), "export const a = 9;\n")
