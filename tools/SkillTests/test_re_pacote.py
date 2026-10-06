@@ -147,6 +147,91 @@ class AreaTests(unittest.TestCase):
         self.assertIn("`revamp-users` Usuários · usuarios novo", text)
 
 
+class AdjustmentTests(unittest.TestCase):
+    """0066-ajustes: arquivo que cabe não é partido, apoio das funções compartilhadas do legado e pacote do glossário."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        r = self.tmp.name
+        os.makedirs(os.path.join(r, ".git"))
+        write(os.path.join(r, "systems", "includes", "asp", "fnc_datas.asp"),
+              "<%\nFunction GetRealDateX(d)\n  GetRealDateX = DateAdd(\"h\", -3, d)\nEnd Function\n%>\n")
+        write(os.path.join(r, "systems", "includes", "js", "jquery.datatables.js"), "function GetRealDateX(){ return 1; }\n")
+        page = ["<%", "Dim x", "x = GetRealDateX(Now())", "%>", "<span><%=GetLanguageByName(\"Observação de segurança\")%></span>"]
+        page += [f"<p>linha {i} de preenchimento da pagina de registro</p>" for i in range(250)]
+        write(os.path.join(r, "systems", "soc", "soc_registro.asp"), "\n".join(page) + "\n")
+        write(os.path.join(r, "systems", "soc", "soc_busca.asp"), "<%\nx = GetRealDateX(Now())\n%>\n")
+        self.inv = re_tool.inventory([("backend", os.path.join(r, "systems", "soc"))])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_file_that_fits_the_budget_is_never_split(self):
+        areas = re_pacote.plan_areas(self.inv, "funcional", 20, 50, 220, [])  # ~14 KB: cabe, mesmo com mais linhas que "pequeno"
+        owners = [a["name"] for a in areas for u in a["units"] if u["file"] == "soc_registro.asp"]
+        self.assertEqual(1, len(owners), owners)
+
+    def test_shared_functions_from_includes_come_as_support_without_vendor_libs(self):
+        areas = re_pacote.plan_areas(self.inv, "funcional", 90, 400, 220, [])
+        blocks = re_pacote.shared_blocks(self.inv, areas[0])
+        files = [f for f, *_ in blocks]
+        self.assertTrue(any(f.endswith("fnc_datas.asp") for f in files), files)
+        self.assertFalse(any("jquery" in f for f in files))
+        f, a, b, lines = next(x for x in blocks if x[0].endswith("fnc_datas.asp"))
+        self.assertIn("End Function", "\n".join(lines[a:b + 1]))
+
+    def test_glossary_pack_and_its_coverage(self):
+        d = tempfile.mkdtemp()
+        inv_path = os.path.join(d, "inventario.json")
+        json.dump(self.inv, open(inv_path, "w", encoding="utf-8"))
+        termos = os.path.join(d, "inventario-termos.json")
+        json.dump({"items": [{"cat": "termo", "name": "Observação de segurança", "file": "soc_registro.asp", "line": 5, "detail": "tela"},
+                             {"cat": "termo", "name": "Safety observation", "file": "soc_registro.asp", "line": 5,
+                              "detail": 'EN de "Observação de segurança" (traducao)'}]}, open(termos, "w", encoding="utf-8"))
+        plan = {"module": "legado-soc", "docType": "funcional", "inventory": inv_path, "idBase": 300,
+                "areas": re_pacote.plan_areas(self.inv, "funcional", 90, 400, 220, [])}
+        out, n = re_pacote.glossary_pack(plan, termos, d, d)
+        text = open(out, encoding="utf-8").read()
+        self.assertEqual(1, n)
+        self.assertIn("EN: Safety observation", text)
+        self.assertIn("GetLanguageByName", text)  # contexto da tela
+        self.assertEqual(["glossario"], [x["name"] for x in plan["specials"]])
+        self.assertGreater(plan["specials"][0]["idRange"][0], max(a["idRange"][1] for a in plan["areas"]))
+        write(os.path.join(d, "parte-glossario.md"), "## Glossário\n### GLO-401 — Observação de segurança\n- **Sinônimos:** Safety observation, SOC\n")
+        self.assertEqual(0, re_pacote.faltando(plan["inventory"] and re_pacote.load_inv(inv_path), plan, "glossario", os.path.join(d, "parte-glossario.md")))
+
+
+class SpecialsTests(unittest.TestCase):
+    def test_architecture_gets_bank_and_module_specials_and_areas_do_not_create_their_kinds(self):
+        m = Module()
+        try:
+            d = tempfile.mkdtemp()
+            moddir = os.path.join(d, "mod")
+            banco = os.path.join(moddir, "banco")
+            write(os.path.join(banco, "tabelas", "TB_KZ_IDEIA.md"), "# TB_KZ_IDEIA\n| # | Coluna |\n| 1 | ID |\n")
+            write(os.path.join(banco, "triggers", "TR_KZ_LOG.sql"), "CREATE TRIGGER TR_KZ_LOG ...")
+            json.dump({"objects": [{"name": "TB_KZ_IDEIA", "kind": "tabela", "scope": "local", "reason": "tabela do módulo", "file": "tabelas/TB_KZ_IDEIA.md"},
+                                   {"name": "TR_KZ_LOG", "kind": "trigger", "scope": "local", "reason": "trigger", "file": "triggers/TR_KZ_LOG.sql"}],
+                       "jobs": [], "problems": ["msdb: sem permissão"]}, open(os.path.join(banco, "catalogo.json"), "w"))
+            json.dump(m.inv, open(os.path.join(moddir, "inventario.json"), "w"))
+            plan = {"module": "revamp-kaizen", "docType": "arquitetura", "inventory": os.path.join(moddir, "inventario.json"), "idBase": 0,
+                    "kinds": ["TEC", "CMP", "API", "DB", "EVT", "JOB", "INT", "CFG", "SQL", "TRG", "INF"],
+                    "areas": re_pacote.plan_areas(m.inv, "arquitetura", 90, 400, 220, [])}
+            made = re_pacote.especiais(plan, d, d, moddir, 90)
+            self.assertEqual(["banco", "modulo"], [n for n, *_ in made])
+            banco_txt = open(os.path.join(d, "pacote-banco.md"), encoding="utf-8").read()
+            self.assertIn("TB_KZ_IDEIA", banco_txt)
+            self.assertIn("msdb: sem permissão", banco_txt)
+            allowed, taken = re_pacote.area_kinds(plan)
+            self.assertNotIn("DB", allowed)
+            self.assertIn("API", allowed)
+            self.assertIn("TEC", taken)
+            ranges = [a["idRange"] for a in plan["areas"]] + [x["idRange"] for x in plan["specials"]]
+            self.assertEqual(len(ranges), len({r[0] for r in ranges}))
+        finally:
+            m.close()
+
+
 class JoinTests(unittest.TestCase):
     BASE = textwrap.dedent('''\
         # Levantamento funcional — kaizen

@@ -18,8 +18,10 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
 6. **Responda só o resumo** (até 8 linhas): itens por tipo, GAPs, dúvidas, armadilhas vistas (elas não entram no documento).
 
 ## Regras do conteúdo
-- **Do módulo inteiro, não da área:** glossário (`GLO`), perfis (`PRF`) e o resumo do módulo são consolidados pela
-  sessão principal — **não crie**; liste no resumo final os termos e perfis novos que viu (com `arquivo:linha`).
+- **Só os tipos que o cabeçalho do pacote lista.** O que é do módulo inteiro tem subagente próprio (glossário; banco:
+  tabelas, objetos, triggers e jobs; módulo: tecnologias, configuração, segurança, observabilidade, infra) ou é da sessão
+  principal (perfis `PRF`, resumo) — **não crie**: cite pelo nome; liste no resumo final os perfis que viu (`arquivo:linha`).
+  Se você é um subagente especial (`glossario`, `banco…`, `modulo`), siga o cabeçalho do seu pacote.
 - **IDs só da faixa da sua área** (ex.: 1301 a 1400 — a mesma faixa vale para todos os tipos: RN-1301, UC-1301, TELA-1301).
   Item que já existe no publicado mantém o ID dele (o pacote/sessão mostram). A junção renumera as faixas depois.
 - **Nada inventado.** Regra com condição, valores e mensagem **literais** (entre aspas, como no código) e `**Onde:**`.
