@@ -232,6 +232,31 @@ class SpecialsTests(unittest.TestCase):
             m.close()
 
 
+class SynthesisTests(unittest.TestCase):
+    """0066-ajustes2: visão e spec de arquitetura são escritas a partir dos levantamentos — sem áreas, sem código."""
+
+    def test_synthesis_pack_has_full_items_the_doc_needs_and_titles_of_the_rest(self):
+        d = tempfile.mkdtemp()
+        func = os.path.join(d, "funcional.md")
+        arq = os.path.join(d, "arquitetura.md")
+        write(func, "# Levantamento funcional\n\n## Resumo do módulo\nO SOC registra observações de segurança.\n\n## Perfis e permissões\n"
+                    "### PRF-001 — Administrador SOC\n- **Onde:** `a.asp:1`\nAbre tudo.\n\n## Regras de negócio\n### RN-001 — Observação exige área\ncorpo da regra\n")
+        write(arq, "# Levantamento de arquitetura\n\n## Integrações\n### INT-001 — SOC → Plano de Ação: cria plano\n- **Módulos:** legado-actionplan\n"
+                   "- **Mecanismo:** banco compartilhado\n\n## Endpoints\n### API-001 — soc_busca_ajax.asp\ncorpo\n")
+        plan = {"module": "legado-soc", "docType": "spec-arquitetura", "areas": [], "idBase": 200, "kinds": ["ADR", "NFR", "SEQ", "GAP"]}
+        out = re_pacote.sintese_pack("spec-arquitetura", {"funcional": func, "arquitetura": arq}, d, d, "legado-soc", plan)
+        text = open(out, encoding="utf-8").read()
+        self.assertIn("**Mecanismo:** banco compartilhado", text)   # INT inteiro (a spec desenha o contexto com ele)
+        self.assertIn("**API** (1): API-001 soc_busca_ajax.asp", text)  # API só o título
+        self.assertIn("**RN** (1): RN-001 Observação exige área", text)
+        self.assertNotIn("corpo da regra", text)
+        self.assertEqual([201, 300], plan["specials"][0]["idRange"])
+        visao = re_pacote.sintese_pack("visao", {"funcional": func}, d, d, "legado-soc", {"docType": "visao", "areas": [], "idBase": 0})
+        vt = open(visao, encoding="utf-8").read()
+        self.assertIn("O SOC registra observações de segurança.", vt)  # resumo do módulo
+        self.assertIn("Abre tudo.", vt)                                  # PRF inteiro (personas)
+
+
 class JoinTests(unittest.TestCase):
     BASE = textwrap.dedent('''\
         # Levantamento funcional — kaizen

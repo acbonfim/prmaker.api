@@ -14,6 +14,8 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
   re_pacote.py especiais <areas.json> <pasta-saida> --modulo-dir <pasta-do-modulo> [--parte-dir D]
       0066-ajustes: pacotes dos SUBAGENTES ESPECIAIS (o que é do módulo inteiro): funcional → glossário; arquitetura →
       banco (tabelas/objetos/triggers/jobs do catálogo) e módulo (tecnologias, configuração, segurança, observabilidade, infra).
+  re_pacote.py sintese <areas.json> <pasta-saida> --fonte funcional=<doc.md> --fonte arquitetura=<doc.md> [--parte-dir D]
+      documentos de SÍNTESE (visão, spec de arquitetura): pacote com os itens dos levantamentos — sem ler o código.
   re_pacote.py cartao <subagente.md> <modelo.md> <modulos.tsv> --out cartao.md
       o cartão do subagente: instruções curtas + o modelo do documento + as chaves dos módulos (para **Módulos:**).
   re_pacote.py faltando <areas.json> <area> <parte.md> [--tipo-doc funcional]
@@ -807,6 +809,87 @@ def especiais(plan, out_dir, parte_dir, moddir, budget_kb):
     return made
 
 
+# ── documentos de síntese (visão, spec de arquitetura): sem áreas, a partir dos levantamentos ─────────
+# A visão e a spec de arquitetura são escritas A PARTIR do levantamento funcional/arquitetura (o modelo diz). Dividir o
+# código inteiro em áreas para elas custava o mesmo que o funcional para um documento de ~30 KB.
+SYNTHESIS = {
+    "visao": {"full": ["PRF", "REL", "OBJ", "PER"], "titles": ["FN", "UC", "GLO", "INT", "EST", "NTF", "TELA", "FLX", "CFG"],
+              "sections": ["resumo do modulo", "integracoes com outros modulos", "legado"]},
+    "spec-arquitetura": {"full": ["INT", "EVT", "JOB", "TRG", "NFR", "ADR", "INF"],
+                         "titles": ["TEC", "CMP", "API", "DB", "SQL", "UC", "RN", "EST", "TELA", "CFG"],
+                         "sections": ["resumo", "visao geral", "integracoes", "seguranca", "observabilidade"]},
+}
+
+
+def blocks_by_id(text):
+    """[(ID, tipo, título, bloco)] dos itens de um documento (cabeçalho com ID até o próximo cabeçalho)."""
+    out, cur, buf = [], None, []
+    for line in text.splitlines():
+        m = re_tool.ID_HEADING.match(line)
+        if m or re.match(r"^#{1,3}\s", line):
+            if cur:
+                out.append((*cur, "\n".join(buf).strip()))
+            cur = (f"{m.group(2).upper()}-{int(m.group(3)):03d}", m.group(2).upper(), line.split("—", 1)[-1].strip()) if m else None
+            buf = [line]
+        elif cur:
+            buf.append(line)
+    if cur:
+        out.append((*cur, "\n".join(buf).strip()))
+    return out
+
+
+def named_sections(text, wanted):
+    """Seções ## cujo título contém uma das palavras (sem acento), com o texto até a próxima ## (sem os itens ###)."""
+    out, cur, buf = [], None, []
+    for line in text.splitlines() + ["## __fim__"]:
+        if re.match(r"^##\s", line) and not line.startswith("###"):
+            if cur and buf:
+                body = "\n".join(x for x in buf if not re_tool.ID_HEADING.match(x))[:6000]
+                out.append(f"{cur}\n{body.strip()}")
+            title = re_tool.norm(line[3:])
+            cur = line if any(w in title for w in wanted) else None
+            buf = []
+        elif cur:
+            if re_tool.ID_HEADING.match(line):
+                cur_items = True
+            buf.append(line)
+    return out
+
+
+def sintese_pack(doc_type, sources, out_dir, parte_dir, module, plan):
+    """Pacote de síntese: itens dos levantamentos (inteiros os que a síntese usa; os demais só ID + título)."""
+    spec = SYNTHESIS[doc_type]
+    entry = add_special(plan, "sintese", plan.get("kinds") or [])
+    lo, hi = entry["idRange"]
+    parte = os.path.join(parte_dir or out_dir, "parte-sintese.md")
+    L = [f"# Pacote de síntese — {module} / {doc_type}", "",
+         "- **Documento de síntese:** escreva A PARTIR dos levantamentos abaixo (o modelo pede isso). **Não leia o código** —",
+         "  só para confirmar um ponto que os itens não explicam (e aí leia o trecho citado no `**Onde:**`).",
+         f"- **Faixa de números de ID** para itens novos: {lo:03d} a {hi:03d}. Referencie os itens dos levantamentos pelo ID (não redefina).",
+         f"- **Grave em:** `{parte}` com TODAS as seções `##` do modelo. Checkpoint a cada seção.",
+         "- Para ler um item inteiro que aqui só tem o título: `grep -n -A25 '^### RN-012 ' <fonte>` (a fonte de cada documento está abaixo).", ""]
+    for doc, path in sources.items():
+        text = open(path, encoding="utf-8", errors="replace").read()
+        items = blocks_by_id(text)
+        L += [f"## Fonte: {doc} (`{path}`) — {len(items)} itens", ""]
+        for sec in named_sections(text, spec["sections"]):
+            L += [sec, ""]
+        full = [b for b in items if b[1] in spec["full"]]
+        if full:
+            L += [f"### Itens inteiros ({', '.join(sorted({b[1] for b in full}))})", ""] + [b[3] for b in full] + [""]
+        by_kind = defaultdict(list)
+        for b in items:
+            if b[1] in spec["titles"]:
+                by_kind[b[1]].append(f"{b[0]} {b[2][:110]}")
+        for k in spec["titles"]:
+            if by_kind[k]:
+                L += [f"**{k}** ({len(by_kind[k])}): " + " · ".join(by_kind[k]), ""]
+    out = os.path.join(out_dir, "pacote-sintese.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(L) + "\n")
+    return out
+
+
 # ── glossário (subagente próprio, em paralelo com as áreas) ─────────────────────────────────────────
 
 def glossary_pack(plan, termos_path, out_dir, parte_dir, banco_dir=None):
@@ -1145,13 +1228,17 @@ def main(argv):
         inv = load_inv(inv_path, opts(argv, "--extra"))
         used = open(opt(argv, "--ids"), encoding="utf-8").read().split() if opt(argv, "--ids") and os.path.exists(opt(argv, "--ids")) else []
         budget = int(opt(argv, "--orcamento-kb", "90"))
-        areas = plan_areas(inv, doc_type, budget, int(opt(argv, "--arquivo-pequeno", "400")), int(opt(argv, "--bloco-max", "220")), used)
+        areas = [] if doc_type in SYNTHESIS else plan_areas(inv, doc_type, budget, int(opt(argv, "--arquivo-pequeno", "400")), int(opt(argv, "--bloco-max", "220")), used)
         plan = {"version": 1, "module": opt(argv, "--modulo", ""), "docType": doc_type, "inventory": os.path.abspath(inv_path), "idBase": next_base(used),
                 "extras": [os.path.abspath(x) for x in opts(argv, "--extra") if os.path.exists(x)], "budgetKb": budget,
                 "checkpointEvery": int(opt(argv, "--checkpoint", "10")), "areas": areas}
         out = opt(argv, "--out", "areas.json")
         with open(out, "w", encoding="utf-8") as fh:
             json.dump(plan, fh, ensure_ascii=False, indent=1)
+        if doc_type in SYNTHESIS:
+            print(f"Documento de SÍNTESE ({doc_type}): sem áreas — escrito a partir dos levantamentos (funcional/arquitetura). "
+                  f"re.sh pacote monta o pacote de síntese -> {out}")
+            return 0
         total = sum(a["bytes"] for a in areas)
         print(f"Áreas: {len(areas)} (orçamento {budget} KB; código a ler {total // 1024} KB) -> {out}")
         for a in areas:
@@ -1172,6 +1259,22 @@ def main(argv):
                 continue
             path, size, n = build_pack(inv, plan, area, out_dir, opt(argv, "--banco"), opt(argv, "--parte-dir"))
             print(f"  pacote {area['name']:<34} {size // 1024:>4} KB · {n:>4} itens a cobrir -> {path}")
+        return 0
+    if cmd == "sintese":
+        plan_path = argv[2]
+        plan = json.load(open(plan_path, encoding="utf-8"))
+        sources = OrderedDict()
+        for spec_ in opts(argv, "--fonte"):
+            doc, _, path = spec_.partition("=")
+            if path and os.path.exists(path) and os.path.getsize(path) > 0:
+                sources[doc] = path
+        if not sources:
+            print("ERRO: nenhum levantamento (funcional/arquitetura) disponível — gere e publique (ou rascunhe) os levantamentos antes", file=sys.stderr)
+            return 2
+        out = sintese_pack(plan["docType"], sources, argv[3], opt(argv, "--parte-dir"), plan.get("module", ""), plan)
+        with open(plan_path, "w", encoding="utf-8") as fh:
+            json.dump(plan, fh, ensure_ascii=False, indent=1)
+        print(f"  pacote sintese {os.path.getsize(out) // 1024:>4} KB · fontes: {', '.join(sources)} -> {out}")
         return 0
     if cmd == "especiais":
         plan_path = argv[2]

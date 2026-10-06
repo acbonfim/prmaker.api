@@ -86,6 +86,14 @@ documento. Funcional enviado em 26 min. Ajustes:
   segurança, observabilidade, infra); as áreas recebem a lista dos tipos que criam;
 - `maxParallel` 13 na configuração de produção (já estava; regravado sem mudar as outras 22 chaves).
 
+### Ajustes 2 (`feature/0066-ajustes2`)
+- Visão e spec de arquitetura são SÍNTESES (o modelo diz "a partir do levantamento"): `re.sh areas` não divide o código e
+  `re.sh pacote` monta `pacote-sintese.md` com os itens do funcional/arquitetura (rascunho local, senão o publicado) —
+  inteiros os que a síntese usa, só ID + título o resto (SOC: visão 51 KB, spec 156 KB, contra 908 KB de código).
+- IDs usados = publicados + `documento.md` de cada documento (partes/pacotes/modelos tinham IDs de faixa e empurravam a
+  base); no `juntar`, os IDs dos outros documentos são lidos de novo — a arquitetura do SOC, gerada em paralelo com o
+  funcional, colidiu GAP/CFG e a sessão principal teve de renumerar à mão.
+
 ## Log
 
 - 2026-10-06 — spec/plan/status criados a partir da análise da sessão (card 75294, sessões do `legado-checklist`).

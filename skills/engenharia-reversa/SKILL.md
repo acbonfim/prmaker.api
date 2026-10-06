@@ -93,6 +93,11 @@ a secao "Infraestrutura e AWS (opcional)" do levantamento de arquitetura (itens 
 **falha** no andamento (nao barra): siga e registre `GAP` "infra nao lida". O usuario autoriza a leitura da AWS — confirme
 antes de rodar na primeira vez da sessao.
 
+**Visao e spec de arquitetura sao SINTESES** (o modelo diz: "a partir do levantamento"): **nao leia o codigo** nem divida em
+areas. `re.sh areas` registra a faixa de IDs e `re.sh pacote` monta `pacotes/pacote-sintese.md` com os itens do funcional
+e da arquitetura (o rascunho local desta maquina; senao o publicado). UM subagente (area `sintese`, o mesmo prompt) ou
+voce escreve a partir dele; codigo so para confirmar um ponto que os itens nao explicam. Depois `juntar` e `check`.
+
 **4. Ler o codigo e escrever — por AREAS, com pacote de leitura (0066: e o que deixa barato e rapido)** —
 `references/escrever.md` (curto) tem o padrao do item. O custo de um subagente e (chamadas × contexto): area pequena,
 leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codigo** — orquestra e consolida.
