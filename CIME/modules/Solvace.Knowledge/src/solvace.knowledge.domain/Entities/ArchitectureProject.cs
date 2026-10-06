@@ -17,10 +17,13 @@ public static class ArchitectureProjectKind
     }
 }
 
-/// <summary>Tipos de interdependência (0034).</summary>
+/// <summary>Tipos de interdependência (0034; 0066: cache, storage, job e trigger — mecanismos que a engenharia reversa descreve).</summary>
 public static class ArchitectureRelationKind
 {
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { "event", "queue", "database", "http", "package", "external", "frontend", "other" };
+    public static readonly IReadOnlySet<string> All = new HashSet<string>
+    {
+        "event", "queue", "database", "http", "package", "external", "frontend", "cache", "storage", "job", "trigger", "other"
+    };
 
     public static string Normalize(string? kind)
     {

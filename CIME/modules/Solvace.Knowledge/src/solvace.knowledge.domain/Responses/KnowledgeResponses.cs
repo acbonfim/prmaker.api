@@ -124,6 +124,21 @@ public class ArchitectureGraphEdge
     /// <summary>Quantas relações desse tipo entre os dois (agrupadas numa aresta).</summary>
     public int Count { get; set; }
     public List<string> Details { get; set; } = [];
+    /// <summary>0066: de onde a ligação vem — <c>base</c> (extrator/curadoria), <c>engenharia</c> (itens INT publicados) ou <c>ambos</c>.</summary>
+    public string Origin { get; set; } = "base";
+    /// <summary>0066: os itens <c>INT</c> da engenharia reversa por trás da ligação (abrem o item na tela).</summary>
+    public List<ArchitectureGraphEdgeItem> Items { get; set; } = [];
+}
+
+/// <summary>Item da engenharia reversa que sustenta uma ligação do mapa (0066).</summary>
+public class ArchitectureGraphEdgeItem
+{
+    /// <summary><c>modulo#INT-001</c>.</summary>
+    public string Ref { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Mechanism { get; set; }
+    public string? Contract { get; set; }
+    public bool ToConfirm { get; set; }
 }
 
 public class ArchitectureSectionVersionResponse

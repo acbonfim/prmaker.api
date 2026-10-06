@@ -113,7 +113,8 @@ public static class ReverseDocTypes
 
             ## Integrações com outros módulos
             Visão funcional: o que este módulo usa de outros (usuários, masterdata, plano de ação, notificações…) e o que
-            fornece — cada linha apontando o `INT-…` do levantamento de arquitetura e o módulo (`**Módulos:**`).
+            fornece — cada linha apontando o `INT-…` do levantamento de arquitetura e o módulo pela **chave**
+            (`**Módulos:** legado-actionplan`, como em `modulos.tsv`; serviço externo: `ext:<serviço>`).
 
             ## Glossário
             **Todos os termos do módulo**, sem número fixo: cada conceito que aparece na tela (rótulos, títulos, menus,
@@ -198,10 +199,18 @@ public static class ReverseDocTypes
             endpoints com credencial.
 
             ## Integrações
-            **Cada** integração com outro módulo Solvace ou serviço externo, nos dois sentidos. `### INT-001 — <este> →
-            <outro>: <para quê>` com **Módulos** (chave do outro projeto), **Mecanismo** (HTTP, SNS/SQS, banco
-            compartilhado, pacote, arquivo), **Contrato** (rota/tópico/tabela, campos), **Onde** (evidência dos dois
-            lados quando houver), **Se falhar**. Diagrama ```mermaid``` com todas as integrações.
+            **Cada** integração com outro módulo Solvace, tecnologia ou serviço externo, nos dois sentidos — é o que
+            desenha o mapa de ligações. `### INT-001 — <este> → <outro>: <para quê>` com:
+            - **Módulos:** só chaves (`modulos.tsv` do pacote): `legado-actionplan`, `revamp-users`, ou `ext:<serviço>`
+              (`ext:redis`, `ext:s3`, `ext:sns`, `ext:sql-agent`, `ext:google-maps`…) — nada de texto livre nesta linha.
+            - **Mecanismo:** um de: http · evento (SNS/EventBridge/SignalR) · fila (SQS) · banco compartilhado ·
+              pacote/biblioteca · arquivo/S3 · cache (Redis) · job/agendamento · trigger · front-end · externo — com o
+              nome real (fila `NOTIFICATION_WORKER`, tópico `USER`, chave de cache, tabela).
+            - **Contrato:** rota/tópico/fila/tabela/chave e campos; **síncrono ou assíncrono**; quem inicia.
+            - **Onde:** evidência dos dois lados quando houver (`arquivo:linha` daqui → de lá).
+            - **Se falhar:** o que o usuário vê, retentativa, fila morta (DLQ).
+            - **Confirmar:** (opcional) o que não deu para confirmar — chave incerta, lado que não estava na máquina.
+            Diagrama ```mermaid``` com todas as integrações.
 
             ## Configuração e segredos (só nomes)
             Chaves de appsettings/variáveis/parâmetros por NOME e para que servem (`### CFG-…` só se for configuração

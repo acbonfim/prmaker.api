@@ -33,6 +33,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     {
         var all = await repository.GetProjectsAsync(cancellationToken);
         var modules = await repository.GetReverseModulesAsync(cancellationToken);
+        await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken);
         var result = new List<ArchitectureProjectResponse>();
         foreach (var p in all.OrderBy(p => p.Order).ThenBy(p => p.Name))
             result.Add(await WithSupersededAsync(WithUsedBy(ToResponse(p), all), p, modules, cancellationToken));
@@ -42,19 +43,32 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
     {
         var all = await repository.GetProjectsAsync(cancellationToken);
-        var project = await FindAsync(key, cancellationToken);
+        await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken);
+        var normalized = ArchitectureProject.NormalizeKey(key);
+        var project = all.FirstOrDefault(p => p.Key == normalized) ?? await FindAsync(key, cancellationToken);
         return await WithSupersededAsync(WithUsedBy(ToResponse(project), all), project, null, cancellationToken);
     }
 
-    /// <summary>Grafo do ecossistema (0034): arestas agrupadas por (origem, destino, tipo).</summary>
+    /// <summary>
+    /// Grafo do ecossistema (0034): arestas agrupadas por (origem, destino, tipo). 0066: com as integrações da engenharia
+    /// reversa resolvidas (destino validado, tipo pelo mecanismo) e os itens INT por trás de cada ligação.
+    /// </summary>
     public async Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken)
     {
         var projects = await repository.GetProjectsAsync(cancellationToken);
+        var integrations = await ReverseRelations.ApplyAsync(repository, projects, null, cancellationToken);
+        return BuildGraph(projects, integrations);
+    }
+
+    /// <summary>Monta o grafo a partir de relações já efetivas (ver <see cref="ReverseRelations"/>).</summary>
+    public static ArchitectureGraphResponse BuildGraph(List<ArchitectureProject> projects, IReadOnlyCollection<domain.Reverse.ReverseIntegration> integrations)
+    {
         var graph = new ArchitectureGraphResponse
         {
             Nodes = projects.Select(p => new ArchitectureGraphNode { Key = p.Key, Name = p.Name, Kind = p.Kind, Mapped = true }).ToList()
         };
         var known = projects.Select(p => p.Key).ToHashSet();
+        var byRef = integrations.ToDictionary(i => (i.Source, i.ItemId));
         foreach (var group in projects.SelectMany(p => p.Relations.Select(r => (Source: p.Key, Relation: r)))
                      .GroupBy(x => (x.Source, x.Relation.Target, x.Relation.Kind)))
         {
@@ -64,10 +78,18 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 graph.Nodes.Add(new ArchitectureGraphNode { Key = target, Name = ExternalName(target), Kind = target.StartsWith("ext:") ? "external" : "other", Mapped = false });
                 known.Add(target);
             }
+            var fromReverse = group.Where(x => ReverseRelations.FromReverse(x.Relation)).ToList();
+            var items = fromReverse
+                .Select(x => byRef.TryGetValue((group.Key.Source, x.Relation.Evidence![ReverseRelations.EvidencePrefix.Length..]), out var i) ? i : null)
+                .Where(i => i is not null).Select(i => i!).DistinctBy(i => i.ItemId)
+                .Select(i => new ArchitectureGraphEdgeItem { Ref = i.Ref, Title = i.Title, Mechanism = i.Mechanism, Contract = i.Contract, ToConfirm = i.ToConfirm })
+                .ToList();
             graph.Edges.Add(new ArchitectureGraphEdge
             {
                 Source = group.Key.Source, Target = target, Kind = group.Key.Kind, Count = group.Count(),
-                Details = group.Select(x => x.Relation.Detail ?? string.Empty).Where(d => d.Length > 0).Take(8).ToList()
+                Details = group.Select(x => x.Relation.Detail ?? string.Empty).Where(d => d.Length > 0).Distinct().Take(8).ToList(),
+                Origin = fromReverse.Count == 0 ? "base" : fromReverse.Count == group.Count() ? "engenharia" : "ambos",
+                Items = items
             });
         }
         return graph;
@@ -99,6 +121,17 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         "ext:sqs" => "AWS SQS",
         "ext:opensearch" => "OpenSearch",
         "ext:onlyoffice" => "OnlyOffice",
+        "ext:redis" => "Redis (ElastiCache)",
+        "ext:sns" => "AWS SNS",
+        "ext:eventbridge" => "AWS EventBridge",
+        "ext:lambda" => "AWS Lambda",
+        "ext:ses" => "AWS SES (e-mail)",
+        "ext:cloudwatch" => "AWS CloudWatch",
+        "ext:secrets-manager" => "AWS Secrets Manager",
+        "ext:sql-agent" => "SQL Server Agent (jobs)",
+        "ext:smtp" => "Servidor de e-mail (SMTP)",
+        "ext:google-maps" => "Google Maps",
+        "ext:signalr" => "SignalR",
         _ => key.StartsWith("ext:") ? key[4..] : key
     };
 
@@ -163,7 +196,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             {
                 var items = domain.Reverse.ReverseDocParser.Parse(section.Content);
                 await ReverseEngineeringApplication.ReplaceIndexAsync(repository, project.Key, reverseType.Key, items, section.Version, now, cancellationToken);
-                if (reverseType.Key == "arquitetura") ReverseEngineeringApplication.MergeIntegrations(project, items);
+                ReverseEngineeringApplication.DropReverseRelations(project); // 0066: INT resolvidos na leitura
             }
         }
         await repository.SaveChangesAsync(cancellationToken);
@@ -328,7 +361,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 foreach (var section in Exported(project).OrderBy(s => s.Order).ThenBy(s => s.Key))
                     Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
             }
-            Add(zip, "graph.json", JsonSerializer.Serialize(await GetGraphAsync(cancellationToken), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+            var integrations = await ReverseRelations.IntegrationsAsync(repository, projects, null, cancellationToken);
+            Add(zip, "graph.json", JsonSerializer.Serialize(BuildGraph(projects, integrations), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
             // 0052: índice por item da engenharia reversa — a skill acha o item com grep e lê só o bloco dele.
             // 0054: armadilhas migradas viram a seção técnica de armadilhas do módulo (a antiga foi substituída)
             var migrated = (await repository.GetReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
@@ -357,7 +391,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var environment = (await settings.GetAsync(cancellationToken)).ActiveEnvironment;
         var projects = (await repository.GetProjectsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).ToList();
         // 0054: uma fonte por módulo — seção antiga já coberta pela engenharia reversa não vai para espelho/busca/catálogo
-        ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
+        var modules = await repository.GetReverseModulesAsync(cancellationToken);
+        ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), modules);
+        // 0066: ligações efetivas (INT da engenharia reversa resolvidos) no índice, nas fichas e no grafo do espelho
+        await ReverseRelations.ApplyAsync(repository, projects, modules, cancellationToken);
         var articles = (await repository.GetArticlesAsync(environment, tracked: false, cancellationToken)).OrderBy(a => a.ArticleNumber).ToList();
         return (projects, articles, environment);
     }
@@ -513,6 +550,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         "package" => "pacote",
         "external" => "serviço externo",
         "frontend" => "front-end",
+        "cache" => "cache (Redis)",
+        "storage" => "arquivo/armazenamento (S3)",
+        "job" => "job/agendamento",
+        "trigger" => "trigger do banco",
         _ => "outro"
     };
 

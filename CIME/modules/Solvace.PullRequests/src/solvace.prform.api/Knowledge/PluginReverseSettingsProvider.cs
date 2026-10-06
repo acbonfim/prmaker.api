@@ -48,7 +48,22 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
             List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGlossaryExclusions)) is { Count: > 0 } ex ? ex : d.GlossaryExclusions,
             Supersedes(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringSupersedes)) ?? d.Supersedes,
             Translations(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTranslations)) ?? d.Translations,
-            Infra(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringInfra)) ?? d.Infra);
+            Infra(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringInfra)) ?? d.Infra,
+            JsonObject(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGeneration), SkillsConfigurationKeys.ReverseEngineeringGeneration) ?? d.Generation);
+    }
+
+    /// <summary>0066: configuração em JSON objeto (inválido = o padrão do código).</summary>
+    private string? JsonObject(string? json, string key)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object) return json;
+        }
+        catch (JsonException) { }
+        logger.LogWarning("{Key} inválido no plugin — usando o padrão.", key);
+        return null;
     }
 
     /// <summary>0058: contas/perfis/regiões da etapa opcional de infra (JSON objeto); inválido = o padrão.</summary>

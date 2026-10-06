@@ -232,10 +232,14 @@ public class ReverseEngineeringApplicationTests
         var project = (await repo.GetProjectsAsync(default)).Single(p => p.Key == "revamp-kaizen");
         project.SetRelations([new ArchitectureRelation { Target = "revamp-post", Kind = "http", Evidence = "a.cs:1" }]);
         var items = ReverseDocParser.Parse("### INT-001 — Kaizen → Users: busca aprovador\n- **Módulos:** revamp-users\nvia HTTP GET /users");
-        ReverseEngineeringApplication.MergeIntegrations(project, items);
+        // 0066: as integrações viram relações na leitura (do índice), com o destino validado
+        await ReverseEngineeringApplication.ReplaceIndexAsync(repo, "revamp-kaizen", "arquitetura", items, 1, DateTimeOffset.UtcNow, default);
+        await repo.SaveChangesAsync(default);
+        var all = await repo.GetProjectsAsync(default);
+        await ReverseRelations.ApplyAsync(repo, all, null, default);
         Assert.Equal(2, project.Relations.Count);
         Assert.Contains(project.Relations, r => r.Target == "revamp-users" && r.Kind == "http" && r.Evidence == "re#INT-001");
-        ReverseEngineeringApplication.MergeIntegrations(project, []);
+        ReverseRelations.Apply(all, []);
         Assert.Single(project.Relations);
     }
 
