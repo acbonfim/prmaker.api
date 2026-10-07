@@ -45,6 +45,9 @@ public sealed class Runner(AgentConfig config)
 
         using var client = new PrmakeClient(ConfigStore.ResolveApiBase(config), config.Token);
         Log.Info($"executor {Agent.Version} iniciado em {Paths.HostName} (workspace {ConfigStore.ResolveWorkspace(config)})");
+        // O job auxiliar derruba e sobe o serviço em ~2 s: espera sem pegar pedido; se nada acontecer, segue.
+        if (await Service.FixMacProcessTypeAsync())
+            await Delay(TimeSpan.FromSeconds(30), stopping);
         ClaudeSettings.Ensure();
         // 0048: sem mapa de repositórios (instalação antiga, executor atualizado antes das skills) → monta agora.
         _ = RepoMap.EnsureAsync(stopping);

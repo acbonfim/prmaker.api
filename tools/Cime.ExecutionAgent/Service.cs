@@ -15,6 +15,13 @@ public static class Service
     private static string OldMacPlist => Path.Combine(Paths.Home, "Library", "LaunchAgents", OldMacLabel + ".plist");
     private static string LinuxUnitPath => Path.Combine(Paths.Home, ".config", "systemd", "user", LinuxUnit);
 
+    /// <summary>
+    /// Standard, nunca Background: com Background o macOS estrangula CPU e disco do executor e de tudo que ele roda
+    /// (claude, dotnet, git) — build/teste ~20x mais lentos (card 75648: 467 s contra 21 s).
+    /// </summary>
+    private const string StandardProcessType = "<key>ProcessType</key><string>Standard</string>";
+    private const string BackgroundProcessType = "<key>ProcessType</key><string>Background</string>";
+
     public static async Task<int> InstallAsync()
     {
         var bin = CopySelf();
@@ -31,7 +38,7 @@ public static class Service
                   <key>RunAtLoad</key><true/>
                   <key>KeepAlive</key><true/>
                   <key>ThrottleInterval</key><integer>30</integer>
-                  <key>ProcessType</key><string>Background</string>
+                  {StandardProcessType}
                   <key>EnvironmentVariables</key><dict>
                     <key>PATH</key><string>{Xml(Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin")}</string>
                     <key>HOME</key><string>{Xml(Paths.Home)}</string>
@@ -138,6 +145,43 @@ public static class Service
             await Shell.RunAsync("schtasks", ["/End", "/TN", WindowsTask]);
             await Shell.RunAsync("schtasks", ["/Run", "/TN", WindowsTask]);
         }
+    }
+
+    /// <summary>
+    /// Instalações até a 1.0.13 têm o LaunchAgent com ProcessType=Background, e o auto-update não relê o plist (o
+    /// launchd reinicia com o que tem em memória). Corrige o arquivo e recarrega o serviço por um job auxiliar de uma
+    /// vez só: o bootout do próprio executor mataria quem o chamasse. Com o arquivo corrigido não volta a rodar.
+    /// </summary>
+    public static async Task<bool> FixMacProcessTypeAsync()
+    {
+        if (!Paths.IsMac || !File.Exists(MacPlist)) return false;
+        var plist = await File.ReadAllTextAsync(MacPlist);
+        if (!plist.Contains(BackgroundProcessType, StringComparison.Ordinal)) return false;
+        await File.WriteAllTextAsync(MacPlist, plist.Replace(BackgroundProcessType, StandardProcessType, StringComparison.Ordinal));
+
+        var uid = GetUid();
+        var helperLabel = MacLabel + ".reload";
+        var helper = Path.Combine(Paths.Root, helperLabel + ".plist");
+        var script = $"sleep 2; launchctl bootout gui/{uid}/{MacLabel}; launchctl bootstrap gui/{uid} '{MacPlist}'; " +
+                     $"rm -f '{helper}'; launchctl remove {helperLabel}";
+        await File.WriteAllTextAsync(helper, $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict>
+              <key>Label</key><string>{helperLabel}</string>
+              <key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>{Xml(script)}</string></array>
+              <key>RunAtLoad</key><true/>
+            </dict></plist>
+            """);
+        await Shell.RunAsync("launchctl", ["bootout", $"gui/{uid}/{helperLabel}"]);
+        var (code, output) = await Shell.RunAsync("launchctl", ["bootstrap", $"gui/{uid}", helper]);
+        if (code != 0)
+        {
+            Log.Warn($"plist corrigido para ProcessType=Standard, mas o recarregamento falhou ({output}) — vale no próximo login ou com 'prmake-agent install'");
+            return false;
+        }
+        Log.Info("LaunchAgent em ProcessType=Background (CPU e disco estrangulados): plist corrigido para Standard, recarregando o serviço");
+        return true;
     }
 
     private static string CopySelf()

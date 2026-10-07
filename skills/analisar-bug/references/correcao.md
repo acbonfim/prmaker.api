@@ -133,7 +133,21 @@ necessaria: **sem comentarios novos no codigo** (ver passo 8).
 
 Depois do `push`: `pr-text` na branch de correcao → gere `desc.md`/`rca.md` (passo 8) → `save-pr-text` → as
 linhas de `open-pr` que o `branches` imprimiu (com o `desc.md` do repositorio).
-Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, registre um `log warning` e mencione no PR.
+Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, `git cherry-pick --continue`, registre um
+`log warning` e mencione no PR. **Nunca encadeie o `push` no mesmo comando do `cherry-pick`** (card 75648: o
+conflito passou e a branch derivada subiu sem a correcao) — rode a linha de `push` que o `branches` imprimiu, que so
+empurra com o cherry-pick concluido.
+
+**Build e testes — uma compilacao, testes so do que mudou** (card 75648: 33 min de 40 em build/teste):
+- Compile **uma vez** (`dotnet build <sln>`) e rode os testes com `--no-build`, so dos projetos de teste que cobrem
+  o que mudou e filtrados pela classe (`--filter "FullyQualifiedName~<Classe>"`). A suite inteira de um projeto so
+  na etapa `validar`, uma vez. Cada `dotnet test` sem `--no-build` recompila a solucao.
+- Depois do `cherry-pick` **sem conflito** nao recompile nem rode os testes de novo na branch derivada. Com
+  conflito, compile e rode so os testes do que voce tocou ao resolver.
+- Edicao de arquivo com `python3` ou a ferramenta de edicao — nao `sed -i 's/...'` (o `sed` do macOS exige
+  `sed -i ''` e quebra com `/` no texto).
+- Teste novo so quando o repositorio ja testa aquela camada; nao escreva teste de cancelamento/infra que precise
+  de mocks que o projeto nao tem.
 
 ### 8. Executar o plano de correcao
 Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` → faca (com `log`/`sync`/`checkpoint`)
