@@ -122,6 +122,9 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   - Se o comentario pedir algo (ex.: "considere tambem o ambiente X"), trate como instrucao do usuario; se mudar
     o plano, ajuste as etapas. Pode responder no proprio plano com `note <card> "..."` (aparece na tela e na
     Timeline) — util quando o usuario comentou pela tela e nao esta no terminal.
+  - **Comentario/anexo que muda a analise com perguntas abertas** (card 75648): ao refazer as solucoes, revise
+    **cada pergunta ainda aberta** — nenhuma que perdeu o sentido pode ficar esperando o usuario. Ver
+    `$REF correcao 6` ("Nova rodada de perguntas").
 ## Falha de rede e PII
 - **Falha de rede** nao interrompe a skill: o envio vai para uma fila local e e reenviado na proxima chamada
   (`flush` forca). Erro 400 (ex.: plano cancelado) interrompe — leia a mensagem.
@@ -153,7 +156,7 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   Projeto Node: o `worktree` ja liga o `node_modules` do clone principal (macOS/Linux) — nao instale dependencias nem
   crie o link na mao. Testes so pelo `test-changed.sh` (ver `$REF correcao 8`).
 - **MCP** (`mcp__prmake__*`, 0039/0041): `prmake_plan`, `prmake_steps`, `prmake_step`, `prmake_advance`, `prmake_log`,
-  `prmake_checkpoint`, `prmake_control`, `prmake_block`/`prmake_unblock`, `prmake_ask`/`prmake_answer`/`prmake_answers`,
+  `prmake_checkpoint`, `prmake_control`, `prmake_block`/`prmake_unblock`, `prmake_ask` (com `replaces`)/`prmake_answer`/`prmake_answers`/`prmake_cancel_questions`,
   `prmake_notes`, `prmake_attachment`, `prmake_link`, `prmake_correction`, `prmake_plan_status`, `prmake_config`,
   `prmake_devops_config`, `prmake_card`, `prmake_devops` (registra na Timeline; `classify`), `prmake_timeline`,
   `prmake_queue`. Mesmo efeito do script no PRMake; `phase` escolhe analise/correcao (padrao: o plano aberto mais

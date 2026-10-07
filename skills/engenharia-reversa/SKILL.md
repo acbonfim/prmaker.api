@@ -125,7 +125,7 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
 5. `bash $RE juntar <m> <doc>` — junta as partes em `documento.md` (sobre o publicado, no melhorar: item reescrito
    substitui o antigo), **funde itens repetidos** entre areas (mesmo tipo e titulo: API, INT, DB, TEC, CFG, GLO…),
    **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas) e mostra o **tamanho** × o limite do PRMake
-   (2 milhoes de caracteres). Pode rodar de novo. **Nunca compacte o texto das regras** para caber: se passar do
+   (5 milhoes de caracteres). Pode rodar de novo. **Nunca compacte o texto das regras** para caber: se passar do
    limite, procure secoes coladas por area e itens repetidos; ainda assim grande → diga ao usuario.
 6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF` a partir dos resumos dos
    subagentes, diagramas mermaid, integracoes consolidadas) — **sem ler o `documento.md` inteiro** (centenas de KB a cada

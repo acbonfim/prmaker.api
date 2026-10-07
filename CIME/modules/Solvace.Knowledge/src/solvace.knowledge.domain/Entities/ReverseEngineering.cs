@@ -166,7 +166,7 @@ public static class ReverseRevisionMode
 /// </summary>
 public class ReverseRevision
 {
-    public const int MaxContentLength = 2_000_000; // 0066: era 600 mil — o revamp-users passou (878 mil) e a compactação custou mais que gerar
+    public const int MaxContentLength = 5_000_000; // 0066: era 600 mil — o revamp-users passou (878 mil) e a compactação custou mais que gerar; depois 2 milhões também batia
     public const int MaxSummaryLength = 4_000;
     public const int MaxNoteLength = 4_000;
 
@@ -632,6 +632,26 @@ public class ReverseIndexEntry
     }
 
     public string Ref => $"{ModuleKey}#{ItemId}";
+
+    /// <summary>
+    /// 0070: no cache da busca fica só o necessário para o trecho do resultado; o texto inteiro vem do banco para os
+    /// itens pedidos. Devolve uma cópia (a entidade não muda).
+    /// </summary>
+    public ReverseIndexEntry WithBody(string body)
+    {
+        if (ReferenceEquals(body, Body)) return this;
+        var copy = (ReverseIndexEntry)MemberwiseClone();
+        copy.Body = body;
+        return copy;
+    }
+
+    /// <summary>0070: item lido sem o texto (sumário do documento). Não grave com ele.</summary>
+    public static ReverseIndexEntry Head(string moduleKey, string docType, string itemId, string kind, string title, int level, int order, bool removed,
+        List<string>? tags = null, List<string>? tables = null, List<string>? modules = null) => new()
+    {
+        ModuleKey = moduleKey, DocType = docType, ItemId = itemId, Kind = kind, Title = title, Level = level, Order = order, Removed = removed,
+        Tags = tags ?? [], Tables = tables ?? [], Modules = modules ?? []
+    };
 }
 
 /// <summary>

@@ -16,6 +16,15 @@ public interface IKnowledgeRepository
     // Engenharia reversa
     /// <summary>Projetos não removidos com as seções (conteúdo incluso), sem rastreamento.</summary>
     Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// Projetos não removidos com as seções SEM o conteúdo (só o tamanho), sem rastreamento — para listagens, grafo e
+    /// relações. Os documentos da engenharia reversa têm até 5 milhões de caracteres: ler todos estourava a memória.
+    /// </summary>
+    Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken);
+    /// <summary>Um projeto não removido pela chave (normalizada) com as seções, sem rastreamento — sem carregar a Base inteira.</summary>
+    Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken);
+    /// <summary>Chave → nome de exibição dos projetos não removidos (sem as seções).</summary>
+    Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken);
     /// <summary>Projeto pela chave com as seções, rastreado (para alterar). Inclui removidos.</summary>
     Task<ArchitectureProject?> GetProjectForUpdateAsync(string key, CancellationToken cancellationToken);
     void AddProject(ArchitectureProject project);
@@ -53,6 +62,8 @@ public interface IKnowledgeRepository
     void AddAsset(ReverseAsset asset);
     /// <summary>Itens publicados (todos, ou de um módulo), sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken);
+    /// <summary>Itens do índice de um tipo (ex.: INT), de todos os módulos, sem rastreamento.</summary>
+    Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken);
     /// <summary>Marca barata para saber se o índice mudou (quantidade + última atualização).</summary>
     Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken);
     Task<List<ReverseIndexEntry>> GetIndexEntriesForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
@@ -69,6 +80,87 @@ public interface IKnowledgeRepository
     void AddCardContext(ReverseCardContext context);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    // ── 0070: leituras enxutas (o padrão daqui serve o repositório em memória dos testes; o do EF faz no banco) ──
+
+    /// <summary>Um projeto com as seções SEM o conteúdo (só o tamanho).</summary>
+    async Task<ArchitectureProject?> GetProjectHeadAsync(string key, CancellationToken cancellationToken) =>
+        (await GetProjectHeadsAsync(cancellationToken)).FirstOrDefault(p => p.Key == key);
+
+    /// <summary>Uma seção com o conteúdo, pelo id.</summary>
+    async Task<ArchitectureSection?> GetSectionWithContentAsync(Guid sectionId, CancellationToken cancellationToken) =>
+        (await GetProjectsAsync(cancellationToken)).SelectMany(p => p.Sections).FirstOrDefault(s => s.Id == sectionId);
+
+    /// <summary>Conteúdo das seções pedidas (id → texto).</summary>
+    async Task<Dictionary<Guid, string>> GetSectionContentsAsync(IReadOnlyCollection<Guid> sectionIds, CancellationToken cancellationToken) =>
+        (await GetProjectsAsync(cancellationToken)).SelectMany(p => p.Sections).Where(s => sectionIds.Contains(s.Id)).ToDictionary(s => s.Id, s => s.Content);
+
+    /// <summary>
+    /// Trechos do conteúdo das seções (o texto não sai inteiro do banco). <paramref name="Start"/> e
+    /// <paramref name="Length"/> em code points — a mesma contagem do <c>substring</c> do PostgreSQL.
+    /// </summary>
+    async Task<List<string?>> GetSectionSlicesAsync(IReadOnlyList<(Guid SectionId, int Start, int Length)> slices, CancellationToken cancellationToken)
+    {
+        var contents = await GetSectionContentsAsync(slices.Select(s => s.SectionId).Distinct().ToList(), cancellationToken);
+        return slices.Select(s => contents.TryGetValue(s.SectionId, out var c) ? CodePoints.Slice(c, s.Start, s.Length) : null).ToList();
+    }
+
+    /// <summary>Itens publicados (sem os removidos) contados por módulo, documento e tipo — sem trazer o texto.</summary>
+    async Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => !e.Removed)
+            .GroupBy(e => (e.ModuleKey, e.DocType, e.Kind)).Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count())).ToList();
+
+    /// <summary>
+    /// Cabeças dos itens (ID, tipo, título, nível, tags, tabelas, módulos; SEM o texto), de um módulo/documento ou de todos,
+    /// na ordem módulo → documento → ordem no documento.
+    /// </summary>
+    async Task<List<ReverseIndexEntry>> GetIndexHeadsAsync(string? moduleKey, string? docType, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => docType == null || e.DocType == docType)
+            .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList();
+
+    /// <summary>Texto inteiro dos itens pedidos (id → texto).</summary>
+    async Task<Dictionary<Guid, string>> GetIndexBodiesAsync(IReadOnlyCollection<Guid> entryIds, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => entryIds.Contains(e.Id)).ToDictionary(e => e.Id, e => e.Body);
+
+    /// <summary>Sugestões pendentes com seção, contadas por (projeto, seção).</summary>
+    async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken) =>
+        (await GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
+            .Where(s => s.SectionKey is not null && (projectKey == null || s.ProjectKey == projectKey))
+            .GroupBy(s => (s.ProjectKey, s.SectionKey!)).ToDictionary(g => g.Key, g => g.Count());
+
+    /// <summary>Armadilhas do módulo (sem as removidas): total e as que pedem revisão.</summary>
+    async Task<(int Total, int NeedsReview)> CountTrapsAsync(string moduleKey, CancellationToken cancellationToken)
+    {
+        var traps = await GetTrapsAsync(moduleKey, cancellationToken);
+        return (traps.Count, traps.Count(t => t.NeedsReview));
+    }
+}
+
+/// <summary>Contagem de itens publicados da engenharia reversa (0070).</summary>
+public sealed record ReverseItemCount(string ModuleKey, string DocType, string Kind, int Count);
+
+/// <summary>Posições em code points (a contagem do PostgreSQL) sobre strings .NET (UTF-16) — 0070.</summary>
+public static class CodePoints
+{
+    /// <summary>Quantos code points há em <paramref name="text"/>[<paramref name="start"/>..<paramref name="end"/>).</summary>
+    public static int Count(string text, int start, int end)
+    {
+        var count = 0;
+        for (var i = start; i < end; i++)
+            if (!(char.IsLowSurrogate(text[i]) && i > start && char.IsHighSurrogate(text[i - 1]))) count++;
+        return count;
+    }
+
+    /// <summary>O trecho que o <c>substring(texto, start + 1, length)</c> do PostgreSQL devolveria.</summary>
+    public static string Slice(string text, int start, int length)
+    {
+        int i = 0, cp = 0;
+        while (i < text.Length && cp < start) { i += char.IsSurrogatePair(text, i) ? 2 : 1; cp++; }
+        var from = i;
+        cp = 0;
+        while (i < text.Length && cp < length) { i += char.IsSurrogatePair(text, i) ? 2 : 1; cp++; }
+        return text[from..i];
+    }
 }
 
 /// <summary>Configuração da engenharia reversa (0052) — plugin "Skills Configurations".</summary>

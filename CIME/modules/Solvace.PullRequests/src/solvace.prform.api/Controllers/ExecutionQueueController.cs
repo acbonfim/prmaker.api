@@ -1,9 +1,11 @@
 using System.Security.Claims;
+using Cime.BuildingBlocks.RealTime;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using solvace.executionplans.application;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.RealTime;
 using solvace.executionplans.domain.Requests;
 using solvace.executionplans.domain.Responses;
 using solvace.prform.Execution;
@@ -69,7 +71,7 @@ public abstract class ExecutionControllerBase(solvace.timeline.application.Contr
 
 /// <summary>
 /// Fila de execução (0039): a tela pede "Analisar/Continuar com Claude"; o executor (<c>prmake-agent</c>) pega o
-/// pedido por long-poll, avisa que começou, manda heartbeat e diz como terminou.
+/// pedido (acordado pelo relay — 0068), avisa que começou, manda heartbeat e diz como terminou.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
@@ -109,14 +111,21 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
 
     // ── Executor ─────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Long-poll do executor: 200 com o pedido assim que existir, 204 depois de <paramref name="wait"/> s (máx. 25).</summary>
+    /// <summary>
+    /// O executor pega um pedido: 200 com o pedido, 204 sem nada — na hora. 0068: <paramref name="wait"/> &gt; 0 (long-poll
+    /// dos executores até a 1.0.10) é recusado com 426 — a requisição aberta mantinha a instância do Cloud Run cobrada
+    /// 24 h, e zerar a espera faria esses executores perguntarem sem pausa; no erro eles esperam até 60 s.
+    /// </summary>
     [HttpGet("next")]
     public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait,
         [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
         [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
         Run<ExecutionClaimResponse>(async () =>
         {
-            var claim = await queue.NextAsync(RequireWorkerId(), TimeSpan.FromSeconds(Math.Clamp(wait, 0, 25)), ct);
+            if (wait > 0)
+                return StatusCode(StatusCodes.Status426UpgradeRequired,
+                    new { error = "Executor desatualizado — reinicie o prmake-agent para ele se atualizar (ou rode o instalador de novo)." });
+            var claim = await queue.NextAsync(RequireWorkerId(), ct);
             if (claim is null) return NoContent();
             claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);
             return Ok(claim);
@@ -213,6 +222,26 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
     [HttpPost("report")]
     public Task<ActionResult<ExecutionWorkerStateResponse>> Report([FromBody] ExecutionWorkerReportRequest request, CancellationToken ct) =>
         Run<ExecutionWorkerStateResponse>(async () => Ok(await queue.ReportWorkerAsync(RequireWorkerId(), request, ct)));
+
+    /// <summary>
+    /// 0068: conexão do executor ao relay de tempo real (token curto, o grupo dos executores do dono e o evento que manda
+    /// consultar a fila). Chamado a cada (re)conexão.
+    /// </summary>
+    [HttpGet("realtime")]
+    public Task<ActionResult<ExecutionWorkerRealTimeResponse>> RealTime([FromServices] IRealTimeConnectionService connection, CancellationToken ct) =>
+        Run<ExecutionWorkerRealTimeResponse>(async () =>
+        {
+            var worker = await queue.GetWorkerAsync(RequireWorkerId(), ct);
+            var info = connection.GetConnectionInfo(worker.Id.ToString());
+            return Ok(new ExecutionWorkerRealTimeResponse
+            {
+                Url = info.Url,
+                AccessToken = info.AccessToken,
+                ExpiresAt = info.ExpiresAt,
+                Group = ExecutionPlanRealTimeEvents.WorkerGroup(worker.OwnerUserId),
+                Event = ExecutionPlanRealTimeEvents.EventQueueReady
+            });
+        });
 
     [HttpPost("doctor")]
     public Task<ActionResult<ExecutionWorkerResponse>> Doctor([FromBody] ExecutionWorkerDoctorRequest request, CancellationToken ct) =>

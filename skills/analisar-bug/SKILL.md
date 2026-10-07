@@ -80,6 +80,7 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
 Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
 `ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
+(nova rodada de perguntas: `prmake_answers,prmake_cancel_questions`)
 (as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
 
 | O que | MCP | Script (reserva) |
@@ -90,7 +91,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | criar/refinar etapas · onde parei | `prmake_steps(card, steps)` · `prmake_checkpoint(card, key, text)` | `steps` · `checkpoint` |
 | entre etapas (pausado? cancelado?) | `prmake_control(card)` (`action`: continue/wait/stop) | `control` (0/10/11) |
 | travada esperando o usuario | `prmake_block(card, key, text)` · `prmake_unblock` | `block` · `unblock` |
-| perguntar · resposta dada no chat | `prmake_ask(card, questions)` · `prmake_answer(card, n, text)` · `prmake_answers` | `ask` · `answer` · `answers` |
+| perguntar · resposta dada no chat · cancelar/substituir | `prmake_ask(card, questions)` (`replaces: [n]` na revisada) · `prmake_answer(card, n, text)` · `prmake_answers` · `prmake_cancel_questions(card, [n], motivo)` | `ask` · `answer` · `answers` · `cancel-questions` |
 | comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
 | estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
@@ -152,6 +153,9 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   **Diga o que anexou, pelo nome** (0050): na descricao da etapa, na mensagem final da vez e na Timeline —
   "Anexei ao plano de correcao: `01_x.sql` (script + rollback), `chamado-x.md` (texto do chamado)"; na analise, o
   mesmo para as consultas. O usuario nao deve ter que procurar no rodape para saber que o arquivo existe.
+- **Perguntas abertas acompanham a analise**: comentario/anexo/resposta que muda a analise → ao refazer as solucoes,
+  revise cada pergunta ainda aberta: a revisada vai com `replaces: [n]`, a que perdeu o sentido e cancelada com o
+  motivo (`prmake_cancel_questions`) — o usuario nunca cancela pergunta a mao. Detalhes: `$REF correcao 6`.
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para

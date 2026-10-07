@@ -28,6 +28,9 @@ public class ReverseItemKindResponse
 /// <summary>Cabeça de uma revisão (sem o conteúdo).</summary>
 public class ReverseRevisionHead
 {
+    /// <summary>0070: cópia (o andamento é preenchido em cima da cabeça lida do cache).</summary>
+    public ReverseRevisionHead Copy() => (ReverseRevisionHead)MemberwiseClone();
+
     public Guid Id { get; set; }
     public string ModuleKey { get; set; } = string.Empty;
     public string? ModuleName { get; set; }
@@ -202,6 +205,8 @@ public class ReverseDocResponse
     public string ModuleKey { get; set; } = string.Empty;
     public ReverseDocTypeResponse Type { get; set; } = new();
     public string? Content { get; set; }
+    /// <summary>0070: com <c>?content=false</c>, o sumário em pedaços (a tela busca cada um pela seção da Base Solvace).</summary>
+    public ArchitectureSectionOutlineResponse? Outline { get; set; }
     public ReversePublishedInfo? Published { get; set; }
     public List<ReverseItemHead> Items { get; set; } = [];
     public List<ReverseRevisionHead> Revisions { get; set; } = [];

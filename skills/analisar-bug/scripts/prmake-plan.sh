@@ -20,7 +20,9 @@
 #   upload      <card> <arquivo> [kind] [key] [descricao] envia um arquivo (kind: script|analysis|data|image|attachment)
 #   sync        <card> [key]                             envia o que mudou em scripts/ analises/ dados/ imagens/ anexos/
 #   status      <card> <running|completed|failed|paused|cancelled> [motivo] [resumo.md]
-#   ask         <card> <perguntas.json|->                pergunta ao usuario (responde no PRMake ou aqui)
+#   ask         <card> <perguntas.json|->                pergunta ao usuario (responde no PRMake ou aqui); "replaces": [n]
+#                                                        na pergunta revisada cancela/supera as antigas
+#   cancel-questions <card> <n,...> "motivo"            cancela perguntas abertas que perderam o sentido
 #   answers     <card>                                   perguntas e respostas do plano
 #   wait-answers <card> [segundos=540]                   espera as respostas; exit 0 = respondidas, 10 = ainda nao, 11 = parar
 #   answer      <card> <n|id> [texto|STDIN]              grava a resposta dada no terminal (via claude)
@@ -384,11 +386,13 @@ print_plan() { # imprime o plano em $TMP/resp
          (if ((.links // []) | length) > 0 then "  links: " + ([.links[] | "\(.stepKey): \(.title // .url) [\(.status // "-")]"] | join(" | ")) else empty end)' "$TMP/resp"
 }
 
-print_questions() { # perguntas do plano em $TMP/resp, numeradas
-  jq -r '.questions // [] | to_entries[] | "\(.key + 1). [\(.value.status)] \(.value.text)"
-      + (if (.value.options | length) > 0 then "\n   opcoes:" + ([.value.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)
-      + (if .value.answer then "\n   RESPOSTA (\(.value.answeredVia), \(.value.answeredBy)): \(.value.answer)" else "" end)
-      + "\n   id: \(.value.id)"' "$TMP/resp"
+print_questions() { # perguntas do plano em $TMP/resp, pelo numero (order) — substituida/cancelada aparece como tal
+  jq -r '.questions // [] | sort_by(.order)[] | "\(.order). [\(.status)] \(.text)"
+      + (if (.options | length) > 0 and .status != "cancelled" then "\n   opcoes:" + ([.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)
+      + (if .answer then "\n   RESPOSTA (\(.answeredVia), \(.answeredBy)): \(.answer)" else "" end)
+      + (if .replacedBy then "\n   SUBSTITUIDA pela pergunta \(.replacedBy)" + (if .answer then " — esta resposta NAO vale mais; vale a da \(.replacedBy)" else "" end) else "" end)
+      + (if .status == "cancelled" and .cancelReason and (.replacedBy | not) then "\n   CANCELADA: \(.cancelReason)" else "" end)
+      + "\n   id: \(.id)"' "$TMP/resp"
 }
 
 # Baixa para a pasta do card os arquivos da skill de um plano (anexos de comentario ficam em anexos-prmake/ — comando notes).
@@ -862,8 +866,28 @@ case "$CMD" in
     api POST "/$PLAN/questions" "$TMP/body"
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao perguntar: $(resp_error)"
     echo "PERGUNTAS publicadas no PRMake — o usuario pode responder la ou aqui no terminal:"
-    jq -r 'to_entries[] | "\(.key + 1). \(.value.text)" + (if (.value.options | length) > 0 then "\n   opcoes:" + ([.value.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)' "$TMP/resp"
+    jq -r '.[] | "\(.order). \(.text)" + (if (.options | length) > 0 then "\n   opcoes:" + ([.options[] | "\n   - " + .label + (if .description then " — " + .description else "" end) + (if .recommended then " (recomendada)" else "" end)] | join("")) else "" end)' "$TMP/resp"
+    NEW_IDS=$(jq -c 'map(.id)' "$TMP/resp")
+    api GET "/$PLAN"
+    if [[ "$CODE" == "200" ]]; then
+      jq -r '[.questions[] | select(.replacedBy != null)] | sort_by(.order)[] | "substituida: \(.order) -> \(.replacedBy) [\(.status)]"' "$TMP/resp"
+      OPEN_OLD=$(jq -r --argjson n "$NEW_IDS" '[.questions[] | select(.status == "open" and (.id as $i | $n | index($i) | not))] | sort_by(.order)[] | "  \(.order). \(.text | split("\n")[0] | .[0:140])"' "$TMP/resp")
+      if [[ -n "$OPEN_OLD" ]]; then
+        echo "ATENCAO: perguntas anteriores ainda abertas — cancele as que perderam o sentido: prmake-plan.sh cancel-questions $CARD <n,...> \"motivo\""
+        echo "$OPEN_OLD"
+      fi
+    fi
     echo "(respostas: prmake-plan.sh wait-answers $CARD — ou, se responderem aqui: prmake-plan.sh answer $CARD <n> \"texto\")"
+    ;;
+
+  cancel-questions)
+    # Nova rodada da analise: cancela as perguntas abertas que perderam o sentido (o motivo aparece na tela e na Timeline).
+    require_plan; NUMS="${1:?numeros das perguntas, ex.: 1,3}"; REASON="${2:?motivo}"
+    jq -n --arg n "$NUMS" --arg r "$REASON" '{numbers: ($n | split(",") | map(gsub("[ #]"; "") | select(length > 0) | tonumber)), reason: $r}' > "$TMP/body" \
+      || die "numeros invalidos: $NUMS (ex.: 1,3)"
+    api POST "/$PLAN/questions/cancel" "$TMP/body"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao cancelar: $(resp_error)"
+    jq -r '.[] | "\(.order). [\(.status)]" + (if .cancelReason then " — \(.cancelReason)" else "" end)' "$TMP/resp"
     ;;
 
   answers)
@@ -1135,7 +1159,10 @@ case "$CMD" in
       echo "  ${REPO_DIR:+cd \"$REPO_DIR\" && }git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
     fi
     for C in "${CMDS[@]}"; do [[ "$C" == \#open-pr* ]] || echo "  $C"; done
-    echo "  $G push -u origin $PUSH"
+    # Card 75648: push no mesmo comando do cherry-pick subiu a branch derivada sem a correcao (conflito) — so com o
+    # cherry-pick concluido.
+    [[ "$PUSH" == "$FIX" ]] && echo "  $G push -u origin $PUSH" \
+      || echo "  ! $G rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null && $G push -u origin $PUSH    # conflito: resolva, $G cherry-pick --continue e rode de novo"
     for C in "${CMDS[@]}"; do
       [[ "$C" == \#open-pr* ]] || continue
       read -r _ BR TG REST <<< "$C"

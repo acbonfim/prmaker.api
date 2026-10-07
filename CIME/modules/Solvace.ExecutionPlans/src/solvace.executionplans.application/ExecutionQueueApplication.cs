@@ -20,15 +20,12 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     /// <summary>Sinal da skill mais novo que isso (e depois do último pedido) = tem uma sessão viva no card.</summary>
     public static readonly TimeSpan AliveWindow = TimeSpan.FromSeconds(150);
 
-    public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RuleInterval = TimeSpan.FromMinutes(5);
     /// <summary>Card que já teve pedido nesse período não é pedido de novo pela regra automática.</summary>
     private static readonly TimeSpan RuleCooldown = TimeSpan.FromDays(30);
 
     private static readonly ConcurrentDictionary<Guid, DateTimeOffset> LastMaintenance = new();
-    private static readonly ConcurrentDictionary<Guid, TaskCompletionSource> Signals = new();
 
     private static readonly JsonSerializerOptions CamelCase = new(JsonSerializerDefaults.Web);
 
@@ -91,7 +88,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             {
                 await _queue.SaveChangesAsync(cancellationToken);
                 await NotifyAsync(existing, cancellationToken);
-                Pulse(owner);
+                await WakeWorkersAsync(owner, cancellationToken);
             }
             return await RespondAsync(existing, cancellationToken);
         }
@@ -147,7 +144,6 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         request.Cancel(actor.Name, string.IsNullOrWhiteSpace(reason) ? null : $"{reason.Trim()} — {actor.Name}", DateTimeOffset.UtcNow);
         await _queue.SaveChangesAsync(cancellationToken);
         await NotifyAsync(request, cancellationToken);
-        Pulse(request.OwnerUserId);
         return request.ToResponse();
     }
 
@@ -174,7 +170,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         request.AllowOverBudget(DateTimeOffset.UtcNow);
         await _queue.SaveChangesAsync(cancellationToken);
         await NotifyAsync(request, cancellationToken);
-        Pulse(request.OwnerUserId);
+        await WakeWorkersAsync(request.OwnerUserId, cancellationToken);
         return request.ToResponse();
     }
 
@@ -183,29 +179,22 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     // ── Executor ─────────────────────────────────────────────────────────────────────────────────
 
-    public async Task<ExecutionClaimResponse?> NextAsync(Guid workerId, TimeSpan wait, CancellationToken cancellationToken)
+    /// <summary>
+    /// 0068: responde na hora — requisição aberta no Cloud Run mantém a instância cobrada. O executor conectado ao relay
+    /// só pergunta quando recebe <see cref="ExecutionPlanRealTimeEvents.EventQueueReady"/> ou o <c>queueReady</c> do
+    /// sinal de vida.
+    /// </summary>
+    public async Task<ExecutionClaimResponse?> NextAsync(Guid workerId, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var worker = await MutateWorkerAsync(workerId, (w, at) => w.Seen(at), cancellationToken);
-        var owner = worker.OwnerUserId;
 
-        await MaintainAsync(owner, now, cancellationToken, force: true);
-        await EvaluateRuleAsync(owner, now, cancellationToken);
+        await MaintainAsync(worker.OwnerUserId, now, cancellationToken, force: true);
+        await EvaluateRuleAsync(worker.OwnerUserId, now, cancellationToken);
 
-        var deadline = now + (wait < TimeSpan.Zero ? TimeSpan.Zero : wait > MaxWait ? MaxWait : wait);
-        while (true)
-        {
-            _queue.ClearTracking();
-            now = DateTimeOffset.UtcNow;
-            worker = await RequireWorkerAsync(workerId, cancellationToken);
-            if (await TryClaimAsync(worker, now, cancellationToken) is { } claimed)
-                return claimed;
-            if (now >= deadline || cancellationToken.IsCancellationRequested)
-                return null;
-            await MaintainAsync(owner, now, cancellationToken, force: false);
-            var remaining = deadline - now;
-            await WaitSignalAsync(owner, remaining < PollInterval ? remaining : PollInterval, cancellationToken);
-        }
+        _queue.ClearTracking();
+        worker = await RequireWorkerAsync(workerId, cancellationToken);
+        return await TryClaimAsync(worker, DateTimeOffset.UtcNow, cancellationToken);
     }
 
     public async Task<ExecutionRequestResponse> StartAsync(Guid requestId, Guid workerId, StartExecutionRequestRequest request, CancellationToken cancellationToken)
@@ -285,7 +274,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         else
             await TouchWorkerAsync(workerId, now, cancellationToken);
         await NotifyAsync(r, cancellationToken);
-        if (r.Status == ExecutionRequestStatus.Queued) Pulse(r.OwnerUserId);
+        if (r.Status == ExecutionRequestStatus.Queued) await WakeWorkersAsync(r.OwnerUserId, cancellationToken);
         return r.ToResponse();
     }
 
@@ -339,6 +328,12 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         }, cancellationToken);
         if (!wasOnline) await NotifyWorkersAsync(worker.OwnerUserId, cancellationToken);
 
+        // 0068: o next só é chamado quando há o que pegar — a manutenção e a regra automática rodam aqui (a cada minuto).
+        await MaintainAsync(worker.OwnerUserId, now, cancellationToken, force: false);
+        await EvaluateRuleAsync(worker.OwnerUserId, now, cancellationToken);
+        _queue.ClearTracking();
+        worker = await RequireWorkerAsync(workerId, cancellationToken);
+
         var active = await _queue.GetActiveForWorkerAsync(workerId, cancellationToken);
         return new ExecutionWorkerStateResponse
         {
@@ -346,7 +341,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             MaxConcurrency = worker.MaxConcurrency,
             DoctorRequested = worker.DoctorPending,
             LatestAgentVersion = _agentInfo?.LatestVersion,
-            ActiveRequestIds = active.Select(r => r.Id).ToList()
+            ActiveRequestIds = active.Select(r => r.Id).ToList(),
+            QueueReady = (await ClaimableAsync(worker, DateTimeOffset.UtcNow, cancellationToken)).Requests.Count > 0
         };
     }
 
@@ -434,7 +430,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         settings.SetAutoRule(request.AutoAnalyzeEnabled, request.AutoWorkItemTypes, request.AutoStates, request.AutoAreaPaths,
             request.AutoAssignedTo, request.AutoMaxPerDay, now);
         await _queue.SaveChangesAsync(cancellationToken);
-        Pulse(userId);
+        await WakeWorkersAsync(userId, cancellationToken);
         return await SettingsResponseAsync(settings, cancellationToken);
     }
 
@@ -507,7 +503,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             {
                 await _queue.SaveChangesAsync(cancellationToken);
                 await NotifyAsync(active, cancellationToken);
-                Pulse(active.OwnerUserId);
+                await WakeWorkersAsync(active.OwnerUserId, cancellationToken);
             }
             catch (ExecutionPlanConcurrencyException)
             {
@@ -544,24 +540,29 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────
 
-    private async Task<ExecutionClaimResponse?> TryClaimAsync(ExecutionWorker worker, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>Pedidos que o executor pode pegar agora (status, limite da conta, concorrência, espera, orçamento), na ordem da fila.</summary>
+    private async Task<(List<ExecutionRequest> Requests, decimal? Budget, decimal Spent)> ClaimableAsync(ExecutionWorker worker, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         if (worker.Status != ExecutionWorkerStatus.Active || worker.IsThrottled(now))
-            return null;
+            return ([], null, 0);
         var counts = await _queue.CountActiveByWorkerAsync(worker.OwnerUserId, cancellationToken);
         if (counts.GetValueOrDefault(worker.Id) >= worker.MaxConcurrency)
-            return null;
+            return ([], null, 0);
 
         var queued = await _queue.GetQueuedForOwnerAsync(worker.OwnerUserId, cancellationToken);
         if (queued.Count == 0)
-            return null;
+            return ([], null, 0);
         var (budget, spent) = await BudgetAsync(worker.OwnerUserId, now, cancellationToken);
         var overBudget = budget is { } b && spent >= b;
+        return (queued.Where(r => r.CanBeClaimedBy(worker, now) && (!overBudget || r.Force)).ToList(), budget, spent);
+    }
 
-        foreach (var request in queued)
+    private async Task<ExecutionClaimResponse?> TryClaimAsync(ExecutionWorker worker, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var (claimable, budget, spent) = await ClaimableAsync(worker, now, cancellationToken);
+        foreach (var request in claimable)
         {
-            if (!request.CanBeClaimedBy(worker, now) || (overBudget && !request.Force))
-                continue;
             var (phase, newSession) = await PhaseOfAsync(request, cancellationToken);
             request.Claim(worker, now, phase);
             if (newSession)
@@ -616,6 +617,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
                 return false;
             }
             foreach (var r in changed) await NotifyAsync(r, cancellationToken);
+            if (changed.Any(r => r.Status == ExecutionRequestStatus.Queued))
+                await WakeWorkersAsync(owner, cancellationToken);
         }
         await UpdateWaitReasonsAsync(owner, now, cancellationToken);
         return changed.Count > 0;
@@ -758,7 +761,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             return await _queue.GetActiveRequestForCardAsync(request.CardNumber, cancellationToken);
         }
         await NotifyAsync(request, cancellationToken);
-        Pulse(request.OwnerUserId);
+        await WakeWorkersAsync(request.OwnerUserId, cancellationToken);
         return request;
     }
 
@@ -879,7 +882,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             try
             {
                 await _queue.SaveChangesAsync(cancellationToken);
-                Pulse(worker.OwnerUserId);
+                await WakeWorkersAsync(worker.OwnerUserId, cancellationToken);
                 await NotifyWorkersAsync(worker.OwnerUserId, cancellationToken);
                 return await WorkerResponseAsync(worker, now, cancellationToken);
             }
@@ -1016,7 +1019,17 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         $"Retomando o card {r.CardNumber} pelo PRMake ({SourceText(r)}). Antes de continuar, veja o que mudou na tela enquanto voce estava " +
         $"parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card {r.CardNumber}) " +
         $"— sem o MCP na sessao: prmake-plan.sh resume-info/notes/answers {r.CardNumber} — e siga de onde parou, conforme a skill analisar-bug." +
+        RevisitQuestionsText +
         ExecutorSuffix(r);
+
+    /// <summary>
+    /// Comentário/anexo novo costuma mudar a análise: as perguntas antigas que perderam o sentido não podem ficar abertas
+    /// esperando o usuário (card 75648 — ele teve que responder "essa pergunta foi cancelada" à mão).
+    /// </summary>
+    private const string RevisitQuestionsText =
+        " Se o que mudou (comentario, anexo, resposta) muda a analise ou as solucoes, revise as perguntas ainda abertas: a revisada " +
+        "vai como pergunta nova com replaces (prmake_ask) e a que perdeu o sentido e cancelada com o motivo (prmake_cancel_questions) " +
+        "— so ficam abertas as que ainda decidem o plano.";
 
     private static string ExecutorSuffix(ExecutionRequest r)
     {
@@ -1099,25 +1112,20 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         }
     }
 
-    private static void Pulse(Guid owner)
+    /// <summary>
+    /// 0068: acorda os executores do dono pelo relay (eles chamam o next). Best-effort: sem o relay, o executor descobre
+    /// pelo <c>queueReady</c> do sinal de vida (até 1 min).
+    /// </summary>
+    private async Task WakeWorkersAsync(Guid owner, CancellationToken cancellationToken)
     {
-        if (Signals.TryRemove(owner, out var signal))
-            signal.TrySetResult();
-    }
-
-    private static async Task WaitSignalAsync(Guid owner, TimeSpan timeout, CancellationToken cancellationToken)
-    {
-        if (timeout <= TimeSpan.Zero) return;
-        var signal = Signals.GetOrAdd(owner, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         try
         {
-            await signal.Task.WaitAsync(timeout, cancellationToken);
+            await _realTime.NotifyGroupAsync(ExecutionPlanRealTimeEvents.WorkerGroup(owner), ExecutionPlanRealTimeEvents.EventQueueReady, null,
+                cancellationToken);
         }
-        catch (TimeoutException)
+        catch
         {
-        }
-        catch (OperationCanceledException)
-        {
+            // best-effort
         }
     }
 

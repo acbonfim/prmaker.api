@@ -34,9 +34,10 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<ReverseSettingsResponse>(async () => Ok(await application.GetSettingsAsync(Roles(), ct)));
 
     /// <summary>Tipos de documento com o modelo efetivo (o que a skill segue).</summary>
+    /// <param name="template">0070: false = sem o modelo (a tela não usa).</param>
     [HttpGet("doc-types")]
-    public Task<ActionResult<List<ReverseDocTypeResponse>>> DocTypes(CancellationToken ct) =>
-        Run<List<ReverseDocTypeResponse>>(async () => Ok(await application.GetDocTypesAsync(ct)));
+    public Task<ActionResult<List<ReverseDocTypeResponse>>> DocTypes([FromQuery] bool template = true, CancellationToken ct = default) =>
+        Run<List<ReverseDocTypeResponse>>(async () => Ok(await application.GetDocTypesAsync(ct, template)));
 
     [HttpGet("modules")]
     public Task<ActionResult<List<ReverseModuleSummaryResponse>>> Modules(CancellationToken ct) =>
@@ -56,9 +57,11 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<ReverseModuleResponse>> ResolveTerm([FromRoute] string key, [FromBody] ResolveReverseTermRequest request, CancellationToken ct) =>
         Run<ReverseModuleResponse>(async () => Ok(await application.ResolveTermAsync(key, request, await ActorAsync(ct), Roles(), ct)));
 
+    /// <param name="content">0070: false = sem o texto, com o sumário em pedaços (<c>outline</c>); a tela busca cada pedaço em
+    /// <c>Architecture/projects/{key}/sections/{seção}/parts</c>. A skill e o MCP continuam recebendo o texto (padrão).</param>
     [HttpGet("modules/{key}/docs/{doc}")]
-    public Task<ActionResult<ReverseDocResponse>> Doc([FromRoute] string key, [FromRoute] string doc, CancellationToken ct) =>
-        Run<ReverseDocResponse>(async () => Ok(await application.GetDocAsync(key, doc, ct)));
+    public Task<ActionResult<ReverseDocResponse>> Doc([FromRoute] string key, [FromRoute] string doc, [FromQuery] bool content = true, CancellationToken ct = default) =>
+        Run<ReverseDocResponse>(async () => Ok(await application.GetDocAsync(key, doc, ct, content)));
 
     /// <summary>Abre (ou retoma) a sessão do Claude para um documento e devolve o pacote (modelo, publicado, sugestões...).</summary>
     [HttpPost("modules/{key}/docs/{doc}/sessions")]
@@ -73,7 +76,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>Checagem do documento sem gravar (a skill confere antes de enviar).</summary>
     [HttpPost("modules/{key}/lint")]
-    [RequestSizeLimit(4 * 1024 * 1024)]
+    [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseLintResult>> Lint([FromRoute] string key, [FromBody] LintReverseDocumentRequest request, CancellationToken ct) =>
         Run<ReverseLintResult>(async () => Ok(await application.LintAsync(key, request, ct)));
 
@@ -82,12 +85,24 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<List<ReverseRevisionHead>>> Revisions([FromQuery] string? module, [FromQuery] string? doc, [FromQuery] string? status, CancellationToken ct) =>
         Run<List<ReverseRevisionHead>>(async () => Ok(await application.ListRevisionsAsync(module, doc, status, ct)));
 
+    /// <param name="content">false: sem o texto do documento — a tela busca o texto em <c>/content</c> só ao abrir ou editar
+    /// (milhões de caracteres a cada recarga travavam o navegador).</param>
     [HttpGet("revisions/{id:guid}")]
-    public Task<ActionResult<ReverseRevisionResponse>> Revision([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.GetRevisionAsync(id, Roles(), ct)));
+    public Task<ActionResult<ReverseRevisionResponse>> Revision([FromRoute] Guid id, [FromQuery] bool content = true, CancellationToken ct = default) =>
+        Run<ReverseRevisionResponse>(async () =>
+        {
+            var revision = await application.GetRevisionAsync(id, Roles(), ct);
+            if (!content) revision.Content = string.Empty;
+            return Ok(revision);
+        });
+
+    /// <summary>Só o texto (markdown) da revisão — sem o diff e sem o JSON em volta.</summary>
+    [HttpGet("revisions/{id:guid}/content")]
+    public Task<ActionResult<string>> RevisionContent([FromRoute] Guid id, CancellationToken ct) =>
+        Run<string>(async () => Content(await application.GetRevisionContentAsync(id, ct), "text/markdown; charset=utf-8"));
 
     [HttpPut("revisions/{id:guid}")]
-    [RequestSizeLimit(4 * 1024 * 1024)]
+    [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseRevisionResponse>> SaveRevision([FromRoute] Guid id, [FromBody] SaveReverseRevisionRequest request, CancellationToken ct) =>
         Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SaveRevisionAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 

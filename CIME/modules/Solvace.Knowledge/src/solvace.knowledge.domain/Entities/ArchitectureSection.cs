@@ -41,7 +41,7 @@ public static class ArchitectureSectionAudience
 public class ArchitectureSection
 {
     public const int MaxTitleLength = 200;
-    public const int MaxContentLength = 2_000_000; // 0052: documento da engenharia reversa (re-*) é profundo; 0066: 600 mil forçava compactar (perdia detalhe e custava mais que gerar)
+    public const int MaxContentLength = 5_000_000; // 0052: documento da engenharia reversa (re-*) é profundo; 0066: 600 mil forçava compactar (perdia detalhe e custava mais que gerar); 2 milhões também batia
     public const int MaxNoteLength = 500;
 
     public Guid Id { get; private set; }
@@ -61,7 +61,27 @@ public class ArchitectureSection
     /// <summary>Vai para o espelho/índice das skills.</summary>
     public bool IsForLlm => Audience == ArchitectureSectionAudience.Llm;
 
+    private int? _headLength;
+    /// <summary>Tamanho do conteúdo em caracteres (na seção lida sem o texto, vem do banco).</summary>
+    public int Length => _headLength ?? Content.Length;
+
     protected ArchitectureSection() { }
+
+    /// <summary>Seção lida sem o conteúdo (listagens): só os metadados e o tamanho. Não grave com ela.</summary>
+    public static ArchitectureSection Head(Guid id, Guid projectId, string key, string title, int order, string contentHash, int version, string source,
+        string audience, DateTimeOffset updatedAt, string updatedBy, int length) => new()
+    {
+        Id = id, ProjectId = projectId, Key = key, Title = title, Order = order, ContentHash = contentHash, Version = version, Source = source,
+        Audience = audience, UpdatedAt = updatedAt, UpdatedBy = updatedBy, _headLength = length
+    };
+
+    /// <summary>0070: seção lida em duas partes (metadados + texto em streaming), sem rastreamento. Não grave com ela.</summary>
+    public static ArchitectureSection WithContent(Guid id, Guid projectId, string key, string title, int order, string contentHash, int version, string source,
+        string audience, DateTimeOffset updatedAt, string updatedBy, string content) => new()
+    {
+        Id = id, ProjectId = projectId, Key = key, Title = title, Order = order, ContentHash = contentHash, Version = version, Source = source,
+        Audience = audience, UpdatedAt = updatedAt, UpdatedBy = updatedBy, Content = content
+    };
 
     public ArchitectureSection(Guid projectId, string key, string? audience = null)
     {

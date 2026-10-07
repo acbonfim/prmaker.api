@@ -16,8 +16,8 @@ public interface IExecutionQueueApplication
     Task<List<ExecutionRequestResponse>> GetHistoryAsync(Guid ownerUserId, CancellationToken cancellationToken);
 
     // Executor
-    /// <summary>Long-poll: devolve um pedido assim que existir (ou null depois de <paramref name="wait"/>).</summary>
-    Task<ExecutionClaimResponse?> NextAsync(Guid workerId, TimeSpan wait, CancellationToken cancellationToken);
+    /// <summary>Pega um pedido para o executor, se houver — responde na hora (0068: sem long-poll).</summary>
+    Task<ExecutionClaimResponse?> NextAsync(Guid workerId, CancellationToken cancellationToken);
     Task<ExecutionRequestResponse> StartAsync(Guid requestId, Guid workerId, StartExecutionRequestRequest request, CancellationToken cancellationToken);
     Task<ExecutionHeartbeatResponse> HeartbeatAsync(Guid requestId, Guid workerId, ExecutionRequestHeartbeatRequest request, CancellationToken cancellationToken);
     Task<ExecutionRequestResponse> FinishAsync(Guid requestId, Guid workerId, FinishExecutionRequestRequest request, CancellationToken cancellationToken);
