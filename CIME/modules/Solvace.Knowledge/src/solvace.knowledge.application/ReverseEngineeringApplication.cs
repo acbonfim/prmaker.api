@@ -436,6 +436,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: true, cancellationToken);
     }
 
+    public async Task<string> GetRevisionContentAsync(Guid id, CancellationToken cancellationToken) =>
+        (await repository.GetRevisionAsync(id, tracked: false, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.")).Content;
+
     public async Task<ReverseRevisionResponse> SaveRevisionAsync(Guid id, SaveReverseRevisionRequest request, string actor, IReadOnlyCollection<string> userRoles,
         CancellationToken cancellationToken)
     {
