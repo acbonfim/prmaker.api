@@ -95,7 +95,7 @@ public static partial class ReverseSearch
         var exactIds = IdPattern().Matches(query ?? string.Empty)
             .Select(m => ReverseItemKinds.ParseRef(m.Value)).Where(r => r is not null).Select(r => r!.Value).ToList();
         var terms = ArchitectureSearch.Terms(IdPattern().Replace(query ?? string.Empty, " "));
-        var hits = new List<ReverseIndexHit>();
+        var scored = new List<(ReverseIndexEntry Entry, double Score)>();
         // 0060b: sinônimos por (módulo, termo) calculados uma vez — antes era por item × termo, varrendo o glossário inteiro do
         // módulo a cada item (consulta longa do for-card levava 10–40 s e o contexto da analisar-bug desistia em 30 s).
         var altCache = new Dictionary<(string, string), IReadOnlyList<string>>();
@@ -155,9 +155,12 @@ public static partial class ReverseSearch
             if (!exact && terms.Count >= 3 && coverage < 0.34) continue;
             // Regras e casos de uso respondem mais análises; itens de lacuna por último.
             var kindBoost = e.Kind switch { "RN" or "UC" => 1.25, "API" or "TELA" or "INT" or "DB" => 1.1, "GAP" => 0.8, _ => 1.0 };
-            hits.Add(ToHit(e, moduleNames, Math.Round(score * Math.Pow(coverage, 1.5) * kindBoost, 2), Snippet(e.Body)));
+            scored.Add((e, Math.Round(score * Math.Pow(coverage, 1.5) * kindBoost, 2)));
         }
-        return hits.OrderByDescending(h => h.Score).ThenBy(h => h.Ref, StringComparer.Ordinal).Take(Math.Clamp(limit, 1, 100)).ToList();
+        // 0070: o trecho (split + regex) só dos que voltam — antes era montado para todo item que casava (milhares numa
+        // consulta ampla) e a busca levava 1–1,6 s de CPU no Cloud Run
+        return scored.OrderByDescending(x => x.Score).ThenBy(x => x.Entry.Ref, StringComparer.Ordinal).Take(Math.Clamp(limit, 1, 100))
+            .Select(x => ToHit(x.Entry, moduleNames, x.Score, Snippet(x.Entry.Body))).ToList();
     }
 
     public static ReverseIndexHit ToHit(ReverseIndexEntry e, IReadOnlyDictionary<string, string> moduleNames, double score, string snippet) => new()

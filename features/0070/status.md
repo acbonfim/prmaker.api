@@ -59,6 +59,24 @@ a cada requisição por UMA consulta (quantidade + soma do `xmin` das tabelas da
 Heap limitado a 60% (`DOTNET_GCHeapHardLimitPercent`) segura o RSS abaixo de 512 MB no estresse extremo mas dá 1 OOM
 gerenciado; ficou o padrão (75%, 0 OOM) — decidir junto com a memória do Cloud Run.
 
+## T2 — produção depois do #121 (revisão 00123, instância quente, tempo de servidor pelo Server-Timing)
+| rota | antes (p50 prod 05–07/10) | agora |
+|---|---:|---:|
+| `ReverseEngineering/modules` | 1,4 s | 72–81 ms |
+| `ExecutionPlan/pending` | 0,2 s (+ ida ao cime-auth) | 125–149 ms |
+| `doc-types?template=false` | 0,48 s | 3–18 ms |
+| `modules/legado-rca` | 1,5–3 s | 190–198 ms |
+| `modules/edv-solvace-apps` | 12 s | 185 ms |
+| `docs/funcional?content=false` | 2,2 s (944 KB) | 245–288 ms |
+| `sections/guia-o-que-e` | 12,9 s | 188–235 ms |
+| `Architecture/projects` | 12 s | 75–104 ms |
+| `Architecture/search` | 12,9 s | 266 ms |
+| `export/manifest` | 5 s | 190–293 ms |
+| `index/search` | 1 s | 1–1,6 s (CPU) → trecho só dos que voltam (#122) |
+
+Primeira chamada numa instância nova ainda paga o aquecimento dos caches de busca (`Architecture/search` ~10 s,
+`modules/{key}` ~4 s): agora raro, porque as instâncias deixaram de cair por OOM.
+
 ## Notas
 - A "chamada dupla" vista no DevTools era o preflight CORS (OPTIONS) — o front e a API estão em domínios diferentes e o
   `x-api-key` exige preflight; agora fica em cache 2 h por URL. Os pedaços vêm em blocos fixos de 4 (URL repetida = cache).
