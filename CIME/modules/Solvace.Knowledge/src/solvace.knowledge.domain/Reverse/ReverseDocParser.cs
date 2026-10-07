@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace solvace.knowledge.domain.Reverse;
@@ -30,10 +31,11 @@ public sealed record ReverseDocHeading(int Level, string Text, int Line);
 /// </summary>
 public static partial class ReverseDocParser
 {
-    public static List<ReverseDocHeading> Headings(string content)
+    public static List<ReverseDocHeading> Headings(string content) => Headings(Lines(content));
+
+    private static List<ReverseDocHeading> Headings(string[] lines)
     {
         var result = new List<ReverseDocHeading>();
-        var lines = Lines(content);
         var fence = false;
         for (var i = 0; i < lines.Length; i++)
         {
@@ -55,8 +57,53 @@ public static partial class ReverseDocParser
     public static List<ReverseItem> Parse(string content)
     {
         var lines = Lines(content);
-        var headings = Headings(content);
         var items = new List<ReverseItem>();
+        foreach (var (heading, end, kind, number, title) in ItemBlocks(lines))
+        {
+            var body = string.Join('\n', lines[heading.Line..end]).TrimEnd();
+            var canonical = ReverseItemKinds.Canonical(kind, number);
+            items.Add(new ReverseItem(canonical, kind, title.Length == 0 ? canonical : Trim(title, 300), heading.Level, items.Count,
+                body, MetaList(body, TagsLine()), Tables(body), Refs(body, canonical), Evidence(body), Modules(body), MetaList(body, SynonymsLine())));
+        }
+        return items;
+    }
+
+    /// <summary>
+    /// O texto fora dos itens (introdução, cabeçalhos de seção, diagramas...), em tempo linear: as linhas cobertas por
+    /// algum item saem. Antes era um <c>Replace</c> do corpo de cada item no documento inteiro — quadrático, e com
+    /// milhares de itens em milhões de caracteres o GET da revisão estourava o tempo (504).
+    /// </summary>
+    public static string OutsideItems(string content)
+    {
+        var lines = Lines(content);
+        var covered = new bool[lines.Length];
+        var coveredUntil = 0;
+        foreach (var (heading, end, _, _, _) in ItemBlocks(lines))
+        {
+            // Os blocos vêm em ordem de início; um item dentro de outro já está coberto.
+            for (var i = Math.Max(heading.Line, coveredUntil); i < end; i++) covered[i] = true;
+            coveredUntil = Math.Max(coveredUntil, end);
+        }
+        var sb = new StringBuilder();
+        for (var i = 0; i < lines.Length; i++)
+            if (!covered[i]) sb.Append(lines[i]).Append('\n');
+        return sb.ToString();
+    }
+
+    /// <summary>Cabeçalhos de item (com ID) e a linha onde cada bloco termina: o próximo cabeçalho de nível igual ou maior.</summary>
+    private static IEnumerable<(ReverseDocHeading Heading, int End, string Kind, int Number, string Title)> ItemBlocks(string[] lines)
+    {
+        var headings = Headings(lines);
+        // Fim de cada cabeçalho numa passada só (pilha): antes era uma busca à frente por cabeçalho.
+        var ends = new int[headings.Count];
+        var open = new Stack<int>();
+        for (var h = 0; h < headings.Count; h++)
+        {
+            while (open.Count > 0 && headings[open.Peek()].Level >= headings[h].Level) ends[open.Pop()] = headings[h].Line;
+            open.Push(h);
+        }
+        while (open.Count > 0) ends[open.Pop()] = lines.Length;
+
         for (var h = 0; h < headings.Count; h++)
         {
             var heading = headings[h];
@@ -65,17 +112,8 @@ public static partial class ReverseDocParser
             if (!id.Success || !int.TryParse(id.Groups["num"].Value, out var number)) continue;
             var kind = id.Groups["kind"].Value.ToUpperInvariant();
             if (!ReverseItemKinds.IsKind(kind)) continue;
-
-            var end = lines.Length;
-            for (var n = h + 1; n < headings.Count; n++)
-                if (headings[n].Level <= heading.Level) { end = headings[n].Line; break; }
-            var body = string.Join('\n', lines[heading.Line..end]).TrimEnd();
-            var canonical = ReverseItemKinds.Canonical(kind, number);
-            var title = id.Groups["title"].Value.Trim();
-            items.Add(new ReverseItem(canonical, kind, title.Length == 0 ? canonical : Trim(title, 300), heading.Level, items.Count,
-                body, MetaList(body, TagsLine()), Tables(body), Refs(body, canonical), Evidence(body), Modules(body), MetaList(body, SynonymsLine())));
+            yield return (heading, ends[h], kind, number, id.Groups["title"].Value.Trim());
         }
-        return items;
     }
 
     private static string[] Lines(string content) => (content ?? string.Empty).Replace("\r\n", "\n").Split('\n');

@@ -248,7 +248,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         CancellationToken cancellationToken)
     {
         await RequireApproverAsync(userRoles, "configurar o módulo", cancellationToken);
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var module = await EnsureModuleAsync(project, actor, cancellationToken);
         module.Update(request.Sources, request.Aliases, request.Notes, actor, DateTimeOffset.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
@@ -276,8 +276,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var type = ReverseDocTypes.Get(docType);
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+        var published = section is null ? [] : ReverseDocParser.Parse(section.Content);
         return new ReverseDocResponse
         {
             ModuleKey = project.Key,
@@ -286,9 +287,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Published = section is null ? null : new ReversePublishedInfo
             {
                 Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Content.Length,
-                Items = ReverseDocParser.Parse(section.Content).Count(i => !i.Removed)
+                Items = published.Count(i => !i.Removed)
             },
-            Items = section is null ? [] : ReverseDocParser.Parse(section.Content).Select(ToItemHead).ToList(),
+            Items = published.Select(ToItemHead).ToList(),
             Revisions = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken)),
             Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
                 .Where(x => x.ProjectKey == project.Key && x.SectionKey == type.SectionKey).Select(ToSuggestion).ToList()
@@ -422,7 +423,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var heads = WithProgress(await repository.GetRevisionHeadsAsync(
             string.IsNullOrWhiteSpace(moduleKey) ? null : ArchitectureProject.NormalizeKey(moduleKey),
             string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key, statuses, cancellationToken));
-        var names = (await repository.GetProjectsAsync(cancellationToken)).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+        var names = await repository.GetProjectNamesAsync(cancellationToken);
         foreach (var h in heads) h.ModuleName = names.GetValueOrDefault(h.ModuleKey);
         return heads;
     }
@@ -431,7 +432,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var revision = await repository.GetRevisionAsync(id, tracked: false, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        var project = await ProjectAsync(revision.ModuleKey, cancellationToken);
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: true, cancellationToken);
     }
 
@@ -447,7 +448,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         revision.Save(request.Content, request.Summary, Raw(request.Coverage), request.CoverageRatio, Raw(request.Session), approver, actor, DateTimeOffset.UtcNow);
         if (request.SuggestionDecisions is not null)
             revision.SetSuggestionDecisions(JsonSerializer.Serialize(ReverseSuggestionDecision.Normalize(request.SuggestionDecisions), Json));
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        var project = await ProjectAsync(revision.ModuleKey, cancellationToken);
         revision.SetLint(JsonSerializer.Serialize(await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken), Json));
         await repository.SaveChangesAsync(cancellationToken);
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
@@ -472,7 +473,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<ReverseLintResult> LintAsync(string key, LintReverseDocumentRequest request, CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         return await LintAsync(project, ReverseDocTypes.Get(request.DocType).Key, request.Content, request.CoverageRatio, s, cancellationToken);
     }
 
@@ -492,7 +493,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        var project = await ProjectAsync(revision.ModuleKey, cancellationToken);
         var lint = await LintAsync(project, revision.DocType, revision.Content, revision.CoverageRatio, s, cancellationToken);
         revision.SetLint(JsonSerializer.Serialize(lint, Json));
         if (!lint.Ok)
@@ -512,7 +513,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var revision = await repository.GetRevisionAsync(id, tracked: true, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
         revision.Review(request.Action, request.Note, actor, DateTimeOffset.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey);
+        var project = await ProjectAsync(revision.ModuleKey, cancellationToken);
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: false, cancellationToken);
     }
 
@@ -534,7 +535,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         // A estrutura (seções obrigatórias) foi checada no envio; aqui só barra o grave — assim uma revisão enviada antes de
         // o modelo ganhar uma seção nova (0053: glossário, banco de dados) continua publicável.
         // mesma checagem do envio (com os IDs dos outros documentos e os removidos — a visão prática cita os publicados)
-        var lint = await LintAsync(FindProject(await repository.GetProjectsAsync(cancellationToken), revision.ModuleKey), type.Key, revision.Content, null, s, cancellationToken);
+        var lint = await LintAsync(await ProjectAsync(revision.ModuleKey, cancellationToken), type.Key, revision.Content, null, s, cancellationToken);
         var blocking = lint.Errors.Where(e => !e.StartsWith("Faltam seções obrigatórias", StringComparison.Ordinal)).ToList();
         if (blocking.Count > 0) throw new DomainException("O documento não passou na checagem: " + string.Join(" ", blocking));
 
@@ -589,7 +590,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         await repository.SaveChangesAsync(cancellationToken);
         ReverseSearch.Invalidate();
 
-        var fresh = FindProject(await repository.GetProjectsAsync(cancellationToken), project.Key);
+        var fresh = await ProjectAsync(project.Key, cancellationToken);
         var response = await ToRevisionAsync(revision, fresh, s, userRoles, withDiff: false, cancellationToken);
         response.ResolvedSuggestions = resolved;
         return response;
@@ -701,16 +702,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             diff.Removed++;
             if (diff.Items.Count < 400) diff.Items.Add(new ReverseItemDiff { Id = id, Title = old.Title, Change = "removed", Before = Cap(old.Body) });
         }
-        diff.OtherTextChanged = Squash(OutsideItems(published)) != Squash(OutsideItems(draft));
+        diff.OtherTextChanged = Squash(ReverseDocParser.OutsideItems(published)) != Squash(ReverseDocParser.OutsideItems(draft));
         diff.Items = diff.Items.OrderBy(i => i.Change switch { "removed" => 0, "changed" => 1, _ => 2 }).ThenBy(i => i.Id, StringComparer.Ordinal).ToList();
         return diff;
-    }
-
-    private static string OutsideItems(string content)
-    {
-        var text = content;
-        foreach (var item in ReverseDocParser.Parse(content)) text = text.Replace(item.Body, string.Empty);
-        return text;
     }
 
     private static string Squash(string value) => Spaces().Replace(value ?? string.Empty, " ").Trim();
@@ -721,7 +715,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
     public async Task<ReverseAssetResponse> AddLinkAsync(string key, CreateReverseAssetLinkRequest request, string actor, CancellationToken cancellationToken)
     {
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var asset = ReverseAsset.Link(project.Key, request.Kind, request.Title, request.Url, request.Notes, request.Screens, actor, DateTimeOffset.UtcNow);
         repository.AddAsset(asset);
         await repository.SaveChangesAsync(cancellationToken);
@@ -731,7 +725,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<ReverseAssetResponse> AddFileAsync(string key, string title, string fileName, string contentType, byte[] data, string? notes,
         IEnumerable<string>? screens, string actor, CancellationToken cancellationToken)
     {
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var asset = ReverseAsset.File(project.Key, title, fileName, contentType, data, notes, screens, actor, DateTimeOffset.UtcNow);
         repository.AddAsset(asset);
         await repository.SaveChangesAsync(cancellationToken);
@@ -836,8 +830,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             .Take(Math.Clamp(limit, 1, 500)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
     }
 
-    private async Task<Dictionary<string, string>> ModuleNamesAsync(CancellationToken cancellationToken) =>
-        (await repository.GetProjectsAsync(cancellationToken)).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
+    private Task<Dictionary<string, string>> ModuleNamesAsync(CancellationToken cancellationToken) => repository.GetProjectNamesAsync(cancellationToken);
 
     // ── Card (analisar-bug) ─────────────────────────────────────────────────────────────────────
 
@@ -1074,7 +1067,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// <summary>Cria armadilhas (lote). Quem não aprova — e toda migração automática — cria "a conferir".</summary>
     public async Task<ReverseInfraResponse?> GetInfraAsync(string key, CancellationToken cancellationToken)
     {
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var snapshot = await repository.GetInfraAsync(project.Key, cancellationToken);
         return snapshot is null ? null : ReverseInfraResponse.From(snapshot);
     }
@@ -1082,7 +1075,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// <summary>Qualquer usuário logado que rode a skill no módulo grava (como as sessões); o mapa novo substitui o anterior.</summary>
     public async Task<ReverseInfraResponse> UpsertInfraAsync(string key, UpsertReverseInfraRequest request, string actor, CancellationToken cancellationToken)
     {
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         if (request.Data.ValueKind != System.Text.Json.JsonValueKind.Object) throw new DomainException("Data deve ser um objeto JSON.");
         var json = request.Data.GetRawText();
         var now = DateTimeOffset.UtcNow;
@@ -1101,7 +1094,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         if (requests.Count is 0 or > 200) throw new DomainException("Envie de 1 a 200 armadilhas por vez.");
         var now = DateTimeOffset.UtcNow;
         var approver = CanApprove(s, userRoles);
@@ -1162,7 +1155,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// <summary>A skill terminou de ligar as armadilhas antigas e as sugestões aos itens: a seção antiga sai do espelho.</summary>
     public async Task<ReverseModuleResponse> MarkTrapsMigratedAsync(string key, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
     {
-        var project = FindProject(await repository.GetProjectsAsync(cancellationToken), key);
+        var project = await ProjectAsync(key, cancellationToken);
         var tracked = await repository.GetProjectForUpdateAsync(project.Key, cancellationToken) ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
         var module = await EnsureModuleAsync(tracked, actor, cancellationToken);
         module.MarkTrapsMigrated(actor, DateTimeOffset.UtcNow);
@@ -1209,6 +1202,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             throw new ReverseForbiddenException($"Só {string.Join(" ou ", s.ApproverRoles)} pode {what} (configuração ReverseEngineeringApproverRoles).");
         return s;
     }
+
+    /// <summary>Só o projeto pedido (com as seções) — o <c>GetProjectsAsync</c> traz a Base inteira, pesado para um módulo só.</summary>
+    private async Task<ArchitectureProject> ProjectAsync(string key, CancellationToken cancellationToken) =>
+        await repository.GetProjectAsync(ArchitectureProject.NormalizeKey(key), cancellationToken)
+        ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado na Base Solvace — crie o projeto antes (arch.sh project).");
 
     private static ArchitectureProject FindProject(List<ArchitectureProject> all, string key)
     {

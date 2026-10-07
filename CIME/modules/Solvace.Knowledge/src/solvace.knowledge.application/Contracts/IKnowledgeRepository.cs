@@ -16,6 +16,10 @@ public interface IKnowledgeRepository
     // Engenharia reversa
     /// <summary>Projetos não removidos com as seções (conteúdo incluso), sem rastreamento.</summary>
     Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken);
+    /// <summary>Um projeto não removido pela chave (normalizada) com as seções, sem rastreamento — sem carregar a Base inteira.</summary>
+    Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken);
+    /// <summary>Chave → nome de exibição dos projetos não removidos (sem as seções).</summary>
+    Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken);
     /// <summary>Projeto pela chave com as seções, rastreado (para alterar). Inclui removidos.</summary>
     Task<ArchitectureProject?> GetProjectForUpdateAsync(string key, CancellationToken cancellationToken);
     void AddProject(ArchitectureProject project);
