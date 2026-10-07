@@ -967,9 +967,13 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             }
             var budget = 5000;
             sb.AppendLine("Texto dos primeiros:");
+            // 0070: o cache da busca guarda só o trecho — o texto dos itens vem do banco
+            var first = hits.Take(3).Select(h => entries.First(e => e.Ref == h.Ref)).ToList();
+            var bodies = await repository.GetIndexBodiesAsync(first.Select(e => e.Id).ToList(), cancellationToken);
             foreach (var h in hits.Take(3))
             {
-                var body = entries.First(e => e.Ref == h.Ref).Body;
+                var entry = first.First(e => e.Ref == h.Ref);
+                var body = bodies.GetValueOrDefault(entry.Id) ?? entry.Body;
                 if (body.Length > 1800) body = body[..1800] + "\n…(prmake_base_get para o resto)";
                 if (budget - body.Length < 0) break;
                 budget -= body.Length;

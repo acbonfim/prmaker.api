@@ -216,6 +216,21 @@ public class Performance0070Tests
     }
 
     [Fact]
+    public async Task Card_context_and_items_bring_the_whole_item_text_not_the_cached_snippet()
+    {
+        var (reverse, _, _) = Create();
+        var filler = string.Join(" ", Enumerable.Range(0, 120).Select(i => "palavra" + i));
+        await PublishAsync(reverse, Funcional(3, filler + " MARCADOR-FIM"));
+
+        var items = await reverse.GetItemsAsync(["revamp-kaizen#RN-002"], null, default);
+        Assert.Contains("MARCADOR-FIM", items.Single().Body);
+
+        var context = await reverse.ForCardAsync("70070", "Kaizen", "regra número 2 etapa", default);
+        Assert.Contains("--- revamp-kaizen#RN-00", context);
+        Assert.Contains("MARCADOR-FIM", context);
+    }
+
+    [Fact]
     public async Task Doc_types_for_the_screen_skip_the_template()
     {
         var (reverse, _, _) = Create();
