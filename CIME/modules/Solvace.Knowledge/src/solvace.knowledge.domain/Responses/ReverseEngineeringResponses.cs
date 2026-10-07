@@ -28,6 +28,9 @@ public class ReverseItemKindResponse
 /// <summary>Cabeça de uma revisão (sem o conteúdo).</summary>
 public class ReverseRevisionHead
 {
+    /// <summary>0070: cópia (o andamento é preenchido em cima da cabeça lida do cache).</summary>
+    public ReverseRevisionHead Copy() => (ReverseRevisionHead)MemberwiseClone();
+
     public Guid Id { get; set; }
     public string ModuleKey { get; set; } = string.Empty;
     public string? ModuleName { get; set; }

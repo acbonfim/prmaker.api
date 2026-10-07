@@ -48,7 +48,10 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.Projects.AsNoTracking().Include(p => p.Sections).Where(p => !p.IsDeleted).OrderBy(p => p.Order).ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
-    public async Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken)
+    public async Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).Heads.Select(p => p.ReadCopy()).ToList();
+
+    private async Task<List<ArchitectureProject>> LoadProjectHeadsAsync(CancellationToken cancellationToken)
     {
         var projects = await context.Projects.AsNoTracking().Where(p => !p.IsDeleted).OrderBy(p => p.Order).ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
@@ -107,16 +110,27 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
 
     // ── 0052: engenharia reversa por módulo ─────────────────────────────────────────────────────
 
-    public Task<List<ReverseModule>> GetReverseModulesAsync(CancellationToken cancellationToken) =>
-        context.ReverseModules.AsNoTracking().OrderBy(m => m.Key).ToListAsync(cancellationToken);
+    public async Task<List<ReverseModule>> GetReverseModulesAsync(CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).Modules.ToList();
 
     public Task<ReverseModule?> GetReverseModuleForUpdateAsync(string key, CancellationToken cancellationToken) =>
         context.ReverseModules.FirstOrDefaultAsync(m => m.Key == key, cancellationToken);
 
     public void AddReverseModule(ReverseModule module) => context.ReverseModules.Add(module);
 
-    public Task<List<ReverseRevisionHead>> GetRevisionHeadsAsync(string? moduleKey, string? docType, IReadOnlyCollection<string>? statuses,
+    public async Task<List<ReverseRevisionHead>> GetRevisionHeadsAsync(string? moduleKey, string? docType, IReadOnlyCollection<string>? statuses,
         CancellationToken cancellationToken)
+    {
+        // 0070: as abertas (a lista e a página do módulo) saem do cache validado pela marca
+        if (docType is null && statuses is { Count: 4 } && OpenStatuses.SetEquals(statuses))
+            return (await SnapshotAsync(cancellationToken)).OpenRevisions.Where(r => moduleKey is null || r.ModuleKey == moduleKey).Select(r => r.Copy()).ToList();
+        return await RevisionHeadsQuery(moduleKey, docType, statuses).ToListAsync(cancellationToken);
+    }
+
+    private static readonly HashSet<string> OpenStatuses =
+        [ReverseRevisionStatus.Draft, ReverseRevisionStatus.Review, ReverseRevisionStatus.Changes, ReverseRevisionStatus.Approved];
+
+    private IQueryable<ReverseRevisionHead> RevisionHeadsQuery(string? moduleKey, string? docType, IReadOnlyCollection<string>? statuses)
     {
         var query = context.ReverseRevisions.AsNoTracking();
         if (moduleKey is not null) query = query.Where(r => r.ModuleKey == moduleKey);
@@ -128,7 +142,7 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
             CoverageRatio = r.CoverageRatio, Length = r.Content.Length, CreatedAt = r.CreatedAt, CreatedBy = r.CreatedBy, UpdatedAt = r.UpdatedAt,
             UpdatedBy = r.UpdatedBy, SubmittedAt = r.SubmittedAt, ReviewedBy = r.ReviewedBy, PublishedAt = r.PublishedAt, PublishedBy = r.PublishedBy,
             ReviewNote = r.ReviewNote, ProgressRaw = r.Progress, ProgressAt = r.ProgressAt
-        }).ToListAsync(cancellationToken);
+        });
     }
 
     public Task<ReverseRevision?> GetRevisionAsync(Guid id, bool tracked, CancellationToken cancellationToken) =>
@@ -170,12 +184,8 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.ReverseIndexEntries.AsNoTracking().Where(e => e.Kind == kind)
             .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToListAsync(cancellationToken);
 
-    public async Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken)
-    {
-        var count = await context.ReverseIndexEntries.CountAsync(cancellationToken);
-        var last = count == 0 ? null : await context.ReverseIndexEntries.MaxAsync(e => (DateTimeOffset?)e.UpdatedAt, cancellationToken);
-        return (count, last);
-    }
+    public async Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).IndexStamp;
 
     public Task<List<ReverseIndexEntry>> GetIndexEntriesForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken) =>
         context.ReverseIndexEntries.Where(e => e.ModuleKey == moduleKey && e.DocType == docType).ToListAsync(cancellationToken);
@@ -205,21 +215,80 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
 
     public void AddCardContext(ReverseCardContext card) => context.ReverseCardContexts.Add(card);
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken) => context.SaveChangesAsync(cancellationToken);
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        await context.SaveChangesAsync(cancellationToken);
+        _checked = null; // 0070: o que vier depois da gravação revalida a marca
+    }
+
+    // ── 0070: leituras da Base em cache por instância, validadas por uma marca do banco ───────────────────────
+    // O banco fica em outra região (~60 ms por consulta) e a lista de módulos, a página do módulo, os projetos, o grafo e
+    // o manifest começavam com as mesmas 5–8 consultas. Agora uma consulta só (a marca: quantidade + xmin das tabelas,
+    // e o índice da ER por quantidade + última atualização) diz se algo mudou; sem mudança, tudo sai da memória. A marca
+    // é conferida uma vez por requisição (o repositório é por requisição) e de novo depois de gravar.
+
+    private sealed record ReadSnapshot(string Stamp, List<ArchitectureProject> Heads, List<ReverseModule> Modules, List<ReverseRevisionHead> OpenRevisions,
+        List<ReverseItemCount> Counts, Dictionary<(string ProjectKey, string SectionKey), int> PendingSuggestions, (int Count, DateTimeOffset? LastUpdate) IndexStamp);
+
+    private static ReadSnapshot? _snapshot;
+    private static readonly SemaphoreSlim SnapshotGate = new(1, 1);
+    private ReadSnapshot? _checked;
+
+    private sealed class StampRow
+    {
+        public string Stamp { get; set; } = string.Empty;
+        public int IndexCount { get; set; }
+        public DateTimeOffset? IndexLast { get; set; }
+    }
+
+    private static readonly string StampSql = $"""
+        SELECT concat_ws('|',
+          (SELECT count(*) || ':' || coalesce(sum(xmin::text::bigint), 0) FROM "{KnowledgeContext.Schema}"."ArchitectureProjects"),
+          (SELECT count(*) || ':' || coalesce(sum(xmin::text::bigint), 0) FROM "{KnowledgeContext.Schema}"."ArchitectureSections"),
+          (SELECT count(*) || ':' || coalesce(sum(xmin::text::bigint), 0) FROM "{KnowledgeContext.Schema}"."ReverseModules"),
+          (SELECT count(*) || ':' || coalesce(sum(xmin::text::bigint), 0) FROM "{KnowledgeContext.Schema}"."ReverseRevisions"),
+          (SELECT count(*) || ':' || coalesce(sum(xmin::text::bigint), 0) FROM "{KnowledgeContext.Schema}"."ArchitectureSuggestions")) AS "Stamp",
+          (SELECT count(*)::int FROM "{KnowledgeContext.Schema}"."ReverseIndexEntries") AS "IndexCount",
+          (SELECT max("UpdatedAt") FROM "{KnowledgeContext.Schema}"."ReverseIndexEntries") AS "IndexLast"
+        """;
+
+    private async Task<ReadSnapshot> SnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (_checked is not null) return _checked;
+        var row = (await context.Database.SqlQueryRaw<StampRow>(StampSql).ToListAsync(cancellationToken)).Single();
+        var stamp = $"{row.Stamp}|{row.IndexCount}:{row.IndexLast?.UtcTicks}";
+        if (_snapshot is { } current && current.Stamp == stamp) return _checked = current;
+        await SnapshotGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_snapshot is { } again && again.Stamp == stamp) return _checked = again;
+            // lido depois da marca: o cache nunca fica mais velho que ela (no máximo recarrega uma vez a mais)
+            var heads = await LoadProjectHeadsAsync(cancellationToken);
+            var modules = await context.ReverseModules.AsNoTracking().OrderBy(m => m.Key).ToListAsync(cancellationToken);
+            var open = await RevisionHeadsQuery(null, null, OpenStatuses).ToListAsync(cancellationToken);
+            var counts = await context.ReverseIndexEntries.AsNoTracking().Where(e => !e.Removed)
+                .GroupBy(e => new { e.ModuleKey, e.DocType, e.Kind })
+                .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count()))
+                .ToListAsync(cancellationToken);
+            var suggestions = (await context.Suggestions.AsNoTracking()
+                    .Where(x => x.Status == ArchitectureSuggestionStatus.Pending && x.SectionKey != null)
+                    .GroupBy(x => new { x.ProjectKey, x.SectionKey })
+                    .Select(g => new { g.Key.ProjectKey, g.Key.SectionKey, Count = g.Count() })
+                    .ToListAsync(cancellationToken))
+                .ToDictionary(x => (x.ProjectKey, x.SectionKey!), x => x.Count);
+            _snapshot = new ReadSnapshot(stamp, heads, modules, open, counts, suggestions, (row.IndexCount, row.IndexLast));
+            return _checked = _snapshot;
+        }
+        finally
+        {
+            SnapshotGate.Release();
+        }
+    }
 
     // ── 0070: leituras enxutas ──────────────────────────────────────────────────────────────────
 
-    public async Task<ArchitectureProject?> GetProjectHeadAsync(string key, CancellationToken cancellationToken)
-    {
-        var project = await context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Key == key && !p.IsDeleted, cancellationToken);
-        if (project is null) return null;
-        var sections = await context.Sections.AsNoTracking().Where(s => s.ProjectId == project.Id)
-            .Select(s => new { s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version, s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, Length = s.Content.Length })
-            .ToListAsync(cancellationToken);
-        project.Sections.AddRange(sections.Select(s => ArchitectureSection.Head(s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version,
-            s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, s.Length)));
-        return project;
-    }
+    public async Task<ArchitectureProject?> GetProjectHeadAsync(string key, CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).Heads.FirstOrDefault(p => p.Key == key)?.ReadCopy();
 
     public async Task<ArchitectureSection?> GetSectionWithContentAsync(Guid sectionId, CancellationToken cancellationToken)
     {
@@ -295,11 +364,8 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         public string? Text { get; set; }
     }
 
-    public Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
-        context.ReverseIndexEntries.AsNoTracking().Where(e => !e.Removed && (moduleKey == null || e.ModuleKey == moduleKey))
-            .GroupBy(e => new { e.ModuleKey, e.DocType, e.Kind })
-            .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count()))
-            .ToListAsync(cancellationToken);
+    public async Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).Counts.Where(c => moduleKey == null || c.ModuleKey == moduleKey).ToList();
 
     public async Task<List<ReverseIndexEntry>> GetIndexHeadsAsync(string? moduleKey, string? docType, CancellationToken cancellationToken)
     {
@@ -316,15 +382,9 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.ReverseIndexEntries.AsNoTracking().Where(e => entryIds.Contains(e.Id)).Select(e => new { e.Id, e.Body })
             .ToDictionaryAsync(e => e.Id, e => e.Body, cancellationToken);
 
-    public async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken)
-    {
-        var rows = await context.Suggestions.AsNoTracking()
-            .Where(s => s.Status == ArchitectureSuggestionStatus.Pending && s.SectionKey != null && (projectKey == null || s.ProjectKey == projectKey))
-            .GroupBy(s => new { s.ProjectKey, s.SectionKey })
-            .Select(g => new { g.Key.ProjectKey, g.Key.SectionKey, Count = g.Count() })
-            .ToListAsync(cancellationToken);
-        return rows.ToDictionary(r => (r.ProjectKey, r.SectionKey!), r => r.Count);
-    }
+    public async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken) =>
+        (await SnapshotAsync(cancellationToken)).PendingSuggestions.Where(x => projectKey == null || x.Key.ProjectKey == projectKey)
+            .ToDictionary(x => x.Key, x => x.Value);
 
     public async Task<(int Total, int NeedsReview)> CountTrapsAsync(string moduleKey, CancellationToken cancellationToken)
     {
