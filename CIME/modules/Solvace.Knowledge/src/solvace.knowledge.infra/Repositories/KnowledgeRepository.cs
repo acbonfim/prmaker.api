@@ -206,4 +206,84 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
     public void AddCardContext(ReverseCardContext card) => context.ReverseCardContexts.Add(card);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => context.SaveChangesAsync(cancellationToken);
+
+    // ── 0070: leituras enxutas ──────────────────────────────────────────────────────────────────
+
+    public async Task<ArchitectureProject?> GetProjectHeadAsync(string key, CancellationToken cancellationToken)
+    {
+        var project = await context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Key == key && !p.IsDeleted, cancellationToken);
+        if (project is null) return null;
+        var sections = await context.Sections.AsNoTracking().Where(s => s.ProjectId == project.Id)
+            .Select(s => new { s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version, s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, Length = s.Content.Length })
+            .ToListAsync(cancellationToken);
+        project.Sections.AddRange(sections.Select(s => ArchitectureSection.Head(s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version,
+            s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, s.Length)));
+        return project;
+    }
+
+    public Task<ArchitectureSection?> GetSectionWithContentAsync(Guid sectionId, CancellationToken cancellationToken) =>
+        context.Sections.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sectionId, cancellationToken);
+
+    public Task<Dictionary<Guid, string>> GetSectionContentsAsync(IReadOnlyCollection<Guid> sectionIds, CancellationToken cancellationToken) =>
+        context.Sections.AsNoTracking().Where(s => sectionIds.Contains(s.Id)).Select(s => new { s.Id, s.Content })
+            .ToDictionaryAsync(s => s.Id, s => s.Content, cancellationToken);
+
+    public async Task<List<string?>> GetSectionSlicesAsync(IReadOnlyList<(Guid SectionId, int Start, int Length)> slices, CancellationToken cancellationToken)
+    {
+        if (slices.Count == 0) return [];
+        // uma consulta para todos os trechos: unnest dos arrays (id, início, tamanho) — substring em code points, 1-based
+        var ids = slices.Select(s => s.SectionId).ToArray();
+        var starts = slices.Select(s => Math.Max(0, s.Start) + 1).ToArray();
+        var lengths = slices.Select(s => Math.Max(0, s.Length)).ToArray();
+        var rows = await context.Database.SqlQueryRaw<SliceRow>(
+                $"""
+                 SELECT w.ord::int AS "Ord", substring(s."Content" FROM w.start FOR w.len) AS "Text"
+                 FROM unnest(@ids, @starts, @lengths) WITH ORDINALITY AS w(id, start, len, ord)
+                 JOIN "{KnowledgeContext.Schema}"."ArchitectureSections" s ON s."Id" = w.id
+                 """,
+                new Npgsql.NpgsqlParameter("ids", ids), new Npgsql.NpgsqlParameter("starts", starts), new Npgsql.NpgsqlParameter("lengths", lengths))
+            .ToListAsync(cancellationToken);
+        var byOrd = rows.ToDictionary(r => r.Ord, r => r.Text);
+        return Enumerable.Range(1, slices.Count).Select(i => byOrd.GetValueOrDefault(i)).ToList();
+    }
+
+    private sealed class SliceRow
+    {
+        public int Ord { get; set; }
+        public string? Text { get; set; }
+    }
+
+    public Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
+        context.ReverseIndexEntries.AsNoTracking().Where(e => !e.Removed && (moduleKey == null || e.ModuleKey == moduleKey))
+            .GroupBy(e => new { e.ModuleKey, e.DocType, e.Kind })
+            .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count()))
+            .ToListAsync(cancellationToken);
+
+    public async Task<List<ReverseIndexEntry>> GetIndexHeadsAsync(string? moduleKey, string? docType, CancellationToken cancellationToken)
+    {
+        var rows = await context.ReverseIndexEntries.AsNoTracking()
+            .Where(e => (moduleKey == null || e.ModuleKey == moduleKey) && (docType == null || e.DocType == docType))
+            .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order)
+            .Select(e => new { e.ModuleKey, e.DocType, e.ItemId, e.Kind, e.Title, e.Level, e.Order, e.Removed, e.Tags, e.Tables, e.Modules })
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => ReverseIndexEntry.Head(r.ModuleKey, r.DocType, r.ItemId, r.Kind, r.Title, r.Level, r.Order, r.Removed, r.Tags, r.Tables, r.Modules))
+            .ToList();
+    }
+
+    public async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken)
+    {
+        var rows = await context.Suggestions.AsNoTracking()
+            .Where(s => s.Status == ArchitectureSuggestionStatus.Pending && s.SectionKey != null && (projectKey == null || s.ProjectKey == projectKey))
+            .GroupBy(s => new { s.ProjectKey, s.SectionKey })
+            .Select(g => new { g.Key.ProjectKey, g.Key.SectionKey, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        return rows.ToDictionary(r => (r.ProjectKey, r.SectionKey!), r => r.Count);
+    }
+
+    public async Task<(int Total, int NeedsReview)> CountTrapsAsync(string moduleKey, CancellationToken cancellationToken)
+    {
+        var rows = await context.ReverseTraps.AsNoTracking().Where(t => !t.IsDeleted && t.ModuleKey == moduleKey)
+            .GroupBy(t => t.NeedsReview).Select(g => new { NeedsReview = g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+        return (rows.Sum(r => r.Count), rows.Where(r => r.NeedsReview).Sum(r => r.Count));
+    }
 }

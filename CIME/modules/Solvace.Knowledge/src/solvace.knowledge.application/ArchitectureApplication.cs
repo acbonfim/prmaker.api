@@ -26,7 +26,13 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         IReadOnlyCollection<ReverseModule>? modules, CancellationToken cancellationToken)
     {
         modules ??= await repository.GetReverseModulesAsync(cancellationToken);
-        response.SupersededSections = ReverseSupersession.Compute(project, await ReverseSettingsAsync(cancellationToken), modules.FirstOrDefault(m => m.Key == project.Key));
+        return WithSuperseded(response, project, await ReverseSettingsAsync(cancellationToken), modules);
+    }
+
+    private static ArchitectureProjectResponse WithSuperseded(ArchitectureProjectResponse response, ArchitectureProject project, ReverseSettings settings,
+        IReadOnlyCollection<ReverseModule> modules)
+    {
+        response.SupersededSections = ReverseSupersession.Compute(project, settings, modules.FirstOrDefault(m => m.Key == project.Key));
         return response;
     }
     public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken)
@@ -34,10 +40,11 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var all = await repository.GetProjectHeadsAsync(cancellationToken);
         var modules = await repository.GetReverseModulesAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken);
-        var result = new List<ArchitectureProjectResponse>();
-        foreach (var p in all.OrderBy(p => p.Order).ThenBy(p => p.Name))
-            result.Add(await WithSupersededAsync(WithUsedBy(ToResponse(p), all), p, modules, cancellationToken));
-        return result;
+        // 0070: a configuração uma vez (antes era lida por projeto) e o "usado por" de um mapa só (antes, varria todos por projeto)
+        var settings = await ReverseSettingsAsync(cancellationToken);
+        var usedBy = UsedByMap(all);
+        return all.OrderBy(p => p.Order).ThenBy(p => p.Name)
+            .Select(p => WithSuperseded(WithUsedBy(ToResponse(p), usedBy), p, settings, modules)).ToList();
     }
 
     public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
@@ -95,6 +102,16 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return graph;
     }
 
+    private static ArchitectureProjectResponse WithUsedBy(ArchitectureProjectResponse response,
+        Dictionary<string, List<(string Source, ArchitectureRelation Relation)>> usedBy)
+    {
+        response.UsedBy = usedBy.TryGetValue(response.Key, out var incoming)
+            ? incoming.Where(x => x.Source != response.Key)
+                .Select(x => new ArchitectureIncomingRelation { Source = x.Source, Kind = x.Relation.Kind, Detail = x.Relation.Detail, Evidence = x.Relation.Evidence }).ToList()
+            : [];
+        return response;
+    }
+
     private static ArchitectureProjectResponse WithUsedBy(ArchitectureProjectResponse response, List<ArchitectureProject> all)
     {
         response.UsedBy = all.Where(p => p.Key != response.Key)
@@ -137,9 +154,50 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public async Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
-        var project = await FindAsync(projectKey, cancellationToken);
-        return ToSection(FindSection(project, sectionKey), withContent: true);
+        // 0070: só a seção pedida — antes lia a Base inteira (todas as seções com texto) para devolver uma (12 s e OOM)
+        var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
+        var section = await repository.GetSectionWithContentAsync(head.Id, cancellationToken)
+                      ?? throw new KnowledgeNotFoundException($"Seção '{sectionKey}' não encontrada em '{projectKey}'.");
+        return ToSection(section, withContent: true);
     }
+
+    /// <summary>0070: sumário da seção em pedaços (sem o texto) — a tela busca cada pedaço com <see cref="GetSectionPartsAsync"/>.</summary>
+    public async Task<ArchitectureSectionOutlineResponse> GetSectionOutlineAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
+    {
+        var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
+        return ToOutline(head, await OutlineAsync(head, cancellationToken));
+    }
+
+    /// <summary>0070: pedaços <paramref name="from"/>..<paramref name="to"/> da seção (até <see cref="MaxPartsPerRequest"/>), lidos do banco por trecho.</summary>
+    public async Task<ArchitectureSectionPartsResponse> GetSectionPartsAsync(string projectKey, string sectionKey, int from, int to, CancellationToken cancellationToken)
+    {
+        var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
+        var chunks = await OutlineAsync(head, cancellationToken);
+        from = Math.Max(0, from);
+        to = Math.Min(Math.Min(to, from + MaxPartsPerRequest - 1), chunks.Count - 1);
+        var wanted = chunks.Where(c => c.Index >= from && c.Index <= to).ToList();
+        var texts = await repository.GetSectionSlicesAsync(wanted.Select(c => (head.Id, c.Start, c.Length)).ToList(), cancellationToken);
+        return new ArchitectureSectionPartsResponse
+        {
+            Hash = OutlineHash(head),
+            Parts = wanted.Select((c, i) => new ArchitectureSectionPartResponse { Index = c.Index, Text = (texts[i] ?? string.Empty).Replace("\r\n", "\n") }).ToList()
+        };
+    }
+
+    public const int MaxPartsPerRequest = 8;
+
+    /// <summary>Marca do conteúdo da seção para o sumário/pedaços (o hash do texto + a versão).</summary>
+    public static string OutlineHash(ArchitectureSection section) => SectionOutlines.Hash(section);
+
+    internal Task<List<domain.Reverse.MarkdownChunk>> OutlineAsync(ArchitectureSection head, CancellationToken cancellationToken) =>
+        SectionOutlines.GetAsync(repository, head, cancellationToken);
+
+    internal static ArchitectureSectionOutlineResponse ToOutline(ArchitectureSection s, List<domain.Reverse.MarkdownChunk> chunks) => new()
+    {
+        Id = s.Id, Key = s.Key, Title = s.Title, Order = s.Order, Version = s.Version, Source = s.Source, Audience = s.Audience, Length = s.Length,
+        UpdatedAt = s.UpdatedAt, UpdatedBy = s.UpdatedBy, Hash = OutlineHash(s),
+        Chunks = chunks.Select(c => new ArchitectureSectionChunkResponse { Index = c.Index, Length = c.Length, Ids = c.Ids, Estimate = c.Estimate }).ToList()
+    };
 
     public async Task<ArchitectureProjectResponse> UpsertProjectAsync(string key, UpsertArchitectureProjectRequest request, string actor, CancellationToken cancellationToken)
     {
@@ -212,14 +270,14 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public async Task<List<ArchitectureSectionVersionResponse>> GetVersionsAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
-        var section = FindSection(await FindAsync(projectKey, cancellationToken), sectionKey);
+        var section = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         return (await repository.GetVersionsAsync(section.Id, cancellationToken))
             .OrderByDescending(v => v.Version).Select(v => ToVersion(v, withContent: false)).ToList();
     }
 
     public async Task<ArchitectureSectionVersionResponse> GetVersionAsync(string projectKey, string sectionKey, int version, CancellationToken cancellationToken)
     {
-        var section = FindSection(await FindAsync(projectKey, cancellationToken), sectionKey);
+        var section = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         var found = await repository.GetVersionAsync(section.Id, version, cancellationToken)
                     ?? throw new KnowledgeNotFoundException($"Versão {version} não encontrada.");
         return ToVersion(found, withContent: true);
@@ -271,7 +329,29 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var (projects, articles, _) = await LoadAllAsync(cancellationToken);
         // 0053: sinônimos do glossário da engenharia reversa ("RCA" acha "A3") também na busca/Pergunte da Base Solvace.
         var synonyms = await ReverseSearch.SynonymsAsync(repository, cancellationToken);
-        return ArchitectureSearch.Run(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms);
+        // 0070: o texto de cada seção é lido só quando ela é nova/mudou (o cache guarda o texto normalizado pela versão) e
+        // os trechos dos resultados vêm do banco — antes cada busca lia a Base inteira (12 s e OOM de 512 MiB).
+        var sections = projects.SelectMany(p => p.Sections).ToList();
+        ArchitectureSearch.Forget(sections.Select(s => s.Id).ToHashSet());
+        foreach (var batch in sections.Where(s => ArchitectureSearch.Cached(s) is null).Chunk(12))
+        {
+            var contents = await repository.GetSectionContentsAsync(batch.Select(s => s.Id).ToList(), cancellationToken);
+            foreach (var section in batch) ArchitectureSearch.Remember(section, contents.GetValueOrDefault(section.Id) ?? string.Empty);
+        }
+        var candidates = ArchitectureSearch.Score(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms,
+            s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content));
+        var inSections = candidates.Where(c => c.Section is not null).ToList();
+        var windows = inSections.Select(c => (c.Section!.Id, Window: ArchitectureSearch.SnippetWindow(c.Prepared!, c.Position))).ToList();
+        var texts = await repository.GetSectionSlicesAsync(windows.Select(w => (w.Id, w.Window.Start, w.Window.Length)).ToList(), cancellationToken);
+        for (var i = 0; i < inSections.Count; i++)
+        {
+            var c = inSections[i];
+            c.Hit.Snippet = ArchitectureSearch.SnippetFromWindow(texts[i] ?? string.Empty, windows[i].Window.Cut, windows[i].Window.More);
+            c.Hit.Heading = ArchitectureSearch.HeadingAt(c.Prepared!, c.Position);
+        }
+        foreach (var c in candidates.Where(c => c.Article is not null))
+            c.Hit.Snippet = ArchitectureSearch.ArticleSnippet(c.Article!, c.Position);
+        return candidates.Select(c => c.Hit).ToList();
     }
 
     // ── Perguntas do "Pergunte" (0040) ──────────────────────────────────────────────────────────
@@ -358,8 +438,11 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
             foreach (var project in projects)
             {
                 Add(zip, $"projects/{project.Key}/000-projeto.md", RenderProjectCard(project, usedBy));
-                foreach (var section in Exported(project).OrderBy(s => s.Order).ThenBy(s => s.Key))
-                    Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section));
+                // 0070: o texto de um projeto por vez (antes a Base inteira ficava na memória junto com o .zip)
+                var exported = Exported(project).OrderBy(s => s.Order).ThenBy(s => s.Key).ToList();
+                var contents = exported.Count == 0 ? [] : await repository.GetSectionContentsAsync(exported.Select(s => s.Id).ToList(), cancellationToken);
+                foreach (var section in exported)
+                    Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section, contents.GetValueOrDefault(section.Id) ?? section.Content));
             }
             var integrations = await ReverseRelations.IntegrationsAsync(repository, projects, null, cancellationToken);
             Add(zip, "graph.json", JsonSerializer.Serialize(BuildGraph(projects, integrations), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
@@ -372,7 +455,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 foreach (var project in projects.Where(p => migrated.Contains(p.Key) && traps.ContainsKey(p.Key)))
                     Add(zip, $"projects/{project.Key}/090-armadilhas.md", ReverseSupersession.RenderTraps(project, traps[project.Key]));
             }
-            var reverse = await repository.GetIndexEntriesAsync(null, cancellationToken);
+            var reverse = await repository.GetIndexHeadsAsync(null, null, cancellationToken); // 0070: sem o texto dos itens
             if (reverse.Count > 0)
             {
                 Add(zip, "reverse/INDEX.md", RenderReverseIndex(projects, reverse));
@@ -389,7 +472,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     private async Task<(List<ArchitectureProject> Projects, List<KnowledgeArticle> Articles, string Environment)> LoadAllAsync(CancellationToken cancellationToken)
     {
         var environment = (await settings.GetAsync(cancellationToken)).ActiveEnvironment;
-        var projects = (await repository.GetProjectsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).ToList();
+        // 0070: só as cabeças (sem o texto) — quem precisa do texto lê por seção/projeto
+        var projects = (await repository.GetProjectHeadsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).ToList();
         // 0054: uma fonte por módulo — seção antiga já coberta pela engenharia reversa não vai para espelho/busca/catálogo
         var modules = await repository.GetReverseModulesAsync(cancellationToken);
         ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), modules);
@@ -454,7 +538,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 var exported = Exported(p).ToList();
                 if (exported.Count > 0)
                     sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
-                              + $" (~{Math.Max(1, exported.Sum(s => s.Content.Length) / 4 / 100) * 100} tok)");
+                              + $" (~{Math.Max(1, exported.Sum(s => s.Length) / 4 / 100) * 100} tok)");
                 var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is not null);
                 if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm")}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
@@ -517,7 +601,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         {
             sb.AppendLine().AppendLine("## Seções");
             foreach (var s in exported.OrderBy(s => s.Order).ThenBy(s => s.Key))
-                sb.AppendLine($"- `{s.Order:000}-{s.Key}.md` {s.Title} (~{Math.Max(1, s.Content.Length / 4 / 100) * 100} tokens)");
+                sb.AppendLine($"- `{s.Order:000}-{s.Key}.md` {s.Title} (~{Math.Max(1, s.Length / 4 / 100) * 100} tokens)");
         }
         if (p.Relations.Count > 0)
         {
@@ -570,9 +654,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return (space > 0 ? cut[..space] : cut).TrimEnd(',', ';', ':') + "…";
     }
 
-    private static string RenderSection(ArchitectureProject project, ArchitectureSection section) =>
+    private static string RenderSection(ArchitectureProject project, ArchitectureSection section, string content) =>
         $"<!-- {project.Key}/{section.Key} · versão {section.Version} · {section.UpdatedAt:yyyy-MM-dd} por {section.UpdatedBy}"
-        + (project.SourceCommit is null ? "" : $" · commit {project.SourceCommit}") + $" -->\n# {project.Name} — {section.Title}\n\n{section.Content}\n";
+        + (project.SourceCommit is null ? "" : $" · commit {project.SourceCommit}") + $" -->\n# {project.Name} — {section.Title}\n\n{content}\n";
 
     private static string RenderKnowledgeIndex(List<KnowledgeArticle> articles, string environment)
     {
@@ -610,12 +694,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
-    private async Task<ArchitectureProject> FindAsync(string key, CancellationToken cancellationToken)
-    {
-        var normalized = ArchitectureProject.NormalizeKey(key);
-        return (await repository.GetProjectsAsync(cancellationToken)).FirstOrDefault(p => p.Key == normalized)
-               ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
-    }
+    /// <summary>Um projeto com as seções SEM o texto (0070: antes lia a Base inteira com o texto).</summary>
+    private async Task<ArchitectureProject> FindHeadAsync(string key, CancellationToken cancellationToken) =>
+        await repository.GetProjectHeadAsync(ArchitectureProject.NormalizeKey(key), cancellationToken)
+        ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
 
     private static ArchitectureSection FindSection(ArchitectureProject project, string sectionKey)
     {

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using solvace.executionplans.infra.Contexts;
@@ -12,9 +13,11 @@ using solvace.executionplans.infra.Contexts;
 namespace solvace.executionplans.infra.Migrations
 {
     [DbContext(typeof(ExecutionPlanContext))]
-    partial class ExecutionPlanContextModelSnapshot : ModelSnapshot
+    [Migration("20261007144730_PendingIndex0070")]
+    partial class PendingIndex0070
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -55,18 +55,20 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public static bool CanApprove(ReverseSettings settings, IReadOnlyCollection<string> userRoles) =>
         userRoles.Any(r => settings.ApproverRoles.Contains(r, StringComparer.OrdinalIgnoreCase));
 
-    public async Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken)
+    public async Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken, bool withTemplate = true)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        return ReverseDocTypes.All.Select(t => ToDocType(t, s)).ToList();
+        return ReverseDocTypes.All.Select(t => ToDocType(t, s, withTemplate)).ToList();
     }
 
-    private static ReverseDocTypeResponse ToDocType(ReverseDocType t, ReverseSettings s) => new()
+    private static ReverseDocTypeResponse ToDocType(ReverseDocType t, ReverseSettings s, bool withTemplate = true) => new()
     {
         Key = t.Key, Title = t.Title, SectionKey = t.SectionKey, Order = t.Order, Required = s.RequiredDocs.Contains(t.Key), Kinds = t.Kinds.ToList(),
         Headings = t.Headings.Select(h => h.Title).ToList(), Purpose = t.Purpose,
-        Template = (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
-                   + (t.Derived ? "" : "\n\n" + ReverseDocTypes.ItemGuide.Trim())
+        // 0070: a tela não usa o modelo (32 KB por chamada); a skill continua recebendo
+        Template = !withTemplate ? string.Empty
+            : (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
+              + (t.Derived ? "" : "\n\n" + ReverseDocTypes.ItemGuide.Trim())
     };
 
     // ── Módulos ─────────────────────────────────────────────────────────────────────────────────
@@ -78,11 +80,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var modules = (await repository.GetReverseModulesAsync(cancellationToken)).ToDictionary(m => m.Key);
         var open = WithProgress(await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
-        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
-        var items = entries.Where(e => !e.Removed).GroupBy(e => e.ModuleKey).ToDictionary(g => g.Key, g => g.Count());
-        var suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
-            .Where(x => x.SectionKey?.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal) == true)
-            .GroupBy(x => (x.ProjectKey, x.SectionKey!)).ToDictionary(g => g.Key, g => g.Count());
+        // 0070: contagens no banco — antes carregava o índice inteiro (texto de todos os itens) e 500 sugestões só para contar
+        var items = (await repository.CountIndexItemsAsync(null, cancellationToken)).GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
+        var suggestions = await repository.CountPendingSuggestionsAsync(null, cancellationToken);
 
         return projects
             .OrderBy(p => p.BusinessArea ?? p.DisplayName ?? p.Name).ThenBy(p => p.Kind).ThenBy(p => p.Name)
@@ -171,22 +171,21 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var module = modules.FirstOrDefault(m => m.Key == project.Key);
         var open = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
-        var entries = (await ReverseSearch.EntriesAsync(repository, cancellationToken)).Where(e => e.ModuleKey == project.Key && !e.Removed).ToList();
-        var suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
-            .Where(x => x.ProjectKey == project.Key && x.SectionKey is not null)
-            .GroupBy(x => (x.ProjectKey, x.SectionKey!)).ToDictionary(g => g.Key, g => g.Count());
+        // 0070: contagens no banco (antes: o índice inteiro de todos os módulos em memória, 8–30 s numa instância nova)
+        var counts = await repository.CountIndexItemsAsync(project.Key, cancellationToken);
+        var suggestions = await repository.CountPendingSuggestionsAsync(project.Key, cancellationToken);
 
         var response = new ReverseModuleResponse();
-        FillSummary(response, project, module, s, open, entries.Count, suggestions);
+        FillSummary(response, project, module, s, open, counts.Sum(c => c.Count), suggestions);
         foreach (var doc in response.Docs.Where(d => d.Published is not null))
-            doc.Published!.Items = entries.Count(e => e.DocType == doc.Type);
+            doc.Published!.Items = counts.Where(c => c.DocType == doc.Type).Sum(c => c.Count);
         response.Repository = project.Repository;
         response.Summary = project.Summary;
         response.Configured = module is not null;
         response.Sources = module?.Sources ?? DefaultSources(project);
         response.Notes = module?.Notes;
         response.Assets = WithDownload(await repository.GetAssetHeadsAsync(project.Key, cancellationToken));
-        response.ItemsByKind = entries.GroupBy(e => e.Kind).OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count());
+        response.ItemsByKind = counts.GroupBy(c => c.Kind).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
         response.Relations = project.Relations;
         response.UsedBy = all.Where(p => p.Key != project.Key)
             .SelectMany(p => p.Relations.Where(r => r.Target == project.Key)
@@ -197,9 +196,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             : all.Where(p => p.Key != project.Key && p.BusinessArea == project.BusinessArea && ModuleKinds.Contains(p.Kind)).Select(p => p.Key).ToList();
         response.CanApprove = CanApprove(s, userRoles);
         response.SuggestedTerms = module?.SuggestedTerms ?? [];
-        var traps = await repository.GetTrapsAsync(project.Key, cancellationToken);
-        response.Traps = traps.Count;
-        response.TrapsToReview = traps.Count(t => t.NeedsReview);
+        var (traps, toReview) = await repository.CountTrapsAsync(project.Key, cancellationToken);
+        response.Traps = traps;
+        response.TrapsToReview = toReview;
         response.TrapsMigratedAt = module?.TrapsMigratedAt;
         response.SupersededSections = ReverseSupersession.Compute(project, s, module);
         return response;
@@ -272,24 +271,42 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
     // ── Documentos publicados ───────────────────────────────────────────────────────────────────
 
-    public async Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken)
+    public async Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken, bool withContent = true)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var type = ReverseDocTypes.Get(docType);
-        var project = await ProjectAsync(key, cancellationToken);
+        // 0070: o projeto sem o texto; só a seção pedida vem com texto (antes, todas as seções do módulo) e os itens saem do
+        // índice (antes, o documento era relido a cada chamada). Sem o texto (?content=false), vai o sumário em pedaços.
+        var project = await repository.GetProjectHeadAsync(ArchitectureProject.NormalizeKey(key), cancellationToken) ?? throw NotFound(key);
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
-        var published = section is null ? [] : ReverseDocParser.Parse(section.Content);
+        string? content = section is not null && withContent
+            ? (await repository.GetSectionContentsAsync([section.Id], cancellationToken)).GetValueOrDefault(section.Id)
+            : null;
+        List<ReverseItemHead> items = [];
+        if (section is not null)
+        {
+            items = (await repository.GetIndexHeadsAsync(project.Key, type.Key, cancellationToken))
+                .Select(e => new ReverseItemHead { Id = e.ItemId, Kind = e.Kind, Title = e.Title, Level = e.Level, Removed = e.Removed }).ToList();
+            if (items.Count == 0)
+            {
+                // índice vazio (documento sem itens ou anterior ao índice): lê do texto, como antes
+                content ??= (await repository.GetSectionContentsAsync([section.Id], cancellationToken)).GetValueOrDefault(section.Id);
+                items = ReverseDocParser.Parse(content ?? string.Empty).Select(ToItemHead).ToList();
+                if (!withContent) content = null;
+            }
+        }
         return new ReverseDocResponse
         {
             ModuleKey = project.Key,
             Type = ToDocType(type, s),
-            Content = section?.Content,
+            Content = content,
+            Outline = section is null || withContent ? null : ArchitectureApplication.ToOutline(section, await SectionOutlines.GetAsync(repository, section, cancellationToken)),
             Published = section is null ? null : new ReversePublishedInfo
             {
                 Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Length,
-                Items = published.Count(i => !i.Removed)
+                Items = items.Count(i => !i.Removed)
             },
-            Items = published.Select(ToItemHead).ToList(),
+            Items = items,
             Revisions = WithProgress(await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken)),
             Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
                 .Where(x => x.ProjectKey == project.Key && x.SectionKey == type.SectionKey).Select(ToSuggestion).ToList()
@@ -305,9 +322,13 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var type = ReverseDocTypes.Get(docType);
-        var all = await repository.GetProjectsAsync(cancellationToken);
+        // 0070: os outros projetos sem o texto (antes, a Base inteira); só o do módulo vem com as seções completas
+        var all = await repository.GetProjectHeadsAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken); // 0066: relacionados pelos INT resolvidos
-        var project = FindProject(all, key);
+        var head = FindProject(all, key);
+        var project = await repository.GetProjectAsync(head.Key, cancellationToken) ?? head;
+        project.SetRelations(head.Relations);
+        all[all.IndexOf(head)] = project;
         await EnsureModuleAsync(project, actor, cancellationToken);
         var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
 
@@ -432,7 +453,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var revision = await repository.GetRevisionAsync(id, tracked: false, cancellationToken) ?? throw new KnowledgeNotFoundException("Revisão não encontrada.");
-        var project = await ProjectAsync(revision.ModuleKey, cancellationToken);
+        // 0070: o projeto sem o texto; o publicado é lido só para calcular o diff (em cache pela versão de cada lado)
+        var project = await repository.GetProjectHeadAsync(revision.ModuleKey, cancellationToken) ?? throw NotFound(revision.ModuleKey);
         return await ToRevisionAsync(revision, project, s, userRoles, withDiff: true, cancellationToken);
     }
 
@@ -638,7 +660,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Coverage = Element(r.Coverage), Session = Element(r.Session), BaseVersion = r.BaseVersion, PublishedVersion = r.PublishedVersion,
             CurrentPublishedVersion = section?.Version,
             PublishedChangedSinceBase = r.IsOpen && section is not null && r.BaseVersion != section.Version,
-            Diff = withDiff ? Diff(section?.Content ?? string.Empty, r.Content) : null,
+            Diff = withDiff ? await DiffAsync(r, section, cancellationToken) : null,
             CanApprove = CanApprove(s, userRoles),
             SuggestionDecisions = await DecisionViewsAsync(r, cancellationToken)
         };
@@ -676,6 +698,21 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     };
 
     /// <summary>Diferença por item (ID): o que o revisor precisa ver — itens novos, removidos e alterados.</summary>
+    // 0070: o diff de documentos de milhões de caracteres era recalculado a cada leitura da revisão (a tela relê a cada evento)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (string Stamp, ReverseRevisionDiff Diff)> Diffs = new();
+
+    private async Task<ReverseRevisionDiff> DiffAsync(ReverseRevision r, ArchitectureSection? section, CancellationToken cancellationToken)
+    {
+        var stamp = $"{r.UpdatedAt.UtcTicks}:{r.Content.Length}:{section?.ContentHash}:{section?.Version}";
+        if (Diffs.TryGetValue(r.Id, out var cached) && cached.Stamp == stamp) return cached.Diff;
+        var published = section is null ? string.Empty
+            : (await repository.GetSectionContentsAsync([section.Id], cancellationToken)).GetValueOrDefault(section.Id) ?? string.Empty;
+        var diff = Diff(published, r.Content);
+        if (Diffs.Count > 200) Diffs.Clear();
+        Diffs[r.Id] = (stamp, diff);
+        return diff;
+    }
+
     public static ReverseRevisionDiff Diff(string published, string draft)
     {
         var before = ReverseDocParser.Parse(published).GroupBy(i => i.Id).ToDictionary(g => g.Key, g => g.First());
@@ -1208,8 +1245,10 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
     /// <summary>Só o projeto pedido (com as seções) — o <c>GetProjectsAsync</c> traz a Base inteira, pesado para um módulo só.</summary>
     private async Task<ArchitectureProject> ProjectAsync(string key, CancellationToken cancellationToken) =>
-        await repository.GetProjectAsync(ArchitectureProject.NormalizeKey(key), cancellationToken)
-        ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado na Base Solvace — crie o projeto antes (arch.sh project).");
+        await repository.GetProjectAsync(ArchitectureProject.NormalizeKey(key), cancellationToken) ?? throw NotFound(key);
+
+    private static KnowledgeNotFoundException NotFound(string key) =>
+        new($"Projeto '{key}' não encontrado na Base Solvace — crie o projeto antes (arch.sh project).");
 
     private static ArchitectureProject FindProject(List<ArchitectureProject> all, string key)
     {

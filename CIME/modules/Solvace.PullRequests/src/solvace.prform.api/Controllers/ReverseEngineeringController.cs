@@ -34,9 +34,10 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<ReverseSettingsResponse>(async () => Ok(await application.GetSettingsAsync(Roles(), ct)));
 
     /// <summary>Tipos de documento com o modelo efetivo (o que a skill segue).</summary>
+    /// <param name="template">0070: false = sem o modelo (a tela não usa).</param>
     [HttpGet("doc-types")]
-    public Task<ActionResult<List<ReverseDocTypeResponse>>> DocTypes(CancellationToken ct) =>
-        Run<List<ReverseDocTypeResponse>>(async () => Ok(await application.GetDocTypesAsync(ct)));
+    public Task<ActionResult<List<ReverseDocTypeResponse>>> DocTypes([FromQuery] bool template = true, CancellationToken ct = default) =>
+        Run<List<ReverseDocTypeResponse>>(async () => Ok(await application.GetDocTypesAsync(ct, template)));
 
     [HttpGet("modules")]
     public Task<ActionResult<List<ReverseModuleSummaryResponse>>> Modules(CancellationToken ct) =>
@@ -56,9 +57,11 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<ReverseModuleResponse>> ResolveTerm([FromRoute] string key, [FromBody] ResolveReverseTermRequest request, CancellationToken ct) =>
         Run<ReverseModuleResponse>(async () => Ok(await application.ResolveTermAsync(key, request, await ActorAsync(ct), Roles(), ct)));
 
+    /// <param name="content">0070: false = sem o texto, com o sumário em pedaços (<c>outline</c>); a tela busca cada pedaço em
+    /// <c>Architecture/projects/{key}/sections/{seção}/parts</c>. A skill e o MCP continuam recebendo o texto (padrão).</param>
     [HttpGet("modules/{key}/docs/{doc}")]
-    public Task<ActionResult<ReverseDocResponse>> Doc([FromRoute] string key, [FromRoute] string doc, CancellationToken ct) =>
-        Run<ReverseDocResponse>(async () => Ok(await application.GetDocAsync(key, doc, ct)));
+    public Task<ActionResult<ReverseDocResponse>> Doc([FromRoute] string key, [FromRoute] string doc, [FromQuery] bool content = true, CancellationToken ct = default) =>
+        Run<ReverseDocResponse>(async () => Ok(await application.GetDocAsync(key, doc, ct, content)));
 
     /// <summary>Abre (ou retoma) a sessão do Claude para um documento e devolve o pacote (modelo, publicado, sugestões...).</summary>
     [HttpPost("modules/{key}/docs/{doc}/sessions")]

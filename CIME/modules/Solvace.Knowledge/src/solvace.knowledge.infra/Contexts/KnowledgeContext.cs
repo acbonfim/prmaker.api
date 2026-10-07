@@ -241,6 +241,9 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });
+            // 0070: integrações (INT) de todos os módulos e a marca do índice (MAX(UpdatedAt)) sem varrer a tabela
+            entity.HasIndex(e => e.Kind);
+            entity.HasIndex(e => e.UpdatedAt);
         });
 
         // 0059: mapa de infra (AWS) por módulo — um por módulo, substituído a cada leitura
