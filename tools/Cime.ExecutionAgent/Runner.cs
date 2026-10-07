@@ -5,7 +5,8 @@ using System.Text.Json;
 namespace Cime.ExecutionAgent;
 
 /// <summary>
-/// O laço do executor: pergunta ao PRMake (long-poll) se há pedido para esta máquina, roda até a concorrência
+/// O laço do executor: pergunta ao PRMake se há pedido para esta máquina quando o relay de tempo real ou o sinal de vida
+/// avisam (0068), roda até a concorrência
 /// configurada, manda o sinal de vida a cada minuto (com versões e o que a máquina alcança), reconcilia pedidos que o
 /// PRMake acha que estão aqui mas não estão, roda o doctor a cada 6 h, limpa worktrees e se atualiza sozinho.
 /// </summary>
@@ -23,6 +24,9 @@ public sealed class Runner(AgentConfig config)
     /// <summary>0041: limite da conta do Claude — sem pegar pedidos até aqui (o PRMake também segura).</summary>
     private DateTimeOffset _throttledUntil = DateTimeOffset.MinValue;
     private int _doctorRunning;
+    /// <summary>0068: aviso de que pode haver pedido (relay, sinal de vida) — o laço principal consulta a fila.</summary>
+    private readonly SemaphoreSlim _wake = new(0, 1);
+    private RelayListener? _relay;
 
     public async Task<int> RunAsync(CancellationToken stopping)
     {
@@ -45,7 +49,9 @@ public sealed class Runner(AgentConfig config)
         // 0048: sem mapa de repositórios (instalação antiga, executor atualizado antes das skills) → monta agora.
         _ = RepoMap.EnsureAsync(stopping);
 
+        _relay = new RelayListener(client, Wake);
         var background = Task.WhenAll(
+            _relay.RunAsync(stopping),
             Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
             Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)));
@@ -71,12 +77,13 @@ public sealed class Runner(AgentConfig config)
 
             try
             {
-                // polling curto (0057): a requisição não fica aberta no Cloud Run — long-poll mantinha a instância cobrada 24 h
+                // 0057: sem long-poll (requisição aberta mantinha a instância cobrada 24 h). 0068: conectado ao relay, só
+                // pergunta de novo quando o PRMake avisa; sem relay, a cada 10 s.
                 var claim = await client.NextAsync(0, stopping);
                 failures = 0;
                 if (claim is null)
                 {
-                    await Delay(NextPollEvery, stopping);
+                    await WaitWakeAsync(_relay.Connected ? IdleWithRelay : NextPollEvery, stopping);
                     continue;
                 }
                 StartJob(client, claim, stopping);
@@ -161,6 +168,7 @@ public sealed class Runner(AgentConfig config)
             }, ct);
             _state = state;
             _revoked = false;
+            if (state.QueueReady) Wake();
             if (state.DoctorRequested)
             {
                 Log.Info("diagnóstico pedido pela tela — rodando agora");
@@ -247,6 +255,7 @@ public sealed class Runner(AgentConfig config)
             foreach (var r in repos.Take(200)) w.WriteStringValue(r);
             w.WriteEndArray();
             w.WriteString("os", Paths.OsDescription);
+            w.WriteBoolean("realtime", _relay?.Connected == true);
             RepoMap.WriteCapabilities(w, RepoMap.Load());
             w.WriteEndObject();
         }
@@ -287,8 +296,33 @@ public sealed class Runner(AgentConfig config)
         }
     }
 
-    /// <summary>Intervalo entre consultas da fila quando está vazia.</summary>
+    /// <summary>Intervalo entre consultas da fila quando está vazia e o relay de tempo real não está conectado.</summary>
     private static readonly TimeSpan NextPollEvery = TimeSpan.FromSeconds(10);
+    /// <summary>Conectado ao relay: reserva (o aviso do relay e o queueReady do sinal de vida, a cada minuto, vêm antes).</summary>
+    private static readonly TimeSpan IdleWithRelay = TimeSpan.FromMinutes(10);
+
+    private void Wake()
+    {
+        try
+        {
+            if (_wake.CurrentCount == 0) _wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // já avisado
+        }
+    }
+
+    private async Task WaitWakeAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        try
+        {
+            await _wake.WaitAsync(timeout, ct);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
 
     private static async Task Delay(TimeSpan delay, CancellationToken ct)
     {
