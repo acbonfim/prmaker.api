@@ -1159,7 +1159,10 @@ case "$CMD" in
       echo "  ${REPO_DIR:+cd \"$REPO_DIR\" && }git checkout -b $FIX origin/$BASE_BRANCH    # corrija aqui${COMMIT_PATTERN:+; commit: \"$(fill_pattern "$COMMIT_PATTERN")\"}"
     fi
     for C in "${CMDS[@]}"; do [[ "$C" == \#open-pr* ]] || echo "  $C"; done
-    echo "  $G push -u origin $PUSH"
+    # Card 75648: push no mesmo comando do cherry-pick subiu a branch derivada sem a correcao (conflito) — so com o
+    # cherry-pick concluido.
+    [[ "$PUSH" == "$FIX" ]] && echo "  $G push -u origin $PUSH" \
+      || echo "  ! $G rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null && $G push -u origin $PUSH    # conflito: resolva, $G cherry-pick --continue e rode de novo"
     for C in "${CMDS[@]}"; do
       [[ "$C" == \#open-pr* ]] || continue
       read -r _ BR TG REST <<< "$C"
