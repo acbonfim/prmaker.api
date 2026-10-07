@@ -74,6 +74,10 @@ gerenciado; ficou o padrão (75%, 0 OOM) — decidir junto com a memória do Clo
 | `export/manifest` | 5 s | 190–293 ms |
 | `index/search` | 1 s | 1–1,6 s (CPU) → trecho só dos que voltam (#122) |
 
+Ainda houve 1 OOM do container às 16:08 (revisão 00122, rajada real da Home + telas da ER numa instância com os caches
+de busca carregados). O OOM é do container (heap + nativo > 512 MiB), não do .NET → #123: heap limitado a 65%
+(`DOTNET_GCHeapHardLimitPercent=0x41`) + `DOTNET_GCConserveMemory=5` na imagem da API (local: 0 OOM, pico ~480 MB).
+
 Primeira chamada numa instância nova ainda paga o aquecimento dos caches de busca (`Architecture/search` ~10 s,
 `modules/{key}` ~4 s): agora raro, porque as instâncias deixaram de cair por OOM.
 
