@@ -186,6 +186,16 @@ app.UseHttpsRedirection()
 app.UseRealTimeService();
 
 app.MapControllers();
+// 0070: memória viva depois de uma coleta completa — só no Development (medição local antes/depois)
+if (app.Environment.IsDevelopment())
+    app.MapGet("/debug/memory", () =>
+    {
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        var info = GC.GetGCMemoryInfo();
+        return Results.Ok(new { liveMb = GC.GetTotalMemory(false) / 1048576, heapMb = info.HeapSizeBytes / 1048576, committedMb = info.TotalCommittedBytes / 1048576,
+            rssMb = Environment.WorkingSet / 1048576 });
+    }).AllowAnonymous();
 app.MapMcp("/mcp").RequireAuthorization();
 app.AddHealthCheckEndpoint(projectName!);
 

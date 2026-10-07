@@ -95,6 +95,69 @@ public class Performance0070Tests
         Assert.Contains("## B", starts);
     }
 
+    [Theory]
+    [InlineData("### RN-001 — Título\n- **Onde:** `A.cs:1`\n- **Tags:** a, b\nTexto curto.")]
+    [InlineData("só uma linha")]
+    [InlineData("### UC-002 — x\n\n\n   \n")]
+    public void Preview_body_gives_the_same_snippet(string body)
+    {
+        Assert.Equal(ReverseSearch.Snippet(body), ReverseSearch.Snippet(ReverseSearch.PreviewBody(body)));
+    }
+
+    [Fact]
+    public void Preview_body_gives_the_same_snippet_for_long_items()
+    {
+        var random = new Random(70);
+        for (var i = 0; i < 500; i++)
+        {
+            var lines = Enumerable.Range(0, random.Next(1, 40)).Select(_ => random.Next(6) switch
+            {
+                0 => "- **Onde:** `Service.cs:" + random.Next(999) + "` e `Outro.cs`",
+                1 => "",
+                2 => "| a | b | c |",
+                3 => "```sql\nSELECT * FROM TB_X\n```",
+                4 => new string(' ', random.Next(5)) + "texto " + new string('x', random.Next(1, 300)) + " fim ",
+                _ => "[link](http://x/" + random.Next() + ") **negrito** > citação"
+            });
+            var body = "### RN-" + i + " — título " + new string('t', random.Next(200)) + "\n" + string.Join("\n", lines);
+            Assert.Equal(ReverseSearch.Snippet(body), ReverseSearch.Snippet(ReverseSearch.PreviewBody(body)));
+        }
+    }
+
+    [Fact]
+    public void Segmented_string_converter_writes_the_same_json_as_the_default()
+    {
+        var plain = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var segmented = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        segmented.Converters.Add(new Cime.BuildingBlocks.GlobalExtensions.SegmentedStringConverter());
+        var random = new Random(7);
+        var alphabet = "abcçãé\n\t\"<>&\\ 🚀\u2028".ToCharArray();
+        foreach (var size in new[] { 0, 10, 16_384, 16_385, 8_191, 8_192 * 3 + 1, 200_000 })
+        {
+            var sb = new System.Text.StringBuilder();
+            while (sb.Length < size) sb.Append(alphabet[random.Next(alphabet.Length)]);
+            // surrogate na fronteira do segmento
+            if (size > 8_192) sb.Insert(8_191, "🚀");
+            var value = new { Content = sb.ToString(), Map = new Dictionary<string, int> { [sb.ToString(0, Math.Min(20, sb.Length))] = 1 }, Items = new[] { "x", sb.ToString() } };
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(value, plain), System.Text.Json.JsonSerializer.Serialize(value, segmented));
+        }
+    }
+
+    [Fact]
+    public void Normalizing_in_pieces_gives_the_same_text()
+    {
+        static string Whole(string v)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in v.Normalize(System.Text.NormalizationForm.FormD))
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark) sb.Append(char.ToLowerInvariant(c));
+            return sb.ToString();
+        }
+        var text = Funcional(2_000, "Ação É Ç 🚀 coração") + new string('á', 40_000) + "🚀" + new string('b', 20_000);
+        Assert.True(text.Length > 100_000);
+        Assert.Equal(Whole(text), ArchitectureSearch.Normalize(text));
+    }
+
     [Fact]
     public void Code_points_count_surrogate_pairs_as_one()
     {

@@ -58,14 +58,31 @@ public static partial class ArchitectureSearch
             if (!keep.Contains(id)) Cache.TryRemove(id, out _);
     }
 
+    /// <summary>
+    /// 0070: texto longo normalizado em pedaços (cortados em quebra de linha): o <c>Normalize(FormD)</c> aluga do
+    /// <c>ArrayPool</c> um buffer do tamanho do texto inteiro, e o pool guardava um por thread (documentos de milhões de caracteres).
+    /// </summary>
+    private const int NormalizeChunk = 16_384;
+
     public static string Normalize(string? value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
-        var decomposed = value.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-                sb.Append(char.ToLowerInvariant(c));
+        var sb = new StringBuilder(value.Length);
+        for (var start = 0; start < value.Length;)
+        {
+            var end = Math.Min(value.Length, start + NormalizeChunk);
+            if (end < value.Length)
+            {
+                var newline = value.LastIndexOf('\n', end - 1, end - start);
+                if (newline > start) end = newline + 1;
+                else if (char.IsHighSurrogate(value[end - 1])) end--;
+            }
+            var piece = start == 0 && end == value.Length ? value : value[start..end];
+            foreach (var c in piece.Normalize(NormalizationForm.FormD))
+                if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                    sb.Append(char.ToLowerInvariant(c));
+            start = end;
+        }
         return sb.ToString();
     }
 

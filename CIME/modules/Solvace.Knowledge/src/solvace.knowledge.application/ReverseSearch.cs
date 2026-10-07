@@ -16,30 +16,55 @@ public static partial class ReverseSearch
 
     private static readonly object Gate = new();
     private static (int Count, DateTimeOffset? Last) _stamp = (-1, null);
-    private static List<Prepared> _prepared = [];
-    private static ReverseSynonyms _synonyms = ReverseSynonyms.Empty;
+    /// <summary>Itens preparados e sinônimos da mesma carga (0070: lidos juntos — antes um podia vir de outra carga).</summary>
+    private sealed record Snapshot(List<Prepared> Items, ReverseSynonyms Synonyms);
+    private static Snapshot _snapshot = new([], ReverseSynonyms.Empty);
 
     /// <summary>Sinônimos do glossário publicado (0053), do mesmo cache dos itens.</summary>
     public static async Task<ReverseSynonyms> SynonymsAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
     {
-        await EnsureAsync(repository, cancellationToken);
-        lock (Gate) return _synonyms;
+        return (await EnsureAsync(repository, cancellationToken)).Synonyms;
     }
 
     /// <summary>Itens preparados, recarregando do banco só quando a marca muda.</summary>
     public static async Task<IReadOnlyList<ReverseIndexEntry>> EntriesAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
     {
-        await EnsureAsync(repository, cancellationToken);
-        lock (Gate) return _prepared.Select(p => p.Entry).ToList();
+        return (await EnsureAsync(repository, cancellationToken)).Items.Select(p => p.Entry).ToList();
     }
 
-    private static async Task<List<Prepared>> EnsureAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
+    private static async Task<Snapshot> EnsureAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
     {
         var stamp = await repository.GetIndexStampAsync(cancellationToken);
         lock (Gate)
-            if (stamp == _stamp) return _prepared;
+            if (stamp == _stamp) return _snapshot;
+        // 0070: uma carga por vez (quem chega depois encontra pronto) e só o começo do texto original fica no cache
+        return await HeavyReads.RunAsync(async () =>
+        {
+            lock (Gate)
+                if (stamp == _stamp) return _snapshot;
+            return await LoadAsync(repository, stamp, cancellationToken);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// O que fica do texto original de cada item no cache (0070): a primeira linha + o texto já limpo, cortado em 260 —
+    /// o suficiente para <see cref="Snippet"/> dar o mesmo trecho (220) que daria com o texto inteiro.
+    /// </summary>
+    public static string PreviewBody(string body)
+    {
+        var newline = body.IndexOf('\n');
+        if (newline < 0) return body;
+        var lines = body[(newline + 1)..].Split('\n').Select(l => MarkdownNoise().Replace(l, " ").Trim()).Where(l => l.Length > 0);
+        var text = Spaces().Replace(string.Join(" · ", lines), " ").Trim();
+        var preview = body[..newline] + "\n" + (text.Length <= 260 ? text : text[..260]);
+        return preview.Length < body.Length ? preview : body;
+    }
+
+    private static async Task<Snapshot> LoadAsync(Contracts.IKnowledgeRepository repository, (int Count, DateTimeOffset? LastUpdate) stamp,
+        CancellationToken cancellationToken)
+    {
         var entries = await repository.GetIndexEntriesAsync(null, cancellationToken);
-        var prepared = entries.Select(e => new Prepared(e,
+        var prepared = entries.Select(e => new Prepared(e.WithBody(PreviewBody(e.Body)),
             ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
             ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
             ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
@@ -50,9 +75,8 @@ public static partial class ReverseSearch
         lock (Gate)
         {
             _stamp = stamp;
-            _prepared = prepared;
-            _synonyms = synonyms;
-            return _prepared;
+            _snapshot = new Snapshot(prepared, synonyms);
+            return _snapshot;
         }
     }
 
@@ -66,9 +90,8 @@ public static partial class ReverseSearch
         IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType, int limit, bool includeRemoved,
         IReadOnlyDictionary<string, string> moduleNames, CancellationToken cancellationToken)
     {
-        var prepared = await EnsureAsync(repository, cancellationToken);
-        ReverseSynonyms synonyms;
-        lock (Gate) synonyms = _synonyms;
+        var snapshot = await EnsureAsync(repository, cancellationToken);
+        var (prepared, synonyms) = (snapshot.Items, snapshot.Synonyms);
         var exactIds = IdPattern().Matches(query ?? string.Empty)
             .Select(m => ReverseItemKinds.ParseRef(m.Value)).Where(r => r is not null).Select(r => r!.Value).ToList();
         var terms = ArchitectureSearch.Terms(IdPattern().Replace(query ?? string.Empty, " "));

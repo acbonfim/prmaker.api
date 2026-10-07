@@ -633,6 +633,18 @@ public class ReverseIndexEntry
 
     public string Ref => $"{ModuleKey}#{ItemId}";
 
+    /// <summary>
+    /// 0070: no cache da busca fica só o necessário para o trecho do resultado; o texto inteiro vem do banco para os
+    /// itens pedidos. Devolve uma cópia (a entidade não muda).
+    /// </summary>
+    public ReverseIndexEntry WithBody(string body)
+    {
+        if (ReferenceEquals(body, Body)) return this;
+        var copy = (ReverseIndexEntry)MemberwiseClone();
+        copy.Body = body;
+        return copy;
+    }
+
     /// <summary>0070: item lido sem o texto (sumário do documento). Não grave com ele.</summary>
     public static ReverseIndexEntry Head(string moduleKey, string docType, string itemId, string kind, string title, int level, int order, bool removed,
         List<string>? tags = null, List<string>? tables = null, List<string>? modules = null) => new()

@@ -75,6 +75,14 @@ public class ArchitectureSection
         Audience = audience, UpdatedAt = updatedAt, UpdatedBy = updatedBy, _headLength = length
     };
 
+    /// <summary>0070: seção lida em duas partes (metadados + texto em streaming), sem rastreamento. Não grave com ela.</summary>
+    public static ArchitectureSection WithContent(Guid id, Guid projectId, string key, string title, int order, string contentHash, int version, string source,
+        string audience, DateTimeOffset updatedAt, string updatedBy, string content) => new()
+    {
+        Id = id, ProjectId = projectId, Key = key, Title = title, Order = order, ContentHash = contentHash, Version = version, Source = source,
+        Audience = audience, UpdatedAt = updatedAt, UpdatedBy = updatedBy, Content = content
+    };
+
     public ArchitectureSection(Guid projectId, string key, string? audience = null)
     {
         Id = Guid.NewGuid();

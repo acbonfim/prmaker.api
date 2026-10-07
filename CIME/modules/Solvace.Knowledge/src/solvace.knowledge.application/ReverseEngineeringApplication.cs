@@ -823,6 +823,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var names = await ModuleNamesAsync(cancellationToken);
         var module = string.IsNullOrWhiteSpace(defaultModule) ? null : ArchitectureProject.NormalizeKey(defaultModule);
         var result = new List<ReverseItemResponse>();
+        var bodies = new Dictionary<Guid, string>();
         foreach (var raw in refs.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().Take(20))
         {
             var parsed = ReverseItemKinds.ParseRef(raw) ?? throw new DomainException($"Referência inválida: '{raw}' (use <módulo>#RN-012).");
@@ -833,11 +834,14 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 throw new DomainException($"{parsed.Id} existe em {matches.Count} módulos ({string.Join(", ", matches.Select(m => m.ModuleKey).Take(8))}) — use <módulo>#{parsed.Id}.");
             var e = matches[0];
             var hit = ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body));
+            // 0070: o cache da busca guarda só o começo do texto — o texto inteiro do item vem do banco
+            if (!bodies.ContainsKey(e.Id))
+                foreach (var (id, body) in await repository.GetIndexBodiesAsync([e.Id], cancellationToken)) bodies[id] = body;
             result.Add(new ReverseItemResponse
             {
                 Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
                 KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
-                Removed = hit.Removed, Body = e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
+                Removed = hit.Removed, Body = bodies.GetValueOrDefault(e.Id) ?? e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
                 ReferencedBy = entries.Where(x => x.Id != e.Id && (x.Refs.Contains(e.Ref) || (x.ModuleKey == e.ModuleKey && x.Refs.Contains(e.ItemId))))
                     .Select(x => x.Ref).Take(40).ToList(),
                 Traps = (await repository.GetTrapsAsync(e.ModuleKey, cancellationToken))

@@ -333,11 +333,17 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         // os trechos dos resultados vêm do banco — antes cada busca lia a Base inteira (12 s e OOM de 512 MiB).
         var sections = projects.SelectMany(p => p.Sections).ToList();
         ArchitectureSearch.Forget(sections.Select(s => s.Id).ToHashSet());
-        foreach (var batch in sections.Where(s => ArchitectureSearch.Cached(s) is null).Chunk(12))
-        {
-            var contents = await repository.GetSectionContentsAsync(batch.Select(s => s.Id).ToList(), cancellationToken);
-            foreach (var section in batch) ArchitectureSearch.Remember(section, contents.GetValueOrDefault(section.Id) ?? string.Empty);
-        }
+        if (sections.Any(s => ArchitectureSearch.Cached(s) is null))
+            await HeavyReads.RunAsync(async () =>
+            {
+                // lotes de até ~3 milhões de caracteres (o EF guarda o lote inteiro antes de devolver)
+                foreach (var batch in HeavyReads.BySize(sections.Where(s => ArchitectureSearch.Cached(s) is null), s => s.Length))
+                {
+                    var contents = await repository.GetSectionContentsAsync(batch.Select(s => s.Id).ToList(), cancellationToken);
+                    foreach (var section in batch) ArchitectureSearch.Remember(section, contents.GetValueOrDefault(section.Id) ?? string.Empty);
+                }
+                return true;
+            }, cancellationToken);
         var candidates = ArchitectureSearch.Score(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms,
             s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content));
         var inSections = candidates.Where(c => c.Section is not null).ToList();
@@ -424,7 +430,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return Manifest(projects, articles, environment, await TrapsStampAsync(cancellationToken));
     }
 
-    public async Task<(ArchitectureExportManifest Manifest, byte[] Zip)> ExportAsync(CancellationToken cancellationToken)
+    public Task<(ArchitectureExportManifest Manifest, byte[] Zip)> ExportAsync(CancellationToken cancellationToken) =>
+        HeavyReads.RunAsync(() => BuildExportAsync(cancellationToken), cancellationToken);
+
+    private async Task<(ArchitectureExportManifest Manifest, byte[] Zip)> BuildExportAsync(CancellationToken cancellationToken)
     {
         var (projects, articles, environment) = await LoadAllAsync(cancellationToken);
         var manifest = Manifest(projects, articles, environment, await TrapsStampAsync(cancellationToken));

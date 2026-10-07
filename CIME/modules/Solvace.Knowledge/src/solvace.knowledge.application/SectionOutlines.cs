@@ -19,10 +19,14 @@ public static class SectionOutlines
     {
         var hash = Hash(head);
         if (Cache.TryGetValue(head.Id, out var cached) && cached.Hash == hash) return cached.Chunks;
-        var content = (await repository.GetSectionContentsAsync([head.Id], cancellationToken)).GetValueOrDefault(head.Id) ?? string.Empty;
-        var chunks = MarkdownOutline.Split(content);
-        if (Cache.Count > 2000) Cache.Clear();
-        Cache[head.Id] = (hash, chunks);
-        return chunks;
+        return await HeavyReads.RunAsync(async () =>
+        {
+            if (Cache.TryGetValue(head.Id, out var again) && again.Hash == hash) return again.Chunks;
+            var content = (await repository.GetSectionContentsAsync([head.Id], cancellationToken)).GetValueOrDefault(head.Id) ?? string.Empty;
+            var chunks = MarkdownOutline.Split(content);
+            if (Cache.Count > 2000) Cache.Clear();
+            Cache[head.Id] = (hash, chunks);
+            return chunks;
+        }, cancellationToken);
     }
 }

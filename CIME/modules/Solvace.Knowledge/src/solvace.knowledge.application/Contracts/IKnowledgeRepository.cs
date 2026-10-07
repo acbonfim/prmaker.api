@@ -118,6 +118,10 @@ public interface IKnowledgeRepository
         (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => docType == null || e.DocType == docType)
             .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList();
 
+    /// <summary>Texto inteiro dos itens pedidos (id → texto).</summary>
+    async Task<Dictionary<Guid, string>> GetIndexBodiesAsync(IReadOnlyCollection<Guid> entryIds, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => entryIds.Contains(e.Id)).ToDictionary(e => e.Id, e => e.Body);
+
     /// <summary>Sugestões pendentes com seção, contadas por (projeto, seção).</summary>
     async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken) =>
         (await GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))

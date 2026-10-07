@@ -221,12 +221,54 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         return project;
     }
 
-    public Task<ArchitectureSection?> GetSectionWithContentAsync(Guid sectionId, CancellationToken cancellationToken) =>
-        context.Sections.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sectionId, cancellationToken);
+    public async Task<ArchitectureSection?> GetSectionWithContentAsync(Guid sectionId, CancellationToken cancellationToken)
+    {
+        var head = await context.Sections.AsNoTracking().Where(s => s.Id == sectionId)
+            .Select(s => new { s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version, s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (head is null) return null;
+        var content = (await GetSectionContentsAsync([sectionId], cancellationToken)).GetValueOrDefault(sectionId) ?? string.Empty;
+        return ArchitectureSection.WithContent(head.Id, head.ProjectId, head.Key, head.Title, head.Order, head.ContentHash, head.Version, head.Source,
+            head.Audience, head.UpdatedAt, head.UpdatedBy, content);
+    }
 
-    public Task<Dictionary<Guid, string>> GetSectionContentsAsync(IReadOnlyCollection<Guid> sectionIds, CancellationToken cancellationToken) =>
-        context.Sections.AsNoTracking().Where(s => sectionIds.Contains(s.Id)).Select(s => new { s.Id, s.Content })
-            .ToDictionaryAsync(s => s.Id, s => s.Content, cancellationToken);
+    /// <summary>
+    /// 0070: texto das seções lido em streaming (<see cref="CommandBehavior.SequentialAccess"/> + <c>TextReader</c>). Pelo EF, cada
+    /// texto grande alugava do <c>ArrayPool</c> compartilhado um <c>char[]</c> do tamanho do documento (2–8 MB) e o pool guardava
+    /// um por thread: ~165 MB retidos depois de ler a Base para a busca (com 512 MiB, o OOM). O EF ainda guardaria o
+    /// resultado inteiro (retry); aqui o retry continua pela estratégia de execução.
+    /// </summary>
+    public async Task<Dictionary<Guid, string>> GetSectionContentsAsync(IReadOnlyCollection<Guid> sectionIds, CancellationToken cancellationToken)
+    {
+        if (sectionIds.Count == 0) return [];
+        var ids = sectionIds.Distinct().ToArray();
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async ct =>
+        {
+            var result = new Dictionary<Guid, string>(ids.Length);
+            var connection = context.Database.GetDbConnection();
+            var opened = connection.State != System.Data.ConnectionState.Open;
+            if (opened) await context.Database.OpenConnectionAsync(ct);
+            try
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"""SELECT "Id", "Content" FROM "{KnowledgeContext.Schema}"."ArchitectureSections" WHERE "Id" = ANY(@ids)""";
+                command.Parameters.Add(new Npgsql.NpgsqlParameter("ids", ids));
+                await using var reader = await command.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess, ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var id = reader.GetGuid(0);
+                    using var text = reader.GetTextReader(1);
+                    result[id] = await text.ReadToEndAsync(ct);
+                }
+            }
+            finally
+            {
+                if (opened) await context.Database.CloseConnectionAsync();
+            }
+            return result;
+        }, cancellationToken);
+    }
 
     public async Task<List<string?>> GetSectionSlicesAsync(IReadOnlyList<(Guid SectionId, int Start, int Length)> slices, CancellationToken cancellationToken)
     {
@@ -269,6 +311,10 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         return rows.Select(r => ReverseIndexEntry.Head(r.ModuleKey, r.DocType, r.ItemId, r.Kind, r.Title, r.Level, r.Order, r.Removed, r.Tags, r.Tables, r.Modules))
             .ToList();
     }
+
+    public Task<Dictionary<Guid, string>> GetIndexBodiesAsync(IReadOnlyCollection<Guid> entryIds, CancellationToken cancellationToken) =>
+        context.ReverseIndexEntries.AsNoTracking().Where(e => entryIds.Contains(e.Id)).Select(e => new { e.Id, e.Body })
+            .ToDictionaryAsync(e => e.Id, e => e.Body, cancellationToken);
 
     public async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken)
     {
