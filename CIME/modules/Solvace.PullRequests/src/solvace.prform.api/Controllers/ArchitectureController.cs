@@ -54,7 +54,7 @@ public class ArchitectureController(IArchitectureApplication application, solvac
 
     [Authorize(Roles = "admin")]
     [HttpPut("projects/{key}/sections/{section}")]
-    [RequestSizeLimit(2 * 1024 * 1024)]
+    [RequestSizeLimit(16 * 1024 * 1024)] // seção re-* até 5 milhões de caracteres (acento = 2 bytes)
     public Task<ActionResult<ArchitectureSectionResponse>> WriteSection([FromRoute] string key, [FromRoute] string section,
         [FromBody] WriteArchitectureSectionRequest request, CancellationToken ct) =>
         Run<ArchitectureSectionResponse>(async () => Ok(await application.WriteSectionAsync(key, section, request, await ActorAsync(ct), ct)));

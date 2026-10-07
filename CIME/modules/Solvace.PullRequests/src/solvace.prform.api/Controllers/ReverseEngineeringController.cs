@@ -73,7 +73,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>Checagem do documento sem gravar (a skill confere antes de enviar).</summary>
     [HttpPost("modules/{key}/lint")]
-    [RequestSizeLimit(4 * 1024 * 1024)]
+    [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseLintResult>> Lint([FromRoute] string key, [FromBody] LintReverseDocumentRequest request, CancellationToken ct) =>
         Run<ReverseLintResult>(async () => Ok(await application.LintAsync(key, request, ct)));
 
@@ -87,7 +87,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<ReverseRevisionResponse>(async () => Ok(await application.GetRevisionAsync(id, Roles(), ct)));
 
     [HttpPut("revisions/{id:guid}")]
-    [RequestSizeLimit(4 * 1024 * 1024)]
+    [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseRevisionResponse>> SaveRevision([FromRoute] Guid id, [FromBody] SaveReverseRevisionRequest request, CancellationToken ct) =>
         Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SaveRevisionAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 

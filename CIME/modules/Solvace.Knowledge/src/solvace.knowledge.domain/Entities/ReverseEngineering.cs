@@ -166,7 +166,7 @@ public static class ReverseRevisionMode
 /// </summary>
 public class ReverseRevision
 {
-    public const int MaxContentLength = 2_000_000; // 0066: era 600 mil — o revamp-users passou (878 mil) e a compactação custou mais que gerar
+    public const int MaxContentLength = 5_000_000; // 0066: era 600 mil — o revamp-users passou (878 mil) e a compactação custou mais que gerar; depois 2 milhões também batia
     public const int MaxSummaryLength = 4_000;
     public const int MaxNoteLength = 4_000;
 
