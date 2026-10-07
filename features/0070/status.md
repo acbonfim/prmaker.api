@@ -12,7 +12,8 @@
 | F3 | ✅ seção grande da Base Solvace em janela; sumário só com ## quando há muitos cabeçalhos | Claude | front 633bfa1, ce2351d |
 | F4 | ✅ andamento do plano: últimas 200 por lista; timeline do card: últimas 80 (anteriores num clique) | Claude | front 633bfa1 |
 | T1 | ✅ local (abaixo) | Claude | — |
-| T2 | ⏳ depois do deploy: logs do Cloud Run | — | — |
+| B6 | ✅ cache das leituras da Base por instância, validado por uma marca do banco (1 consulta) — PR de continuação | Claude | ver PR |
+| T2 | ✅ deploy #120/#63 (revisão 00122): sem OOM; Server-Timing mostrou ~60 ms por consulta (banco em outra região) → B6 | Claude | — |
 
 ## T1 — local (fora do git em `.t0070/`)
 Postgres 18 isolado (docker, porta 55470) com a Base real semeada do espelho local (94 projetos, 407 seções, 21,7 M
@@ -47,6 +48,16 @@ grafo, seções, versões, índice, busca da ER, items, impact, 5 buscas da Base
 
 Tempo real (`e2e/rt.mjs`): sessão nova + 10 eventos de andamento → 0 recargas de `GET modules` (antes, uma a cada 4 s);
 "gerando" aparece na lista.
+
+## B6 — depois do deploy
+O `Server-Timing` em produção mostrou o que faltava: ~60 ms por consulta (banco em Salt Lake City, API em us-central1) e
+rotas com 6–10 consultas (`modules` 650 ms, `modules/{key}` 900 ms de servidor). As leituras de cabeças de projeto,
+módulos, revisões abertas, contagens do índice e sugestões pendentes passam a sair de um cache por instância, validado
+a cada requisição por UMA consulta (quantidade + soma do `xmin` das tabelas da Base; o índice da ER por quantidade +
+última atualização — sem depender de relógio). Local: `modules` 6 → 1 SQL, `modules/{key}` 10 → 3, `projects` 5 → 1,
+`graph` → 1; respostas iguais à master; gravação/andamento numa instância aparece na outra na hora (`invalidate.py`).
+Heap limitado a 60% (`DOTNET_GCHeapHardLimitPercent`) segura o RSS abaixo de 512 MB no estresse extremo mas dá 1 OOM
+gerenciado; ficou o padrão (75%, 0 OOM) — decidir junto com a memória do Cloud Run.
 
 ## Notas
 - A "chamada dupla" vista no DevTools era o preflight CORS (OPTIONS) — o front e a API estão em domínios diferentes e o
