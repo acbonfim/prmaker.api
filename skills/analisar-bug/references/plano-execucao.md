@@ -150,6 +150,8 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
 - **Worktree por card**: `WT="$(bash $PLAN worktree <card> <pasta-do-repo> <branch> <base>)"` cria
   `<pasta-do-repo>/../.prmake-wt/<card>/<repo>`; trabalhe com `git -C "$WT" ...` e caminhos absolutos dentro de `$WT`.
   O executor remove o worktree 7 dias depois que o plano termina. Fora do executor: `PRMAKE_WORKTREE=1` faz o mesmo.
+  Projeto Node: o `worktree` ja liga o `node_modules` do clone principal (macOS/Linux) — nao instale dependencias nem
+  crie o link na mao. Testes so pelo `$PLAN test <card> "$WT"` (ver `$REF correcao 8`).
 - **MCP** (`mcp__prmake__*`, 0039/0041): `prmake_plan`, `prmake_steps`, `prmake_step`, `prmake_advance`, `prmake_log`,
   `prmake_checkpoint`, `prmake_control`, `prmake_block`/`prmake_unblock`, `prmake_ask`/`prmake_answer`/`prmake_answers`,
   `prmake_notes`, `prmake_attachment`, `prmake_link`, `prmake_correction`, `prmake_plan_status`, `prmake_config`,

@@ -111,6 +111,8 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   (`ask`, `block`, etapa `waiting`) e voce **encerra a vez** — o PRMake retoma esta mesma sessao quando a pessoa agir
   (a correcao, numa sessao nova: o prompt pede `contexto-correcao`).
   Correcao sempre no worktree do card (o `branches` ja imprime os comandos com `$WT`). Detalhes: `$REF plano executor`.
+  Testes da correcao so pelo `$PLAN test <card> "$WT"` (so o que mudou, uma vez, com limite) — `LENTO` = o CI do PR
+  valida, nao repita. Retomado porque "o CI de um PR falhou": `$REF correcao 8` (falha que a base ja tem nao e sua).
 - **Repositorios da maquina (0048)**: as pastas vem do mapa da maquina (`~/.prmake/repos.json`, nome do repositorio
   pelo remote → pasta) — nunca suponha `~/repos/solvace/...`. Ache com `revamp-repos.sh where <repo>` (ou `list`); o
   `branches` ja imprime `pasta=`. Fora do mapa ou com mais de um clone (`where` exit 2/3, `branches` exit 4): pergunte

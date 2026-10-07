@@ -159,6 +159,16 @@ public static class ExecutionLinkStatus
     public static readonly IReadOnlySet<string> PullRequestStatuses = new HashSet<string> { Open, Merged, Closed };
 }
 
+/// <summary>0069: CI do PR aberto (check runs + statuses do commit de cabeça no GitHub).</summary>
+public static class ExecutionLinkChecks
+{
+    public const string Pending = "pending";
+    public const string Success = "success";
+    public const string Failure = "failure";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Pending, Success, Failure };
+}
+
 public static class ExecutionQuestionStatus
 {
     public const string Open = "open";

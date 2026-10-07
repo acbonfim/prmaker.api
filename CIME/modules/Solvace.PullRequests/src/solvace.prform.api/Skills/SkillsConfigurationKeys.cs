@@ -48,4 +48,8 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringGeneration = "ReverseEngineeringGeneration";
     /// <summary>0063: etapas padrão do plano de análise da analisar-bug (JSON: [{key,title,description,kind?}]) — a skill usa quando o plano nasce.</summary>
     public const string AnalysisDefaultSteps = "AnalysisDefaultSteps";
+    /// <summary>0069: testes locais da correção — "changed" (só os specs do que mudou, uma vez) ou "off" (só o CI do PR).</summary>
+    public const string CorrectionLocalTests = "CorrectionLocalTests";
+    /// <summary>0069: limite em segundos dos testes locais da correção (passou → segue para o PR; o CI valida).</summary>
+    public const string CorrectionTestMaxSeconds = "CorrectionTestMaxSeconds";
 }

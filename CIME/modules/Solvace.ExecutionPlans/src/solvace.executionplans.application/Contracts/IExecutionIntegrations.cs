@@ -1,3 +1,5 @@
+using solvace.executionplans.domain.Entities;
+
 namespace solvace.executionplans.application.Contracts;
 
 /// <summary>PR do GitHub registrado no card (0024) — status normalizado: open | merged | closed.</summary>
@@ -10,7 +12,13 @@ public record CardPullRequest(string Repository, int? Number, string Url, string
 public interface IExecutionPullRequestSource
 {
     Task<IReadOnlyList<CardPullRequest>> ListByCardAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>0069: CI do PR aberto (cache de 1 min). null = não deu para consultar (fica o último lido).</summary>
+    Task<CardPullRequestChecks?> GetChecksAsync(string repository, int number, CancellationToken cancellationToken);
 }
+
+/// <summary>0069: CI de um PR — State pending | success | failure; null = o commit não tem CI. HeadSha = commit avaliado.</summary>
+public record CardPullRequestChecks(string? State, string? HeadSha, IReadOnlyList<ExecutionCheckItem> Failed);
 
 /// <summary>
 /// "Salvar o card" (0037): garante o registro do card no PRMake (PullRequest) — o mesmo do botão Salvar da tela — assim

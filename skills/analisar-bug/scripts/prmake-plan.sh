@@ -47,6 +47,9 @@
 #   note        <card> <texto|-> [arquivo...] [--step <key>]  o Claude comenta no plano (com anexos)
 #   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
+#   test        <card> <worktree> [<base-ref>]           testes da correcao (0069): so o que mudou, uma vez, com o limite
+#                                                        do PRMake (CorrectionLocalTests/CorrectionTestMaxSeconds); exit
+#                                                        do test-changed.sh (0 ok, 1 falhou, 124 lento, 3 sem runner)
 #   control     <card>                                   heartbeat; exit 0 = seguir, 10 = pausado, 11 = parar
 #   wait        <card> [segundos=540]                    espera sair da pausa; exit 0 = continuar, 10 = ainda pausado, 11 = parar
 #   watch       <card> [segundos=28800]                  VIGIA (rode em segundo plano): termina quando algo muda no PRMake
@@ -1160,17 +1163,38 @@ case "$CMD" in
     [[ -d "$REPO_DIR/.git" || -f "$REPO_DIR/.git" ]] || die "nao e um repositorio git: $REPO_DIR"
     REPO_DIR="$(cd "$REPO_DIR" && pwd)"
     WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD/$(basename "$REPO_DIR")"
-    if [[ -e "$WT/.git" ]]; then
-      echo "$WT"; exit 0
+    if [[ ! -e "$WT/.git" ]]; then
+      mkdir -p "$(dirname "$WT")"
+      git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
+      if git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$BR"; then
+        git -C "$REPO_DIR" worktree add "$WT" "$BR" >&2 || die "nao consegui criar o worktree em $WT"
+      else
+        git -C "$REPO_DIR" worktree add -b "$BR" "$WT" "origin/$BASE_BR" >&2 || die "nao consegui criar o worktree em $WT"
+      fi
     fi
-    mkdir -p "$(dirname "$WT")"
-    git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
-    if git -C "$REPO_DIR" show-ref --verify --quiet "refs/heads/$BR"; then
-      git -C "$REPO_DIR" worktree add "$WT" "$BR" >&2 || die "nao consegui criar o worktree em $WT"
-    else
-      git -C "$REPO_DIR" worktree add -b "$BR" "$WT" "origin/$BASE_BR" >&2 || die "nao consegui criar o worktree em $WT"
+    # 0069: testes (test-changed.sh) usam o node_modules do clone principal — so o link, ignorado pelo git; o
+    # "worktree remove --force" do executor apaga o link, nao o alvo. Git Bash: o ln -s copiaria a pasta, nao liga.
+    if [[ -f "$WT/package.json" && -d "$REPO_DIR/node_modules" && ! -e "$WT/node_modules" ]] \
+       && git -C "$WT" check-ignore -q node_modules 2>/dev/null; then
+      case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        *) ln -s "$REPO_DIR/node_modules" "$WT/node_modules" 2>/dev/null || true ;;
+      esac
     fi
     echo "$WT"
+    ;;
+
+  test)
+    # 0069: testes locais da correcao com a configuracao do PRMake — "off" deixa so o CI do PR (que o PRMake acompanha).
+    WT="${1:?worktree do card}"; shift
+    [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
+    MODE="$( [[ -s "$SETTINGS" ]] && setting CorrectionLocalTests 2>/dev/null)"; MODE="$(printf '%s' "${MODE:-changed}" | tr '[:upper:]' '[:lower:]')"
+    MAX="$( [[ -s "$SETTINGS" ]] && setting CorrectionTestMaxSeconds 2>/dev/null)"; [[ "$MAX" =~ ^[0-9]+$ ]] || MAX=420
+    if [[ "$MODE" == off ]]; then
+      echo "DESLIGADO: testes locais desligados no PRMake (CorrectionLocalTests=off) — siga para o PR; o PRMake acompanha o CI."
+      exit 0
+    fi
+    exec bash "$(dirname "$0")/test-changed.sh" "$WT" "$@" --max-seconds "$MAX"
     ;;
 
   notes)
