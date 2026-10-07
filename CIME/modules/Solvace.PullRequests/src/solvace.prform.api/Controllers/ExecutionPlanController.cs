@@ -127,8 +127,14 @@ public class ExecutionPlanController : ControllerBase
         Run<ExecutionQuestionResponse>(async () => Ok(await _application.AnswerAsync(id, questionId, request.Answer, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
     [HttpPost("{id:guid}/questions/{questionId:guid}/cancel")]
-    public Task<ActionResult<ExecutionQuestionResponse>> CancelQuestion([FromRoute] Guid id, [FromRoute] Guid questionId, CancellationToken ct) =>
-        Run<ExecutionQuestionResponse>(async () => Ok(await _application.CancelQuestionAsync(id, questionId, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+    public Task<ActionResult<ExecutionQuestionResponse>> CancelQuestion([FromRoute] Guid id, [FromRoute] Guid questionId,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelExecutionQuestionRequest? request, CancellationToken ct) =>
+        Run<ExecutionQuestionResponse>(async () => Ok(await _application.CancelQuestionAsync(id, questionId, request?.Reason, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Cancela várias perguntas (número ou id) com o motivo — a skill, quando uma nova rodada as deixa sem sentido.</summary>
+    [HttpPost("{id:guid}/questions/cancel")]
+    public Task<ActionResult<List<ExecutionQuestionResponse>>> CancelQuestions([FromRoute] Guid id, [FromBody] CancelExecutionQuestionsRequest request, CancellationToken ct) =>
+        Run<List<ExecutionQuestionResponse>>(async () => Ok(await _application.CancelQuestionsAsync(id, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
     /// <summary>Anexa um link à etapa (chamado, PR, documento). Chamado com blocksStep deixa a etapa aguardando — 0024.</summary>
     [HttpPost("{id:guid}/steps/{key}/links")]

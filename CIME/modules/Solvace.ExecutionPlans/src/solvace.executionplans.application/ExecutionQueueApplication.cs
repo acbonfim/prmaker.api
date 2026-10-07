@@ -1019,7 +1019,17 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         $"Retomando o card {r.CardNumber} pelo PRMake ({SourceText(r)}). Antes de continuar, veja o que mudou na tela enquanto voce estava " +
         $"parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card {r.CardNumber}) " +
         $"— sem o MCP na sessao: prmake-plan.sh resume-info/notes/answers {r.CardNumber} — e siga de onde parou, conforme a skill analisar-bug." +
+        RevisitQuestionsText +
         ExecutorSuffix(r);
+
+    /// <summary>
+    /// Comentário/anexo novo costuma mudar a análise: as perguntas antigas que perderam o sentido não podem ficar abertas
+    /// esperando o usuário (card 75648 — ele teve que responder "essa pergunta foi cancelada" à mão).
+    /// </summary>
+    private const string RevisitQuestionsText =
+        " Se o que mudou (comentario, anexo, resposta) muda a analise ou as solucoes, revise as perguntas ainda abertas: a revisada " +
+        "vai como pergunta nova com replaces (prmake_ask) e a que perdeu o sentido e cancelada com o motivo (prmake_cancel_questions) " +
+        "— so ficam abertas as que ainda decidem o plano.";
 
     private static string ExecutorSuffix(ExecutionRequest r)
     {

@@ -239,6 +239,8 @@ public class ExecutionQuestionResponse
     public string? AnsweredBy { get; set; }
     public string? AnsweredVia { get; set; }
     public DateTimeOffset? AnsweredAt { get; set; }
+    public string? CancelReason { get; set; }
+    public int? ReplacedBy { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
 }
@@ -513,6 +515,8 @@ public static class ExecutionPlanMappings
         AnsweredBy = q.AnsweredBy,
         AnsweredVia = q.AnsweredVia,
         AnsweredAt = q.AnsweredAt,
+        CancelReason = q.CancelReason,
+        ReplacedBy = q.ReplacedBy,
         CreatedBy = q.CreatedBy,
         CreatedAt = q.CreatedAt
     };

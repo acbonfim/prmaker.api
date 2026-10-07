@@ -108,11 +108,30 @@ public class ExecutionQuestionItem
     public string Text { get; set; } = string.Empty;
     public List<ExecutionQuestionOption>? Options { get; set; }
     public bool AllowFreeText { get; set; } = true;
+
+    /// <summary>
+    /// Números das perguntas anteriores que esta substitui (nova rodada da análise): abertas são canceladas,
+    /// respondidas ficam marcadas como superadas.
+    /// </summary>
+    public List<int>? Replaces { get; set; }
 }
 
 public class AskExecutionQuestionsRequest
 {
     public List<ExecutionQuestionItem> Questions { get; set; } = [];
+}
+
+/// <summary>Cancela perguntas que perderam o sentido (por número ou id), com o motivo mostrado na tela.</summary>
+public class CancelExecutionQuestionsRequest
+{
+    public List<int>? Numbers { get; set; }
+    public List<Guid>? Ids { get; set; }
+    public string? Reason { get; set; }
+}
+
+public class CancelExecutionQuestionRequest
+{
+    public string? Reason { get; set; }
 }
 
 public class AnswerExecutionQuestionRequest
