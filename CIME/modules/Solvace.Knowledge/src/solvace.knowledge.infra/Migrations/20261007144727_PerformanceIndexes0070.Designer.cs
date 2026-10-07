@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using solvace.knowledge.infra.Contexts;
@@ -11,9 +12,11 @@ using solvace.knowledge.infra.Contexts;
 namespace solvace.knowledge.infra.Migrations
 {
     [DbContext(typeof(KnowledgeContext))]
-    partial class KnowledgeContextModelSnapshot : ModelSnapshot
+    [Migration("20261007144727_PerformanceIndexes0070")]
+    partial class PerformanceIndexes0070
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

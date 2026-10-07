@@ -63,6 +63,12 @@ All modules live under `CIME/modules/`. Each follows clean architecture layers: 
 - Connection strings: `ConnectionStrings:PrformDatabase` (host) and `ConnectionStrings:AuthDatabase` (Cime.Auth). In production they come from Secret Manager; `appsettings.json` holds no real secrets.
 - **DateTime**: `DateTime` maps to `timestamp without time zone` stored with `Kind=Unspecified` (`PostgresConventions.UseUnspecifiedDateTimes`, same behavior the old MySQL had — JSON stays without `Z`); `DateTimeOffset` maps to `timestamptz`. In Cime.Auth, dates are written with `DateTime.Now` (Npgsql rejects `Kind=Utc` in `timestamp` columns).
 - **Text comparisons are case-sensitive** in PostgreSQL: when a query must ignore case, use `ToLower()` on both sides. Queries whose order matters need an explicit `OrderBy`.
+- **Performance (0070)** — the API runs on Cloud Run with 512 MiB and the database is in another region (each round trip costs tens of ms):
+  - Screen reads use projections without big text (`GetProjectHeadsAsync`, `GetIndexHeadsAsync`) and count in the database (`GROUP BY`).
+  - Never load the whole Base (`GetProjectsAsync`) to answer one item. Large text is read by section, in streaming (`GetSectionContentsAsync`), or in slices (`GetSectionSlicesAsync`).
+  - Large documents go to the screen in parts (`?content=false` + `sections/{s}/outline|parts`).
+  - Heavy loads go through `HeavyReads` (one at a time).
+  - Measure with the `Server-Timing` header and the "Requisição lenta" log (≥ 300 ms, with the SQL count). Locally, `/debug/memory` (Development) gives live memory after a full GC.
 
 ### Authentication
 

@@ -52,6 +52,25 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     public Task<ActionResult<ArchitectureSectionResponse>> Section([FromRoute] string key, [FromRoute] string section, CancellationToken ct) =>
         Run<ArchitectureSectionResponse>(async () => Ok(await application.GetSectionAsync(key, section, ct)));
 
+    /// <summary>0070: sumário da seção em pedaços (sem o texto) — a tela busca os pedaços sob demanda.</summary>
+    [HttpGet("projects/{key}/sections/{section}/outline")]
+    public Task<ActionResult<ArchitectureSectionOutlineResponse>> SectionOutline([FromRoute] string key, [FromRoute] string section, CancellationToken ct) =>
+        Run<ArchitectureSectionOutlineResponse>(async () => Ok(await application.GetSectionOutlineAsync(key, section, ct)));
+
+    /// <summary>
+    /// 0070: texto dos pedaços <c>from..to</c> (no máximo 8 por pedido). Com <c>v</c> igual à marca atual a resposta é imutável
+    /// (o navegador guarda em cache); marca diferente = a seção mudou, a tela recarrega o sumário.
+    /// </summary>
+    [HttpGet("projects/{key}/sections/{section}/parts")]
+    public Task<ActionResult<ArchitectureSectionPartsResponse>> SectionParts([FromRoute] string key, [FromRoute] string section, [FromQuery] int from = 0,
+        [FromQuery] int? to = null, [FromQuery] string? v = null, CancellationToken ct = default) =>
+        Run<ArchitectureSectionPartsResponse>(async () =>
+        {
+            var parts = await application.GetSectionPartsAsync(key, section, from, to ?? from, ct);
+            Response.Headers.CacheControl = v is not null && v == parts.Hash ? "private, max-age=604800, immutable" : "no-store";
+            return Ok(parts);
+        });
+
     [Authorize(Roles = "admin")]
     [HttpPut("projects/{key}/sections/{section}")]
     [RequestSizeLimit(16 * 1024 * 1024)] // seção re-* até 5 milhões de caracteres (acento = 2 bytes)

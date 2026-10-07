@@ -17,6 +17,10 @@ public interface IArchitectureApplication
     Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken);
     Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken);
     Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken);
+    /// <summary>0070: sumário da seção em pedaços, sem o texto.</summary>
+    Task<ArchitectureSectionOutlineResponse> GetSectionOutlineAsync(string projectKey, string sectionKey, CancellationToken cancellationToken);
+    /// <summary>0070: texto dos pedaços <c>from..to</c> da seção.</summary>
+    Task<ArchitectureSectionPartsResponse> GetSectionPartsAsync(string projectKey, string sectionKey, int from, int to, CancellationToken cancellationToken);
     Task<ArchitectureProjectResponse> UpsertProjectAsync(string key, UpsertArchitectureProjectRequest request, string actor, CancellationToken cancellationToken);
     Task DeleteProjectAsync(string key, string actor, CancellationToken cancellationToken);
     Task<ArchitectureSectionResponse> WriteSectionAsync(string projectKey, string sectionKey, WriteArchitectureSectionRequest request, string actor, CancellationToken cancellationToken);
@@ -53,11 +57,13 @@ public interface IArchitectureApplication
 public interface IReverseEngineeringApplication
 {
     Task<ReverseSettingsResponse> GetSettingsAsync(IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
-    Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken);
+    /// <param name="withTemplate">0070: false = sem o modelo (a tela não usa; a skill usa).</param>
+    Task<List<ReverseDocTypeResponse>> GetDocTypesAsync(CancellationToken cancellationToken, bool withTemplate = true);
     Task<List<ReverseModuleSummaryResponse>> ListModulesAsync(CancellationToken cancellationToken);
     Task<ReverseModuleResponse> GetModuleAsync(string key, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseModuleResponse> UpsertModuleAsync(string key, UpsertReverseModuleRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
-    Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken);
+    /// <param name="withContent">0070: false = sem o texto, com o sumário em pedaços (<see cref="ReverseDocResponse.Outline"/>).</param>
+    Task<ReverseDocResponse> GetDocAsync(string key, string docType, CancellationToken cancellationToken, bool withContent = true);
     /// <summary>0053: termo sugerido pelo glossário → apelido, palavra-chave ou dispensado.</summary>
     Task<ReverseModuleResponse> ResolveTermAsync(string key, ResolveReverseTermRequest request, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
     Task<ReverseSessionResponse> StartSessionAsync(string key, string docType, StartReverseSessionRequest request, string actor, IReadOnlyCollection<string> userRoles,

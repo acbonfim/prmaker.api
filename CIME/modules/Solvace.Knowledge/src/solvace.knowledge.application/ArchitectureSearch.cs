@@ -27,16 +27,62 @@ public static partial class ArchitectureSearch
         "posso", "pode", "deve", "precisa", "preciso", "vez", "tipo", "coisa"
     };
 
-    private static readonly ConcurrentDictionary<(Guid, int), (string Text, List<(int Pos, string Title)> Headings)> Cache = new();
+    /// <summary>
+    /// Texto normalizado de cada seção pela versão (0070: uma entrada por seção — a versão nova substitui a velha; antes
+    /// cada versão ficava para sempre). Os cabeçalhos guardam o título original para o trecho.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Guid, (int Version, PreparedSection Prepared)> Cache = new();
+
+    /// <summary>Seção preparada para a busca: texto sem acento/caixa e os cabeçalhos (posição, normalizado, original).</summary>
+    public sealed record PreparedSection(string Text, List<(int Pos, string Title, string Original)> Headings);
+
+    /// <summary>Resultado antes do trecho: a seção (ou o artigo) e a posição do primeiro termo no texto normalizado.</summary>
+    public sealed record Candidate(ArchitectureSearchHit Hit, ArchitectureSection? Section, PreparedSection? Prepared, KnowledgeArticle? Article, string? ArticleText, int Position);
+
+    /// <summary>A seção já preparada (mesma versão) — sem ler o conteúdo.</summary>
+    public static PreparedSection? Cached(ArchitectureSection section) =>
+        Cache.TryGetValue(section.Id, out var c) && c.Version == section.Version ? c.Prepared : null;
+
+    /// <summary>Prepara e guarda a seção (o conteúdo não fica no cache, só o texto normalizado).</summary>
+    public static PreparedSection Remember(ArchitectureSection section, string content)
+    {
+        var prepared = Prepare(content);
+        Cache[section.Id] = (section.Version, prepared);
+        return prepared;
+    }
+
+    /// <summary>Esquece as seções que não existem mais (removidas, substituídas ou fora da busca).</summary>
+    public static void Forget(IReadOnlySet<Guid> keep)
+    {
+        foreach (var id in Cache.Keys)
+            if (!keep.Contains(id)) Cache.TryRemove(id, out _);
+    }
+
+    /// <summary>
+    /// 0070: texto longo normalizado em pedaços (cortados em quebra de linha): o <c>Normalize(FormD)</c> aluga do
+    /// <c>ArrayPool</c> um buffer do tamanho do texto inteiro, e o pool guardava um por thread (documentos de milhões de caracteres).
+    /// </summary>
+    private const int NormalizeChunk = 16_384;
 
     public static string Normalize(string? value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
-        var decomposed = value.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-                sb.Append(char.ToLowerInvariant(c));
+        var sb = new StringBuilder(value.Length);
+        for (var start = 0; start < value.Length;)
+        {
+            var end = Math.Min(value.Length, start + NormalizeChunk);
+            if (end < value.Length)
+            {
+                var newline = value.LastIndexOf('\n', end - 1, end - start);
+                if (newline > start) end = newline + 1;
+                else if (char.IsHighSurrogate(value[end - 1])) end--;
+            }
+            var piece = start == 0 && end == value.Length ? value : value[start..end];
+            foreach (var c in piece.Normalize(NormalizationForm.FormD))
+                if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                    sb.Append(char.ToLowerInvariant(c));
+            start = end;
+        }
         return sb.ToString();
     }
 
@@ -70,9 +116,33 @@ public static partial class ArchitectureSearch
         IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects = null, IReadOnlyCollection<string>? boostSections = null,
         ReverseSynonyms? synonyms = null)
     {
+        var candidates = Score(projects, articles, terms, limit, boostProjects, boostSections, synonyms,
+            s => Cached(s) ?? Remember(s, s.Content));
+        foreach (var c in candidates)
+        {
+            if (c.Section is not null)
+            {
+                var (snippet, heading) = Snippet(c.Section.Content, c.Position);
+                c.Hit.Snippet = snippet;
+                c.Hit.Heading = HeadingAt(c.Prepared!, c.Position) ?? heading;
+            }
+            else c.Hit.Snippet = Snippet(c.Article!.Content, c.Position).Snippet;
+        }
+        return candidates.Select(c => c.Hit).ToList();
+    }
+
+    /// <summary>
+    /// Pontua seções e artigos e devolve os <paramref name="limit"/> melhores SEM o trecho (0070: quem chama busca no
+    /// banco só o pedaço do texto em volta de <see cref="Candidate.Position"/>). <paramref name="prepare"/> devolve a
+    /// seção preparada (do cache ou lendo o conteúdo).
+    /// </summary>
+    public static List<Candidate> Score(IReadOnlyList<ArchitectureProject> projects, IReadOnlyList<KnowledgeArticle> articles,
+        IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections,
+        ReverseSynonyms? synonyms, Func<ArchitectureSection, PreparedSection> prepare)
+    {
         synonyms ??= ReverseSynonyms.Empty;
         if (terms.Count == 0) return [];
-        var hits = new List<ArchitectureSearchHit>();
+        var hits = new List<Candidate>();
         var minCoverage = terms.Count >= 3 ? 0.34 : 0.0;
 
         foreach (var project in projects)
@@ -83,7 +153,8 @@ public static partial class ArchitectureSearch
             {
                 // 0040: pergunta de operação puxa as seções de configuração/operação.
                 var sectionBoost = boostSections?.Contains(section.Key) == true ? 2.5 : 1.0;
-                var (text, headings) = Cache.GetOrAdd((section.Id, section.Version), _ => Prepare(section.Content));
+                var prepared = prepare(section);
+                var (text, headings) = (prepared.Text, prepared.Headings);
                 var title = Normalize(section.Title);
                 double score = 0;
                 var matched = new List<string>();
@@ -108,13 +179,12 @@ public static partial class ArchitectureSearch
                 }
                 var coverage = (double)matched.Count / terms.Count;
                 if (matched.Count == 0 || coverage < minCoverage) continue;
-                var (snippet, heading) = Snippet(section.Content, text, headings, firstPos);
-                hits.Add(new ArchitectureSearchHit
+                hits.Add(new Candidate(new ArchitectureSearchHit
                 {
                     Type = "section", ProjectKey = project.Key, ProjectName = project.Name, SectionKey = section.Key, SectionTitle = section.Title, Audience = section.Audience,
-                    Title = $"{project.Name} — {section.Title}", Heading = heading, Snippet = snippet,
+                    Title = $"{project.Name} — {section.Title}",
                     Score = Math.Round(score * Math.Pow(coverage, 1.5) * boost * sectionBoost, 2), Matched = matched
-                });
+                }, section, prepared, null, null, firstPos));
             }
         }
 
@@ -142,24 +212,58 @@ public static partial class ArchitectureSearch
             }
             var coverage = (double)matched.Count / terms.Count;
             if (matched.Count == 0 || coverage < minCoverage) continue;
-            hits.Add(new ArchitectureSearchHit
+            hits.Add(new Candidate(new ArchitectureSearchHit
             {
                 Type = "article", ArticleNumber = article.ArticleNumber, Title = $"ART-{article.ArticleNumber} — {article.Title}",
-                Snippet = Snippet(article.Content, text, [], firstPos).Snippet,
                 Score = Math.Round(score * Math.Pow(coverage, 1.5), 2), Matched = matched
-            });
+            }, null, null, article, text, firstPos));
         }
 
-        return hits.OrderByDescending(h => h.Score).ThenBy(h => h.Title).Take(limit).ToList();
+        return hits.OrderByDescending(h => h.Hit.Score).ThenBy(h => h.Hit.Title).Take(limit).ToList();
     }
 
-    private static (string, List<(int, string)>) Prepare(string content)
+    /// <summary>Trecho de um artigo do KC (o texto do artigo é pequeno e vem inteiro).</summary>
+    public static string ArticleSnippet(KnowledgeArticle article, int position) => Snippet(article.Content, position).Snippet;
+
+    /// <summary>
+    /// Janela do texto original em volta da posição, em code points (o <c>substring</c> do PostgreSQL): a normalização
+    /// mantém o tamanho em UTF-16, então a janela é medida no texto normalizado e convertida. <c>Cut</c>/<c>More</c> =
+    /// há texto antes/depois (as reticências).
+    /// </summary>
+    public static (int Start, int Length, bool Cut, bool More) SnippetWindow(PreparedSection prepared, int position)
+    {
+        var text = prepared.Text;
+        var at = Math.Clamp(position < 0 ? 0 : position, 0, Math.Max(0, text.Length - 1));
+        var start = Math.Max(0, at - SnippetChars / 3);
+        var end = Math.Min(text.Length, start + SnippetChars);
+        return (Contracts.CodePoints.Count(text, 0, start), Contracts.CodePoints.Count(text, start, end), start > 0, end < text.Length);
+    }
+
+    /// <summary>Trecho a partir da janela lida do banco (ver <see cref="SnippetWindow"/>).</summary>
+    public static string SnippetFromWindow(string window, bool cut, bool more)
+    {
+        var clean = MarkdownNoise().Replace(window, " ");
+        clean = Spaces().Replace(clean, " ").Trim();
+        if (cut) clean = "…" + clean;
+        if (more) clean += "…";
+        return clean;
+    }
+
+    /// <summary>O cabeçalho (como está no texto) anterior à posição.</summary>
+    public static string? HeadingAt(PreparedSection prepared, int position)
+    {
+        var at = Math.Max(0, position);
+        var match = prepared.Headings.LastOrDefault(h => h.Pos <= at);
+        return match.Original is null ? null : match.Original.Trim().Trim('*', '`');
+    }
+
+    private static PreparedSection Prepare(string content)
     {
         var text = Normalize(content);
         var headings = HeadingPattern().Matches(content)
-            .Select(m => (m.Index, Normalize(m.Groups[1].Value.Trim())))
+            .Select(m => (m.Index, Normalize(m.Groups[1].Value.Trim()), m.Groups[1].Value))
             .ToList();
-        return (text, headings);
+        return new PreparedSection(text, headings);
     }
 
     private static int Count(string text, string term, out int first) => CountTerm(text, term, out first);
@@ -190,7 +294,7 @@ public static partial class ArchitectureSearch
         (start == 0 || !char.IsLetterOrDigit(text[start - 1])) && (start + length >= text.Length || !char.IsLetterOrDigit(text[start + length]));
 
     /// <summary>Trecho em volta da posição (sem marcação de markdown) e o cabeçalho anterior a ela, como está no texto.</summary>
-    private static (string Snippet, string? Heading) Snippet(string original, string normalized, List<(int Pos, string Title)> headings, int pos)
+    private static (string Snippet, string? Heading) Snippet(string original, int pos)
     {
         // A normalização mantém o tamanho na prática (só remove acentos combinados); a posição serve para o original.
         var at = Math.Clamp(pos < 0 ? 0 : pos, 0, Math.Max(0, original.Length - 1));
