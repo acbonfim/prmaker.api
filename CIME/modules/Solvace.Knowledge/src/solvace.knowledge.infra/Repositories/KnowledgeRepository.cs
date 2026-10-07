@@ -48,6 +48,22 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.Projects.AsNoTracking().Include(p => p.Sections).Where(p => !p.IsDeleted).OrderBy(p => p.Order).ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
+    public async Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken)
+    {
+        var projects = await context.Projects.AsNoTracking().Where(p => !p.IsDeleted).OrderBy(p => p.Order).ThenBy(p => p.Name)
+            .ToListAsync(cancellationToken);
+        var ids = projects.Select(p => p.Id).ToList();
+        // length() no banco: o texto não sai do Postgres
+        var sections = (await context.Sections.AsNoTracking().Where(s => ids.Contains(s.ProjectId))
+                .Select(s => new { s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version, s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, Length = s.Content.Length })
+                .ToListAsync(cancellationToken))
+            .ToLookup(s => s.ProjectId);
+        foreach (var p in projects)
+            p.Sections.AddRange(sections[p.Id].Select(s => ArchitectureSection.Head(s.Id, s.ProjectId, s.Key, s.Title, s.Order, s.ContentHash, s.Version,
+                s.Source, s.Audience, s.UpdatedAt, s.UpdatedBy, s.Length)));
+        return projects;
+    }
+
     public Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken) =>
         context.Projects.AsNoTracking().Include(p => p.Sections).FirstOrDefaultAsync(p => p.Key == key && !p.IsDeleted, cancellationToken);
 
@@ -148,6 +164,10 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
 
     public Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken) =>
         context.ReverseIndexEntries.AsNoTracking().Where(e => moduleKey == null || e.ModuleKey == moduleKey)
+            .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToListAsync(cancellationToken);
+
+    public Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken) =>
+        context.ReverseIndexEntries.AsNoTracking().Where(e => e.Kind == kind)
             .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToListAsync(cancellationToken);
 
     public async Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken)

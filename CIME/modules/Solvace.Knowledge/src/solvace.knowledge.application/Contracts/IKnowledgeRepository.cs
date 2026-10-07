@@ -16,6 +16,11 @@ public interface IKnowledgeRepository
     // Engenharia reversa
     /// <summary>Projetos não removidos com as seções (conteúdo incluso), sem rastreamento.</summary>
     Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// Projetos não removidos com as seções SEM o conteúdo (só o tamanho), sem rastreamento — para listagens, grafo e
+    /// relações. Os documentos da engenharia reversa têm até 5 milhões de caracteres: ler todos estourava a memória.
+    /// </summary>
+    Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken);
     /// <summary>Um projeto não removido pela chave (normalizada) com as seções, sem rastreamento — sem carregar a Base inteira.</summary>
     Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken);
     /// <summary>Chave → nome de exibição dos projetos não removidos (sem as seções).</summary>
@@ -57,6 +62,8 @@ public interface IKnowledgeRepository
     void AddAsset(ReverseAsset asset);
     /// <summary>Itens publicados (todos, ou de um módulo), sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken);
+    /// <summary>Itens do índice de um tipo (ex.: INT), de todos os módulos, sem rastreamento.</summary>
+    Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken);
     /// <summary>Marca barata para saber se o índice mudou (quantidade + última atualização).</summary>
     Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken);
     Task<List<ReverseIndexEntry>> GetIndexEntriesForUpdateAsync(string moduleKey, string docType, CancellationToken cancellationToken);
