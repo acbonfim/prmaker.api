@@ -82,9 +82,21 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<List<ReverseRevisionHead>>> Revisions([FromQuery] string? module, [FromQuery] string? doc, [FromQuery] string? status, CancellationToken ct) =>
         Run<List<ReverseRevisionHead>>(async () => Ok(await application.ListRevisionsAsync(module, doc, status, ct)));
 
+    /// <param name="content">false: sem o texto do documento — a tela busca o texto em <c>/content</c> só ao abrir ou editar
+    /// (milhões de caracteres a cada recarga travavam o navegador).</param>
     [HttpGet("revisions/{id:guid}")]
-    public Task<ActionResult<ReverseRevisionResponse>> Revision([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ReverseRevisionResponse>(async () => Ok(await application.GetRevisionAsync(id, Roles(), ct)));
+    public Task<ActionResult<ReverseRevisionResponse>> Revision([FromRoute] Guid id, [FromQuery] bool content = true, CancellationToken ct = default) =>
+        Run<ReverseRevisionResponse>(async () =>
+        {
+            var revision = await application.GetRevisionAsync(id, Roles(), ct);
+            if (!content) revision.Content = string.Empty;
+            return Ok(revision);
+        });
+
+    /// <summary>Só o texto (markdown) da revisão — sem o diff e sem o JSON em volta.</summary>
+    [HttpGet("revisions/{id:guid}/content")]
+    public Task<ActionResult<string>> RevisionContent([FromRoute] Guid id, CancellationToken ct) =>
+        Run<string>(async () => Content(await application.GetRevisionContentAsync(id, ct), "text/markdown; charset=utf-8"));
 
     [HttpPut("revisions/{id:guid}")]
     [RequestSizeLimit(16 * 1024 * 1024)]
