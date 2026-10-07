@@ -2,12 +2,12 @@
 
 | Fase | Status | Responsável | Commits |
 |---|---|---|---|
-| S1 | ✅ | Claude | (este commit) |
-| S2 | ✅ | Claude | (este commit) |
-| T1 | ✅ | Claude | (este commit) |
-| B2 | ✅ | Claude | (feature/0069-ci) |
-| B3 | ✅ | Claude | (feature/0069-ci) |
-| F1 | ✅ | Claude | front feature/0069-ci |
+| S1 | ✅ | Claude | 6d19648 (PR #114) |
+| S2 | ✅ | Claude | 6d19648 (PR #114) |
+| T1 | ✅ | Claude | 6d19648 (PR #114) |
+| B2 | ✅ | Claude | e6fc857 (PR #115) |
+| B3 | ✅ | Claude | e6fc857 (PR #115) |
+| F1 | ✅ | Claude | front 07fbe6f (prmakerweb #61) |
 | B2b | ⏳ depois da 0068 | — | — |
 | B1 | ⏳ depois da 0068 | — | — |
 
