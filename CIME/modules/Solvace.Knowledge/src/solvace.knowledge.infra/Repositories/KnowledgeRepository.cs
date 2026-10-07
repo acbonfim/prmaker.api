@@ -48,6 +48,13 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
         context.Projects.AsNoTracking().Include(p => p.Sections).Where(p => !p.IsDeleted).OrderBy(p => p.Order).ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
+    public Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken) =>
+        context.Projects.AsNoTracking().Include(p => p.Sections).FirstOrDefaultAsync(p => p.Key == key && !p.IsDeleted, cancellationToken);
+
+    public Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken) =>
+        context.Projects.AsNoTracking().Where(p => !p.IsDeleted).Select(p => new { p.Key, Name = p.DisplayName ?? p.Name })
+            .ToDictionaryAsync(p => p.Key, p => p.Name, cancellationToken);
+
     public Task<ArchitectureProject?> GetProjectForUpdateAsync(string key, CancellationToken cancellationToken) =>
         context.Projects.Include(p => p.Sections).FirstOrDefaultAsync(p => p.Key == key, cancellationToken);
 

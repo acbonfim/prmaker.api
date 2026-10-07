@@ -25,6 +25,9 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     public Task<KnowledgeSyncState?> GetStateAsync(string environment, CancellationToken cancellationToken) => Task.FromResult<KnowledgeSyncState?>(null);
     public void AddState(KnowledgeSyncState state) { }
     public Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken) => Task.FromResult(_projects.Where(p => !p.IsDeleted).ToList());
+    public Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken) => Task.FromResult(_projects.FirstOrDefault(p => p.Key == key && !p.IsDeleted));
+    public Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(_projects.Where(p => !p.IsDeleted).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name));
     public Task<ArchitectureProject?> GetProjectForUpdateAsync(string key, CancellationToken cancellationToken) => Task.FromResult(_projects.FirstOrDefault(p => p.Key == key));
     public void AddProject(ArchitectureProject project) => _projects.Add(project);
     public void AddSection(ArchitectureSection section) { }
