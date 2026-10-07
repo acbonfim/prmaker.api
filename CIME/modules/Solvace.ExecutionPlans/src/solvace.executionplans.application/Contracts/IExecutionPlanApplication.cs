@@ -27,7 +27,8 @@ public interface IExecutionPlanApplication
     Task<ExecutionStepResponse> CompleteStepAsync(Guid planId, string stepKey, string? reason, ExecutionActor actor, CancellationToken cancellationToken);
     Task<List<ExecutionQuestionResponse>> AskAsync(Guid planId, AskExecutionQuestionsRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionQuestionResponse> AnswerAsync(Guid planId, Guid questionId, string answer, ExecutionActor actor, CancellationToken cancellationToken);
-    Task<ExecutionQuestionResponse> CancelQuestionAsync(Guid planId, Guid questionId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionQuestionResponse> CancelQuestionAsync(Guid planId, Guid questionId, string? reason, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<List<ExecutionQuestionResponse>> CancelQuestionsAsync(Guid planId, CancelExecutionQuestionsRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionLinkResponse> AddLinkAsync(Guid planId, string stepKey, AddExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteLinkAsync(Guid planId, Guid linkId, ExecutionActor actor, CancellationToken cancellationToken);

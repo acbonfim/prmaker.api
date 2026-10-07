@@ -220,20 +220,40 @@ public partial class ExecutionPlanApplication
         return sb.ToString().TrimEnd();
     }
 
-    private static string QuestionsAskedText(ExecutionPlan plan, IReadOnlyList<ExecutionQuestion> questions)
+    private static string QuestionsAskedText(ExecutionPlan plan, IReadOnlyList<ExecutionQuestion> questions, IReadOnlyList<ExecutionQuestion> replaced)
     {
         var sb = new StringBuilder();
         sb.AppendLine(questions.Count == 1 ? "❓ **Pergunta para o usuário** (responda no PRMake ou no Claude)" : $"❓ **{questions.Count} perguntas para o usuário** (responda no PRMake ou no Claude)");
         sb.AppendLine();
-        var i = 0;
         foreach (var q in questions)
         {
-            sb.AppendLine($"{++i}. {q.Text}");
+            // Número real da pergunta no plano (é o que a tela e o Claude usam para responder/substituir).
+            sb.AppendLine($"{q.Order}. {q.Text}");
+            var old = replaced.Where(r => r.ReplacedBy == q.Order).OrderBy(r => r.Order).ToList();
+            if (old.Count > 0)
+                sb.AppendLine($"   *(substitui {(old.Count == 1 ? "a pergunta" : "as perguntas")} " +
+                              string.Join(", ", old.Select(r => $"{r.Order} — {(r.Status == ExecutionQuestionStatus.Cancelled ? "cancelada" : "a resposta anterior não vale mais")}")) + ")*");
             // 0032: rótulos genéricos ("Opção 1") não dizem nada sem a descrição — vai o texto de cada opção.
             foreach (var o in q.Options)
                 sb.AppendLine($"   - **{o.Label}**{OptionDetail(o)}{(o.Recommended ? " *(recomendada)*" : "")}");
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private static string QuestionsCancelledText(IReadOnlyList<ExecutionQuestion> questions, ExecutionActor actor)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"🚫 **{(questions.Count == 1 ? "Pergunta cancelada" : $"{questions.Count} perguntas canceladas")}** ({(actor.IsExecutor ? "pelo Claude" : $"por {actor.Name}")})");
+        sb.AppendLine();
+        foreach (var q in questions)
+            sb.AppendLine($"- ~~{q.Order}. {FirstLine(q.Text)}~~{(q.CancelReason is null ? "" : $" — {q.CancelReason}")}");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string FirstLine(string text)
+    {
+        var line = text.Split('\n', 2)[0].Trim();
+        return line.Length <= 160 ? line : line[..160] + "…";
     }
 
     private static string AnswerText(ExecutionQuestion q)

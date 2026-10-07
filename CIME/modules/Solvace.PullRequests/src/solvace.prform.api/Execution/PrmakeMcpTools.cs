@@ -39,7 +39,8 @@ public partial class PrmakeMcpTools(
         "mover o card no DevOps). Toda gravacao no PRMake passa por aqui ou pelo prmake-plan.sh. Informe sempre o card; " +
         "'phase' (analysis|correction) escolhe o plano quando o card tem os dois (padrao: o plano aberto mais recente). " +
         "Ciclo do plano: prmake_advance (conclui uma etapa e inicia a proxima), prmake_block (trava esperando o usuario), " +
-        "prmake_ask/prmake_answer, prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
+        "prmake_ask/prmake_answer (nova rodada da analise: a pergunta revisada leva replaces e as que perderam o sentido vao para " +
+        "prmake_cancel_questions — so ficam abertas as que ainda decidem o plano), prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
         "Git e o 'status' final ficam no prmake-plan.sh. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
@@ -148,25 +149,55 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_ask")]
-    [Description("Pergunta ao usuario pela tela do card (a etapa fica aguardando a resposta). Cada opcao: { label (a propria opcao), description?, recommended? }.")]
+    [Description("Pergunta ao usuario pela tela do card (a etapa fica aguardando a resposta). Cada opcao: { label (a propria opcao), description?, recommended? }. " +
+                 "Nova rodada (comentario/anexo novo): a pergunta revisada leva replaces: [numeros das antigas] — as abertas sao canceladas; " +
+                 "nunca escreva 'substitui a pergunta N' no texto sem o replaces. A resposta lista as perguntas anteriores ainda abertas.")]
     public Task<string> Ask(
         string card,
-        [Description("Perguntas: [{ stepKey?, text, options?: [{ label, description?, recommended? }], allowFreeText? }]")] List<ExecutionQuestionItem> questions,
+        [Description("Perguntas: [{ stepKey?, text, options?: [{ label, description?, recommended? }], allowFreeText?, replaces?: [numeros] }]")] List<ExecutionQuestionItem> questions,
         string? phase = null,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var created = await plans.AskAsync(await PlanIdAsync(card, phase, ct), new AskExecutionQuestionsRequest { Questions = questions }, await ActorAsync(ct), ct);
-        return Serialize(created.Select(q => new { q.Id, q.Order, q.Status }));
+        var planId = await PlanIdAsync(card, phase, ct);
+        var created = await plans.AskAsync(planId, new AskExecutionQuestionsRequest { Questions = questions }, await ActorAsync(ct), ct);
+        var newIds = created.Select(q => q.Id).ToHashSet();
+        var plan = await plans.GetAsync(planId, ct);
+        var stillOpen = plan.Questions.Where(q => q.Status == ExecutionQuestionStatus.Open && !newIds.Contains(q.Id)).OrderBy(q => q.Order)
+            .Select(q => new { q.Order, q.Text }).ToList();
+        return Serialize(new
+        {
+            created = created.Select(q => new { q.Id, q.Order, q.Status }),
+            replaced = plan.Questions.Where(q => q.ReplacedBy is not null && created.Any(c => c.Order == q.ReplacedBy)).OrderBy(q => q.Order)
+                .Select(q => new { q.Order, q.Status, q.ReplacedBy }),
+            stillOpen,
+            hint = stillOpen.Count == 0 ? null
+                : "Perguntas anteriores ainda abertas: as que perderam o sentido com esta rodada -> prmake_cancel_questions(card, numbers, reason)."
+        });
+    });
+
+    [McpServerTool(Name = "prmake_cancel_questions")]
+    [Description("Cancela perguntas abertas que perderam o sentido (nova rodada da analise, o usuario ja respondeu em comentario, a duvida sumiu). " +
+                 "Informe os numeros e o motivo (aparece na tela e na Timeline). Pergunta que so mudou de texto: crie a nova com replaces no prmake_ask.")]
+    public Task<string> CancelQuestions(string card, [Description("Numeros das perguntas (1, 2...)")] List<int> numbers,
+        [Description("Motivo curto, ex.: 'Ja nao se aplica: o print mostrou que o erro e de permissao'")] string reason,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(reason)) throw new McpException("Informe o motivo do cancelamento.");
+        var result = await plans.CancelQuestionsAsync(await PlanIdAsync(card, phase, ct),
+            new CancelExecutionQuestionsRequest { Numbers = numbers, Reason = reason }, await ActorAsync(ct), ct);
+        return Serialize(result.Select(q => new { q.Order, q.Status, q.CancelReason }));
     });
 
     [McpServerTool(Name = "prmake_answers", ReadOnly = true)]
-    [Description("Perguntas do plano com as respostas (de quem, por onde).")]
+    [Description("Perguntas do plano com as respostas (de quem, por onde). replacedBy = a resposta foi superada pela da pergunta indicada.")]
     public Task<string> Answers(string card, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var plan = await plans.GetAsync(await PlanIdAsync(card, phase, ct), ct);
         return Serialize(plan.Questions.OrderBy(q => q.Order).Select(q => new
         {
-            q.Order, q.StepKey, q.Text, q.Status, q.Answer, q.AnsweredBy, q.AnsweredVia
+            q.Order, q.StepKey, q.Text, q.Status, q.Answer, q.AnsweredBy, q.AnsweredVia, q.CancelReason,
+            // Respondida e depois substituida: a resposta nao vale mais — vale a da pergunta nova.
+            q.ReplacedBy
         }));
     });
 

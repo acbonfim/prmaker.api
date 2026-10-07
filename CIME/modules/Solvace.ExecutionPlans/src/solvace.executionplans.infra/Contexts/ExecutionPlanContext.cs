@@ -167,6 +167,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Answer).HasColumnType("text");
             entity.Property(e => e.AnsweredBy).HasMaxLength(200);
+            entity.Property(e => e.CancelReason).HasMaxLength(ExecutionQuestion.MaxCancelReasonLength);
             entity.Property(e => e.AnsweredVia).HasMaxLength(20);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
 

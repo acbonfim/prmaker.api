@@ -31,6 +31,17 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se ha script de dados: vai por **chamado** (o usuario abre no sistema de chamados configurado — `TicketSystem`
      do `settings`) ou nao e necessario.
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
+   **Nova rodada de perguntas** (comentario/anexo/resposta mudou a analise e voce refez as solucoes — card 75648):
+   antes do `ask`, veja as perguntas do plano (`prmake_answers`) e trate **cada uma ainda aberta**:
+   - continua valendo como esta → deixe aberta (nao pergunte de novo);
+   - mudou (outras opcoes, outro texto) → a nova vai com `replaces: [n]` no `prmake_ask` (script: `"replaces": [n]`
+     no JSON) — o PRMake cancela a antiga e mostra "substituida pela pergunta N". Vale tambem para pergunta ja
+     **respondida** cuja resposta deixou de valer (ela fica marcada como superada; vale a resposta da nova);
+   - perdeu o sentido (o print respondeu, a hipotese caiu, juntou em outra) → `prmake_cancel_questions(card,
+     [n], "motivo curto")` (script: `cancel-questions <card> <n,...> "motivo"`).
+   Nunca escreva "substitui a pergunta N" so no texto: sem `replaces`/cancelamento a antiga fica aberta e o usuario
+   tem que cancela-la a mao. O `prmake_ask` devolve `stillOpen` (anteriores ainda abertas) — se sobrar alguma que nao
+   decide mais o plano, cancele na hora. No fim, so ficam abertas as perguntas que ainda decidem o plano.
    Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal. **O `label` de cada opcao e o
    texto que o usuario le no botao e o que vai para a Timeline** — escreva a opcao em si ("Corrigir no backend
    (recomendada)", "Script de dados via chamado"), nunca "Opcao 1"/"A"; detalhes vao em `description`.
