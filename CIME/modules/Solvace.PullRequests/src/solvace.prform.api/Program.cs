@@ -52,6 +52,14 @@ builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddMemoryCache();
+// 0070: respostas comprimidas (documentos da engenharia reversa chegam a 1 MB de markdown; o export, a 8 MB).
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    o.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes.Concat(["text/markdown", "application/problem+json"]);
+});
 // MCP remoto do PRMake (0039): /mcp, Streamable HTTP sem sessão (Cloud Run), autenticado pela x-api-key.
 builder.Services.AddMcpServer(o =>
     {
@@ -158,6 +166,13 @@ if (args.Contains("--migrate"))
 }
 
 
+
+// 0070: Server-Timing + log de requisição lenta; compressão fora do MCP (Streamable HTTP) e do hub de tempo real.
+EfCommandObserver.Start();
+app.UseMiddleware<RequestTimingMiddleware>();
+var realTimeHubPath = builder.Configuration.GetSection("RealTime")["HubPath"] ?? "/ws";
+app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/mcp") && !ctx.Request.Path.StartsWithSegments(realTimeHubPath),
+    branch => branch.UseResponseCompression());
 
 app.UseHttpsRedirection()
     .UseSwaggerConfig(projectName!)
