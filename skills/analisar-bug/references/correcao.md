@@ -138,12 +138,7 @@ Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, `git cherry-
 conflito passou e a branch derivada subiu sem a correcao) — rode a linha de `push` que o `branches` imprimiu, que so
 empurra com o cherry-pick concluido.
 
-**Build e testes — uma compilacao, testes so do que mudou** (card 75648: 33 min de 40 em build/teste):
-- Compile **uma vez** (`dotnet build <sln>`) e rode os testes com `--no-build`, so dos projetos de teste que cobrem
-  o que mudou e filtrados pela classe (`--filter "FullyQualifiedName~<Classe>"`). A suite inteira de um projeto so
-  na etapa `validar`, uma vez. Cada `dotnet test` sem `--no-build` recompila a solucao.
-- Depois do `cherry-pick` **sem conflito** nao recompile nem rode os testes de novo na branch derivada. Com
-  conflito, compile e rode so os testes do que voce tocou ao resolver.
+**Edicao e testes novos** (card 75648) — testes da correcao: passo 8, *Validar com testes*.
 - Edicao de arquivo com `python3` ou a ferramenta de edicao — nao `sed -i 's/...'` (o `sed` do macOS exige
   `sed -i ''` e quebra com `/` no texto).
 - Teste novo so quando o repositorio ja testa aquela camada; nao escreva teste de cancelamento/infra que precise
@@ -159,16 +154,20 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   na mensagem do commit (`CommitMessagePattern`), na descricao do PR e no plano/Timeline — nunca no codigo.
   Excecao rara: so se o proprio arquivo exigir (ex.: doc obrigatoria de API publica) e, mesmo assim, o minimo.
 - **Validar com testes (0069)** — so os testes do que mudou, **uma vez**:
-  `bash ~/.claude/skills/analisar-bug/scripts/test-changed.sh "$WT"` (timeout do Bash: 600000). Ele acha os specs dos
-  arquivos alterados (o `.spec.ts` ao lado de cada arquivo mudado + specs mudados), roda sem cobertura e encerra o
-  runner no limite (420 s). Resultado → `log` na etapa `validar`:
-  - `OK` / `SEM-SPEC`: conclua a validacao (sem spec: diga que o CI do PR testa).
-  - `FALHOU`: corrija (se a falha e da sua mudanca) e rode o script de novo; falha que ja existia na base: registre e siga.
-  - `LENTO` (exit 124) ou `SEM-RUNNER` (exit 3): **nao repita** (nem com `--maxWorkers`, pastas, `npm test`, `npm
-    install`): registre no plano e siga para o PR — o CI do PR roda o build e os testes. Sem jest (back .NET/Java): o
-    build do projeto alterado basta.
-  - **Nunca** rode o jest/`npm test` direto, em pastas inteiras ou na suite toda. Depois do cherry-pick nas branches do
-    fluxo (dev/qa...) **nao teste de novo** — so se resolveu conflito na mao: ai rode o `test-changed.sh` nessa branch.
+  - **Front/Node (jest)**: `bash ~/.claude/skills/analisar-bug/scripts/test-changed.sh "$WT"` (timeout do Bash:
+    600000). Ele acha os specs dos arquivos alterados (o `.spec.ts` ao lado de cada arquivo mudado + specs mudados),
+    roda sem cobertura e encerra o runner no limite (420 s). Resultado → `log` na etapa `validar`:
+    - `OK` / `SEM-SPEC`: conclua a validacao (sem spec: diga que o CI do PR testa).
+    - `FALHOU`: corrija (se a falha e da sua mudanca) e rode o script de novo; falha que ja existia na base: registre
+      e siga.
+    - `LENTO` (exit 124) ou `SEM-RUNNER` (exit 3): **nao repita** (nem com `--maxWorkers`, pastas, `npm test`, `npm
+      install`): registre no plano e siga para o PR — o CI do PR roda o build e os testes.
+    - **Nunca** rode o jest/`npm test` direto, em pastas inteiras ou na suite toda.
+  - **Back .NET** (card 75648): `dotnet build <sln>` **uma vez** e `dotnet test <projeto-de-teste> --no-build
+    --filter "FullyQualifiedName~<Classe>"` so nas classes de teste do que mudou — cada `dotnet test` sem
+    `--no-build` recompila a solucao. Java: o build do modulo alterado basta.
+  - Depois do cherry-pick nas branches do fluxo (dev/qa...) **nao compile nem teste de novo** — so se resolveu
+    conflito na mao: ai so o que voce tocou (`test-changed.sh` ou build + `--no-build` filtrado) nessa branch.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
   1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.

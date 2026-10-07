@@ -20,4 +20,7 @@
   qa (#13613) — os dois rodam build + jest no CI (`pr-build-validation.yml`).
 - Máquina: 16 GB, ~10 GB de swap em uso; cada worker do jest até 2 GB, junto com outras sessões do Claude, Rider,
   Chrome e Teams — provável motivo de 24 s virarem 141–715 s (hipótese, não reproduzida).
+- 07/10 (card 75648): a causa principal era outra — o LaunchAgent do executor rodava com `ProcessType=Background`
+  (CPU e disco estrangulados para tudo que o `claude -p` roda). Medido no launchd: build .NET 467 s × 21 s com
+  `Standard`. Corrigido no #125 (executor 1.0.14); a regra de testar só o que mudou continua valendo.
 - B1 só depois da 0068 na master.
