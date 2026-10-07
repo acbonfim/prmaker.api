@@ -35,15 +35,16 @@ public static class ReverseRelations
     public static async Task<List<ReverseIntegration>> IntegrationsAsync(IKnowledgeRepository repository, IReadOnlyCollection<ArchitectureProject> projects,
         IReadOnlyCollection<ReverseModule>? modules, CancellationToken cancellationToken)
     {
-        var entries = (await ReverseSearch.EntriesAsync(repository, cancellationToken)).Where(e => e.Kind == "INT" && !e.Removed).ToList();
-        if (entries.Count == 0) return [];
         modules ??= await repository.GetReverseModulesAsync(cancellationToken);
         var index = await repository.GetIndexStampAsync(cancellationToken);
-        var stamp = $"{index.Count}:{index.LastUpdate?.UtcTicks}|{entries.Count}|{entries.Max(e => e.UpdatedAt).UtcTicks}|"
+        var stamp = $"{index.Count}:{index.LastUpdate?.UtcTicks}|"
                     + string.Join(",", projects.Select(p => $"{p.Key}:{p.Name}:{p.DisplayName}").OrderBy(x => x, StringComparer.Ordinal)) + "|"
                     + string.Join(",", modules.Select(m => $"{m.Key}:{string.Join("/", m.Aliases)}").OrderBy(x => x, StringComparer.Ordinal));
         lock (Gate)
             if (stamp == _stamp) return _integrations;
+        // só os INT: antes lia o índice inteiro (texto de todos os itens + cópia normalizada da busca) para usar uma fração,
+        // e numa instância nova isso estourava os 512 MiB do Cloud Run
+        var entries = (await repository.GetIndexEntriesByKindAsync("INT", cancellationToken)).Where(e => !e.Removed).ToList();
         var targets = Targets(projects, modules);
         // o ID é único no módulo; se aparecer em dois documentos, vale o mais novo
         var result = entries.GroupBy(e => (e.ModuleKey, e.ItemId)).Select(g => g.OrderByDescending(e => e.UpdatedAt).First())

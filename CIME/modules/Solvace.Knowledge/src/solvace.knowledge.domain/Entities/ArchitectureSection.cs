@@ -61,7 +61,19 @@ public class ArchitectureSection
     /// <summary>Vai para o espelho/índice das skills.</summary>
     public bool IsForLlm => Audience == ArchitectureSectionAudience.Llm;
 
+    private int? _headLength;
+    /// <summary>Tamanho do conteúdo em caracteres (na seção lida sem o texto, vem do banco).</summary>
+    public int Length => _headLength ?? Content.Length;
+
     protected ArchitectureSection() { }
+
+    /// <summary>Seção lida sem o conteúdo (listagens): só os metadados e o tamanho. Não grave com ela.</summary>
+    public static ArchitectureSection Head(Guid id, Guid projectId, string key, string title, int order, string contentHash, int version, string source,
+        string audience, DateTimeOffset updatedAt, string updatedBy, int length) => new()
+    {
+        Id = id, ProjectId = projectId, Key = key, Title = title, Order = order, ContentHash = contentHash, Version = version, Source = source,
+        Audience = audience, UpdatedAt = updatedAt, UpdatedBy = updatedBy, _headLength = length
+    };
 
     public ArchitectureSection(Guid projectId, string key, string? audience = null)
     {

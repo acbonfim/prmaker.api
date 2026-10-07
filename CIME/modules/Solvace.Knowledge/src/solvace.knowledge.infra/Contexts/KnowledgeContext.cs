@@ -94,6 +94,7 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Key).IsRequired().HasMaxLength(ArchitectureProject.MaxKeyLength);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(ArchitectureSection.MaxTitleLength);
             entity.Property(e => e.Content).IsRequired().HasColumnType("text");
+            entity.Ignore(e => e.Length);
             entity.Property(e => e.ContentHash).IsRequired().HasMaxLength(64);
             entity.Property(e => e.Source).IsRequired().HasMaxLength(10);
             // 0038: llm (vai para as skills) | human (Guia, só na tela); as seções existentes são técnicas.

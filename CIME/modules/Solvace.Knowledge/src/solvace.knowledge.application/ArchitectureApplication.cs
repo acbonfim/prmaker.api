@@ -31,7 +31,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     }
     public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken)
     {
-        var all = await repository.GetProjectsAsync(cancellationToken);
+        var all = await repository.GetProjectHeadsAsync(cancellationToken);
         var modules = await repository.GetReverseModulesAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken);
         var result = new List<ArchitectureProjectResponse>();
@@ -42,10 +42,10 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
     {
-        var all = await repository.GetProjectsAsync(cancellationToken);
+        var all = await repository.GetProjectHeadsAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken);
         var normalized = ArchitectureProject.NormalizeKey(key);
-        var project = all.FirstOrDefault(p => p.Key == normalized) ?? await FindAsync(key, cancellationToken);
+        var project = all.FirstOrDefault(p => p.Key == normalized) ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
         return await WithSupersededAsync(WithUsedBy(ToResponse(project), all), project, null, cancellationToken);
     }
 
@@ -55,7 +55,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     /// </summary>
     public async Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken)
     {
-        var projects = await repository.GetProjectsAsync(cancellationToken);
+        var projects = await repository.GetProjectHeadsAsync(cancellationToken);
         var integrations = await ReverseRelations.ApplyAsync(repository, projects, null, cancellationToken);
         return BuildGraph(projects, integrations);
     }
@@ -655,7 +655,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         Version = s.Version,
         Source = s.Source,
         Audience = s.Audience,
-        Length = s.Content.Length,
+        Length = s.Length,
         UpdatedAt = s.UpdatedAt,
         UpdatedBy = s.UpdatedBy,
         Content = withContent ? s.Content : string.Empty

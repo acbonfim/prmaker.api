@@ -74,7 +74,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<List<ReverseModuleSummaryResponse>> ListModulesAsync(CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        var projects = (await repository.GetProjectsAsync(cancellationToken)).Where(p => ModuleKinds.Contains(p.Kind)).ToList();
+        var projects = (await repository.GetProjectHeadsAsync(cancellationToken)).Where(p => ModuleKinds.Contains(p.Kind)).ToList();
         var modules = (await repository.GetReverseModulesAsync(cancellationToken)).ToDictionary(m => m.Key);
         var open = WithProgress(await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
@@ -129,7 +129,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 Type = t.Key, Title = t.Title, Required = s.RequiredDocs.Contains(t.Key),
                 Published = section is null ? null : new ReversePublishedInfo
                 {
-                    Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Content.Length
+                    Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Length
                 },
                 Open = head,
                 State = head?.Status ?? (section is null ? "none" : ReverseRevisionStatus.Published),
@@ -164,7 +164,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<ReverseModuleResponse> GetModuleAsync(string key, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        var all = await repository.GetProjectsAsync(cancellationToken);
+        var all = await repository.GetProjectHeadsAsync(cancellationToken);
         var modules = await repository.GetReverseModulesAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken); // 0066: INT resolvidos
         var project = FindProject(all, key);
@@ -286,7 +286,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Content = section?.Content,
             Published = section is null ? null : new ReversePublishedInfo
             {
-                Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Content.Length,
+                Version = section.Version, UpdatedAt = section.UpdatedAt, UpdatedBy = section.UpdatedBy, Length = section.Length,
                 Items = published.Count(i => !i.Removed)
             },
             Items = published.Select(ToItemHead).ToList(),
@@ -349,7 +349,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Related = RenderRelated(project, all, entries),
             ExistingSections = project.Sections.Where(x => x.IsForLlm && !x.Key.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal))
                 .OrderBy(x => x.Order)
-                .Select(x => new ArchitectureSectionSummaryResponse { Id = x.Id, Key = x.Key, Title = x.Title, Order = x.Order, Version = x.Version, Length = x.Content.Length })
+                .Select(x => new ArchitectureSectionSummaryResponse { Id = x.Id, Key = x.Key, Title = x.Title, Order = x.Order, Version = x.Version, Length = x.Length })
                 .ToList(),
             MinCoverage = s.MinCoverage,
             ReferenceDatabase = ToReference(s.ReferenceDatabase),
@@ -488,7 +488,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var published = entries.Where(e => e.ModuleKey == project.Key && e.DocType == type.Key).Select(e => e.ItemId).ToList();
         var removed = entries.Where(e => e.ModuleKey == project.Key && e.Removed).Select(e => e.ItemId).ToHashSet();
         // 0066: com os projetos conhecidos, a checagem valida os destinos e o mecanismo das integrações
-        var targets = ReverseRelations.Targets(await repository.GetProjectsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
+        var targets = ReverseRelations.Targets(await repository.GetProjectHeadsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
         return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage, removed, project.Key, targets);
     }
 
@@ -845,7 +845,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken)
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
-        var all = await repository.GetProjectsAsync(cancellationToken);
+        var all = await repository.GetProjectHeadsAsync(cancellationToken);
         var reverseModules = await repository.GetReverseModulesAsync(cancellationToken);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var names = all.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
@@ -1182,7 +1182,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task RecordQuestionGapAsync(string projectKey, string question, string actor, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(projectKey) || string.IsNullOrWhiteSpace(question)) return;
-        var project = (await repository.GetProjectsAsync(cancellationToken)).FirstOrDefault(p => p.Key == ArchitectureProject.NormalizeKey(projectKey));
+        var project = (await repository.GetProjectHeadsAsync(cancellationToken)).FirstOrDefault(p => p.Key == ArchitectureProject.NormalizeKey(projectKey));
         if (project is null || !project.Sections.Any(x => x.Key.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal))) return;
         var content = $"Pergunta do Pergunte sem resposta na engenharia reversa: \"{question.Trim()}\"";
         var practical = ReverseDocTypes.ByKey[ReverseDocTypes.Practical].SectionKey;

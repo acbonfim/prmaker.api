@@ -25,6 +25,7 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     public Task<KnowledgeSyncState?> GetStateAsync(string environment, CancellationToken cancellationToken) => Task.FromResult<KnowledgeSyncState?>(null);
     public void AddState(KnowledgeSyncState state) { }
     public Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken) => Task.FromResult(_projects.Where(p => !p.IsDeleted).ToList());
+    public Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken) => GetProjectsAsync(cancellationToken);
     public Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken) => Task.FromResult(_projects.FirstOrDefault(p => p.Key == key && !p.IsDeleted));
     public Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken) =>
         Task.FromResult(_projects.Where(p => !p.IsDeleted).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name));
@@ -78,6 +79,8 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
 
     public Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken) =>
         Task.FromResult(_entries.Where(e => moduleKey == null || e.ModuleKey == moduleKey).OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList());
+    public Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken) =>
+        Task.FromResult(_entries.Where(e => e.Kind == kind).OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList());
     /// <summary>Marca única por repositório (o cache estático da busca não mistura testes).</summary>
     public Task<(int Count, DateTimeOffset? LastUpdate)> GetIndexStampAsync(CancellationToken cancellationToken) =>
         Task.FromResult((_entries.Count * 1000 + _saves, (DateTimeOffset?)_stampBase.AddTicks(_saves)));
