@@ -136,6 +136,13 @@ public class ArchitectureController(IArchitectureApplication application, solvac
             catch (InvalidOperationException e) { return StatusCode(StatusCodes.Status502BadGateway, new { error = e.Message }); }
         });
 
+    /// <summary>Seção grande: aplica os blocos propostos pelo chat sobre a versão atual (nova versão, fonte "ai").</summary>
+    [Authorize(Roles = "admin")]
+    [HttpPost("projects/{key}/sections/{section}/chat/apply")]
+    public Task<ActionResult<ArchitectureSectionResponse>> ApplyChat([FromRoute] string key, [FromRoute] string section,
+        [FromBody] solvace.prform.Knowledge.ArchitectureChatApplyRequest request, CancellationToken ct) =>
+        Run<ArchitectureSectionResponse>(async () => Ok(await chat.ApplyBlocksAsync(key, section, request, await ActorAsync(ct), ct)));
+
     /// <summary>Busca no conteúdo das seções e dos artigos do KC (0037) — qualquer usuário logado.</summary>
     [HttpGet("search")]
     public Task<ActionResult<List<ArchitectureSearchHit>>> Search([FromQuery] string? q, [FromQuery] int limit, CancellationToken ct) =>

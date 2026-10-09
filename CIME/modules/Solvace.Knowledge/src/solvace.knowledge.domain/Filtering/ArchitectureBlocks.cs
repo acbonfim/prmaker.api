@@ -20,12 +20,18 @@ public static class ArchitectureBlocks
     public static string Format(string tag, params string[] fields) =>
         $"<<<{tag}\n{string.Join("\n", fields.Select(f => f + ": ..."))}\n---\n(texto em markdown)\n{tag}>>>";
 
+    private static Regex Pattern(string tag) =>
+        new($@"<<<{Regex.Escape(tag)}[ \t]*\r?\n(.*?)\r?\n[ \t]*{Regex.Escape(tag)}>>>", RegexOptions.Singleline);
+
+    /// <summary>O texto sem os blocos da tag (a resposta do especialista, sem a proposta).</summary>
+    public static string Strip(string? content, string tag) =>
+        string.IsNullOrEmpty(content) ? string.Empty : Pattern(tag).Replace(content, string.Empty).Trim();
+
     public static List<Block> Parse(string? content, string tag)
     {
         var blocks = new List<Block>();
         if (string.IsNullOrWhiteSpace(content)) return blocks;
-        var rx = new Regex($@"<<<{Regex.Escape(tag)}[ \t]*\r?\n(.*?)\r?\n[ \t]*{Regex.Escape(tag)}>>>", RegexOptions.Singleline);
-        foreach (Match match in rx.Matches(content))
+        foreach (Match match in Pattern(tag).Matches(content))
         {
             var lines = match.Groups[1].Value.Replace("\r\n", "\n").Split('\n');
             var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

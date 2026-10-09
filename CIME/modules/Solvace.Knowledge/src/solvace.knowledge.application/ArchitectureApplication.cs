@@ -161,6 +161,28 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return ToSection(section, withContent: true);
     }
 
+    /// <summary>
+    /// Trecho de até <paramref name="maxChars"/> da seção para a IA (chat do Guia, Pergunte, análise a fundo): seção curta
+    /// vem inteira; seção grande vem só o pedaço (lido no banco) — em volta do lugar onde os <paramref name="terms"/> mais
+    /// aparecem juntos (pelo texto já preparado da busca) ou o começo. Antes lia a seção inteira (até milhões de caracteres) para cortar.
+    /// </summary>
+    public async Task<ArchitectureSectionResponse> GetSectionExcerptAsync(string projectKey, string sectionKey, int maxChars,
+        IReadOnlyList<string>? terms, CancellationToken cancellationToken)
+    {
+        var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
+        if (head.Length <= maxChars) return await GetSectionAsync(projectKey, sectionKey, cancellationToken);
+        var start = 0;
+        if (terms is { Count: > 0 } && ArchitectureSearch.Cached(head) is { } prepared)
+        {
+            var at = ArchitectureSearch.DensestWindow(prepared.Text, terms, maxChars);
+            start = at <= 0 ? 0 : Contracts.CodePoints.Count(prepared.Text, 0, Math.Max(0, at - maxChars / 4));
+        }
+        var text = (await repository.GetSectionSlicesAsync([(head.Id, start, maxChars)], cancellationToken))[0] ?? string.Empty;
+        var response = ToSection(head, withContent: false);
+        response.Content = (start > 0 ? "…\n" : string.Empty) + text.Replace("\r\n", "\n") + "\n…(seção cortada)";
+        return response;
+    }
+
     /// <summary>0070: sumário da seção em pedaços (sem o texto) — a tela busca cada pedaço com <see cref="GetSectionPartsAsync"/>.</summary>
     public async Task<ArchitectureSectionOutlineResponse> GetSectionOutlineAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
@@ -345,7 +367,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 return true;
             }, cancellationToken);
         var candidates = ArchitectureSearch.Score(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms,
-            s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content));
+            s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content), cancellationToken);
         var inSections = candidates.Where(c => c.Section is not null).ToList();
         var windows = inSections.Select(c => (c.Section!.Id, Window: ArchitectureSearch.SnippetWindow(c.Prepared!, c.Position))).ToList();
         var texts = await repository.GetSectionSlicesAsync(windows.Select(w => (w.Id, w.Window.Start, w.Window.Length)).ToList(), cancellationToken);

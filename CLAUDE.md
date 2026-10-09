@@ -68,6 +68,7 @@ All modules live under `CIME/modules/`. Each follows clean architecture layers: 
   - Never load the whole Base (`GetProjectsAsync`) to answer one item. Large text is read by section, in streaming (`GetSectionContentsAsync`), or in slices (`GetSectionSlicesAsync`).
   - Large documents go to the screen in parts (`?content=false` + `sections/{s}/outline|parts`).
   - Heavy loads go through `HeavyReads` (one at a time).
+  - AI prompts never take a whole big section: `GetSectionExcerptAsync` (excerpt around the terms) and, in the section chat, `SectionBlocks` (only the blocks of the subject, BM25 via `ArchitectureSearch.RankBlocks`; the AI returns only changed blocks, applied by `chat/apply`).
   - Measure with the `Server-Timing` header and the "Requisição lenta" log (≥ 300 ms, with the SQL count). Locally, `/debug/memory` (Development) gives live memory after a full GC.
 
 ### Authentication

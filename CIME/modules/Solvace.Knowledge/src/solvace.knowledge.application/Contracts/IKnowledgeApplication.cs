@@ -17,6 +17,8 @@ public interface IArchitectureApplication
     Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken);
     Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken);
     Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken);
+    /// <summary>Trecho de até <paramref name="maxChars"/> da seção (inteira se curta; grande: em volta dos termos ou o começo) — para a IA.</summary>
+    Task<ArchitectureSectionResponse> GetSectionExcerptAsync(string projectKey, string sectionKey, int maxChars, IReadOnlyList<string>? terms, CancellationToken cancellationToken);
     /// <summary>0070: sumário da seção em pedaços, sem o texto.</summary>
     Task<ArchitectureSectionOutlineResponse> GetSectionOutlineAsync(string projectKey, string sectionKey, CancellationToken cancellationToken);
     /// <summary>0070: texto dos pedaços <c>from..to</c> da seção.</summary>
