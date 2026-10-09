@@ -51,6 +51,122 @@ public static partial class ArchitectureSearch
         return prepared;
     }
 
+    /// <summary>
+    /// Texto e título normalizados dos artigos do Knowledge Center pelo hash do conteúdo — antes cada busca normalizava
+    /// todos os artigos de novo (o <c>Normalize(FormD)</c> caractere a caractere é a parte cara da busca).
+    /// </summary>
+    private static readonly ConcurrentDictionary<Guid, (string Hash, string Text, string Title)> Articles = new();
+
+    private static (string Text, string Title) PreparedArticle(KnowledgeArticle article)
+    {
+        var titleSource = $"{article.Title} {string.Join(' ', article.Tags)} {article.Category} {article.Subcategory}";
+        var hash = $"{article.ContentHash}|{titleSource.GetHashCode()}";
+        if (article.Id != Guid.Empty && Articles.TryGetValue(article.Id, out var cached) && cached.Hash == hash) return (cached.Text, cached.Title);
+        var prepared = (Text: Normalize(article.Content), Title: Normalize(titleSource));
+        if (article.Id != Guid.Empty)
+        {
+            if (Articles.Count > 20_000) Articles.Clear();
+            Articles[article.Id] = (hash, prepared.Text, prepared.Title);
+        }
+        return prepared;
+    }
+
+    /// <summary>
+    /// Termos com peso para escolher blocos pelo assunto de uma conversa: IDs de itens citados (UI-1052, RN-012) pesam
+    /// mais, depois nomes técnicos (svc-filters-sidebar, isTotallyEmpty, clearFiltersField), depois as palavras; as
+    /// mensagens anteriores (<paramref name="earlier"/>) pesam a metade.
+    /// </summary>
+    public static List<(string Term, double Weight)> WeightedTerms(string last, string? earlier = null)
+    {
+        var terms = new Dictionary<string, double>(StringComparer.Ordinal);
+        void Add(string term, double weight)
+        {
+            if (term.Length < 2) return;
+            terms[term] = Math.Max(terms.GetValueOrDefault(term), weight);
+        }
+        foreach (var (text, factor) in new[] { (earlier ?? string.Empty, 0.5), (last, 1.0) })
+        {
+            foreach (var w in Terms(text, max: 80)) Add(w, 1 * factor);
+            foreach (var t in TechnicalToken().Matches(text).Select(m => m.Value).Distinct())
+                if (Terms(null, [t]).FirstOrDefault() is { } n) Add(n, 2.5 * factor);
+            foreach (var id in ItemId().Matches(text).Select(m => Normalize(m.Value)).Distinct()) Add(id, 6 * factor);
+        }
+        return terms.Select(t => (t.Key, t.Value)).ToList();
+    }
+
+    /// <summary>
+    /// Ordena blocos de um documento pelo assunto (chat de melhoria em seção grande) — BM25: cada termo vale pela
+    /// raridade no documento ("svc"/"component" aparecem em quase todo bloco; "cleanable" em poucos), a repetição satura
+    /// e o tamanho do bloco é compensado (bloco longo não ganha só por ter mais palavras); termo no cabeçalho vale o dobro.
+    /// Devolve os índices com pontuação &gt; 0, do melhor para o pior.
+    /// </summary>
+    public static List<int> RankBlocks(IReadOnlyList<(string Text, string? Heading)> blocks, IReadOnlyList<(string Term, double Weight)> terms)
+    {
+        const double k1 = 1.2, b = 0.75;
+        var texts = blocks.Select(x => (Text: Normalize(x.Text), Heading: Normalize(x.Heading))).ToList();
+        var avg = Math.Max(1, texts.Average(x => (double)x.Text.Length));
+        var scores = new double[blocks.Count];
+        foreach (var (term, weight) in terms)
+        {
+            var counts = texts.Select(x => CountTerm(x.Text, term, out _)).ToArray();
+            var df = counts.Count(c => c > 0);
+            if (df == 0) continue;
+            var idf = Math.Log(1 + (blocks.Count - df + 0.5) / (df + 0.5));
+            for (var i = 0; i < blocks.Count; i++)
+            {
+                var tf = counts[i];
+                if (tf == 0) continue;
+                var norm = tf * (k1 + 1) / (tf + k1 * (1 - b + b * texts[i].Text.Length / avg));
+                scores[i] += weight * idf * norm * (HasTerm(texts[i].Heading, term) ? 2 : 1);
+            }
+        }
+        return Enumerable.Range(0, blocks.Count).Where(i => scores[i] > 0).OrderByDescending(i => scores[i]).ThenBy(i => i).ToList();
+    }
+
+    /// <summary>
+    /// Posição (no texto normalizado) onde os termos aparecem mais juntos: a janela de <paramref name="window"/>/2
+    /// caracteres com mais termos distintos (desempate: mais ocorrências). -1 = nenhum termo no texto.
+    /// </summary>
+    public static int DensestWindow(string text, IReadOnlyList<string> terms, int window)
+    {
+        var hits = new List<(int Pos, int Term)>();
+        for (var t = 0; t < terms.Count; t++)
+        {
+            var term = terms[t];
+            if (string.IsNullOrEmpty(term)) continue;
+            var count = 0;
+            for (var i = text.IndexOf(term, StringComparison.Ordinal); i >= 0 && count < 200; i = text.IndexOf(term, i + term.Length, StringComparison.Ordinal))
+            {
+                if (term.Length <= 2 && !Bounded(text, i, term.Length)) continue;
+                hits.Add((i, t));
+                count++;
+            }
+        }
+        if (hits.Count == 0) return -1;
+        hits.Sort((a, b) => a.Pos.CompareTo(b.Pos));
+        var span = Math.Max(1, window / 2);
+        var inWindow = new Dictionary<int, int>();
+        int left = 0, best = hits[0].Pos, bestDistinct = 0, bestTotal = 0;
+        for (var right = 0; right < hits.Count; right++)
+        {
+            inWindow[hits[right].Term] = inWindow.GetValueOrDefault(hits[right].Term) + 1;
+            while (hits[right].Pos - hits[left].Pos > span)
+            {
+                var term = hits[left].Term;
+                if (--inWindow[term] == 0) inWindow.Remove(term);
+                left++;
+            }
+            var total = right - left + 1;
+            if (inWindow.Count > bestDistinct || (inWindow.Count == bestDistinct && total > bestTotal))
+            {
+                bestDistinct = inWindow.Count;
+                bestTotal = total;
+                best = hits[left].Pos;
+            }
+        }
+        return best;
+    }
+
     /// <summary>Esquece as seções que não existem mais (removidas, substituídas ou fora da busca).</summary>
     public static void Forget(IReadOnlySet<Guid> keep)
     {
@@ -87,7 +203,7 @@ public static partial class ArchitectureSearch
     }
 
     /// <summary>Termos da busca: palavras significativas (radical) e, se vierem, frases/nomes técnicos extras (inteiros).</summary>
-    public static List<string> Terms(string? query, IEnumerable<string>? extra = null)
+    public static List<string> Terms(string? query, IEnumerable<string>? extra = null, int max = 24)
     {
         var terms = new List<string>();
         foreach (var raw in WordPattern().Matches(Normalize(query)).Select(m => m.Value))
@@ -102,7 +218,7 @@ public static partial class ArchitectureSearch
             if (n.Length < 3 && !(n.Length == 2 && n.Any(char.IsDigit))) continue;
             terms.Add(n.Contains(' ') || n.Contains('_') ? n : Stem(n));
         }
-        return terms.Distinct().Take(24).ToList();
+        return terms.Distinct().Take(max).ToList();
     }
 
     /// <summary>Radical de uma palavra já normalizada (o mesmo da busca) — para os sinônimos (0053).</summary>
@@ -138,7 +254,7 @@ public static partial class ArchitectureSearch
     /// </summary>
     public static List<Candidate> Score(IReadOnlyList<ArchitectureProject> projects, IReadOnlyList<KnowledgeArticle> articles,
         IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections,
-        ReverseSynonyms? synonyms, Func<ArchitectureSection, PreparedSection> prepare)
+        ReverseSynonyms? synonyms, Func<ArchitectureSection, PreparedSection> prepare, CancellationToken cancellationToken = default)
     {
         synonyms ??= ReverseSynonyms.Empty;
         if (terms.Count == 0) return [];
@@ -147,6 +263,7 @@ public static partial class ArchitectureSearch
 
         foreach (var project in projects)
         {
+            cancellationToken.ThrowIfCancellationRequested(); // a tela desistiu (nova busca): não gasta a CPU da instância à toa
             var projectText = Normalize($"{project.Name} {project.Key} {project.Summary} {string.Join(' ', project.Keywords)}");
             var boost = boostProjects?.Contains(project.Key) == true ? 1.6 : 1.0;
             foreach (var section in project.Sections)
@@ -190,8 +307,7 @@ public static partial class ArchitectureSearch
 
         foreach (var article in articles)
         {
-            var text = Normalize(article.Content);
-            var title = Normalize($"{article.Title} {string.Join(' ', article.Tags)} {article.Category} {article.Subcategory}");
+            var (text, title) = PreparedArticle(article);
             double score = 0;
             var matched = new List<string>();
             var firstPos = -1;
@@ -314,6 +430,14 @@ public static partial class ArchitectureSearch
 
     [GeneratedRegex(@"[\p{L}\p{N}_]+")]
     private static partial Regex WordPattern();
+
+    /// <summary>Nome técnico: com hífen/ponto/sublinhado entre partes (svc-filters-sidebar) ou camelCase (isTotallyEmpty).</summary>
+    [GeneratedRegex(@"\b[A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)+\b|\b[a-z]+[A-Z][A-Za-z0-9]*\b")]
+    private static partial Regex TechnicalToken();
+
+    /// <summary>ID de item da engenharia reversa (UI-1052, RN-012, GAP-993).</summary>
+    [GeneratedRegex(@"\b[A-Z]{2,5}-\d{1,5}\b")]
+    private static partial Regex ItemId();
 
     [GeneratedRegex(@"^#{1,4}\s+(.+?)\s*$", RegexOptions.Multiline)]
     private static partial Regex HeadingPattern();
