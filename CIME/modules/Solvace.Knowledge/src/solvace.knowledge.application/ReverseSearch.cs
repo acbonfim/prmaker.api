@@ -63,15 +63,19 @@ public static partial class ReverseSearch
     private static async Task<Snapshot> LoadAsync(Contracts.IKnowledgeRepository repository, (int Count, DateTimeOffset? LastUpdate) stamp,
         CancellationToken cancellationToken)
     {
-        var entries = await repository.GetIndexEntriesAsync(null, cancellationToken);
-        var prepared = entries.Select(e => new Prepared(e.WithBody(PreviewBody(e.Body)),
-            ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
-            ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
-            ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
-            ArchitectureSearch.Normalize(e.Body),
-            ReverseSynonyms.Words(e.Title),
-            ReverseSynonyms.Words(string.Join(" | ", e.Tags.Concat(e.Synonyms))))).ToList();
-        var synonyms = new ReverseSynonyms(entries);
+        // 0070: em fluxo — cada item é preparado e o texto original solto na hora (só o trecho e o texto normalizado ficam);
+        // antes a lista com o texto inteiro de todos os itens ficava na memória junto com a cópia normalizada de cada um
+        var prepared = new List<Prepared>();
+        await foreach (var e in repository.StreamIndexEntriesAsync(cancellationToken))
+            prepared.Add(new Prepared(e.WithBody(PreviewBody(e.Body)),
+                ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
+                ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
+                ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
+                ArchitectureSearch.Normalize(e.Body),
+                ReverseSynonyms.Words(e.Title),
+                ReverseSynonyms.Words(string.Join(" | ", e.Tags.Concat(e.Synonyms)))));
+        // os sinônimos só usam módulo, tipo, título e sinônimos — não o texto
+        var synonyms = new ReverseSynonyms(prepared.Select(p => p.Entry));
         lock (Gate)
         {
             _stamp = stamp;

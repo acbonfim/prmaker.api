@@ -62,6 +62,14 @@ public interface IKnowledgeRepository
     void AddAsset(ReverseAsset asset);
     /// <summary>Itens publicados (todos, ou de um módulo), sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken);
+    /// <summary>
+    /// Itens publicados de todos os módulos, um a um (0070): quem monta o cache da busca não precisa ter todos os textos na
+    /// memória ao mesmo tempo. A versão padrão lê tudo de uma vez; o repositório real lê em fluxo.
+    /// </summary>
+    async IAsyncEnumerable<ReverseIndexEntry> StreamIndexEntriesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        foreach (var entry in await GetIndexEntriesAsync(null, cancellationToken)) yield return entry;
+    }
     /// <summary>Itens do índice de um tipo (ex.: INT), de todos os módulos, sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken);
     /// <summary>Marca barata para saber se o índice mudou (quantidade + última atualização).</summary>
