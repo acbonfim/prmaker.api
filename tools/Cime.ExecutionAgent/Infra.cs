@@ -187,6 +187,9 @@ public sealed class PrmakeClient : IDisposable
     public Task DoctorAsync(DoctorRequest request, CancellationToken ct) =>
         PostAsync("ExecutionWorker/doctor", request, AgentJson.Default.DoctorRequest, AgentJson.Default.WorkerInfo, ct);
 
+    public async Task<RealTimeInfo?> RealTimeAsync(CancellationToken ct) =>
+        await GetAsync("ExecutionWorker/realtime", AgentJson.Default.RealTimeInfo, ct);
+
     /// <summary>Consulta a fila (<paramref name="waitSeconds"/> = 0: responde na hora): null = nada na fila.</summary>
     public async Task<ClaimResponse?> NextAsync(int waitSeconds, CancellationToken ct)
     {

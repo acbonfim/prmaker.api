@@ -68,8 +68,9 @@ public class ArchitectureGuideService(IAIService ai, IArchitectureApplication ar
         foreach (var summary in project.Sections.OrderBy(s => s.Audience == ArchitectureSectionAudience.Human).ThenBy(s => s.Order))
         {
             if (used >= TechnicalBudget) break;
-            var section = await architecture.GetSectionAsync(project.Key, summary.Key, cancellationToken);
-            var text = ArchitectureAi.Cut(section.Content, Math.Min(PerSection, TechnicalBudget - used));
+            var limit = Math.Min(PerSection, TechnicalBudget - used);
+            var section = await architecture.GetSectionExcerptAsync(project.Key, summary.Key, limit, null, cancellationToken);
+            var text = ArchitectureAi.Cut(section.Content, limit);
             used += text.Length;
             var label = section.Audience == ArchitectureSectionAudience.Human ? "Guia atual (melhore, não descarte o que está certo)" : "Documentação técnica";
             prompt.AppendLine().AppendLine($"## {label}: {section.Title} ({section.Key})").AppendLine(text);

@@ -11,6 +11,7 @@ public class ExecutionQuestion
     public const int MaxTextLength = 20_000;
     public const int MaxAnswerLength = 20_000;
     public const int MaxOptions = 10;
+    public const int MaxCancelReasonLength = 500;
 
     public Guid Id { get; private set; }
     public Guid PlanId { get; private set; }
@@ -29,6 +30,15 @@ public class ExecutionQuestion
     /// <summary>prmake (tela) | claude (terminal).</summary>
     public string? AnsweredVia { get; private set; }
     public DateTimeOffset? AnsweredAt { get; private set; }
+
+    /// <summary>Por que foi cancelada (ex.: "Substituída pela pergunta 5") — mostrado na tela.</summary>
+    public string? CancelReason { get; private set; }
+
+    /// <summary>
+    /// Número da pergunta que substituiu esta (nova rodada da análise depois de um comentário/anexo). Aberta: foi
+    /// cancelada; respondida: a resposta não vale mais — vale a da pergunta nova.
+    /// </summary>
+    public int? ReplacedBy { get; private set; }
 
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
@@ -88,9 +98,20 @@ public class ExecutionQuestion
         Status = ExecutionQuestionStatus.Answered;
     }
 
-    public void Cancel()
+    public void Cancel(string? reason = null)
     {
-        if (Status == ExecutionQuestionStatus.Open)
-            Status = ExecutionQuestionStatus.Cancelled;
+        if (Status != ExecutionQuestionStatus.Open) return;
+        Status = ExecutionQuestionStatus.Cancelled;
+        var r = reason?.Trim();
+        CancelReason = string.IsNullOrEmpty(r) ? null : r.Length <= MaxCancelReasonLength ? r : r[..MaxCancelReasonLength];
+    }
+
+    /// <summary>Substituída por outra pergunta: aberta é cancelada; respondida guarda a resposta, marcada como superada.</summary>
+    public void ReplaceWith(int order)
+    {
+        if (order == Order)
+            throw new DomainException("Uma pergunta não pode substituir a si mesma.");
+        ReplacedBy = order;
+        Cancel($"Substituída pela pergunta {order}");
     }
 }

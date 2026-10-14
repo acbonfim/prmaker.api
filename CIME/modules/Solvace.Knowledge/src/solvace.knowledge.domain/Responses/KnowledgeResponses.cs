@@ -63,6 +63,36 @@ public class ArchitectureSectionResponse : ArchitectureSectionSummaryResponse
     public string Content { get; set; } = string.Empty;
 }
 
+/// <summary>0070: sumário de uma seção grande — a tela busca cada pedaço sob demanda (<c>parts</c>).</summary>
+public class ArchitectureSectionOutlineResponse : ArchitectureSectionSummaryResponse
+{
+    /// <summary>Marca do conteúdo (muda quando a seção muda) — vai nos pedidos de pedaços (<c>?v=</c>).</summary>
+    public string Hash { get; set; } = string.Empty;
+    public List<ArchitectureSectionChunkResponse> Chunks { get; set; } = [];
+}
+
+public class ArchitectureSectionChunkResponse
+{
+    public int Index { get; set; }
+    public int Length { get; set; }
+    /// <summary>IDs dos itens (RN-012, UC-003...) que começam neste pedaço.</summary>
+    public List<string> Ids { get; set; } = [];
+    /// <summary>Altura estimada (px) para o espaço reservado.</summary>
+    public int Estimate { get; set; }
+}
+
+public class ArchitectureSectionPartResponse
+{
+    public int Index { get; set; }
+    public string Text { get; set; } = string.Empty;
+}
+
+public class ArchitectureSectionPartsResponse
+{
+    public string Hash { get; set; } = string.Empty;
+    public List<ArchitectureSectionPartResponse> Parts { get; set; } = [];
+}
+
 public class ArchitectureProjectResponse
 {
     public Guid Id { get; set; }

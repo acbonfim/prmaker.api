@@ -26,6 +26,15 @@ public static class ExecutionPlanRealTimeEvents
     /// </summary>
     public const string EventWorkersChanged = "executionWorkersChanged";
 
+    /// <summary>
+    /// 0068: pode haver pedido para os executores do usuário — o <c>prmake-agent</c> conectado ao relay consulta a fila
+    /// (<c>GET ExecutionQueue/next</c>). Só um sinal, sem payload: a fila em si só sai pela credencial do executor.
+    /// </summary>
+    public const string EventQueueReady = "executionQueueReady";
+
+    /// <summary>0068: grupo dos executores de um usuário (o executor entra com o token de <c>GET ExecutionWorker/realtime</c>).</summary>
+    public static string WorkerGroup(Guid ownerUserId) => $"execworkers:{ownerUserId}";
+
     public static class Actions
     {
         public const string Created = "created";

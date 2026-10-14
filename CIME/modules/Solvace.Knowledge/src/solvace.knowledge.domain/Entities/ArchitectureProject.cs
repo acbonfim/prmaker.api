@@ -90,6 +90,19 @@ public class ArchitectureProject
     public const int MaxRelations = 300;
 
     /// <summary>Substitui as relações (null = mantém as atuais).</summary>
+    /// <summary>
+    /// 0070: cópia para leitura (cache por instância do repositório). Listas próprias — quem lê troca as relações e tira
+    /// seções substituídas sem mexer no cache. As seções (cabeças) são as mesmas instâncias, que ninguém altera.
+    /// </summary>
+    public ArchitectureProject ReadCopy()
+    {
+        var copy = (ArchitectureProject)MemberwiseClone();
+        copy.Sections = [.. Sections];
+        copy.Relations = [.. Relations];
+        copy.Keywords = [.. Keywords];
+        return copy;
+    }
+
     public void SetRelations(IEnumerable<ArchitectureRelation>? relations)
     {
         if (relations is null) return;

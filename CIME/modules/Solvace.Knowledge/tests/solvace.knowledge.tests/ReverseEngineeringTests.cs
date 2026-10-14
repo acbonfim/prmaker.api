@@ -1,3 +1,4 @@
+using solvace.knowledge.application;
 using solvace.knowledge.domain.Entities;
 using solvace.knowledge.domain.Reverse;
 using Xunit;
@@ -46,6 +47,42 @@ public class ReverseEngineeringTests
         ## Glossário
         ## Lacunas e pontos a confirmar
         """;
+
+    [Fact]
+    public void Outside_items_keeps_only_text_outside_the_items()
+    {
+        var outside = ReverseDocParser.OutsideItems(Doc);
+        Assert.Contains("## Estados e ciclo de vida", outside);
+        Assert.DoesNotContain("RN-012", outside);
+        Assert.DoesNotContain("TB_MLH_LOG", outside);
+        Assert.DoesNotContain("## isto não é cabeçalho", outside);
+    }
+
+    [Fact]
+    public void Diff_of_a_large_document_is_linear()
+    {
+        // Antes: Replace do corpo de cada item no documento inteiro (quadrático) — 6 mil itens em ~3 milhões de caracteres
+        // levavam > 8 s numa máquina rápida e o GET da revisão estourava o tempo no Cloud Run (504).
+        static string Big(string salt)
+        {
+            var sb = new System.Text.StringBuilder("# Levantamento\n\nIntrodução.\n\n");
+            for (var n = 1; n <= 6000; n++)
+            {
+                if (n % 600 == 1) sb.Append($"## Seção {n / 600}\n\nTexto da seção.\n\n");
+                sb.Append($"### RN-{n:0000} — regra {n}\n- **Onde:** src/Service{n}.cs:{n}\n{salt}Descrição da regra {n} citando UC-{n % 900 + 1:000}. ")
+                  .Append(string.Join(' ', Enumerable.Repeat("detalhe", 50))).Append("\n\n");
+            }
+            return sb.ToString();
+        }
+        var published = Big("");
+        var draft = Big("mudou ") + "## Nova seção\n\nTexto novo.\n";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var diff = ReverseEngineeringApplication.Diff(published, draft);
+        watch.Stop();
+        Assert.Equal(6000, diff.Changed);
+        Assert.True(diff.OtherTextChanged);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(4), $"Diff levou {watch.Elapsed}");
+    }
 
     [Fact]
     public void Parses_items_with_metadata_and_ignores_code_fences()

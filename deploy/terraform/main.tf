@@ -16,6 +16,9 @@ locals {
       max_instances    = var.max_instances
       timeout_seconds  = 300
       session_affinity = false
+      # 1 GiB: com a Base Solvace (~29 milhões de caracteres) o cache da busca + a remontagem numa instância nova
+      # estouravam 512 MiB e a instância reiniciava em loop (buscas de 50–80 s).
+      memory = "1Gi"
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
         RealTime__Mode         = "Relay"
@@ -50,6 +53,7 @@ locals {
       max_instances    = var.max_instances
       timeout_seconds  = 300
       session_affinity = false
+      memory           = "512Mi"
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
       }
@@ -278,7 +282,7 @@ resource "google_cloud_run_v2_service" "services" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "512Mi"
+          memory = each.value.memory
         }
         cpu_idle = true
       }

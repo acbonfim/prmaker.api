@@ -58,6 +58,8 @@ public class ExecutionPlanContext : DbContext
             entity.HasMany(e => e.Steps).WithOne().HasForeignKey(s => s.PlanId).OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
+            // 0070: pendências do usuário (GET pending, a cada minuto por aba aberta)
+            entity.HasIndex(e => new { e.CreatedByUserId, e.Status });
 
             // 0033: sessões do Claude Code (retomar e custo) — JSON no próprio plano.
             entity.OwnsMany(e => e.Sessions, s =>
@@ -165,6 +167,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Answer).HasColumnType("text");
             entity.Property(e => e.AnsweredBy).HasMaxLength(200);
+            entity.Property(e => e.CancelReason).HasMaxLength(ExecutionQuestion.MaxCancelReasonLength);
             entity.Property(e => e.AnsweredVia).HasMaxLength(20);
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
 

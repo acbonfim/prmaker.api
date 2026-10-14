@@ -381,6 +381,8 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.HasIndex("CardNumber", "CreatedAt");
 
+                    b.HasIndex("CreatedByUserId", "Status");
+
                     b.ToTable("ExecutionPlans", "execution");
                 });
 
@@ -406,6 +408,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -419,6 +425,9 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.Property<Guid>("PlanId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("ReplacedBy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()

@@ -22,6 +22,7 @@ namespace Cime.BuildingBlocks.Security
         private readonly string[] _servicesAllowed;
         private readonly bool _verifyOnlineUserServices;
         private readonly string _realTimeHubPath;
+        private readonly TimeSpan _userActiveCacheTime;
 
         [Obsolete]
         public XApiKeyAuthenticationHandler(
@@ -39,6 +40,7 @@ namespace Cime.BuildingBlocks.Security
             _servicesAllowed = servicesAllowed ?? Array.Empty<string>();
 
             _verifyOnlineUserServices = Convert.ToBoolean(authSection["VerifyOnlineUserServices"]!);
+            _userActiveCacheTime = TimeSpan.FromSeconds(int.TryParse(authSection["UserActiveCacheSeconds"], out var seconds) ? Math.Max(0, seconds) : 120);
 
             // Caminho do hub de tempo real: o SignalR autentica o esquema padrão no negotiate,
             // então este handler precisa ignorar o hub (a autorização do WS é feita pelo
@@ -260,7 +262,28 @@ namespace Cime.BuildingBlocks.Security
             }
         }
 
+        // 0070: "usuário ativo" em cache por instância — antes era uma chamada HTTP ao cime-auth em TODA requisição
+        // (o cime-auth também dorme: somava ida e volta + cold start dele a cada rota). Ativo vale por
+        // Auth:UserActiveCacheSeconds (padrão 120 s); inativo, por 15 s. Desativar um usuário passa a valer em até esse tempo.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (bool Active, DateTime Until)> _activeCache =
+            new(StringComparer.OrdinalIgnoreCase);
+        private static readonly TimeSpan InactiveCacheTime = TimeSpan.FromSeconds(15);
+
         private async Task<bool> IsUserActive(string username)
+        {
+            var now = DateTime.UtcNow;
+            if (_userActiveCacheTime > TimeSpan.Zero && _activeCache.TryGetValue(username, out var cached) && cached.Until > now)
+                return cached.Active;
+            var active = await FetchUserActive(username);
+            if (_userActiveCacheTime > TimeSpan.Zero)
+            {
+                if (_activeCache.Count > 5000) _activeCache.Clear();
+                _activeCache[username] = (active, now + (active ? _userActiveCacheTime : InactiveCacheTime));
+            }
+            return active;
+        }
+
+        private async Task<bool> FetchUserActive(string username)
         {
             try
             {

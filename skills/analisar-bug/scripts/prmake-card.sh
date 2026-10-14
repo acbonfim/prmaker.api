@@ -38,7 +38,7 @@ post() { curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X POST -H "x-api-
 transcript_exists() { [[ -n "$(find "$HOME/.claude/projects" -maxdepth 2 -name "$1.jsonl" 2>/dev/null | head -1)" ]]; }
 
 resume_prompt() { # <card>
-  printf '%s' "Retomando o card $1 pelo PRMake. Antes de continuar, veja o que mudou na tela enquanto voce estava parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card $1) — sem o MCP na sessao: prmake-plan.sh resume-info/notes/answers $1 — e siga de onde parou, conforme a skill analisar-bug."
+  printf '%s' "Retomando o card $1 pelo PRMake. Antes de continuar, veja o que mudou na tela enquanto voce estava parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card $1) — sem o MCP na sessao: prmake-plan.sh resume-info/notes/answers $1 — e siga de onde parou, conforme a skill analisar-bug. Se o que mudou (comentario, anexo, resposta) muda a analise ou as solucoes, revise as perguntas ainda abertas: a revisada vai como pergunta nova com replaces (prmake_ask) e a que perdeu o sentido e cancelada com o motivo (prmake_cancel_questions) — so ficam abertas as que ainda decidem o plano."
 }
 
 # 0039: o executor esta rodando este card agora? Nunca dois processos na mesma sessao.

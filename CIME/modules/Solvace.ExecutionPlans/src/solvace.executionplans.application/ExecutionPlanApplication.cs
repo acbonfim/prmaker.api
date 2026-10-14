@@ -277,6 +277,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             throw new DomainException("No máximo 20 perguntas por vez.");
 
         List<ExecutionQuestion> created = [];
+        List<ExecutionQuestion> replaced = [];
         var plan = await MutateAsync(planId, async p =>
         {
             EnsureAcceptsChanges(p);
@@ -287,19 +288,30 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 .Select(q => new ExecutionQuestion(p.Id, q.StepKey, ++order, q.Text, q.Options, q.AllowFreeText, actor.Name, now))
                 .ToList();
             foreach (var key in created.Where(q => q.StepKey is not null).Select(q => q.StepKey!).Distinct())
-            {
                 if (!p.Steps.Any(s => s.Key == key))
                     throw new DomainException($"Etapa não encontrada: '{key}'.");
-                var open = existing.Count(q => q.StepKey == key && q.Status == ExecutionQuestionStatus.Open) + created.Count(q => q.StepKey == key);
-                p.SetStepWaiting(key, open == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {open} respostas do usuário",
-                    ExecutionWaitingOn.Answer, actor.Name, now, actor.IsExecutor);
-            }
+
+            // Nova rodada (comentário/anexo novo): a pergunta revisada substitui as anteriores — as abertas são
+            // canceladas para o usuário não responder o que já não vale (card 75648).
+            var byOrder = existing.GroupBy(q => q.Order).ToDictionary(g => g.Key, g => g.Last());
+            for (var i = 0; i < created.Count; i++)
+                foreach (var n in (request.Questions[i].Replaces ?? []).Distinct())
+                {
+                    if (!byOrder.TryGetValue(n, out var old))
+                        throw new DomainException($"Pergunta {n} não existe (a substituída precisa ser uma pergunta anterior).");
+                    old.ReplaceWith(created[i].Order);
+                    if (!replaced.Contains(old)) replaced.Add(old);
+                }
+
+            var all = existing.Concat(created).ToList();
+            foreach (var key in created.Concat(replaced).Where(q => q.StepKey is not null).Select(q => q.StepKey!).Distinct())
+                RefreshStepWait(p, key, all, actor, now);
             _repository.AddQuestions(created);
             p.Touch(now, actor.IsExecutor);
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, created.FirstOrDefault()?.StepKey, cancellationToken);
-        await WriteTimelineAsync(plan, QuestionsAskedText(plan, created), actor, cancellationToken);
+        await WriteTimelineAsync(plan, QuestionsAskedText(plan, created, replaced), actor, cancellationToken);
         return created.Select(q => q.ToResponse()).ToList();
     }
 
@@ -325,22 +337,57 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return question.ToResponse();
     }
 
-    public async Task<ExecutionQuestionResponse> CancelQuestionAsync(Guid planId, Guid questionId, ExecutionActor actor, CancellationToken cancellationToken)
+    public async Task<ExecutionQuestionResponse> CancelQuestionAsync(Guid planId, Guid questionId, string? reason, ExecutionActor actor, CancellationToken cancellationToken)
     {
-        ExecutionQuestion? question = null;
+        var cancelled = await CancelQuestionsAsync(planId, new CancelExecutionQuestionsRequest { Ids = [questionId], Reason = reason }, actor, cancellationToken);
+        return cancelled.Single();
+    }
+
+    public async Task<List<ExecutionQuestionResponse>> CancelQuestionsAsync(Guid planId, CancelExecutionQuestionsRequest request, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        var numbers = request.Numbers ?? [];
+        var ids = request.Ids ?? [];
+        if (numbers.Count == 0 && ids.Count == 0)
+            throw new DomainException("Informe as perguntas a cancelar.");
+
+        List<ExecutionQuestion> targets = [];
+        List<ExecutionQuestion> cancelled = [];
         var plan = await MutateAsync(planId, async p =>
         {
             var now = DateTimeOffset.UtcNow;
-            question = await _repository.GetQuestionAsync(p.Id, questionId, cancellationToken)
-                       ?? throw new ExecutionPlanNotFoundException("Pergunta não encontrada.");
-            question.Cancel();
-            await ResumeIfNoOpenQuestionsAsync(p, question.StepKey, questionId, actor, now, cancellationToken);
+            var questions = await _repository.GetQuestionsAsync(p.Id, cancellationToken);
+            foreach (var n in numbers.Distinct())
+                targets.Add(questions.FirstOrDefault(q => q.Order == n) ?? throw new ExecutionPlanNotFoundException($"Pergunta {n} não encontrada."));
+            foreach (var id in ids.Distinct())
+                targets.Add(questions.FirstOrDefault(q => q.Id == id) ?? throw new ExecutionPlanNotFoundException("Pergunta não encontrada."));
+            targets = targets.Distinct().ToList();
+
+            cancelled = targets.Where(q => q.Status == ExecutionQuestionStatus.Open).ToList();
+            foreach (var q in cancelled)
+                q.Cancel(request.Reason);
+            foreach (var key in cancelled.Where(q => q.StepKey is not null).Select(q => q.StepKey!).Distinct())
+                RefreshStepWait(p, key, questions, actor, now);
             p.Touch(now, actor.IsExecutor);
         }, cancellationToken, actor);
 
-        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, question!.StepKey, cancellationToken);
-        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
-        return question.ToResponse();
+        if (cancelled.Count > 0)
+        {
+            await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Question, cancelled[0].StepKey, cancellationToken);
+            await WriteTimelineAsync(plan, QuestionsCancelledText(cancelled, actor), actor, cancellationToken);
+            await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
+        }
+        return targets.Select(q => q.ToResponse()).ToList();
+    }
+
+    /// <summary>Etapa espera enquanto houver pergunta aberta dela; a última respondida/cancelada a tira de "aguardando".</summary>
+    private static void RefreshStepWait(ExecutionPlan plan, string stepKey, IEnumerable<ExecutionQuestion> questions, ExecutionActor actor, DateTimeOffset now)
+    {
+        var open = questions.Count(q => q.StepKey == stepKey && q.Status == ExecutionQuestionStatus.Open);
+        if (open == 0)
+            plan.ResumeStepFromWait(stepKey, actor.Name, now, actor.IsExecutor);
+        else
+            plan.SetStepWaiting(stepKey, open == 1 ? "Aguardando a resposta do usuário" : $"Aguardando {open} respostas do usuário",
+                ExecutionWaitingOn.Answer, actor.Name, now, actor.IsExecutor);
     }
 
     /// <summary>Última pergunta da etapa respondida/cancelada: a etapa sai de "aguardando".</summary>

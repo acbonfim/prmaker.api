@@ -26,7 +26,7 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
       junta as partes das áreas sobre a base (o item reescrito numa parte substitui o da base — modo melhorar).
   re_pacote.py repetidos <documento.md> [--out saida.md]
       funde itens do mesmo tipo e mesmo título vindos de áreas diferentes (API, INT, DB, TEC, CFG, GLO…), referências juntas.
-  re_pacote.py tamanho <documento.md>         tamanho × limite do PRMake (2 milhões de caracteres)
+  re_pacote.py tamanho <documento.md>         tamanho × limite do PRMake (5 milhões de caracteres)
   re_pacote.py compactar <documento.md> --areas areas.json [--ids ids.txt] [--out saida.md]
       depois de juntar as partes: os IDs das faixas das áreas viram a sequência de cada tipo (referências trocadas junto).
 """
@@ -1176,7 +1176,7 @@ def juntar(out, base, parts):
 # ── itens repetidos entre partes (0066-ajustes4) ─────────────────────────────────────────────────────
 
 DEDUPE_KINDS = {"API", "INT", "DB", "SQL", "TRG", "TEC", "CMP", "CFG", "GLO", "PRF", "EVT", "JOB", "INF"}
-MAX_DOC_CHARS = 2_000_000   # o PRMake recusa acima disso (ArchitectureSection/ReverseRevision.MaxContentLength)
+MAX_DOC_CHARS = 5_000_000   # o PRMake recusa acima disso (ArchitectureSection/ReverseRevision.MaxContentLength)
 
 
 def dedupe(doc_path, out=None):

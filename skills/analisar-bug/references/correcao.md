@@ -31,6 +31,17 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se ha script de dados: vai por **chamado** (o usuario abre no sistema de chamados configurado — `TicketSystem`
      do `settings`) ou nao e necessario.
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
+   **Nova rodada de perguntas** (comentario/anexo/resposta mudou a analise e voce refez as solucoes — card 75648):
+   antes do `ask`, veja as perguntas do plano (`prmake_answers`) e trate **cada uma ainda aberta**:
+   - continua valendo como esta → deixe aberta (nao pergunte de novo);
+   - mudou (outras opcoes, outro texto) → a nova vai com `replaces: [n]` no `prmake_ask` (script: `"replaces": [n]`
+     no JSON) — o PRMake cancela a antiga e mostra "substituida pela pergunta N". Vale tambem para pergunta ja
+     **respondida** cuja resposta deixou de valer (ela fica marcada como superada; vale a resposta da nova);
+   - perdeu o sentido (o print respondeu, a hipotese caiu, juntou em outra) → `prmake_cancel_questions(card,
+     [n], "motivo curto")` (script: `cancel-questions <card> <n,...> "motivo"`).
+   Nunca escreva "substitui a pergunta N" so no texto: sem `replaces`/cancelamento a antiga fica aberta e o usuario
+   tem que cancela-la a mao. O `prmake_ask` devolve `stillOpen` (anteriores ainda abertas) — se sobrar alguma que nao
+   decide mais o plano, cancele na hora. No fim, so ficam abertas as perguntas que ainda decidem o plano.
    Use opcoes objetivas + texto livre. Mostre as mesmas perguntas no terminal. **O `label` de cada opcao e o
    texto que o usuario le no botao e o que vai para a Timeline** — escreva a opcao em si ("Corrigir no backend
    (recomendada)", "Script de dados via chamado"), nunca "Opcao 1"/"A"; detalhes vao em `description`.
@@ -122,7 +133,16 @@ necessaria: **sem comentarios novos no codigo** (ver passo 8).
 
 Depois do `push`: `pr-text` na branch de correcao → gere `desc.md`/`rca.md` (passo 8) → `save-pr-text` → as
 linhas de `open-pr` que o `branches` imprimiu (com o `desc.md` do repositorio).
-Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, registre um `log warning` e mencione no PR.
+Conflito no `cherry-pick`: resolva mantendo a intencao da correcao, `git cherry-pick --continue`, registre um
+`log warning` e mencione no PR. **Nunca encadeie o `push` no mesmo comando do `cherry-pick`** (card 75648: o
+conflito passou e a branch derivada subiu sem a correcao) — rode a linha de `push` que o `branches` imprimiu, que so
+empurra com o cherry-pick concluido.
+
+**Edicao e testes novos** (card 75648) — testes da correcao: passo 8, *Validar com testes*.
+- Edicao de arquivo com `python3` ou a ferramenta de edicao — nao `sed -i 's/...'` (o `sed` do macOS exige
+  `sed -i ''` e quebra com `/` no texto).
+- Teste novo so quando o repositorio ja testa aquela camada; nao escreva teste de cancelamento/infra que precise
+  de mocks que o projeto nao tem.
 
 ### 8. Executar o plano de correcao
 Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` → faca (com `log`/`sync`/`checkpoint`)
@@ -134,16 +154,20 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   na mensagem do commit (`CommitMessagePattern`), na descricao do PR e no plano/Timeline — nunca no codigo.
   Excecao rara: so se o proprio arquivo exigir (ex.: doc obrigatoria de API publica) e, mesmo assim, o minimo.
 - **Validar com testes (0069)** — so os testes do que mudou, **uma vez**:
-  `bash $PLAN test <card> "$WT"` (timeout do Bash: 600000). Ele acha os specs dos arquivos alterados (o `.spec.ts` ao
-  lado de cada arquivo mudado + specs mudados), roda sem cobertura e encerra o runner no limite configurado no PRMake
-  (`CorrectionTestMaxSeconds`, padrao 420 s). Resultado → `log` na etapa `validar`:
-  - `OK` / `SEM-SPEC` / `DESLIGADO`: conclua a validacao (sem spec ou desligado: o CI do PR testa).
-  - `FALHOU`: corrija (se a falha e da sua mudanca) e rode o script de novo; falha que ja existia na base: registre e siga.
-  - `LENTO` (exit 124) ou `SEM-RUNNER` (exit 3): **nao repita** (nem com `--maxWorkers`, pastas, `npm test`, `npm
-    install`): registre no plano e siga para o PR — o CI do PR roda o build e os testes. Sem jest (back .NET/Java): o
-    build do projeto alterado basta.
-  - **Nunca** rode o jest/`npm test` direto, em pastas inteiras ou na suite toda. Depois do cherry-pick nas branches do
-    fluxo (dev/qa...) **nao teste de novo** — so se resolveu conflito na mao: ai rode o `$PLAN test` nessa branch.
+  - **Front/Node (jest)**: `bash $PLAN test <card> "$WT"` (timeout do Bash: 600000). Ele acha os specs dos arquivos alterados (o `.spec.ts` ao
+    lado de cada arquivo mudado + specs mudados), roda sem cobertura e encerra o runner no limite configurado no PRMake
+    (`CorrectionTestMaxSeconds`, padrao 420 s). Resultado → `log` na etapa `validar`:
+    - `OK` / `SEM-SPEC` / `DESLIGADO`: conclua a validacao (sem spec ou desligado: o CI do PR testa).
+    - `FALHOU`: corrija (se a falha e da sua mudanca) e rode o script de novo; falha que ja existia na base: registre e siga.
+    - `LENTO` (exit 124) ou `SEM-RUNNER` (exit 3): **nao repita** (nem com `--maxWorkers`, pastas, `npm test`, `npm
+      install`): registre no plano e siga para o PR — o CI do PR roda o build e os testes. Sem jest (back .NET/Java): o
+      build do projeto alterado basta.
+    - **Nunca** rode o jest/`npm test` direto, em pastas inteiras ou na suite toda.
+  - **Back .NET** (card 75648): `dotnet build <sln>` **uma vez** e `dotnet test <projeto-de-teste> --no-build
+    --filter "FullyQualifiedName~<Classe>"` so nas classes de teste do que mudou — cada `dotnet test` sem
+    `--no-build` recompila a solucao. Java: o build do modulo alterado basta.
+  - Depois do cherry-pick nas branches do fluxo (dev/qa...) **nao compile nem teste de novo** — so se resolveu
+    conflito na mao: ai so o que voce tocou (`$PLAN test` ou build + `--no-build` filtrado) nessa branch.
 - **CI do PR (0069)**: o PRMake acompanha o CI de cada PR do plano e mostra na etapa (CI ✅/⏳/❌). Falha que a base ja
   tem (o mesmo check vermelho nos PRs recentes para a mesma branch — ex.: `users` em todo PR para development) aparece
   como "ja falhava na base" e **nao e sua**: nao corrija. So falha nova retoma o card ("o CI de um PR falhou"):

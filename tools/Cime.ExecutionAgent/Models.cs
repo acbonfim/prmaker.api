@@ -65,6 +65,17 @@ public sealed class WorkerState
     public string? LatestAgentVersion { get; set; }
     public bool DoctorRequested { get; set; }
     public List<Guid> ActiveRequestIds { get; set; } = [];
+    /// <summary>0068: há pedido que esta máquina pode pegar agora.</summary>
+    public bool QueueReady { get; set; }
+}
+
+/// <summary>0068: conexão ao relay de tempo real (GET ExecutionWorker/realtime).</summary>
+public sealed class RealTimeInfo
+{
+    public string? Url { get; set; }
+    public string? AccessToken { get; set; }
+    public string Group { get; set; } = string.Empty;
+    public string Event { get; set; } = string.Empty;
 }
 
 public sealed class DoctorCheck
@@ -222,6 +233,7 @@ public sealed class AgentDescriptor
 [JsonSerializable(typeof(WorkerInfo))]
 [JsonSerializable(typeof(ReportRequest))]
 [JsonSerializable(typeof(WorkerState))]
+[JsonSerializable(typeof(RealTimeInfo))]
 [JsonSerializable(typeof(DoctorRequest))]
 [JsonSerializable(typeof(ClaimResponse))]
 [JsonSerializable(typeof(StartRequest))]

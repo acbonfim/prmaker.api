@@ -1,4 +1,5 @@
 using System.Net;
+using System.Xml.Linq;
 
 namespace Cime.ExecutionAgent;
 
@@ -64,6 +65,9 @@ public static class Doctor
             Add($"Ferramenta {tool}", found is not null, found ?? "não encontrada no PATH");
         }
 
+        if (await CodeArtifactCheckAsync(ct) is { } codeArtifact)
+            checks.Add(codeArtifact);
+
         // Banco: o mesmo teste da skill no início da análise (VPN + credencial), sem consulta.
         var sql = Path.Combine(Paths.ClaudeHome, "skills", "analisar-bug", "scripts", "sql-query.sh");
         var creds = Path.Combine(Paths.ClaudeHome, "sqlserver-credentials.json");
@@ -78,6 +82,78 @@ public static class Doctor
             }
         }
         return checks;
+    }
+
+    private const string CodeArtifactProviderInstall =
+        "dotnet tool install -g AWS.CodeArtifact.NuGet.CredentialProvider && dotnet codeartifact-creds install";
+
+    /// <summary>
+    /// Token do CodeArtifact no NuGet.Config dura 12 h e o <c>aws codeartifact login</c> só renova a fonte que ele
+    /// criou — vencido, o restore do revamp cai em 401 (card 75648). O credential provider renova sozinho. Máquina sem
+    /// CodeArtifact (nem fonte, nem credencial, nem provider) → sem checagem.
+    /// </summary>
+    private static async Task<DoctorCheck?> CodeArtifactCheckAsync(CancellationToken ct)
+    {
+        var config = Path.Combine(Paths.IsWindows ? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) : Path.Combine(Paths.Home, ".nuget"),
+            "NuGet", "NuGet.Config");
+        var provider = Directory.Exists(Path.Combine(Paths.Home, ".nuget", "plugins", "netcore", "AWS.CodeArtifact.NuGetCredentialProvider"));
+        string? url = null;
+        var credentials = new List<(string Source, string Password)>();
+        if (File.Exists(config))
+        {
+            try
+            {
+                var xml = XDocument.Load(config);
+                url = xml.Descendants("packageSources").Elements("add").Select(e => (string?)e.Attribute("value"))
+                    .FirstOrDefault(v => v?.Contains(".codeartifact.", StringComparison.OrdinalIgnoreCase) == true);
+                foreach (var source in xml.Descendants("packageSourceCredentials").Elements())
+                {
+                    string? Value(string key) => (string?)source.Elements("add").FirstOrDefault(a => (string?)a.Attribute("key") == key)?.Attribute("value");
+                    if (Value("Username") == "aws" && Value("ClearTextPassword") is { Length: > 0 } password)
+                        credentials.Add((System.Xml.XmlConvert.DecodeName(source.Name.LocalName), password));
+                }
+            }
+            catch (Exception e)
+            {
+                return Check(false, $"não consegui ler {config}: {e.Message}");
+            }
+        }
+        if (url is null && credentials.Count == 0 && !provider) return null;
+
+        var expired = new List<string>();
+        if (url is not null)
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            foreach (var (source, password) in credentials)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                    Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("aws:" + password)));
+                try
+                {
+                    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                    if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) expired.Add(source);
+                }
+                catch
+                {
+                    // sem rede agora: não acusa token vencido
+                }
+            }
+        }
+
+        if (expired.Count > 0)
+            return Check(false, $"token vencido em {string.Join(", ", expired)} no {config} (restore do revamp falha) — " +
+                (provider ? "apague essas credenciais: o credential provider instalado renova sozinho"
+                          : $"instale o credential provider ({CodeArtifactProviderInstall}) e apague as credenciais, ou rode aws codeartifact login"));
+        if (provider)
+            return Check(true, credentials.Count == 0 ? "credential provider instalado (renova o token sozinho)"
+                : "credential provider instalado — apague as credenciais fixas do NuGet.Config, elas vencem em 12 h e têm prioridade");
+        if (credentials.Count > 0)
+            return Check(true, $"token válido, mas vence em 12 h — instale o credential provider: {CodeArtifactProviderInstall}");
+        return Check(false, $"fonte do CodeArtifact sem credencial — instale o credential provider: {CodeArtifactProviderInstall}");
+
+        static DoctorCheck Check(bool ok, string message) =>
+            new() { Name = "NuGet CodeArtifact", Ok = ok, Message = message, Severity = "warning" };
     }
 
     private static async Task<HttpStatusCode?> SafeProbe(PrmakeClient client, string path, CancellationToken ct)

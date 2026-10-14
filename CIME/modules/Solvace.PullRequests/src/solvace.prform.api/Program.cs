@@ -52,6 +52,14 @@ builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddMemoryCache();
+// 0070: respostas comprimidas (documentos da engenharia reversa chegam a 1 MB de markdown; o export, a 8 MB).
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    o.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes.Concat(["text/markdown", "application/problem+json"]);
+});
 // MCP remoto do PRMake (0039): /mcp, Streamable HTTP sem sessão (Cloud Run), autenticado pela x-api-key.
 builder.Services.AddMcpServer(o =>
     {
@@ -159,6 +167,13 @@ if (args.Contains("--migrate"))
 
 
 
+// 0070: Server-Timing + log de requisição lenta; compressão fora do MCP (Streamable HTTP) e do hub de tempo real.
+EfCommandObserver.Start();
+app.UseMiddleware<RequestTimingMiddleware>();
+var realTimeHubPath = builder.Configuration.GetSection("RealTime")["HubPath"] ?? "/ws";
+app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/mcp") && !ctx.Request.Path.StartsWithSegments(realTimeHubPath),
+    branch => branch.UseResponseCompression());
+
 app.UseHttpsRedirection()
     .UseSwaggerConfig(projectName!)
     .UseCors("CorsPolicy")
@@ -171,6 +186,16 @@ app.UseHttpsRedirection()
 app.UseRealTimeService();
 
 app.MapControllers();
+// 0070: memória viva depois de uma coleta completa — só no Development (medição local antes/depois)
+if (app.Environment.IsDevelopment())
+    app.MapGet("/debug/memory", () =>
+    {
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        var info = GC.GetGCMemoryInfo();
+        return Results.Ok(new { liveMb = GC.GetTotalMemory(false) / 1048576, heapMb = info.HeapSizeBytes / 1048576, committedMb = info.TotalCommittedBytes / 1048576,
+            rssMb = Environment.WorkingSet / 1048576 });
+    }).AllowAnonymous();
 app.MapMcp("/mcp").RequireAuthorization();
 app.AddHealthCheckEndpoint(projectName!);
 

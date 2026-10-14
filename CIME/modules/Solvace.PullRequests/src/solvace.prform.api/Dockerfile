@@ -46,4 +46,9 @@ COPY --from=agent /app/agent ./agent
 # Cloud Run envia tráfego para $PORT (8080). O aspnet:10.0 já escuta em 8080 por padrão.
 EXPOSE 8080
 ENV ASPNETCORE_HTTP_PORTS=8080
+# 0070: o Cloud Run mata o container em 512 MiB (heap + memória nativa); com o heap no padrão (75%) a soma passava do
+# limite em rajadas. 65% (hex 0x41) + GCConserveMemory: no teste local com a Base real e o estresse da sequência do OOM,
+# 0 OutOfMemory e pico de RSS ~480 MB.
+ENV DOTNET_GCHeapHardLimitPercent=0x41 \
+    DOTNET_GCConserveMemory=5
 ENTRYPOINT ["dotnet", "solvace.prform.api.dll"]

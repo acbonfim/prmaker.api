@@ -628,6 +628,10 @@ namespace solvace.knowledge.infra.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Kind");
+
+                    b.HasIndex("UpdatedAt");
+
                     b.HasIndex("ModuleKey", "DocType");
 
                     b.HasIndex("ModuleKey", "ItemId");

@@ -19,6 +19,8 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\solvace.knowledge.domain\solvace.knowledge.domain.csproj" />
         <ProjectReference Include="..\..\src\solvace.knowledge.application\solvace.knowledge.application.csproj" />
+        <!-- 0070: conversor de string em segmentos (mesmo JSON que o padrão) -->
+        <ProjectReference Include="..\..\..\Cime.BuildingBlocks\src\Cime.BuildingBlocks.GlobalExtensions\Cime.BuildingBlocks.GlobalExtensions.csproj" />
     </ItemGroup>
 
 </Project>

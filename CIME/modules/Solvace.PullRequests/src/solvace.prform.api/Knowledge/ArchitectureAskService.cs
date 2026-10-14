@@ -185,10 +185,11 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             }
 
             var material = new StringBuilder();
+            var deepTerms = solvace.knowledge.application.ArchitectureSearch.Terms(q, terms);
             foreach (var (projectKey, sectionKey) in targets.Distinct().Take(DeepSections))
             {
                 if (material.Length >= DeepBudget) break;
-                var section = await architecture.GetSectionAsync(projectKey, sectionKey, cancellationToken);
+                var section = await architecture.GetSectionExcerptAsync(projectKey, sectionKey, DeepPerSection, deepTerms, cancellationToken);
                 material.AppendLine($"## {projectKey}/{section.Key} — {section.Title}{(section.Audience == "human" ? " (Guia)" : "")}")
                     .AppendLine(ArchitectureAi.Cut(section.Content, Math.Min(DeepPerSection, DeepBudget - material.Length))).AppendLine();
                 response.SourcesRead.Add($"{projectKey}/{section.Key}");
@@ -275,13 +276,15 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         return found.Concat(plain.Where(h => seen.Add(Key(h)))).Take(limit).ToList();
     }
     private const int BlockChars = 1_800;
+    private const int BlockSourceChars = 40_000;
 
     /// <summary>O bloco da seção sob o título do trecho (até o próximo título do mesmo nível ou acima).</summary>
     private async Task<string?> BlockAsync(ArchitectureSearchHit hit, IReadOnlyList<string> terms, CancellationToken cancellationToken)
     {
         try
         {
-            var section = await architecture.GetSectionAsync(hit.ProjectKey!, hit.SectionKey!, cancellationToken);
+            // seção grande: só o trecho onde os termos se concentram (antes lia a seção inteira, até milhões de caracteres)
+            var section = await architecture.GetSectionExcerptAsync(hit.ProjectKey!, hit.SectionKey!, BlockSourceChars, terms, cancellationToken);
             return BestBlock(section.Content, terms, BlockChars) ?? ExtractBlock(section.Content, hit.Heading, BlockChars);
         }
         catch (Exception e) when (e is not OperationCanceledException) { return null; }
