@@ -12,6 +12,8 @@ public interface IGitHubService
     Task<IReadOnlyList<RepositoryResponse>> ListRepositoriesAsync(CancellationToken cancellationToken = default);
     /// <param name="bypassCache">true ignora o cache de status (ex.: botão "atualizar" da tela).</param>
     Task<IReadOnlyList<PullRequestStatusResponse>> GetPullRequestsStatusAsync(IEnumerable<(string Repository, int Number)> pullRequests, CancellationToken cancellationToken = default, bool bypassCache = false);
+    /// <summary>0069: CI do PR (check runs + statuses do commit de cabeça), com cache de 1 min.</summary>
+    Task<PullRequestChecksResponse> GetPullRequestChecksAsync(string repository, int number, CancellationToken cancellationToken = default);
     Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default);
     Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null);
     Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default);

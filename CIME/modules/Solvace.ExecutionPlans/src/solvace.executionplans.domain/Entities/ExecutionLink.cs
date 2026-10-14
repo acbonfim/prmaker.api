@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace solvace.executionplans.domain.Entities;
 
 /// <summary>
@@ -9,6 +11,7 @@ public class ExecutionLink
 {
     public const int MaxUrlLength = 1000;
     public const int MaxTitleLength = 300;
+    public const int MaxChecksFailedLength = 4000;
 
     public Guid Id { get; private set; }
     public Guid PlanId { get; private set; }
@@ -27,6 +30,14 @@ public class ExecutionLink
     public int? PullRequestNumber { get; private set; }
     public string? Repository { get; private set; }
     public string? TargetBranch { get; private set; }
+
+    /// <summary>0069: CI do PR aberto — pending | success | failure (null = sem CI ou ainda não lido).</summary>
+    public string? ChecksStatus { get; private set; }
+    /// <summary>0069: checks que falharam (JSON: [{"name","url","preexisting"}]) — também com CI verde/pendente, se só a base falha.</summary>
+    public string? ChecksFailed { get; private set; }
+    /// <summary>0069: commit de cabeça do PR que o CI avaliou (push novo = nova rodada).</summary>
+    public string? ChecksHeadSha { get; private set; }
+    public DateTimeOffset? ChecksChangedAt { get; private set; }
 
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
@@ -76,6 +87,54 @@ public class ExecutionLink
         Title = string.IsNullOrEmpty(t) ? null : t.Length <= MaxTitleLength ? t : t[..MaxTitleLength];
     }
 
+    /// <summary>
+    /// 0069: CI do PR (pela sincronização do GitHub). <paramref name="state"/> null = o commit não tem CI. True quando
+    /// mudou o estado, o commit avaliado ou a lista do que falhou.
+    /// </summary>
+    public bool ChangeChecks(string? state, string? headSha, IReadOnlyList<ExecutionCheckItem> failed, DateTimeOffset now)
+    {
+        if (Kind != ExecutionLinkKind.PullRequest)
+            throw new DomainException("Só PR tem CI.");
+        var normalized = string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToLowerInvariant();
+        if (normalized is not null && !ExecutionLinkChecks.All.Contains(normalized))
+            throw new DomainException($"Estado de CI inválido: '{state}'.");
+        string? json = null;
+        if (failed.Count > 0)
+        {
+            var items = failed.Take(20).ToList();
+            json = JsonSerializer.Serialize(items, JsonOptions);
+            while (json.Length > MaxChecksFailedLength && items.Count > 1)
+                json = JsonSerializer.Serialize(items = items.Take(items.Count - 1).ToList(), JsonOptions);
+            if (json.Length > MaxChecksFailedLength)
+                json = null;
+        }
+        var sha = string.IsNullOrWhiteSpace(headSha) ? null : headSha.Trim();
+        if (ChecksStatus == normalized && ChecksFailed == json && ChecksHeadSha == sha)
+            return false;
+        ChecksStatus = normalized;
+        ChecksFailed = json;
+        ChecksHeadSha = sha;
+        ChecksChangedAt = now;
+        return true;
+    }
+
+    /// <summary>0069: checks que falharam, lidos do JSON gravado.</summary>
+    public IReadOnlyList<ExecutionCheckItem> FailedChecks()
+    {
+        if (string.IsNullOrEmpty(ChecksFailed))
+            return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<ExecutionCheckItem>>(ChecksFailed, JsonOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     /// <summary>Muda o status. Chamado: pelo usuário (open/resolved/closed). PR: pela sincronização do GitHub.</summary>
     public bool ChangeStatus(string status, string actor, DateTimeOffset now)
     {
@@ -97,3 +156,6 @@ public class ExecutionLink
         return true;
     }
 }
+
+/// <summary>0069: um check do CI que falhou (nome, link do log e se a base já falha nele).</summary>
+public record ExecutionCheckItem(string Name, string? Url, bool Preexisting = false);

@@ -22,6 +22,7 @@ public class GitHubService : IGitHubService
     private readonly IHttpClientFactory _httpClientFactory;
     private const int RepositoriesCacheMinutes = 10;
     private const int StatusCacheMinutes = 1;
+    private const int BaseFailuresCacheMinutes = 10;
     private const int StatusMaxParallelism = 5;
     private const int RateLimitWarningThreshold = 100;
     private static readonly TimeSpan StatusRequestTimeout = TimeSpan.FromSeconds(5);
@@ -413,6 +414,105 @@ public class GitHubService : IGitHubService
         var result = await Task.WhenAll(tasks);
         LogRateLimit();
         return result;
+    }
+
+    public async Task<PullRequestChecksResponse> GetPullRequestChecksAsync(string repository, int number, CancellationToken cancellationToken = default)
+    {
+        await EnsureClientAsync(cancellationToken);
+        var owner = Config.GetConfigurationValue("Owner") ?? string.Empty;
+        var cacheKey = $"github:pr-checks:{_tokenScope}:{owner}/{repository}#{number}";
+        if (_cacheService.TryGetValue<PullRequestChecksResponse>(cacheKey, out var cached) && cached is not null)
+            return cached;
+
+        var result = new PullRequestChecksResponse { Repository = repository, Number = number };
+        try
+        {
+            var (prOwner, prRepo) = ResolveRepository(repository);
+            var pr = await Client.PullRequest.Get(prOwner, prRepo, number).WaitAsync(StatusRequestTimeout, cancellationToken);
+            var sha = pr.Head.Sha;
+            result.HeadSha = sha;
+            var runs = await Client.Check.Run.GetAllForReference(prOwner, prRepo, sha).WaitAsync(StatusRequestTimeout, cancellationToken);
+            var statuses = await Client.Repository.Status.GetCombined(prOwner, prRepo, sha).WaitAsync(StatusRequestTimeout, cancellationToken);
+
+            // Cancelado/ignorado/neutro não é falha (ex.: execução substituída por um push mais novo).
+            var failedRuns = runs.CheckRuns.Where(r => r.Status.Value == CheckStatus.Completed && r.Conclusion is { } c
+                    && c.Value is CheckConclusion.Failure or CheckConclusion.TimedOut or CheckConclusion.ActionRequired)
+                .Select(r => new PullRequestCheckItem { Name = r.Name, Url = r.HtmlUrl ?? r.DetailsUrl });
+            var failedStatuses = statuses.Statuses.Where(s => s.State.Value is CommitState.Failure or CommitState.Error)
+                .Select(s => new PullRequestCheckItem { Name = s.Context, Url = s.TargetUrl });
+            result.Failed = failedRuns.Concat(failedStatuses).ToList();
+            if (result.Failed.Count > 0)
+            {
+                var baseline = await BaseFailuresAsync(prOwner, prRepo, pr.Base.Ref, number, cancellationToken);
+                foreach (var f in result.Failed)
+                    f.Preexisting = baseline.Contains(f.Name);
+            }
+
+            var pending = runs.CheckRuns.Any(r => r.Status.Value != CheckStatus.Completed)
+                          || statuses.Statuses.Any(s => s.State.Value == CommitState.Pending);
+            var any = runs.CheckRuns.Count > 0 || statuses.Statuses.Count > 0;
+            result.State = result.Failed.Any(f => !f.Preexisting) ? PullRequestChecksResponse.Failure
+                : pending ? PullRequestChecksResponse.Pending
+                : any ? PullRequestChecksResponse.Success
+                : PullRequestChecksResponse.None;
+            _cacheService.Set(cacheKey, result, StatusCacheMinutes);
+        }
+        catch (NotFoundException)
+        {
+            result.Error = "PR não encontrado";
+        }
+        catch (ApiException e)
+        {
+            result.Error = DescribeApiError(e);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning(e, "Falha ao consultar o CI do PR {Repository}#{Number} no GitHub", repository, number);
+            result.Error = e is TimeoutException ? "Tempo esgotado ao consultar o GitHub" : "Falha ao consultar o GitHub";
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 0069: checks que falham nos PRs recentes para a mesma branch (falha que a base já tem — ex.: os testes de
+    /// "users" vermelhos em todo PR para development). Falhou em pelo menos 2 dos 3 últimos PRs com CI (ou em todos,
+    /// se houver menos de 2). Cache de 10 min por repositório/branch.
+    /// </summary>
+    private async Task<HashSet<string>> BaseFailuresAsync(string owner, string repo, string baseBranch, int exceptNumber, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"github:base-failures:{_tokenScope}:{owner}/{repo}:{baseBranch}";
+        if (_cacheService.TryGetValue<HashSet<string>>(cacheKey, out var cached) && cached is not null)
+            return cached;
+        var failures = new HashSet<string>();
+        try
+        {
+            var recent = await Client.PullRequest.GetAllForRepository(owner, repo,
+                    new PullRequestRequest { State = ItemStateFilter.All, Base = baseBranch, SortProperty = PullRequestSort.Updated, SortDirection = SortDirection.Descending },
+                    new ApiOptions { PageSize = 8, PageCount = 1 })
+                .WaitAsync(StatusRequestTimeout, cancellationToken);
+            var counts = new Dictionary<string, int>();
+            var sampled = 0;
+            foreach (var other in recent.Where(p => p.Number != exceptNumber).Take(3))
+            {
+                var runs = await Client.Check.Run.GetAllForReference(owner, repo, other.Head.Sha).WaitAsync(StatusRequestTimeout, cancellationToken);
+                if (runs.CheckRuns.Count == 0)
+                    continue;
+                sampled++;
+                foreach (var name in runs.CheckRuns.Where(r => r.Status.Value == CheckStatus.Completed && r.Conclusion is { } c
+                             && c.Value is CheckConclusion.Failure or CheckConclusion.TimedOut).Select(r => r.Name).Distinct())
+                    counts[name] = counts.GetValueOrDefault(name) + 1;
+            }
+            var needed = Math.Min(2, sampled);
+            if (needed > 0)
+                failures = counts.Where(kv => kv.Value >= needed).Select(kv => kv.Key).ToHashSet();
+            _cacheService.Set(cacheKey, failures, BaseFailuresCacheMinutes);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Sem a base, toda falha conta como do PR (o pior caso é o Claude olhar e registrar que não é dele).
+            _logger.LogWarning(e, "Falha ao ler o CI dos PRs recentes de {Owner}/{Repo} para {Base}", owner, repo, baseBranch);
+        }
+        return failures;
     }
 
     /// <summary>

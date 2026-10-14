@@ -32,7 +32,8 @@ public partial class ExecutionPlanApplication
     /// <summary>
     /// Anexa às etapas de PR (uma por repositório) os PRs do card naquele repositório — abertos pela skill ou
     /// pela tela depois da criação do plano — e acompanha o status. Etapa conclui quando os PRs não fechados
-    /// estão todos mesclados.
+    /// estão todos mesclados. 0069: acompanha também o CI dos PRs abertos — falhou (num commit novo) → marco na
+    /// Timeline e retomada do card para o Claude corrigir; o resto (pendente/verde) só atualiza a tela.
     /// Best-effort: sem credencial do GitHub ou com o GitHub fora, não faz nada.
     /// </summary>
     private async Task SyncPullRequestsAsync(Guid planId, CancellationToken cancellationToken)
@@ -66,12 +67,32 @@ public partial class ExecutionPlanApplication
             return;
         LastPullRequestSync[planId] = now;
 
+        // 0069: CI dos PRs abertos das etapas de PR — lido antes da mutação (que pode repetir), com cache de 1 min.
+        var checks = new Dictionary<(string Repository, int Number), CardPullRequestChecks>();
+        foreach (var pr in cardPrs.Where(pr => pr.Number is not null && pr.Status == ExecutionLinkStatus.Open
+                                               && prSteps.Any(s => SameRepository(pr.Repository, s.Repository!))))
+        {
+            try
+            {
+                if (await _pullRequests.GetChecksAsync(pr.Repository, pr.Number!.Value, cancellationToken) is { } ci)
+                    checks[(pr.Repository, pr.Number.Value)] = ci;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Best-effort: sem CI lido, fica o último estado.
+            }
+        }
+
         var merged = new List<ExecutionLink>();
+        var failedCi = new List<ExecutionLink>();
         var changed = false;
+        var checksChanged = false;
         var plan = await MutateAsync(planId, async p =>
         {
             merged.Clear();
+            failedCi.Clear();
             changed = false;
+            checksChanged = false;
             var links = await _repository.GetLinksAsync(p.Id, cancellationToken);
             foreach (var step in p.Steps.Where(s => s.Kind == ExecutionStepKind.PullRequest && s.Repository is not null && !ExecutionStatus.IsStepFinished(s.Status)).ToList())
             {
@@ -108,6 +129,17 @@ public partial class ExecutionPlanApplication
                         changed = true;
                         if (pr.Status == ExecutionLinkStatus.Merged) merged.Add(link);
                     }
+                    if (link.Status == ExecutionLinkStatus.Open && checks.TryGetValue((pr.Repository, pr.Number!.Value), out var ci))
+                    {
+                        // Falha nova = não estava falhando ou é outro commit (push depois da correção falhou de novo).
+                        var newFailure = ci.State == ExecutionLinkChecks.Failure
+                                         && (link.ChecksStatus != ExecutionLinkChecks.Failure || link.ChecksHeadSha != ci.HeadSha);
+                        if (link.ChangeChecks(ci.State, ci.HeadSha, ci.Failed, now))
+                        {
+                            checksChanged = true;
+                            if (newFailure) failedCi.Add(link);
+                        }
+                    }
                 }
 
                 var active = links.Where(l => l.StepKey == step.Key && l.Kind == ExecutionLinkKind.PullRequest && l.Status != ExecutionLinkStatus.Closed).ToList();
@@ -117,16 +149,21 @@ public partial class ExecutionPlanApplication
                     changed = true;
                 }
             }
-            if (changed) p.Touch(now, fromExecutor: false);
+            if (changed || checksChanged) p.Touch(now, fromExecutor: false);
         }, cancellationToken, SystemActor,
-            // PRs mesclados abrem o registro dos marcos (antes da etapa/plano concluídos por causa deles).
-            () => merged.Count == 0 ? null : string.Join("\n", merged.Select(l => $"🔀 **PR mesclado**: [{l.DisplayName}]({l.Url})")));
+            // PRs mesclados (e CI que falhou) abrem o registro dos marcos (antes da etapa/plano concluídos por causa deles).
+            () => merged.Count == 0 && failedCi.Count == 0 ? null : string.Join("\n",
+                merged.Select(l => $"🔀 **PR mesclado**: [{l.DisplayName}]({l.Url})")
+                    .Concat(failedCi.Select(l => $"❌ **CI falhou** no PR [{l.DisplayName}]({l.Url}): "
+                                                 + string.Join(", ", l.FailedChecks().Where(c => !c.Preexisting).Select(c => c.Url is null ? c.Name : $"[{c.Name}]({c.Url})"))))));
 
-        if (changed)
-        {
+        if (changed || checksChanged)
             await NotifyAsync(plan, domain.RealTime.ExecutionPlanRealTimeEvents.Actions.Link, null, cancellationToken);
+        // CI verde/pendente só atualiza a tela; falhou → o Claude volta para corrigir.
+        if (failedCi.Count > 0)
+            await TriggerResumeAsync(plan, SystemActor, ExecutionRequestSource.Checks, cancellationToken);
+        else if (changed)
             await TriggerResumeAsync(plan, SystemActor, ExecutionRequestSource.PullRequest, cancellationToken);
-        }
     }
 
     /// <summary>"*chave*" no texto vira "*Título da etapa*".</summary>

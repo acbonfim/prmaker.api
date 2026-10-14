@@ -37,6 +37,8 @@ public static class ExecutionRequestSource
     public const string UserAction = "user-action";
     public const string Note = "note";
     public const string PullRequest = "pr";
+    /// <summary>0069: o CI de um PR do plano falhou.</summary>
+    public const string Checks = "checks";
     public const string Rule = "rule";
     public const string Api = "api";
 }

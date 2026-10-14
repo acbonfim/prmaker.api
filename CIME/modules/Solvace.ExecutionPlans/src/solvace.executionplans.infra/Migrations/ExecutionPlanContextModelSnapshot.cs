@@ -112,6 +112,21 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<bool>("BlocksStep")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("ChecksChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ChecksFailed")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ChecksHeadSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ChecksStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
