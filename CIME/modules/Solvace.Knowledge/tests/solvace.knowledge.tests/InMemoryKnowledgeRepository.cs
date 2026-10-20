@@ -77,8 +77,13 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     public Task<ReverseAsset?> GetAssetAsync(Guid id, bool tracked, CancellationToken cancellationToken) => Task.FromResult(_assets.FirstOrDefault(a => a.Id == id && !a.IsDeleted));
     public void AddAsset(ReverseAsset asset) => _assets.Add(asset);
 
-    public Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken) =>
-        Task.FromResult(_entries.Where(e => moduleKey == null || e.ModuleKey == moduleKey).OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList());
+    /// <summary>Leituras do índice inteiro (texto de todos os módulos) — a checagem de uma revisão não pode fazer nenhuma.</summary>
+    public int FullIndexReads { get; private set; }
+    public Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken)
+    {
+        if (moduleKey == null) FullIndexReads++;
+        return Task.FromResult(_entries.Where(e => moduleKey == null || e.ModuleKey == moduleKey).OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList());
+    }
     public Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken) =>
         Task.FromResult(_entries.Where(e => e.Kind == kind).OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToList());
     /// <summary>Marca única por repositório (o cache estático da busca não mistura testes).</summary>

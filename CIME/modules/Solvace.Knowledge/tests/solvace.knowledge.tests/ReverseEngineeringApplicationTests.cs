@@ -153,6 +153,19 @@ public class ReverseEngineeringApplicationTests
     }
 
     [Fact]
+    public async Task Save_and_submit_check_the_document_without_loading_the_whole_search_index()
+    {
+        // O PUT/envio de uma revisão carregava o texto de todos os itens publicados (cache da busca) só para listar IDs:
+        // 15 s e OutOfMemory em produção. A checagem lê só os cabeçalhos do módulo.
+        var (app, repo) = Create();
+        var session = await app.StartSessionAsync("revamp-kaizen", "funcional", new StartReverseSessionRequest(), "dev", Dev, default);
+        var before = repo.FullIndexReads;
+        await app.SaveRevisionAsync(session.Revision.Id, new SaveReverseRevisionRequest { Content = Funcional, CoverageRatio = 0.95 }, "dev", Dev, default);
+        await app.SubmitAsync(session.Revision.Id, "dev", Dev, default);
+        Assert.Equal(before, repo.FullIndexReads);
+    }
+
+    [Fact]
     public async Task Submit_is_blocked_by_lint_errors()
     {
         var (app, _) = Create();
