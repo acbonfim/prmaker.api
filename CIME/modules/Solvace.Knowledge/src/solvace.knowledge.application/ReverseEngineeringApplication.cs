@@ -506,9 +506,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         CancellationToken cancellationToken)
     {
         var type = ReverseDocTypes.Get(docType);
-        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
-        var published = entries.Where(e => e.ModuleKey == project.Key && e.DocType == type.Key).Select(e => e.ItemId).ToList();
-        var removed = entries.Where(e => e.ModuleKey == project.Key && e.Removed).Select(e => e.ItemId).ToHashSet();
+        // 0070: a checagem só precisa dos IDs do módulo — os cabeçalhos, sem o texto; o cache de busca (texto de todos os módulos)
+        // estourava a memória e fazia o PUT/envio de uma revisão levar 15 s ou falhar com OutOfMemory
+        var entries = await repository.GetIndexHeadsAsync(project.Key, null, cancellationToken);
+        var published = entries.Where(e => e.DocType == type.Key).Select(e => e.ItemId).ToList();
+        var removed = entries.Where(e => e.Removed).Select(e => e.ItemId).ToHashSet();
         // 0066: com os projetos conhecidos, a checagem valida os destinos e o mecanismo das integrações
         var targets = ReverseRelations.Targets(await repository.GetProjectHeadsAsync(cancellationToken), await repository.GetReverseModulesAsync(cancellationToken));
         return ReverseLint.Run(type, content, published, OtherDocIds(entries, project.Key, type.Key), coverage, s.MinCoverage, removed, project.Key, targets);
