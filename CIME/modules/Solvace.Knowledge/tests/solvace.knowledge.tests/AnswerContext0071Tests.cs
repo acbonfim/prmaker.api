@@ -58,6 +58,16 @@ public class AnswerContext0071Tests(ITestOutputHelper output)
         Assert.Equal(items.Count, items.Select(i => i.Ref).Distinct().Count());
     }
 
+    [Fact]
+    public async Task Items_far_below_the_best_one_do_not_enter_the_context()
+    {
+        var app = await CreateAsync([("funcional", Fixture())]);
+        var items = await app.GetAnswerContextAsync("transferir usuário para outra planta", AiTerms, [], ArchitectureQuestionKind.Operation, 40, 0, 1500, default);
+        var best = items.Max(i => i.Score);
+        Assert.All(items, i => Assert.True(i.Score >= best * 0.3 - 1e-9));
+        Assert.True(items.Count < 40);
+    }
+
     [Theory]
     [InlineData("como faço para transferir um usuário?", "regra", "operacao")]
     [InlineData("o que preciso para transferir um usuário para outra planta?", "outra", "operacao")]

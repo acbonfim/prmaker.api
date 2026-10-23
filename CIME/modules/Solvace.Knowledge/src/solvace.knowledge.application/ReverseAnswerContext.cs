@@ -14,6 +14,7 @@ public static class ReverseAnswerContext
 {
     private const double RrfK = 20;
     private const int SecondHopLimit = 4;
+    private const double MinRelativeScore = 0.3;
 
     /// <summary>Peso do tipo de item para a intenção da pergunta (<see cref="ArchitectureQuestionKind"/>).</summary>
     public static double KindWeight(string kind, string intent)
@@ -93,6 +94,8 @@ public static class ReverseAnswerContext
             .Where(x => !x.Entry.Removed)
             .OrderByDescending(x => x.Score).ThenBy(x => x.Entry.Ref, StringComparer.Ordinal)
             .Take(limit).ToList();
+        // sem o ruído de longe: quem pontua muito abaixo do melhor não entra (palavra genérica casando em item de outro assunto)
+        if (ranked.Count > 0) ranked = ranked.Where(x => x.Score >= ranked[0].Score * MinRelativeScore).ToList();
 
         var chosen = ranked.Select(x => x.Entry.Ref).ToHashSet(StringComparer.Ordinal);
         var items = ranked.Select(x => (x.Entry, x.Score, Via: (string?)null)).ToList();
