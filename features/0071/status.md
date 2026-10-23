@@ -33,7 +33,7 @@
 Qualidade: a resposta da transferência agora traz Resumo, Quem pode, Antes de começar, Passo a passo (Usuários → Configuração
 → Cadastro de usuários → Transferir → planta → área → confirmar), O que acontece depois, Cuidados e Não confirmado (a divergência
 entre fontes sobre quem pode).
-Próximo: `AIGenerateOptions(Effort)` por chamada (`low` no plano e na resposta; retry sem override se a API recusar) e resposta ≤ 250 palavras.
+Próximo: resposta ≤ 250 palavras, passos de uma linha. (`effort` por chamada descartado: o Haiku não aceita o parâmetro.)
 
 ## Pendente (próximas fases)
 - Cold start do **índice por item** (carrega ~24 mil itens do banco por instância; 4–10 s medidos na 0070): persistir
