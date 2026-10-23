@@ -853,6 +853,34 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         return result;
     }
 
+    public async Task<List<ReverseAnswerItem>> GetAnswerContextAsync(string question, IReadOnlyList<string> terms, IReadOnlyCollection<string> boostModules,
+        string intent, int limit, int maxRelated, int bodyChars, CancellationToken cancellationToken)
+    {
+        var names = await ModuleNamesAsync(cancellationToken);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+        // duas buscas: as palavras da pergunta e os termos da IA (sinônimos, nomes técnicos) — fundidas pela posição
+        var byQuestion = await ReverseSearch.RunAsync(repository, question, null, null, null, 40, false, names, cancellationToken);
+        var byTerms = terms.Count == 0 ? [] : await ReverseSearch.RunAsync(repository, string.Join(' ', terms), null, null, null, 40, false, names, cancellationToken);
+        var (picked, _) = ReverseAnswerContext.Pick(ReverseAnswerContext.Fuse(byQuestion, byTerms), entries, intent, boostModules, limit, maxRelated);
+        if (picked.Count == 0) return [];
+        // o cache da busca guarda só o começo do texto: o texto de todos os itens vem numa única consulta
+        var bodies = await repository.GetIndexBodiesAsync(picked.Select(p => p.Entry.Id).ToList(), cancellationToken);
+        return picked.Select(p =>
+        {
+            var e = p.Entry;
+            var doc = ReverseDocTypes.All.FirstOrDefault(d => d.Key == e.DocType);
+            var hit = ReverseSearch.ToHit(e, names, Math.Round(p.Score, 4), ReverseSearch.Snippet(e.Body));
+            return new ReverseAnswerItem
+            {
+                Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
+                KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
+                Score = hit.Score, Via = p.Via,
+                Body = ReverseAnswerContext.CutBody(bodies.GetValueOrDefault(e.Id) ?? e.Body, bodyChars),
+                SectionKey = doc?.SectionKey ?? ReverseDocTypes.SectionPrefix + e.DocType, DocTitle = doc?.Title ?? e.DocType, Audience = doc?.Audience ?? "llm"
+            };
+        }).ToList();
+    }
+
     /// <summary>
     /// Impacto entre módulos (item 9 da spec): itens de qualquer módulo que citam uma tabela (TB_…), um item
     /// (<c>módulo#ID</c>), um módulo (chave) ou um termo nas tags.

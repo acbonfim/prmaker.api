@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using solvace.ai.application.Contract;
+using solvace.knowledge.application;
 using solvace.knowledge.application.Contracts;
 using solvace.knowledge.domain.Entities;
 using solvace.knowledge.domain.Filtering;
@@ -11,6 +12,8 @@ namespace solvace.prform.Knowledge;
 public class ArchitectureAskRequest
 {
     public string Question { get; set; } = string.Empty;
+    /// <summary>0071: true = ignora a resposta guardada (perguntas repetidas voltam do cache por alguns minutos).</summary>
+    public bool Refresh { get; set; }
 }
 
 /// <summary>
@@ -22,7 +25,8 @@ public class ArchitectureAskRequest
 /// 3) a IA escolhe, entre os candidatos, os trechos que respondem e explica por quê, com uma resposta curta.
 /// Sem IA configurada (plugin AI Configurations), devolve só a busca no conteúdo.
 /// </summary>
-public class ArchitectureAskService(IAIService ai, IArchitectureApplication architecture, ArchitectureChatService chat, IKnowledgeApplication knowledge)
+public class ArchitectureAskService(IAIService ai, IArchitectureApplication architecture, ArchitectureChatService chat, IKnowledgeApplication knowledge,
+    IReverseEngineeringApplication reverse, ILogger<ArchitectureAskService> logger)
 {
     private const int DeepBudget = 60_000;
     private const int DeepPerSection = 14_000;
@@ -30,16 +34,27 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
     public const int MaxQuestionChars = 600;
     private const int CatalogChars = 14_000;
     private const int Candidates = 14;
-    private const int MaxResults = 5;
+    private const int MaxResults = 6;
+    // 0071: contexto por item (engenharia reversa): os melhores + os que eles citam
+    private const int ItemLimit = 7;
+    private const int RelatedLimit = 12;
+    private const int ItemChars = 1_500;
+    private const int SectionCandidates = 5;
+    private static readonly TimeSpan AnswerTtl = TimeSpan.FromMinutes(15);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, ArchitectureAskResponse Response)> Answers = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<ArchitectureAskResponse> AskAsync(string question, CancellationToken cancellationToken)
+    public async Task<ArchitectureAskResponse> AskAsync(string question, CancellationToken cancellationToken, bool refresh = false)
     {
         var q = (question ?? string.Empty).Trim();
         if (q.Length < 3) throw new solvace.knowledge.domain.Entities.DomainException("Escreva a pergunta.");
         if (q.Length > MaxQuestionChars) q = q[..MaxQuestionChars];
-        var response = new ArchitectureAskResponse { Question = q };
 
+        // 0071: pergunta repetida volta na hora (e não gasta a chave de API); só respostas com IA entram
+        var cacheKey = solvace.knowledge.application.ArchitectureSearch.Normalize(q).Trim();
+        if (!refresh && Answers.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < AnswerTtl) return cached.Response;
+
+        var response = new ArchitectureAskResponse { Question = q };
         var status = await chat.GetStatusAsync(cancellationToken);
         if (!status.Available)
         {
@@ -48,33 +63,58 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             return response;
         }
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long tPlan = 0, tItems = 0, tSections = 0;
         try
         {
-            // 1) termos e projetos prováveis
+            // 1) termos, projetos prováveis e tipo da pergunta (IA) — enquanto isso o índice por item é carregado/validado
             var catalog = await architecture.BuildCatalogAsync(CatalogChars, cancellationToken);
-            var plan = new StringBuilder()
-                .AppendLine("Você ajuda a encontrar documentação na Base Solvace (engenharia reversa dos sistemas Solvace: legado edv-solvace .NET/ASP clássico, apps Angular, API de integrações, módulos revamp .NET, AWS, login/Cognito; e regras de negócio do Knowledge Center).")
-                .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON, sem texto fora dele:")
-                .AppendLine("{\"kind\": \"operacao (como habilitar/configurar/dar acesso/cadastrar/onde fica/por que não aparece) | regra (como o produto deve se comportar) | tecnica (implementação, código, banco) | outra\", \"terms\": [até 14 termos de busca — sinônimos em português e inglês, nomes técnicos prováveis de tabelas (ex.: TB_WCM_USER), colunas, classes, serviços, telas, eventos e endpoints, curtos], \"projects\": [chaves de até 4 projetos do catálogo mais prováveis]}")
-                .AppendLine()
-                .AppendLine("PERGUNTA: " + q)
-                .AppendLine()
-                .AppendLine("CATÁLOGO (chave | nome — seções):")
-                .AppendLine(catalog);
-            var first = await ai.GenerateContentAsync(plan.ToString(), cancellationToken);
+            var planTask = ai.GenerateContentAsync(ArchitectureAskPrompts.Plan(q, catalog), cancellationToken);
+            var warm = reverse.SearchAsync(q, null, null, null, 1, false, cancellationToken);
+            await Task.WhenAll(planTask, warm);
+            var first = await planTask;
             if (first is null || !string.IsNullOrWhiteSpace(first.Error) || string.IsNullOrWhiteSpace(first.Content))
                 throw new InvalidOperationException(first?.Error ?? "O provedor de IA não respondeu.");
-            var (terms, projects, kind) = ParsePlan(first.Content);
+            tPlan = clock.ElapsedMilliseconds;
+            var (terms, projects, aiKind) = ParsePlan(first.Content);
+            var intent = ReverseAnswerContext.Intent(q, aiKind);
             response.Terms = terms;
-            response.Kind = kind;
-            var (boostProjects, boostSections) = Boosts(kind, projects);
+            response.Kind = intent;
+            var (boostProjects, boostSections) = Boosts(intent, projects);
             response.Provider = first.Provider;
             response.Model = first.Model;
 
-            // 2) candidatos no conteúdo
-            var candidates = await WithQuestionOnlyAsync(q, Candidates,
-                await architecture.SearchAsync(q, Candidates, terms, boostProjects, boostSections, cancellationToken), boostProjects, boostSections, cancellationToken);
-            if (candidates.Count == 0)
+            // 2) itens da engenharia reversa (regras, casos de uso, telas, perfis…) e os que eles citam
+            var items = await reverse.GetAnswerContextAsync(q, terms, boostProjects, intent, ItemLimit, RelatedLimit, ItemChars, cancellationToken);
+            tItems = clock.ElapsedMilliseconds;
+
+            // 3) seções que não são da ER (Guia, operação da plataforma, legado) e artigos do KC — só dos projetos prováveis
+            var only = projects.Concat(items.Select(i => i.ModuleKey)).Append(PlatformOperationProject).Distinct().ToList();
+            // os documentos da ER (re-*) são ~98% do texto da Base e já entram por item: sem eles a busca fria lê ~1 M de caracteres
+            var sectionHits = (await architecture.SearchInProjectsAsync(q, SectionCandidates, terms, boostProjects, boostSections, only, items.Count == 0, cancellationToken));
+            if (items.Count == 0 && sectionHits.Count < MinCandidates)
+                sectionHits = await WithQuestionOnlyAsync(q, Candidates, sectionHits, boostProjects, boostSections, cancellationToken);
+            tSections = clock.ElapsedMilliseconds;
+
+            // 4) as fontes do prompt: itens primeiro, depois as seções/artigos (as melhores com o bloco sob o título encontrado)
+            var hits = new List<ArchitectureSearchHit>();
+            var sources = new List<AskSource>();
+            foreach (var item in items)
+            {
+                hits.Add(ItemHit(item));
+                sources.Add(new AskSource($"{item.ItemId} — {item.Title} ({item.ModuleName ?? item.ModuleKey} · {item.DocTitle})", item.Body));
+            }
+            var blockTerms = solvace.knowledge.application.ArchitectureSearch.AnswerTerms(q, terms);
+            var expanded = 0;
+            foreach (var c in sectionHits)
+            {
+                var block = expanded < ExpandedCandidates && c.Type == "section" && c.ProjectKey is not null && c.SectionKey is not null
+                    ? await BlockAsync(c, blockTerms, cancellationToken) : null;
+                if (block is not null) expanded++;
+                hits.Add(c);
+                sources.Add(new AskSource($"{c.Title}{(c.Heading is null ? "" : " › " + c.Heading)}", block ?? c.Snippet));
+            }
+            if (sources.Count == 0)
             {
                 response.AiUsed = true;
                 response.Coverage = ArchitectureCoverage.NotFound;
@@ -82,52 +122,27 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
                 return response;
             }
 
-            // 3) a IA escolhe e explica
-            var pick = new StringBuilder()
-                .AppendLine("Você é o especialista da Base Solvace. Responda à PERGUNTA usando SÓ os TRECHOS numerados abaixo (não invente).")
-                .AppendLine("Devolva SÓ um JSON, sem texto fora dele:")
-                .AppendLine(kind == ArchitectureQuestionKind.Operation
-                    ? "A pergunta é de OPERAÇÃO: responda em passo a passo numerado (onde fica na tela, quem pode fazer, o que acontece depois) e termine com \"Se não funcionar, confira:\" e as causas comuns que os trechos citarem."
-                    : "")
-                .AppendLine("{\"answer\": \"resposta em português simples, para quem não programa (2 a 4 frases; em pergunta de operação, o passo a passo), citando os trechos como [n]; se os trechos não respondem, diga isso\", \"coverage\": \"answered (os trechos respondem) | partial (respondem em parte) | not-found (não respondem)\", \"section\": n do trecho cuja seção é a melhor para ler sobre o assunto (ou 0), \"results\": [{\"ref\": n, \"reason\": \"por que este trecho responde (1 frase)\"}]}")
-                .AppendLine($"Inclua em results só os trechos que ajudam de verdade, do mais útil para o menos útil, no máximo {MaxResults}.")
-                .AppendLine()
-                .AppendLine("PERGUNTA: " + q)
-                .AppendLine()
-                .AppendLine("TRECHOS:");
-            // 0040: o trecho de ~260 caracteres muitas vezes corta a resposta (ex.: a pergunta frequente acha o título mas
-            // não a resposta) — as melhores seções vão com o bloco inteiro sob o título encontrado.
-            var expanded = 0;
-            // As palavras da pergunta escolhem o bloco: os termos da IA trazem ruído (ex.: "alert", "TB_WCM_SITE" numa
-            // pergunta de Score Card) e diluíam a escolha.
-            var questionTerms = solvace.knowledge.application.ArchitectureSearch.Terms(q);
-            var blockTerms = questionTerms.Count > 0 ? questionTerms : solvace.knowledge.application.ArchitectureSearch.Terms(q, terms);
-            for (var i = 0; i < candidates.Count; i++)
-            {
-                var c = candidates[i];
-                pick.AppendLine($"[{i + 1}] {c.Title}{(c.Heading is null ? "" : " › " + c.Heading)}");
-                var block = expanded < ExpandedCandidates && c.Type == "section" && c.ProjectKey is not null && c.SectionKey is not null
-                    ? await BlockAsync(c, blockTerms, cancellationToken) : null;
-                if (block is not null) expanded++;
-                pick.AppendLine("    " + (block ?? c.Snippet).Replace("\n", "\n    "));
-            }
-            var second = await ai.GenerateContentAsync(pick.ToString(), cancellationToken);
+            // 5) a IA escreve a resposta para quem usa o sistema
+            var second = await ai.GenerateContentAsync(ArchitectureAskPrompts.Answer(q, intent, sources, MaxResults), cancellationToken);
             if (second is null || !string.IsNullOrWhiteSpace(second.Error) || string.IsNullOrWhiteSpace(second.Content))
                 throw new InvalidOperationException(second?.Error ?? "O provedor de IA não respondeu.");
+            var answer = ArchitectureAskPrompts.ParseAnswer(second.Content) ?? throw new InvalidOperationException("a resposta veio fora do formato");
 
-            var (answer, refs, coverage, sectionRef) = ParsePick(second.Content);
             response.AiUsed = true;
-            response.Answer = answer;
-            response.Coverage = coverage;
-            response.SuggestedSection = Suggested(candidates, sectionRef, refs);
-            response.Results = refs
-                .Where(r => r.Ref >= 1 && r.Ref <= candidates.Count)
-                .DistinctBy(r => r.Ref)
-                .Take(MaxResults)
-                .Select(r => { var hit = candidates[r.Ref - 1]; hit.Reason = r.Reason; return hit; })
-                .ToList();
-            // A IA não escolheu nada mas há candidatos: mostra os melhores da busca (sem motivo).
-            if (response.Results.Count == 0) response.Results = candidates.Take(3).ToList();
+            response.Answer = answer.Text;
+            response.Coverage = answer.Coverage;
+            var refs = answer.Sources.Where(n => n >= 1 && n <= hits.Count).Select(n => (Ref: n, Reason: hits[n - 1].Reason)).ToList();
+            response.SuggestedSection = Suggested(hits, answer.Section, refs);
+            response.Results = refs.Select(r => hits[r.Ref - 1]).Take(MaxResults).ToList();
+            // a IA não escolheu nada mas há fontes: mostra as melhores da busca
+            if (response.Results.Count == 0) response.Results = hits.Take(3).ToList();
+            logger.LogInformation("Pergunte: plano {Plan} ms, itens {Items} ms ({ItemCount}), seções {Sections} ms ({SectionCount}), total {Total} ms, {Chars} caracteres de fontes",
+                tPlan, tItems - tPlan, items.Count, tSections - tItems, sectionHits.Count, clock.ElapsedMilliseconds, sources.Sum(x => x.Text.Length));
+            if (answer.Text is not null)
+            {
+                if (Answers.Count > 200) Answers.Clear();
+                Answers[cacheKey] = (DateTimeOffset.UtcNow, response);
+            }
             return response;
         }
         catch (Exception e) when (e is InvalidOperationException or JsonException or HttpRequestException)
@@ -137,6 +152,15 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             return response;
         }
     }
+
+    /// <summary>Item da engenharia reversa como resultado da tela: abre o documento do módulo no cabeçalho do item.</summary>
+    private static ArchitectureSearchHit ItemHit(ReverseAnswerItem item) => new()
+    {
+        Type = "section", ProjectKey = item.ModuleKey, ProjectName = item.ModuleName ?? item.ModuleKey, SectionKey = item.SectionKey, SectionTitle = item.DocTitle,
+        Audience = item.Audience, Title = $"{item.ModuleName ?? item.ModuleKey} — {item.DocTitle}", Heading = $"{item.ItemId} — {item.Title}",
+        Snippet = item.Snippet, Score = item.Score, Matched = [],
+        Reason = item.Via is null ? item.KindLabel : $"{item.KindLabel} (citado em {item.Via})"
+    };
 
     /// <summary>
     /// "Analisar a fundo" (0038): quando a base não cobre bem a pergunta, a IA lê as SEÇÕES INTEIRAS dos projetos
@@ -259,7 +283,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         response.CodeHints = string.IsNullOrWhiteSpace(hints) ? null : hints;
     }
 
-    private const int ExpandedCandidates = 5;
+    private const int ExpandedCandidates = 3;
     private const int MinCandidates = 3;
 
     /// <summary>
@@ -275,61 +299,19 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         var seen = found.Select(Key).ToHashSet();
         return found.Concat(plain.Where(h => seen.Add(Key(h)))).Take(limit).ToList();
     }
-    private const int BlockChars = 1_800;
+    private const int BlockChars = 2_400;
     private const int BlockSourceChars = 40_000;
 
     /// <summary>O bloco da seção sob o título do trecho (até o próximo título do mesmo nível ou acima).</summary>
-    private async Task<string?> BlockAsync(ArchitectureSearchHit hit, IReadOnlyList<string> terms, CancellationToken cancellationToken)
+    private async Task<string?> BlockAsync(ArchitectureSearchHit hit, IReadOnlyList<(string Term, double Weight)> terms, CancellationToken cancellationToken)
     {
         try
         {
             // seção grande: só o trecho onde os termos se concentram (antes lia a seção inteira, até milhões de caracteres)
-            var section = await architecture.GetSectionExcerptAsync(hit.ProjectKey!, hit.SectionKey!, BlockSourceChars, terms, cancellationToken);
-            return BestBlock(section.Content, terms, BlockChars) ?? ExtractBlock(section.Content, hit.Heading, BlockChars);
+            var section = await architecture.GetSectionExcerptAsync(hit.ProjectKey!, hit.SectionKey!, BlockSourceChars, terms.Select(t => t.Term).ToList(), cancellationToken);
+            return solvace.knowledge.application.ArchitectureSearch.BestBlocks(section.Content, terms, BlockChars) ?? ExtractBlock(section.Content, hit.Heading, BlockChars);
         }
         catch (Exception e) when (e is not OperationCanceledException) { return null; }
-    }
-
-    /// <summary>
-    /// O bloco (título + texto até o próximo título) que mais casa com os termos da pergunta: termo no título vale 3,
-    /// no texto 1, e cobrir mais termos distintos ganha. Seção curta vai inteira. Null = nenhum bloco casou.
-    /// </summary>
-    public static string? BestBlock(string content, IReadOnlyList<string> terms, int max)
-    {
-        var text = (content ?? string.Empty).Replace("\r\n", "\n");
-        if (text.Length <= max) return text.Trim();
-        if (terms.Count == 0) return null;
-        var lines = text.Split('\n');
-        var blocks = new List<(string Heading, StringBuilder Body)>();
-        var fenced = false;
-        foreach (var line in lines)
-        {
-            if (line.TrimStart().StartsWith("```")) fenced = !fenced;
-            var m = fenced ? null : System.Text.RegularExpressions.Regex.Match(line, @"^#{1,6}\s+(.+?)\s*#*\s*$");
-            if (m is { Success: true } || blocks.Count == 0) blocks.Add((m is { Success: true } ? m.Groups[1].Value : string.Empty, new StringBuilder()));
-            blocks[^1].Body.AppendLine(line);
-        }
-        (double Score, string Text)? best = null;
-        foreach (var (heading, body) in blocks)
-        {
-            var h = solvace.knowledge.application.ArchitectureSearch.Normalize(heading);
-            var b = solvace.knowledge.application.ArchitectureSearch.Normalize(body.ToString());
-            var matched = 0;
-            double score = 0;
-            foreach (var t in terms)
-            {
-                var inHeading = h.Contains(t);
-                var inBody = b.Contains(t);
-                if (!inHeading && !inBody) continue;
-                matched++;
-                score += (inHeading ? 3 : 0) + (inBody ? 1 : 0);
-            }
-            if (matched == 0) continue;
-            score *= (double)matched / terms.Count;
-            if (best is null || score > best.Value.Score) best = (score, body.ToString().Trim());
-        }
-        if (best is null) return null;
-        return best.Value.Text.Length <= max ? best.Value.Text : best.Value.Text[..max] + "…";
     }
 
     public static string ExtractBlock(string content, string? heading, int max)
@@ -399,27 +381,6 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             ProjectKey = pick.ProjectKey, SectionKey = pick.SectionKey, Heading = pick.Heading,
             Title = $"{pick.ProjectName} › {pick.SectionTitle}", Reason = reason
         };
-    }
-
-    private static (string? Answer, List<(int Ref, string? Reason)> Refs, string Coverage, int Section) ParsePick(string content)
-    {
-        using var doc = JsonDocument.Parse(ExtractJson(content));
-        var root = doc.RootElement;
-        var answer = root.TryGetProperty("answer", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() : null;
-        var coverage = ArchitectureCoverage.Normalize(root.TryGetProperty("coverage", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null);
-        var section = root.TryGetProperty("section", out var sec)
-            ? sec.ValueKind == JsonValueKind.Number ? sec.GetInt32() : int.TryParse(sec.ValueKind == JsonValueKind.String ? sec.GetString() : null, out var sn) ? sn : 0
-            : 0;
-        var refs = new List<(int, string?)>();
-        if (root.TryGetProperty("results", out var list) && list.ValueKind == JsonValueKind.Array)
-            foreach (var item in list.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("ref", out var r)) continue;
-                var n = r.ValueKind == JsonValueKind.Number ? r.GetInt32() : int.TryParse(r.GetString(), out var parsed) ? parsed : 0;
-                var reason = item.TryGetProperty("reason", out var why) && why.ValueKind == JsonValueKind.String ? why.GetString() : null;
-                refs.Add((n, reason));
-            }
-        return (answer?.Trim(), refs, coverage, section);
     }
 
     private static List<string> Strings(JsonElement root, string name, int max, int maxLength) =>

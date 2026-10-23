@@ -39,6 +39,10 @@ public interface IArchitectureApplication
         IReadOnlyCollection<string>? boostSections,
         CancellationToken cancellationToken);
 
+    /// <summary>0071: como <see cref="SearchAsync"/>, só nas seções dos projetos pedidos (null/vazio = todos); <c>withReverseDocs</c> = false pula os documentos <c>re-*</c> da engenharia reversa (já entram por item).</summary>
+    Task<List<ArchitectureSearchHit>> SearchInProjectsAsync(string query, int limit, IReadOnlyList<string>? extraTerms, IReadOnlyCollection<string>? boostProjects,
+        IReadOnlyCollection<string>? boostSections, IReadOnlyCollection<string>? onlyProjects, bool withReverseDocs, CancellationToken cancellationToken);
+
     /// <summary>Catálogo compacto (projetos e títulos das seções) para a IA entender o que existe na base.</summary>
     Task<string> BuildCatalogAsync(int maxChars, CancellationToken cancellationToken);
     Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken);
@@ -89,6 +93,12 @@ public interface IReverseEngineeringApplication
         bool includeRemoved, CancellationToken cancellationToken);
     Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken);
     Task<List<ReverseIndexHit>> ImpactAsync(string term, int limit, CancellationToken cancellationToken);
+    /// <summary>
+    /// 0071: itens que respondem a uma pergunta do Pergunte — busca por item (pergunta + termos da IA), peso pelo tipo conforme a
+    /// intenção (<see cref="domain.Entities.ArchitectureQuestionKind"/>), itens citados pelos melhores e o texto de todos numa só consulta.
+    /// </summary>
+    Task<List<ReverseAnswerItem>> GetAnswerContextAsync(string question, IReadOnlyList<string> terms, IReadOnlyCollection<string> boostModules, string intent,
+        int limit, int maxRelated, int bodyChars, CancellationToken cancellationToken);
     /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
