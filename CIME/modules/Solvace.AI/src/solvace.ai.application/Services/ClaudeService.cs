@@ -3,6 +3,7 @@ using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Microsoft.Extensions.Options;
 using solvace.ai.application.Contract;
+using solvace.ai.domain.Requests;
 using solvace.ai.domain.Options;
 using solvace.ai.domain.Responses;
 
@@ -26,7 +27,10 @@ public class ClaudeService : IAIService
         _options = aiOptions.Value.Claude ?? new ClaudeOptions();
     }
 
-    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default)
+    public Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default) =>
+        GenerateContentAsync(prompt, null, cancellationToken);
+
+    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, AIGenerateOptions? options, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             return Failure("Prompt não pode ser vazio");
@@ -35,7 +39,7 @@ public class ClaudeService : IAIService
 
         var model = string.IsNullOrWhiteSpace(_options.Model) ? ClaudeOptions.DefaultModel : _options.Model.Trim();
 
-        if (!TryParseEffort(_options.Effort, out var effort))
+        if (!TryParseEffort(string.IsNullOrWhiteSpace(options?.Effort) ? _options.Effort : options.Effort, out var effort))
             return Failure($"Effort inválido no plugin do Claude: '{_options.Effort}' (use low, medium, high ou max)", model);
 
         var timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds is > 0 ? _options.TimeoutSeconds.Value : ClaudeOptions.DefaultTimeoutSeconds);

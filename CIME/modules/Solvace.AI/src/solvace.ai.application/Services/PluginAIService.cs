@@ -1,4 +1,5 @@
 using solvace.ai.application.Contract;
+using solvace.ai.domain.Requests;
 using solvace.ai.domain.Responses;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Extensions;
@@ -26,7 +27,10 @@ public class PluginAIService : IAIService
         _usage = usage;
     }
 
-    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default)
+    public Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default) =>
+        GenerateContentAsync(prompt, null, cancellationToken);
+
+    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, AIGenerateOptions? options, CancellationToken cancellationToken = default)
     {
         var aiConfiguration = await _resolver.GetEffectiveConfigurationAsync(AIConfigurationsPlugin, cancellationToken);
         var providerName = aiConfiguration.GetConfigurationValue("Provider")?.Trim();
@@ -48,7 +52,7 @@ public class PluginAIService : IAIService
         }
 
         var started = System.Diagnostics.Stopwatch.StartNew();
-        var result = await provider.GenerateContentAsync(prompt, cancellationToken);
+        var result = await provider.GenerateContentAsync(prompt, options, cancellationToken);
         if (result is not null && _usage is not null)
         {
             if (string.IsNullOrEmpty(result.Provider)) result.Provider = providerName;

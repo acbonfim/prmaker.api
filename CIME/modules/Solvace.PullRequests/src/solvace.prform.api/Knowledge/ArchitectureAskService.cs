@@ -69,7 +69,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         {
             // 1) termos, projetos prováveis e tipo da pergunta (IA) — enquanto isso o índice por item é carregado/validado
             var catalog = await architecture.BuildCatalogAsync(CatalogChars, cancellationToken);
-            var planTask = ai.GenerateContentAsync(ArchitectureAskPrompts.Plan(q, catalog), cancellationToken);
+            var planTask = GenerateQuickAsync(ArchitectureAskPrompts.Plan(q, catalog), cancellationToken);
             var warm = reverse.SearchAsync(q, null, null, null, 1, false, cancellationToken);
             await Task.WhenAll(planTask, warm);
             var first = await planTask;
@@ -123,7 +123,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             }
 
             // 5) a IA escreve a resposta para quem usa o sistema
-            var second = await ai.GenerateContentAsync(ArchitectureAskPrompts.Answer(q, intent, sources, MaxResults), cancellationToken);
+            var second = await GenerateQuickAsync(ArchitectureAskPrompts.Answer(q, intent, sources, MaxResults), cancellationToken);
             if (second is null || !string.IsNullOrWhiteSpace(second.Error) || string.IsNullOrWhiteSpace(second.Content))
                 throw new InvalidOperationException(second?.Error ?? "O provedor de IA não respondeu.");
             var answer = ArchitectureAskPrompts.ParseAnswer(second.Content) ?? throw new InvalidOperationException("a resposta veio fora do formato");
@@ -151,6 +151,18 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             response.Results = await architecture.SearchAsync(q, MaxResults * 2, response.Terms, null, null, cancellationToken);
             return response;
         }
+    }
+
+    /// <summary>
+    /// Plano e resposta do Pergunte pedem pouco raciocínio: com o esforço padrão do modelo a resposta de ~450 palavras gastava
+    /// ~2.600 tokens de saída e 14 s. Se a API recusar o ajuste, repete com a configuração do plugin.
+    /// </summary>
+    private async Task<solvace.ai.domain.Responses.AIGenerateResponse?> GenerateQuickAsync(string prompt, CancellationToken cancellationToken)
+    {
+        var result = await ai.GenerateContentAsync(prompt, new solvace.ai.domain.Requests.AIGenerateOptions("low"), cancellationToken);
+        if (result is not null && !string.IsNullOrWhiteSpace(result.Error) && result.Error.Contains("recusada", StringComparison.OrdinalIgnoreCase))
+            result = await ai.GenerateContentAsync(prompt, cancellationToken);
+        return result;
     }
 
     /// <summary>Item da engenharia reversa como resultado da tela: abre o documento do módulo no cabeçalho do item.</summary>
