@@ -327,6 +327,19 @@ public class ReverseIndexHit
     public double Score { get; set; }
 }
 
+/// <summary>0071: item que entra no contexto de uma resposta do Pergunte (texto inteiro, cortado) e de onde veio.</summary>
+public class ReverseAnswerItem : ReverseIndexHit
+{
+    public string Body { get; set; } = string.Empty;
+    /// <summary>ID do item que cita este (quando entrou pela referência e não pela busca).</summary>
+    public string? Via { get; set; }
+    /// <summary>Chave da seção do projeto onde o documento do item foi publicado (<c>re-funcional</c>).</summary>
+    public string SectionKey { get; set; } = string.Empty;
+    public string DocTitle { get; set; } = string.Empty;
+    /// <summary>llm | human (visão prática).</summary>
+    public string Audience { get; set; } = "llm";
+}
+
 public class ReverseItemResponse : ReverseIndexHit
 {
     /// <summary>0054: armadilhas ligadas ao item (o que já deu errado aqui).</summary>
