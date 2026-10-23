@@ -3,6 +3,7 @@ using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Microsoft.Extensions.Options;
 using solvace.ai.application.Contract;
+using solvace.ai.domain.Requests;
 using solvace.ai.domain.Options;
 using solvace.ai.domain.Responses;
 
@@ -26,7 +27,10 @@ public class ClaudeService : IAIService
         _options = aiOptions.Value.Claude ?? new ClaudeOptions();
     }
 
-    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default)
+    public Task<AIGenerateResponse?> GenerateContentAsync(string prompt, CancellationToken cancellationToken = default) =>
+        GenerateContentAsync(prompt, [], cancellationToken);
+
+    public async Task<AIGenerateResponse?> GenerateContentAsync(string prompt, IReadOnlyList<AIAttachment> attachments, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             return Failure("Prompt não pode ser vazio");
@@ -66,7 +70,7 @@ public class ClaudeService : IAIService
             // Cabeçalho anthropic-workspace-id: só para chaves de organização (sem workspace).
             WorkspaceID = string.IsNullOrWhiteSpace(_options.WorkspaceId) ? null : _options.WorkspaceId.Trim(),
             // Sem temperature/top_p: os modelos atuais (Sonnet 5, Opus 5…) rejeitam amostragem manual.
-            Messages = [new() { Role = Role.User, Content = prompt }],
+            Messages = [new() { Role = Role.User, Content = BuildContent(prompt, attachments) }],
         };
 
         Message message;
@@ -156,6 +160,35 @@ public class ClaudeService : IAIService
                 url = url[..^suffix.Length];
         return url;
     }
+
+    /// <summary>
+    /// Conteúdo da mensagem: só o texto quando não há anexos (igual a antes); com anexos, os blocos — imagem, PDF e texto de
+    /// arquivo — vêm antes do prompt (0072).
+    /// </summary>
+    internal static MessageParamContent BuildContent(string prompt, IReadOnlyList<AIAttachment> attachments)
+    {
+        if (attachments.Count == 0) return prompt;
+        var blocks = new List<ContentBlockParam>();
+        foreach (var a in attachments)
+        {
+            if (a.IsImage)
+                blocks.Add(new ImageBlockParam(new Base64ImageSource { Data = Convert.ToBase64String(a.Data), MediaType = ImageMediaType(a.MediaType) }));
+            else if (a.IsPdf)
+                blocks.Add(new DocumentBlockParam(new Base64PdfSource(Convert.ToBase64String(a.Data))));
+            else
+                blocks.Add(new TextBlockParam($"Arquivo anexado \"{a.Name}\":\n```\n{System.Text.Encoding.UTF8.GetString(a.Data)}\n```"));
+        }
+        blocks.Add(new TextBlockParam(prompt));
+        return blocks;
+    }
+
+    private static MediaType ImageMediaType(string mediaType) => mediaType.ToLowerInvariant() switch
+    {
+        "image/png" => MediaType.ImagePng,
+        "image/gif" => MediaType.ImageGif,
+        "image/webp" => MediaType.ImageWebP,
+        _ => MediaType.ImageJpeg,
+    };
 
     private static bool TryParseEffort(string? value, out Effort? effort)
     {

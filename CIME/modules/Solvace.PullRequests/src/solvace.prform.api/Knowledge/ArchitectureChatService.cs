@@ -56,6 +56,20 @@ public class ArchitectureChatStatus
     public bool Available { get; set; }
     public string? Provider { get; set; }
     public string? Reason { get; set; }
+    /// <summary>0072: o provedor lê imagem, PDF e arquivo de texto anexados à pergunta (hoje só o Claude).</summary>
+    public bool SupportsAttachments { get; set; }
+    public ArchitectureAttachmentLimits Limits { get; set; } = new();
+}
+
+/// <summary>0072: limites dos anexos do Pergunte — a tela usa estes valores (não os repete).</summary>
+public class ArchitectureAttachmentLimits
+{
+    public int MaxFiles { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxFiles;
+    public int MaxImageBytes { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxImageBytes;
+    public int MaxPdfBytes { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxPdfBytes;
+    public int MaxPdfPages { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxPdfPages;
+    public int MaxTextBytes { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxTextBytes;
+    public int MaxTotalBytes { get; set; } = solvace.knowledge.application.AskAttachmentRules.MaxTotalBytes;
 }
 
 /// <summary>
@@ -94,7 +108,7 @@ public class ArchitectureChatService(IAIService ai, IArchitectureApplication arc
             var providerConfig = await resolver.GetEffectiveConfigurationAsync($"{provider} Plugin", cancellationToken);
             return string.IsNullOrWhiteSpace(providerConfig.GetConfigurationValue("ApiKey"))
                 ? new ArchitectureChatStatus { Provider = provider, Reason = $"ApiKey não configurada no plugin {provider} Plugin." }
-                : new ArchitectureChatStatus { Available = true, Provider = provider };
+                : new ArchitectureChatStatus { Available = true, Provider = provider, SupportsAttachments = string.Equals(provider, "Claude", StringComparison.OrdinalIgnoreCase) };
         }
         catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
         {

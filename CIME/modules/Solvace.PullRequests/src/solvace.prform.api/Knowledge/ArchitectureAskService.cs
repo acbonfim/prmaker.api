@@ -14,6 +14,16 @@ public class ArchitectureAskRequest
     public string Question { get; set; } = string.Empty;
     /// <summary>0071: true = ignora a resposta guardada (perguntas repetidas voltam do cache por alguns minutos).</summary>
     public bool Refresh { get; set; }
+    /// <summary>0072: imagens, PDF e arquivos de texto (base64) — lidos na chamada e descartados; nunca gravados.</summary>
+    public List<ArchitectureAskAttachment> Attachments { get; set; } = [];
+}
+
+public class ArchitectureAskAttachment
+{
+    public string? Name { get; set; }
+    public string? MediaType { get; set; }
+    /// <summary>Conteúdo em base64 (aceita o formato <c>data:...;base64,</c> do navegador).</summary>
+    public string? Data { get; set; }
 }
 
 /// <summary>
@@ -32,6 +42,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
     private const int DeepPerSection = 14_000;
     private const int DeepSections = 10;
     public const int MaxQuestionChars = 600;
+    private const string DefaultAttachmentQuestion = "O que é isso e como resolvo?";
     private const int CatalogChars = 14_000;
     private const int Candidates = 14;
     private const int MaxResults = 6;
@@ -44,17 +55,22 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, ArchitectureAskResponse Response)> Answers = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<ArchitectureAskResponse> AskAsync(string question, CancellationToken cancellationToken, bool refresh = false)
+    public async Task<ArchitectureAskResponse> AskAsync(string question, CancellationToken cancellationToken, bool refresh = false,
+        IReadOnlyList<ArchitectureAskAttachment>? attachmentInputs = null)
     {
+        // 0072: anexos validados antes de qualquer chamada (tipo, tamanho, quantidade) — o motivo da recusa volta para a tela
+        var attached = AskAttachmentRules.Validate((attachmentInputs ?? []).Select(a => new AskAttachmentInput(a.Name, a.MediaType, a.Data)).ToList());
+        var hasAttachments = attached.Attachments.Count > 0;
         var q = (question ?? string.Empty).Trim();
+        if (q.Length < 3 && hasAttachments) q = DefaultAttachmentQuestion;
         if (q.Length < 3) throw new solvace.knowledge.domain.Entities.DomainException("Escreva a pergunta.");
         if (q.Length > MaxQuestionChars) q = q[..MaxQuestionChars];
 
         // 0071: pergunta repetida volta na hora (e não gasta a chave de API); só respostas com IA entram
         var cacheKey = solvace.knowledge.application.ArchitectureSearch.Normalize(q).Trim();
-        if (!refresh && Answers.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < AnswerTtl) return cached.Response;
+        if (!refresh && !hasAttachments && Answers.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < AnswerTtl) return cached.Response;
 
-        var response = new ArchitectureAskResponse { Question = q };
+        var response = new ArchitectureAskResponse { Question = q, AttachmentNotes = attached.Notes };
         var status = await chat.GetStatusAsync(cancellationToken);
         if (!status.Available)
         {
@@ -62,6 +78,9 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             response.Results = await architecture.SearchAsync(q, MaxResults * 2, null, null, null, cancellationToken);
             return response;
         }
+        if (hasAttachments && !status.SupportsAttachments)
+            throw new solvace.knowledge.domain.Entities.DomainException($"O provedor de IA configurado ({status.Provider}) não lê anexos. Use o Claude em Minhas integrações ou envie só a pergunta.");
+        var aiAttachments = attached.Attachments.Select(a => new solvace.ai.domain.Requests.AIAttachment(a.Name, a.MediaType, a.Data)).ToList();
 
         var clock = System.Diagnostics.Stopwatch.StartNew();
         long tPlan = 0, tItems = 0, tSections = 0;
@@ -69,7 +88,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         {
             // 1) termos, projetos prováveis e tipo da pergunta (IA) — enquanto isso o índice por item é carregado/validado
             var catalog = await architecture.BuildCatalogAsync(CatalogChars, cancellationToken);
-            var planTask = ai.GenerateContentAsync(ArchitectureAskPrompts.Plan(q, catalog), cancellationToken);
+            var planTask = ai.GenerateContentAsync(ArchitectureAskPrompts.Plan(q, catalog, hasAttachments), aiAttachments, cancellationToken);
             var warm = reverse.SearchAsync(q, null, null, null, 1, false, cancellationToken);
             await Task.WhenAll(planTask, warm);
             var first = await planTask;
@@ -77,6 +96,8 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
                 throw new InvalidOperationException(first?.Error ?? "O provedor de IA não respondeu.");
             tPlan = clock.ElapsedMilliseconds;
             var (terms, projects, aiKind) = ParsePlan(first.Content);
+            var seen = hasAttachments ? ParseSeen(first.Content) : null;
+            response.AttachmentSeen = seen;
             var intent = ReverseAnswerContext.Intent(q, aiKind);
             response.Terms = terms;
             response.Kind = intent;
@@ -123,7 +144,7 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             }
 
             // 5) a IA escreve a resposta para quem usa o sistema
-            var second = await ai.GenerateContentAsync(ArchitectureAskPrompts.Answer(q, intent, sources, MaxResults), cancellationToken);
+            var second = await ai.GenerateContentAsync(ArchitectureAskPrompts.Answer(q, intent, sources, MaxResults, ArchitectureAskPrompts.AttachmentContext(seen, attached.Attachments)), cancellationToken);
             if (second is null || !string.IsNullOrWhiteSpace(second.Error) || string.IsNullOrWhiteSpace(second.Content))
                 throw new InvalidOperationException(second?.Error ?? "O provedor de IA não respondeu.");
             var answer = ArchitectureAskPrompts.ParseAnswer(second.Content) ?? throw new InvalidOperationException("a resposta veio fora do formato");
@@ -136,9 +157,9 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             response.Results = refs.Select(r => hits[r.Ref - 1]).Take(MaxResults).ToList();
             // a IA não escolheu nada mas há fontes: mostra as melhores da busca
             if (response.Results.Count == 0) response.Results = hits.Take(3).ToList();
-            logger.LogInformation("Pergunte: plano {Plan} ms, itens {Items} ms ({ItemCount}), seções {Sections} ms ({SectionCount}), total {Total} ms, {Chars} caracteres de fontes",
-                tPlan, tItems - tPlan, items.Count, tSections - tItems, sectionHits.Count, clock.ElapsedMilliseconds, sources.Sum(x => x.Text.Length));
-            if (answer.Text is not null)
+            logger.LogInformation("Pergunte{Att}: plano {Plan} ms, itens {Items} ms ({ItemCount}), seções {Sections} ms ({SectionCount}), total {Total} ms, {Chars} caracteres de fontes",
+                hasAttachments ? $" com {aiAttachments.Count} anexo(s), {aiAttachments.Sum(a => a.Data.Length) / 1024} KB" : "", tPlan, tItems - tPlan, items.Count, tSections - tItems, sectionHits.Count, clock.ElapsedMilliseconds, sources.Sum(x => x.Text.Length));
+            if (answer.Text is not null && !hasAttachments)
             {
                 if (Answers.Count > 200) Answers.Clear();
                 Answers[cacheKey] = (DateTimeOffset.UtcNow, response);
@@ -354,6 +375,18 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
         var root = doc.RootElement;
         var kind = ArchitectureQuestionKind.Normalize(root.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null);
         return (Strings(root, "terms", 14, 60), Strings(root, "projects", 4, 100), kind);
+    }
+
+    /// <summary>0072: o que a IA viu nos anexos (campo <c>attachments</c> do plano); null se não veio.</summary>
+    private static string? ParseSeen(string content)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(ExtractJson(content));
+            var seen = doc.RootElement.TryGetProperty("attachments", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString()?.Trim() : null;
+            return string.IsNullOrWhiteSpace(seen) ? null : seen.Length <= 900 ? seen : seen[..900];
+        }
+        catch (JsonException) { return null; }
     }
 
     /// <summary>Projeto transversal da operação da plataforma (0040).</summary>

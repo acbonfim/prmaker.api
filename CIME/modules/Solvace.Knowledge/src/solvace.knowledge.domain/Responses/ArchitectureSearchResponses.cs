@@ -44,6 +44,10 @@ public class ArchitectureAskResponse
     public string Coverage { get; set; } = ArchitectureCoverage.Unknown;
     /// <summary>A seção principal para ler sobre o assunto (0038).</summary>
     public ArchitectureSuggestedSection? SuggestedSection { get; set; }
+    /// <summary>0072: o que a IA entendeu dos anexos (erro, tela, módulo) — a tela mostra para conferir; null sem anexos.</summary>
+    public string? AttachmentSeen { get; set; }
+    /// <summary>0072: avisos sobre os anexos (ex.: arquivo de texto cortado).</summary>
+    public List<string> AttachmentNotes { get; set; } = [];
 }
 
 public static class ArchitectureCoverage
