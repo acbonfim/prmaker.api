@@ -158,7 +158,7 @@ public class ArchitectureController(IArchitectureApplication application, solvac
         [FromServices] IReverseEngineeringApplication reverse, CancellationToken ct) =>
         Run<ArchitectureAskResponse>(async () =>
         {
-            var response = await ask.AskAsync(request.Question, ct);
+            var response = await ask.AskAsync(request.Question, ct, request.Refresh);
             if (response.AiUsed)
             {
                 await RecordAsync(response.Question, response.Kind, response.Coverage, response.SuggestedSection?.ProjectKey, response.SuggestedSection?.SectionKey, ct);

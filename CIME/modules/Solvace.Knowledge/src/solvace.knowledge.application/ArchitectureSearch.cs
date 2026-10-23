@@ -24,7 +24,7 @@ public static partial class ArchitectureSearch
         "esse", "essa", "este", "esta", "ele", "ela", "eles", "elas", "ao", "aos", "seu", "sua", "seus", "suas", "eu", "voce", "saber",
         "fazer", "faz", "fez", "tem", "ter", "ha", "sao", "ser", "foi", "esta", "estao", "the", "of", "to", "in", "and", "is", "how", "what",
         "does", "do", "for", "on", "with", "mais", "muito", "entre", "sobre", "ja", "nao", "sim", "existe", "algum", "alguma", "consigo",
-        "posso", "pode", "deve", "precisa", "preciso", "vez", "tipo", "coisa"
+        "posso", "pode", "deve", "precisa", "preciso", "vez", "tipo", "coisa", "outra", "outro", "outras", "outros", "algo", "dentro", "fora"
     };
 
     /// <summary>
@@ -121,6 +121,62 @@ public static partial class ArchitectureSearch
             }
         }
         return Enumerable.Range(0, blocks.Count).Where(i => scores[i] > 0).OrderByDescending(i => scores[i]).ThenBy(i => i).ToList();
+    }
+
+    /// <summary>
+    /// Termos com peso para escolher blocos que respondem a uma pergunta do Pergunte (0071): as palavras e nomes da pergunta
+    /// (<see cref="WeightedTerms"/>) e, com peso menor, os termos que a IA sugeriu (sinônimos, nomes técnicos).
+    /// </summary>
+    public static List<(string Term, double Weight)> AnswerTerms(string question, IEnumerable<string>? aiTerms)
+    {
+        var terms = WeightedTerms(question).ToDictionary(t => t.Term, t => t.Weight, StringComparer.Ordinal);
+        foreach (var t in Terms(null, aiTerms))
+            if (!terms.ContainsKey(t)) terms[t] = 0.6;
+        return terms.Select(t => (t.Key, t.Value)).ToList();
+    }
+
+    /// <summary>
+    /// Os melhores blocos (cabeçalho + texto até o próximo cabeçalho) de um texto para os termos, por BM25 (<see cref="RankBlocks"/>):
+    /// até <paramref name="take"/> blocos, na ordem do documento, dentro de <paramref name="max"/> caracteres. Texto curto vai inteiro;
+    /// null = nenhum bloco casou. Antes o Pergunte levava um bloco só, escolhido por contagem de termos — numa seção de 500 mil
+    /// caracteres ficava o bloco do endpoint e não o da tela.
+    /// </summary>
+    public static string? BestBlocks(string content, IReadOnlyList<(string Term, double Weight)> terms, int max, int take = 2)
+    {
+        var text = (content ?? string.Empty).Replace("\r\n", "\n");
+        if (text.Length <= max) return text.Trim();
+        if (terms.Count == 0) return null;
+        var blocks = SplitBlocks(text);
+        var rank = RankBlocks(blocks, terms);
+        if (rank.Count == 0) return null;
+        var each = Math.Max(300, max / Math.Max(1, take));
+        var picked = new List<int>();
+        var used = 0;
+        foreach (var i in rank)
+        {
+            if (picked.Count >= take) break;
+            var length = Math.Min(blocks[i].Text.Length, each);
+            if (picked.Count > 0 && used + length > max) continue;
+            picked.Add(i);
+            used += length;
+        }
+        picked.Sort();
+        return string.Join("\n…\n", picked.Select(i => blocks[i].Text.Length <= each ? blocks[i].Text.Trim() : blocks[i].Text[..each].TrimEnd() + "…"));
+    }
+
+    /// <summary>Divide o texto em blocos por cabeçalho (fora de blocos de código); o cabeçalho abre o bloco.</summary>
+    public static List<(string Text, string? Heading)> SplitBlocks(string text)
+    {
+        var blocks = new List<(StringBuilder Text, string? Heading)>();
+        var fenced = false;
+        foreach (var line in text.Split('\n'))
+        {
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal)) fenced = !fenced;
+            var m = fenced ? null : HeadingAnyLevel().Match(line);
+            if (m is { Success: true } || blocks.Count == 0) blocks.Add((new StringBuilder(), m is { Success: true } ? m.Groups[1].Value : null));
+            blocks[^1].Text.AppendLine(line);
+        }
+        return blocks.Select(b => (b.Text.ToString(), b.Heading)).ToList();
     }
 
     /// <summary>
@@ -438,6 +494,9 @@ public static partial class ArchitectureSearch
     /// <summary>ID de item da engenharia reversa (UI-1052, RN-012, GAP-993).</summary>
     [GeneratedRegex(@"\b[A-Z]{2,5}-\d{1,5}\b")]
     private static partial Regex ItemId();
+
+    [GeneratedRegex(@"^#{1,6}\s+(.+?)\s*#*\s*$")]
+    private static partial Regex HeadingAnyLevel();
 
     [GeneratedRegex(@"^#{1,4}\s+(.+?)\s*$", RegexOptions.Multiline)]
     private static partial Regex HeadingPattern();

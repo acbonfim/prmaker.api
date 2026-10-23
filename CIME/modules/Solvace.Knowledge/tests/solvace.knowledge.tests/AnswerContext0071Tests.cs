@@ -41,7 +41,7 @@ public class AnswerContext0071Tests(ITestOutputHelper output)
     public async Task How_to_transfer_a_user_brings_the_screen_the_preconditions_who_can_and_the_effects()
     {
         var app = await CreateAsync([("funcional", Fixture())]);
-        var items = await app.GetAnswerContextAsync(Question, AiTerms, ["revamp-users"], ArchitectureQuestionKind.Operation, 7, 10, 1500, default);
+        var items = await app.GetAnswerContextAsync(Question, AiTerms, ["revamp-users"], ArchitectureQuestionKind.Operation, 7, 12, 1500, default);
         foreach (var i in items) output.WriteLine($"{i.Score,8:0.0000} {i.ItemId} {(i.Via is null ? "" : "(via " + i.Via + ")")} {i.Title}");
         var ids = items.Select(i => i.ItemId).ToList();
         foreach (var expected in new[] { "UC-065", "RN-293", "RN-294", "RN-266", "RN-267" })
@@ -86,7 +86,7 @@ public class AnswerContext0071Tests(ITestOutputHelper output)
                 ("spec-arquitetura", "140-re-spec-arquitetura.md"), ("design", "150-re-design.md") }
             .Where(d => File.Exists(Path.Combine(dir, d.Item2))).Select(d => (d.Item1, File.ReadAllText(Path.Combine(dir, d.Item2)))).ToList();
         var app = await CreateAsync(docs);
-        var items = await app.GetAnswerContextAsync(Question, AiTerms, ["revamp-users"], ArchitectureQuestionKind.Operation, 7, 10, 1500, default);
+        var items = await app.GetAnswerContextAsync(Question, AiTerms, ["revamp-users"], ArchitectureQuestionKind.Operation, 7, 12, 1500, default);
         foreach (var i in items) output.WriteLine($"{i.Score,8:0.0000} {i.DocType,-10} {i.ItemId} {(i.Via is null ? "" : "(via " + i.Via + ")")} {i.Title}");
         var ids = items.Select(i => i.ItemId).ToList();
         foreach (var expected in new[] { "UC-065", "RN-293", "RN-294", "RN-266", "RN-267" })

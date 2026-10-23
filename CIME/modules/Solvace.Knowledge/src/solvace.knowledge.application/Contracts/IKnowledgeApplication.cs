@@ -39,6 +39,10 @@ public interface IArchitectureApplication
         IReadOnlyCollection<string>? boostSections,
         CancellationToken cancellationToken);
 
+    /// <summary>0071: como <see cref="SearchAsync"/>, só nas seções dos projetos pedidos (null/vazio = todos).</summary>
+    Task<List<ArchitectureSearchHit>> SearchInProjectsAsync(string query, int limit, IReadOnlyList<string>? extraTerms, IReadOnlyCollection<string>? boostProjects,
+        IReadOnlyCollection<string>? boostSections, IReadOnlyCollection<string>? onlyProjects, CancellationToken cancellationToken);
+
     /// <summary>Catálogo compacto (projetos e títulos das seções) para a IA entender o que existe na base.</summary>
     Task<string> BuildCatalogAsync(int maxChars, CancellationToken cancellationToken);
     Task<ArchitectureExportManifest> GetManifestAsync(CancellationToken cancellationToken);

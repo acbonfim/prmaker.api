@@ -13,6 +13,7 @@ namespace solvace.knowledge.application;
 public static class ReverseAnswerContext
 {
     private const double RrfK = 20;
+    private const int SecondHopLimit = 4;
 
     /// <summary>Peso do tipo de item para a intenção da pergunta (<see cref="ArchitectureQuestionKind"/>).</summary>
     public static double KindWeight(string kind, string intent)
@@ -101,7 +102,10 @@ public static class ReverseAnswerContext
         var lists = ranked.Take(6).Select(r => (Item: r.Entry, Related: r.Entry.Refs
                 .Select(raw => raw.Contains('#') ? raw : $"{r.Entry.ModuleKey}#{raw}").Distinct()
                 .Where(key => !chosen.Contains(key) && byRef.TryGetValue(key, out var t) && !t.Removed && KindWeight(t.Kind, intent) >= 1.0)
-                .Select(key => byRef[key]).OrderByDescending(t => KindWeight(t.Kind, intent)).ToList()))
+                .Select(key => byRef[key])
+                // o que a própria busca também achou (título/tags falam do assunto) vem antes do que só foi citado de passagem
+                .OrderByDescending(t => fused.TryGetValue(t.Ref, out var f) ? 1 + f * KindWeight(t.Kind, intent) : 0)
+                .ThenByDescending(t => KindWeight(t.Kind, intent)).ToList()))
             .Where(x => x.Related.Count > 0).ToList();
         var related = new List<(ReverseIndexEntry Entry, double Score, string? Via)>();
         for (var round = 0; related.Count < maxRelated && lists.Any(l => l.Related.Count > round); round++)
@@ -112,6 +116,19 @@ public static class ReverseAnswerContext
                 var target = candidates[round];
                 if (!chosen.Add(target.Ref)) continue;
                 related.Add((target, ranked.First(r => r.Entry.Ref == item.Ref).Score * KindWeight(target.Kind, intent), item.ItemId));
+            }
+        // segundo salto: um caso de uso/tela que entrou só por ser citado (ex.: o UC da tela citado pela sequência técnica) também
+        // traz as regras que ele cita — a pré-condição e o diálogo estão nele, não no item que o citou
+        var second = 0;
+        foreach (var flow in related.Where(r => r.Entry.Kind is "UC" or "TELA" or "TUT" or "FAQ" or "FLX").Take(3).ToList())
+            foreach (var raw in flow.Entry.Refs)
+            {
+                if (second >= SecondHopLimit) break;
+                var key = raw.Contains('#') ? raw : $"{flow.Entry.ModuleKey}#{raw}";
+                if (chosen.Contains(key) || !byRef.TryGetValue(key, out var target) || target.Removed || KindWeight(target.Kind, intent) < 1.3) continue;
+                chosen.Add(key);
+                related.Add((target, flow.Score * KindWeight(target.Kind, intent), flow.Entry.ItemId));
+                second++;
             }
         items.AddRange(related);
         return (items, ranked.Count);

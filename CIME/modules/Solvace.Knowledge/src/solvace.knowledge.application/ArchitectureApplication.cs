@@ -343,18 +343,28 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         return RenderIndex(projects, articles, environment);
     }
 
-    public async Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
-        IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, CancellationToken cancellationToken)
+    public Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
+        IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, CancellationToken cancellationToken) =>
+        SearchInProjectsAsync(query, limit, extraTerms, boostProjects, boostSections, null, cancellationToken);
+
+    /// <summary>
+    /// 0071: busca só nas seções dos projetos pedidos (os artigos do KC sempre entram). A busca numa instância nova lê e
+    /// prepara o texto de cada seção que ela vai pontuar — só dos projetos prováveis, não das 800 seções da Base.
+    /// </summary>
+    public async Task<List<ArchitectureSearchHit>> SearchInProjectsAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
+        IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, IReadOnlyCollection<string>? onlyProjects,
+        CancellationToken cancellationToken)
     {
         var terms = ArchitectureSearch.Terms(query, extraTerms);
         if (terms.Count == 0) return [];
-        var (projects, articles, _) = await LoadAllAsync(cancellationToken);
+        var (allProjects, articles, _) = await LoadAllAsync(cancellationToken);
+        var projects = onlyProjects is { Count: > 0 } ? allProjects.Where(p => onlyProjects.Contains(p.Key)).ToList() : allProjects;
         // 0053: sinônimos do glossário da engenharia reversa ("RCA" acha "A3") também na busca/Pergunte da Base Solvace.
         var synonyms = await ReverseSearch.SynonymsAsync(repository, cancellationToken);
         // 0070: o texto de cada seção é lido só quando ela é nova/mudou (o cache guarda o texto normalizado pela versão) e
         // os trechos dos resultados vêm do banco — antes cada busca lia a Base inteira (12 s e OOM de 512 MiB).
+        ArchitectureSearch.Forget(allProjects.SelectMany(p => p.Sections).Select(s => s.Id).ToHashSet());
         var sections = projects.SelectMany(p => p.Sections).ToList();
-        ArchitectureSearch.Forget(sections.Select(s => s.Id).ToHashSet());
         if (sections.Any(s => ArchitectureSearch.Cached(s) is null))
             await HeavyReads.RunAsync(async () =>
             {
