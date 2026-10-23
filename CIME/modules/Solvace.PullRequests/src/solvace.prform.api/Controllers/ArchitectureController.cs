@@ -154,11 +154,12 @@ public class ArchitectureController(IArchitectureApplication application, solvac
 
     /// <summary>"Pergunte à Base Solvace" (0037): a IA entende a pergunta e leva aos trechos que respondem.</summary>
     [HttpPost("ask")]
+    [RequestSizeLimit(24_000_000)] // 0072: até 12 MB de anexos em base64
     public Task<ActionResult<ArchitectureAskResponse>> Ask([FromBody] solvace.prform.Knowledge.ArchitectureAskRequest request,
         [FromServices] IReverseEngineeringApplication reverse, CancellationToken ct) =>
         Run<ArchitectureAskResponse>(async () =>
         {
-            var response = await ask.AskAsync(request.Question, ct, request.Refresh);
+            var response = await ask.AskAsync(request.Question, ct, request.Refresh, request.Attachments);
             if (response.AiUsed)
             {
                 await RecordAsync(response.Question, response.Kind, response.Coverage, response.SuggestedSection?.ProjectKey, response.SuggestedSection?.SectionKey, ct);

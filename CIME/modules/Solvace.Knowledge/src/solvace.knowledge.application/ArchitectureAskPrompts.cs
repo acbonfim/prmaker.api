@@ -21,11 +21,12 @@ public static class ArchitectureAskPrompts
 {
     public const string Tag = "RESPOSTA";
 
-    public static string Plan(string question, string catalog) =>
+    public static string Plan(string question, string catalog, bool withAttachments = false) =>
         new StringBuilder()
             .AppendLine("Você ajuda a encontrar documentação na Base Solvace (engenharia reversa dos sistemas Solvace: legado edv-solvace .NET/ASP clássico, apps Angular, API de integrações, módulos revamp .NET, AWS, login/Cognito; e regras de negócio do Knowledge Center).")
             .AppendLine("Leia a PERGUNTA e o CATÁLOGO e devolva SÓ um JSON, sem texto fora dele:")
-            .AppendLine("{\"kind\": \"operacao (como fazer/habilitar/configurar/dar acesso/cadastrar/onde fica/quem pode/por que não aparece) | regra (como o produto deve se comportar) | tecnica (implementação, código, banco) | outra\", \"terms\": [até 12 termos de busca curtos — como o USUÁRIO chama a coisa na tela e sinônimos em português e inglês (ex.: planta = unidade = site), mais nomes técnicos prováveis de tabelas, classes e telas], \"projects\": [chaves de até 4 projetos do catálogo mais prováveis]}")
+            .AppendLine("{\"kind\": \"operacao (como fazer/habilitar/configurar/dar acesso/cadastrar/onde fica/quem pode/por que não aparece) | regra (como o produto deve se comportar) | tecnica (implementação, código, banco) | outra\", \"terms\": [até 12 termos de busca curtos — como o USUÁRIO chama a coisa na tela e sinônimos em português e inglês (ex.: planta = unidade = site), mais nomes técnicos prováveis de tabelas, classes e telas], \"projects\": [chaves de até 4 projetos do catálogo mais prováveis]" + (withAttachments ? ", \"attachments\": \"o que importa nos ANEXOS desta mensagem para a pergunta, em até 700 caracteres: o texto de qualquer mensagem de erro COPIADO LITERALMENTE, o nome da tela/menu/botão/campo, o módulo e o que está acontecendo; vazio se o anexo não tem relação com o sistema\"" : "") + "}")
+            .AppendLine(withAttachments ? "O usuário anexou arquivos ou imagens (vêm junto desta mensagem): leia-os para entender a pergunta — se a pergunta for vaga (\"o que é isso?\"), o anexo É a pergunta. Inclua em terms o texto do erro e os nomes de tela/menu que aparecem neles." : "")
             .AppendLine()
             .AppendLine("PERGUNTA: " + question)
             .AppendLine()
@@ -33,7 +34,7 @@ public static class ArchitectureAskPrompts
             .AppendLine(catalog)
             .ToString();
 
-    public static string Answer(string question, string intent, IReadOnlyList<AskSource> sources, int maxSources)
+    public static string Answer(string question, string intent, IReadOnlyList<AskSource> sources, int maxSources, string? attachments = null)
     {
         var sb = new StringBuilder()
             .AppendLine("Você é o especialista da Base Solvace e responde para quem USA o sistema no dia a dia (QA, suporte, gestor, consultor) — pessoas que não programam.")
@@ -58,6 +59,7 @@ public static class ArchitectureAskPrompts
             .AppendLine("- Escreva para um leigo: troque termos técnicos por linguagem de negócio (planta = unidade/site). Nada de endpoint, tabela, classe, arquivo ou código de item (RN-…, UC-…) no texto" + (intent == ArchitectureQuestionKind.Technical ? " — exceto nesta pergunta técnica." : "."))
             .AppendLine("- Seja completo no que as fontes dizem e curto no resto: no máximo 250 palavras, frases curtas, passos de uma linha.")
             .AppendLine("- Se as fontes não respondem, diga isso em uma frase e use cobertura not-found.")
+            .AppendLine(string.IsNullOrWhiteSpace(attachments) ? "" : "- O usuário anexou arquivos/imagens: o bloco ANEXOS é parte da pergunta (ex.: a mensagem de erro). Explique o que ele significa e como resolver com base nas FONTES; se o anexo não tem relação com a Base, diga isso.")
             .AppendLine()
             .AppendLine("Devolva SÓ este bloco, sem texto fora dele:")
             .AppendLine($"<<<{Tag}")
@@ -68,8 +70,9 @@ public static class ArchitectureAskPrompts
             .AppendLine("(a resposta em markdown)")
             .AppendLine($"{Tag}>>>")
             .AppendLine()
-            .AppendLine("PERGUNTA: " + question)
-            .AppendLine()
+            .AppendLine("PERGUNTA: " + question);
+        if (!string.IsNullOrWhiteSpace(attachments)) sb.AppendLine().AppendLine("ANEXOS DO USUÁRIO:").AppendLine(attachments);
+        sb.AppendLine()
             .AppendLine("FONTES:");
         for (var i = 0; i < sources.Count; i++)
         {
@@ -77,6 +80,28 @@ public static class ArchitectureAskPrompts
             sb.AppendLine("    " + sources[i].Text.Replace("\n", "\n    "));
         }
         return sb.ToString();
+    }
+
+    private const int TextHead = 2_000;
+    private const int TextTail = 2_000;
+
+    /// <summary>
+    /// ANEXOS no prompt da resposta (só texto — a imagem não é reenviada): o que a IA viu (descrição do plano) e os arquivos de
+    /// texto cortados no começo e no fim (o erro de um log costuma estar no fim).
+    /// </summary>
+    public static string? AttachmentContext(string? seen, IReadOnlyList<AskAttachment> attachments)
+    {
+        if (attachments.Count == 0) return null;
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(seen)) sb.AppendLine("O que a IA viu nos anexos: " + seen.Trim());
+        foreach (var a in attachments)
+        {
+            if (!a.IsText) { sb.AppendLine($"- {(a.IsImage ? "Imagem" : "PDF")} \"{a.Name}\" (lida na etapa anterior)."); continue; }
+            var text = System.Text.Encoding.UTF8.GetString(a.Data).Trim();
+            if (text.Length > TextHead + TextTail) text = text[..TextHead] + "\n…(meio omitido)…\n" + text[^TextTail..];
+            sb.AppendLine($"Arquivo \"{a.Name}\":").AppendLine(text);
+        }
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>Lê o bloco da resposta; null = o modelo não seguiu o formato (quem chama cai na busca sem IA).</summary>
