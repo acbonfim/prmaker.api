@@ -56,7 +56,7 @@ public static class ArchitectureAskPrompts
         sb.AppendLine()
             .AppendLine("Regras do texto:")
             .AppendLine("- Escreva para um leigo: troque termos técnicos por linguagem de negócio (planta = unidade/site). Nada de endpoint, tabela, classe, arquivo ou código de item (RN-…, UC-…) no texto" + (intent == ArchitectureQuestionKind.Technical ? " — exceto nesta pergunta técnica." : "."))
-            .AppendLine("- Seja completo no que as fontes dizem e curto no resto: até uns 300 palavras.")
+            .AppendLine("- Seja completo no que as fontes dizem e curto no resto: no máximo 250 palavras, frases curtas, passos de uma linha.")
             .AppendLine("- Se as fontes não respondem, diga isso em uma frase e use cobertura not-found.")
             .AppendLine()
             .AppendLine("Devolva SÓ este bloco, sem texto fora dele:")
