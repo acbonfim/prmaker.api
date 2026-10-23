@@ -345,15 +345,17 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public Task<List<ArchitectureSearchHit>> SearchAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
         IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, CancellationToken cancellationToken) =>
-        SearchInProjectsAsync(query, limit, extraTerms, boostProjects, boostSections, null, cancellationToken);
+        SearchInProjectsAsync(query, limit, extraTerms, boostProjects, boostSections, null, true, cancellationToken);
 
     /// <summary>
     /// 0071: busca só nas seções dos projetos pedidos (os artigos do KC sempre entram). A busca numa instância nova lê e
-    /// prepara o texto de cada seção que ela vai pontuar — só dos projetos prováveis, não das 800 seções da Base.
+    /// prepara o texto de cada seção que ela vai pontuar. <paramref name="withReverseDocs"/> = false pula os documentos da
+    /// engenharia reversa (<c>re-*</c>): são ~98% do texto da Base (54 de 55 milhões de caracteres) e já entram por item —
+    /// sem eles a busca fria do Pergunte lê ~1 milhão de caracteres, não dezenas de milhões.
     /// </summary>
     public async Task<List<ArchitectureSearchHit>> SearchInProjectsAsync(string query, int limit, IReadOnlyList<string>? extraTerms,
         IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections, IReadOnlyCollection<string>? onlyProjects,
-        CancellationToken cancellationToken)
+        bool withReverseDocs, CancellationToken cancellationToken)
     {
         var terms = ArchitectureSearch.Terms(query, extraTerms);
         if (terms.Count == 0) return [];
@@ -364,7 +366,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         // 0070: o texto de cada seção é lido só quando ela é nova/mudou (o cache guarda o texto normalizado pela versão) e
         // os trechos dos resultados vêm do banco — antes cada busca lia a Base inteira (12 s e OOM de 512 MiB).
         ArchitectureSearch.Forget(allProjects.SelectMany(p => p.Sections).Select(s => s.Id).ToHashSet());
-        var sections = projects.SelectMany(p => p.Sections).ToList();
+        bool InScope(ArchitectureSection s) => withReverseDocs || !s.Key.StartsWith(domain.Reverse.ReverseDocTypes.SectionPrefix, StringComparison.Ordinal);
+        var sections = projects.SelectMany(p => p.Sections).Where(InScope).ToList();
         if (sections.Any(s => ArchitectureSearch.Cached(s) is null))
             await HeavyReads.RunAsync(async () =>
             {
@@ -377,7 +380,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 return true;
             }, cancellationToken);
         var candidates = ArchitectureSearch.Score(projects, articles, terms, Math.Clamp(limit, 1, 50), boostProjects, boostSections, synonyms,
-            s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content), cancellationToken);
+            s => ArchitectureSearch.Cached(s) ?? ArchitectureSearch.Remember(s, s.Content), cancellationToken, InScope);
         var inSections = candidates.Where(c => c.Section is not null).ToList();
         var windows = inSections.Select(c => (c.Section!.Id, Window: ArchitectureSearch.SnippetWindow(c.Prepared!, c.Position))).ToList();
         var texts = await repository.GetSectionSlicesAsync(windows.Select(w => (w.Id, w.Window.Start, w.Window.Length)).ToList(), cancellationToken);

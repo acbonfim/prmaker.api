@@ -310,7 +310,8 @@ public static partial class ArchitectureSearch
     /// </summary>
     public static List<Candidate> Score(IReadOnlyList<ArchitectureProject> projects, IReadOnlyList<KnowledgeArticle> articles,
         IReadOnlyList<string> terms, int limit, IReadOnlyCollection<string>? boostProjects, IReadOnlyCollection<string>? boostSections,
-        ReverseSynonyms? synonyms, Func<ArchitectureSection, PreparedSection> prepare, CancellationToken cancellationToken = default)
+        ReverseSynonyms? synonyms, Func<ArchitectureSection, PreparedSection> prepare, CancellationToken cancellationToken = default,
+        Func<ArchitectureSection, bool>? includeSection = null)
     {
         synonyms ??= ReverseSynonyms.Empty;
         if (terms.Count == 0) return [];
@@ -324,6 +325,7 @@ public static partial class ArchitectureSearch
             var boost = boostProjects?.Contains(project.Key) == true ? 1.6 : 1.0;
             foreach (var section in project.Sections)
             {
+                if (includeSection is not null && !includeSection(section)) continue;
                 // 0040: pergunta de operação puxa as seções de configuração/operação.
                 var sectionBoost = boostSections?.Contains(section.Key) == true ? 2.5 : 1.0;
                 var prepared = prepare(section);

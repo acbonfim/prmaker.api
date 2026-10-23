@@ -90,10 +90,8 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
 
             // 3) seções que não são da ER (Guia, operação da plataforma, legado) e artigos do KC — só dos projetos prováveis
             var only = projects.Concat(items.Select(i => i.ModuleKey)).Append(PlatformOperationProject).Distinct().ToList();
-            var sectionHits = (await architecture.SearchInProjectsAsync(q, Candidates, terms, boostProjects, boostSections, only, cancellationToken))
-                // o documento da ER já entra por item
-                .Where(h => items.Count == 0 || h.Type != "section" || h.SectionKey?.StartsWith(solvace.knowledge.domain.Reverse.ReverseDocTypes.SectionPrefix, StringComparison.Ordinal) != true)
-                .Take(SectionCandidates).ToList();
+            // os documentos da ER (re-*) são ~98% do texto da Base e já entram por item: sem eles a busca fria lê ~1 M de caracteres
+            var sectionHits = (await architecture.SearchInProjectsAsync(q, SectionCandidates, terms, boostProjects, boostSections, only, items.Count == 0, cancellationToken));
             if (items.Count == 0 && sectionHits.Count < MinCandidates)
                 sectionHits = await WithQuestionOnlyAsync(q, Candidates, sectionHits, boostProjects, boostSections, cancellationToken);
             tSections = clock.ElapsedMilliseconds;
