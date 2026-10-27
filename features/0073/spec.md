@@ -34,9 +34,11 @@ do tamanho da Base**.
    há como provar a melhora.
 2. **Consultas leves no repositório**: projeção "cabeça" do índice (módulo, doc, id, tipo, título, nível, ordem, removido,
    tags, tabelas, módulos — sem `Body`/`Evidence`), consulta por refs, por tipo e por módulo no banco.
-3. **Busca em dois estágios**: o Postgres escolhe os candidatos (full-text com `unaccent` + índice GIN sobre
-   id/título/tags/sinônimos/corpo, com os termos já expandidos pelos sinônimos do glossário); o ranking atual
-   (`ArchitectureSearch`/`ReverseSynonyms`) roda **só nos candidatos**. O glossário (itens `GLO`) é lido por módulo, barato.
+3. **Busca em dois estágios**: o Postgres escolhe os candidatos (`LIKE '%termo%'` sobre uma coluna gerada, sem acento/caixa, com os
+   termos já expandidos pelos sinônimos do glossário; os candidatos saem ordenados por uma pontuação aproximada com os mesmos
+   pesos do ranking e cortados em 1000); o ranking atual (`ArchitectureSearch`/`ReverseSynonyms`) roda **só nos candidatos**. O
+   ranking é por **substring** do texto normalizado, por isso o full-text do Postgres (tokens) não serve. Só o glossário
+   (itens `GLO`, pequenos) fica em cache, validado pela marca do índice.
 4. **Trocar os 8 usos de `ReverseSearch.EntriesAsync`** por consultas direcionadas e aposentar o `Snapshot` estático
    (`Invalidate` vira no-op ou some).
 5. **Migração** `KnowledgeContext` (schema `knowledge`): coluna/índice de busca em `ReverseIndexEntries`. Verificar antes se o
