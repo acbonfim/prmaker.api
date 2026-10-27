@@ -6,7 +6,7 @@ Branch `feature/0073` (worktree `prform.api-0073`). Só backend. Retrocompatíve
 |---|---|---|
 | B0 | Baseline: reproduzir o OOM no harness da 0070 (Postgres isolado + Base real + `GCHeapHardLimit`), medir pico/heap/tempo por rota (`index/search`, `items`, `impact`, `for-card`, `docs/*/sessions`); verificar `unaccent`/`pg_trgm` no Postgres do MonsterASP (pedir ao usuário: leitura de prod é bloqueada) | — |
 | B1 | Repositório: `GetIndexHeadsAsync(filtros)` (sem `Body`/`Evidence`), `GetIndexEntriesByRefsAsync`, `SearchIndexCandidatesAsync(termos, módulos, tipos, docType, limite)`, glossário `GLO` por módulo | B0 |
-| B2 | Migração `DefaultContext`: coluna de busca + índice GIN (ou coluna normalizada + trigram, conforme B0) em `ReverseIndexEntries` | B0 |
+| B2 | Migração `KnowledgeContext` (schema `knowledge`): coluna de busca + índice GIN (ou coluna normalizada + trigram, conforme B0) em `ReverseIndexEntries` | B0 |
 | B3 | `ReverseSearch.RunAsync` em dois estágios (candidatos no banco → ranking atual só neles); sem `Snapshot` estático | B1, B2 |
 | B4 | Migrar os 8 usos de `ReverseSearch.EntriesAsync` (`StartSession`, `Publish`, `Search`, `GetItems`, `GetAnswerContext`, `Impact`, `ForCard` x2) para consultas direcionadas; remover `EntriesAsync`/`Invalidate` | B1 |
 | T1 | Testes unitários (`solvace.knowledge.tests`) + local: equivalência antiga × nova, estresse com 384 MB, medição antes/depois | B3, B4 |

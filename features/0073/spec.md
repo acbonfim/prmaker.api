@@ -39,7 +39,7 @@ do tamanho da Base**.
    (`ArchitectureSearch`/`ReverseSynonyms`) roda **só nos candidatos**. O glossário (itens `GLO`) é lido por módulo, barato.
 4. **Trocar os 8 usos de `ReverseSearch.EntriesAsync`** por consultas direcionadas e aposentar o `Snapshot` estático
    (`Invalidate` vira no-op ou some).
-5. **Migração** `DefaultContext` (schema `prform`): coluna/índice de busca em `ReverseIndexEntries`. Verificar antes se o
+5. **Migração** `KnowledgeContext` (schema `knowledge`): coluna/índice de busca em `ReverseIndexEntries`. Verificar antes se o
    Postgres do MonsterASP permite `CREATE EXTENSION unaccent` (extensão "trusted"); senão, normalizar na gravação
    (coluna de texto já sem acento) e usar `simple`.
 6. **Testes**: equivalência antiga × nova no conjunto semeado (topo-N igual ou diferença explicada), unitários em
