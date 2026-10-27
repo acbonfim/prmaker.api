@@ -6,7 +6,7 @@ using solvace.knowledge.infra.Contexts;
 
 namespace solvace.knowledge.infra.Repositories;
 
-public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepository
+public partial class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepository
 {
     public Task<List<KnowledgeArticle>> GetArticlesAsync(string environment, bool tracked, CancellationToken cancellationToken)
     {
@@ -179,13 +179,6 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
     public Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken) =>
         context.ReverseIndexEntries.AsNoTracking().Where(e => moduleKey == null || e.ModuleKey == moduleKey)
             .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).ToListAsync(cancellationToken);
-
-    public async IAsyncEnumerable<ReverseIndexEntry> StreamIndexEntriesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var entry in context.ReverseIndexEntries.AsNoTracking().OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order)
-                           .AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return entry;
-    }
 
     public Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken) =>
         context.ReverseIndexEntries.AsNoTracking().Where(e => e.Kind == kind)
