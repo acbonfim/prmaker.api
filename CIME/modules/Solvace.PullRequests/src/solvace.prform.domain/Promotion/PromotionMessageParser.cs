@@ -160,14 +160,15 @@ public static class PromotionMessageParser
         return targets;
     }
 
-    /// <summary>"release-version" → "release-{version}"; "master" fica; nome com caractere estranho → null.</summary>
+    /// <summary>
+    /// O nome como o Release Manager escreveu ("release-version", "hotfix-version", "edge", "master" são branches reais do
+    /// repositório — nada é trocado por número de versão aqui); nome com caractere estranho → null.
+    /// </summary>
     public static string? NormalizeTemplate(string? token)
     {
         var t = token?.Trim().Trim('`', '"', '\'');
         if (string.IsNullOrEmpty(t))
             return null;
-        // "release-version", "hotfix/version", "version" como último pedaço = a versão do lote.
-        t = Regex.Replace(t, @"(?<=^|[-/_])version$", PromotionTargetResolver.VersionToken, RegexOptions.IgnoreCase);
         return BranchToken.IsMatch(t) && !t.Contains("..") && !t.StartsWith('/') && !t.EndsWith('/') ? t : null;
     }
 

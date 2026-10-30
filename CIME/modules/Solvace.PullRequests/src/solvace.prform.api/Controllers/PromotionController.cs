@@ -21,6 +21,11 @@ public class PromotionController(PromotionService promotion, PromotionParser par
     public Task<ActionResult<PromotionPreviewResponse>> Preview([FromBody] PromotionPreviewRequest request, CancellationToken ct) =>
         Guard<PromotionPreviewResponse>(async () => Ok(await promotion.PreviewAsync(request, UserId(), ct)));
 
+    /// <summary>Branches do repositório (com busca por trecho) para o seletor de destinos.</summary>
+    [HttpGet("branches")]
+    public Task<ActionResult<List<string>>> Branches([FromQuery] string repository, [FromQuery] string? search, [FromQuery] int take = 30, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        Guard<List<string>>(async () => Ok(await promotion.SearchBranchesAsync(repository, search, take, refresh, ct)));
+
     /// <summary>Resolve destinos digitados numa linha (nome real no remoto, PR já aberto) sem refazer a prévia.</summary>
     [HttpPost("resolve")]
     public Task<ActionResult<List<PromotionPreviewTarget>>> Resolve([FromBody] PromotionResolveRequest request, CancellationToken ct) =>

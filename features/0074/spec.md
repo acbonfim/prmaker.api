@@ -94,13 +94,23 @@ Grade, uma linha por card:
 - O usuário pode **trocar o perfil, adicionar/remover destinos e marcar rascunho** por linha, antes de disparar.
 - Validação antes de disparar (linha vermelha, botão bloqueado): destino não existe no repositório, card sem commits na
   branch principal, executor offline, card duplicado no lote.
-- **Resolução do nome**: `release-{versão}` vira o nome real consultando as branches remotas (separadores `-`, `/`, `_` e `V`
-  opcional, sem diferenciar maiúsculas; o nome literal tem prioridade); se houver mais de uma candidata, o usuário escolhe na linha.
-  A lista de branches fica 5 min em cache, mas uma branch não encontrada força nova consulta (e o botão "Atualizar" também).
-- **Base de corte**: a branch principal pode ter saído da master ou de uma release. O PRMake compara com a master, com os
-  destinos já registrados do card, com os destinos do perfil e com as branches release/hotfix mais novas (até 6) e fica com a base
-  que deixa menos commits à frente — assim o cherry-pick não leva commits da release. Se um destino é a própria base, o PR é
-  **direto** (a branch já nasceu dele), e a tela avisa.
+- **Nomes de branch literais**: `release-version`, `hotfix-version`, `edge`, `master` são branches **reais** do repositório (é como o
+  `BranchStrategy` já os chama em `baseOptions`) — o nome escrito vale primeiro e **nada é trocado por número de versão**. `{version}` só
+  entra se o modelo o trouxer, ou como alternativa quando um nome terminado em `version` não existe (`release-3.274.10`). Quando um destino
+  não existe, a tela mostra o nome esperado, sem chaves ("release-version — não existe no repositório"). A lista de branches fica 5 min em
+  cache, mas uma branch não encontrada força nova consulta (e o botão "Atualizar" também).
+- **Só o que foi feito pelo PRMake**: o card precisa ter PR **registrado** no PRMake. A branch de tratamento é a registrada (a dos PRs
+  `-dev`/`-qa` sem o sufixo, ou a própria branch do PR de release) e precisa existir no repositório; os destinos também. Sem registro, a
+  linha mostra o erro e a criação do lote recusa o item (servidor). Não há campo livre de repositório nem de branch do card.
+- **Base de corte pelo registro** (sem palpite no GitHub): fluxo de release = o destino do PR que o PRMake abriu da própria branch (o
+  registro mais antigo); fluxo de produção = a `base` do fluxo `producao` no `BranchStrategy` (master). Só os commits depois da base
+  são levados. Se um destino é a base, o PR é **direto**; "sem commits" explica o motivo (já mesclada na base).
+- **Seletor de destinos**: "+ destino" abre uma busca nas branches do repositório (`GET Promotion/branches?repository&search`), não um
+  campo de texto.
+- **Carregamento**: skeletons (linhas, histórico de lotes, opções do seletor, PR pendente no resultado, avatar do histórico de versões),
+  entrada escalonada, varredura nas linhas em atualização, "pop" no que chega, foguete no disparo, orbe/barras e frases da IA ao
+  interpretar a mensagem; tudo respeita `prefers-reduced-motion`.
+
 - Botão **Disparar lote**: cria o lote e enfileira. Pode fechar a tela; o processamento segue em segundo plano.
 
 ### B3 — Colar a mensagem do Release Manager (IA)
