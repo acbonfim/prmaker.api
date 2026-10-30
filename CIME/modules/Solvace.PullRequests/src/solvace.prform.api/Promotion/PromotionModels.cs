@@ -27,6 +27,8 @@ public class PromotionPreviewRequest
     public List<PromotionPreviewCard> Cards { get; set; } = [];
     /// <summary>Perfis só deste lote (kind do repositório → destinos), sobrepondo os do PRMake — vem da mensagem do Release Manager.</summary>
     public Dictionary<string, List<PromotionTargetDto>>? Profiles { get; set; }
+    /// <summary>Consulta o GitHub de novo, sem o cache de 5 min das branches (botão "Atualizar").</summary>
+    public bool Refresh { get; set; }
 }
 
 public class PromotionCreateItem
@@ -50,6 +52,16 @@ public class PromotionRetryRequest
 {
     /// <summary>Itens a reenviar; vazio = todos os que podem ser reenviados.</summary>
     public List<Guid>? ItemIds { get; set; }
+}
+
+public class PromotionResolveRequest
+{
+    public string Version { get; set; } = string.Empty;
+    public string Card { get; set; } = string.Empty;
+    public string Repository { get; set; } = string.Empty;
+    public string? SourceBranch { get; set; }
+    public string? SourceBase { get; set; }
+    public List<PromotionTargetDto> Targets { get; set; } = [];
 }
 
 public class PromotionParseRequest

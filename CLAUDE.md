@@ -31,7 +31,7 @@ dotnet ef migrations add <Name> --context DefaultContext \
 aws codeartifact login --tool dotnet --repository revamp --domain solvace --domain-owner 367983645102 --region us-east-1
 ```
 
-Migrations are applied automatically on startup outside Development (advisory lock, fatal on failure). No test projects exist in this repository currently.
+Migrations are applied automatically on startup outside Development (advisory lock, fatal on failure). Tests: `dotnet test` in `CIME/modules/*/tests/*` and `tools/Cime.ExecutionAgent.Tests` (git real, no network).
 
 ## Architecture
 
@@ -71,6 +71,10 @@ All modules live under `CIME/modules/`. Each follows clean architecture layers: 
   - AI prompts never take a whole big section: `GetSectionExcerptAsync` (excerpt around the terms) and, in the section chat, `SectionBlocks` (only the blocks of the subject, BM25 via `ArchitectureSearch.RankBlocks`; the AI returns only changed blocks, applied by `chat/apply`).
   - Measure with the `Server-Timing` header and the "Requisição lenta" log (≥ 300 ms, with the SQL count). Locally, `/debug/memory` (Development) gives live memory after a full GC.
 
+### Promotion (0074)
+
+Batch PRs to release/hotfix branches: `Promotion/preview|resolve|` (create) |`parse` (Release Manager message — cards by regex, rules by the user's AI) in `solvace.prform.api/Promotion`. Targets per repository kind live in Skills Configurations (`PromotionProfiles`, `PromotionBranchPattern`) — nothing hard-coded. Cherry-picks run on the user's executor (`PromotionExecutor/next|heartbeat|report`, git worktree in `.prmake-wt/promo-<card>`, never force-push, never merge); the server opens the PR with the user's GitHub token and registers it on the card. Items are `PromotionItems` (`prform` schema); an open PR for the same card/repo/target is reused, never duplicated.
+
 ### Authentication
 
 Custom `X-API-Key` header scheme (JWT issued by Cime.Auth, validated with `Auth:Secret`) with role-based authorization. Roles: `admin`, `support`, `user`, `gestor`. Implemented in `Cime.BuildingBlocks.Security`. Cime.Auth itself uses Bearer JWT; its signing keys are `Auth:Secret` / `Auth:SecretRefresh` (configuration only — it refuses to start without them).
@@ -82,7 +86,7 @@ SignalR hub runs in the relay (`Cime.RealTime.Relay`, MonsterASP) in production 
 ### API Conventions
 
 - Route pattern: `/api/v{version:apiVersion}/[controller]` (current version: 1.0)
-- Controllers: PullRequest, Form, GitHub, Azure, AI, PluginConfiguration, Vacations, Timeline, Handover, UserIntegration, Teams, Image, RealTime
+- Controllers: PullRequest, Form, GitHub, Azure, AI, PluginConfiguration, Vacations, Timeline, Handover, UserIntegration, Teams, Image, RealTime, Promotion (+ PromotionExecutor, só para o executor)
 - Async/await throughout, repository pattern for data access
 
 ### Domain Patterns

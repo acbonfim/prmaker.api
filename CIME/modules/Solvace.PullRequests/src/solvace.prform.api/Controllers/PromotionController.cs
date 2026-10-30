@@ -21,6 +21,11 @@ public class PromotionController(PromotionService promotion, PromotionParser par
     public Task<ActionResult<PromotionPreviewResponse>> Preview([FromBody] PromotionPreviewRequest request, CancellationToken ct) =>
         Guard<PromotionPreviewResponse>(async () => Ok(await promotion.PreviewAsync(request, UserId(), ct)));
 
+    /// <summary>Resolve destinos digitados numa linha (nome real no remoto, PR já aberto) sem refazer a prévia.</summary>
+    [HttpPost("resolve")]
+    public Task<ActionResult<List<PromotionPreviewTarget>>> Resolve([FromBody] PromotionResolveRequest request, CancellationToken ct) =>
+        Guard<List<PromotionPreviewTarget>>(async () => Ok(await promotion.ResolveAsync(request, ct)));
+
     /// <summary>Cria o lote e dispara (itens de cherry-pick esperam o executor; PR direto sai na hora).</summary>
     [HttpPost]
     public Task<ActionResult<PromotionBatchResponse>> Create([FromBody] PromotionCreateRequest request, CancellationToken ct) =>

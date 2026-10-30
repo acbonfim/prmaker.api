@@ -27,7 +27,7 @@ mostrar de qual análise veio a correção. O dado vem de `ExecutionPlanSummary`
 o `xmin` de concorrência, **não** é número de versão).
 
 ### Como fica
-Um **painel de histórico** (popover ancorado no botão; em tela estreita vira folha inferior de largura total) com:
+Um **painel de histórico** (popover ancorado no botão, limitado à largura da tela no celular — o item "Histórico" do menu "⋯" abre o mesmo painel) com:
 - **Título**: "Versões do plano" + subtítulo "Card 77317 · 5 versões (3 análises, 2 correções)".
 - **Filtro** por fase: Todas · Análise · Correção.
 - **Lista da mais nova para a mais antiga**; cada linha mostra:
@@ -94,8 +94,13 @@ Grade, uma linha por card:
 - O usuário pode **trocar o perfil, adicionar/remover destinos e marcar rascunho** por linha, antes de disparar.
 - Validação antes de disparar (linha vermelha, botão bloqueado): destino não existe no repositório, card sem commits na
   branch principal, executor offline, card duplicado no lote.
-- **Resolução do nome**: `release-{versão}` vira o nome real consultando as branches remotas (`^(release|hotfix)[-/]v?<versão>$`,
-  sem diferenciar maiúsculas); se houver mais de uma candidata, o usuário escolhe na linha.
+- **Resolução do nome**: `release-{versão}` vira o nome real consultando as branches remotas (separadores `-`, `/`, `_` e `V`
+  opcional, sem diferenciar maiúsculas; o nome literal tem prioridade); se houver mais de uma candidata, o usuário escolhe na linha.
+  A lista de branches fica 5 min em cache, mas uma branch não encontrada força nova consulta (e o botão "Atualizar" também).
+- **Base de corte**: a branch principal pode ter saído da master ou de uma release. O PRMake compara com a master, com os
+  destinos já registrados do card, com os destinos do perfil e com as branches release/hotfix mais novas (até 6) e fica com a base
+  que deixa menos commits à frente — assim o cherry-pick não leva commits da release. Se um destino é a própria base, o PR é
+  **direto** (a branch já nasceu dele), e a tela avisa.
 - Botão **Disparar lote**: cria o lote e enfileira. Pode fechar a tela; o processamento segue em segundo plano.
 
 ### B3 — Colar a mensagem do Release Manager (IA)
@@ -112,7 +117,7 @@ tela da B2**; nada é disparado. O usuário revisa e usa o mesmo botão **Dispar
 - A IA **não executa nada** e nada que ela devolva vira comando: só preenche campos que o usuário revisa.
 
 ### B4 — Acompanhamento e tabela final
-- Progresso ao vivo (SignalR já existente): por linha `na fila → cherry-pick → push → PR aberto`, ou
+- Progresso ao vivo (a tela consulta o lote a cada 3 s enquanto houver item ativo; o aviso do relay só acorda o executor): por linha `na fila → cherry-pick → push → PR aberto`, ou
   `conflito | ja_aberto | destino_inexistente | erro` com a mensagem; resumo no topo (`8 abertos · 1 conflito · 1 erro`).
 - Ao terminar, **tabela final** com Card | Título | Repositório | Origem → Destino | Rascunho | PR (link) | Status.
   - **Copiar como texto** e **Copiar como tabela** (HTML + texto, `ClipboardService`, igual ao registro do PR); só os PRs
@@ -129,12 +134,17 @@ tela da B2**; nada é disparado. O usuário revisa e usa o mesmo botão **Dispar
 - Transformar a promoção em "plano de execução" da tela do card: o plano hoje só admite as fases análise/correção
   (`ExecutionPlan` valida a fase e a tela do card assume o par análise/correção). O lote tem progresso próprio; reavaliar depois.
 
-## Decisões em aberto (com o padrão adotado)
-1. **Nome real das branches**: `release-version` é `release-3.274.10`? Padrão: descobrir pelo remoto (regra da B2) e
-   perguntar na linha se houver ambiguidade.
-2. **Nome da branch do cherry-pick**: `hotfix/<card>-<destino>`. Confirmar o padrão de nome que o time espera.
-3. **Cherry-pick × PR direto como padrão** por perfil: padrão cherry-pick; PR direto só quando o usuário marcar.
-4. **Quantos cards por lote**: limite de 30 e, por repositório, um de cada vez no executor (evita corrida de worktree).
+## Decisões (adotadas na implementação — confirmar com o time)
+1. **Nome real das branches**: descoberto pelo remoto (`release-version` → `release-3.274.10` se existir; variações de separador e `V`
+   são aceitas) e, se houver ambiguidade, o usuário escolhe na linha.
+2. **Nome da branch do cherry-pick**: `{branch}-{target}` (ex.: `hotfix/77317-release-3.274.10`), configurável em
+   `PromotionBranchPattern`; nunca reaproveita uma branch existente (acrescenta `-2`, `-3`…).
+3. **Cherry-pick × PR direto**: cherry-pick por padrão; **direto** quando o usuário marca ou quando o destino é a base de onde a
+   branch principal foi cortada.
+4. **Quantos cards por lote**: limite de 30 cards / 200 PRs e, por repositório, um item de cada vez no executor (evita corrida
+   de worktree). Itens de PR direto saem na própria requisição (até 20); o resto vai pelo executor.
+5. **Idempotência**: PR aberto do mesmo card/repositório/destino (de outro lote ou do fluxo normal) fecha o item como "já existia"
+   no disparo, no claim e antes de abrir — nunca duplica.
 
 ## Aceite
 **Histórico**

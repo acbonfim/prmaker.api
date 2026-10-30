@@ -790,13 +790,13 @@ public class GitHubService : IGitHubService
 
     private const int BranchesCacheMinutes = 5;
 
-    public async Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default, bool bypassCache = false)
     {
         await EnsureClientAsync(cancellationToken);
         var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
 
         var key = $"github:branches:{_tokenScope}:{owner}/{repo}".ToLowerInvariant();
-        if (_cacheService.TryGetValue<List<string>>(key, out var cached) && cached is not null)
+        if (!bypassCache && _cacheService.TryGetValue<List<string>>(key, out var cached) && cached is not null)
             return cached;
 
         var branches = await Client.Repository.Branch.GetAll(owner, repo, new ApiOptions { PageSize = 100 });
