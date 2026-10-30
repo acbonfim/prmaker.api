@@ -16,8 +16,15 @@ namespace solvace.prform.Execution;
 /// JSON). Com <c>card</c>, a consulta fica registrada (trava da etapa de investigação).
 /// </summary>
 [McpServerToolType]
-public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, IArchitectureApplication architecture, IKnowledgeApplication knowledge)
+public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, IArchitectureApplication architecture, IKnowledgeApplication knowledge,
+    solvace.knowledge.application.Contracts.IReverseAccess access)
 {
+    /// <summary>0074: a engenharia reversa é só de administrador. Para os demais as ferramentas seguem com seções e Knowledge Center, sem itens.</summary>
+    private void RequireReverse()
+    {
+        if (!access.CanRead) throw new ReverseForbiddenException("A engenharia reversa é restrita a administradores. Use as seções da Base Solvace e o Knowledge Center (prmake_base_get com projeto/secao ou ART-n).");
+    }
+
     [McpServerTool(Name = "prmake_base_search", ReadOnly = true)]
     [Description("Base Solvace PRIMEIRO (antes de Grep/Read no codigo): busca na engenharia reversa por item (regras RN, casos de uso UC, " +
                  "telas TELA, endpoints API, tabelas DB, integracoes INT...) e, se faltar, nas secoes e no Knowledge Center. Devolve referencias " +
@@ -32,7 +39,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
     {
         var modules = Split(module);
         // 0054: a visão prática é para pessoas — não entra nas análises
-        var hits = (await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40) + 5, false, ct))
+        var hits = !access.CanRead ? [] : (await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40) + 5, false, ct))
             .Where(h => h.DocType != solvace.knowledge.domain.Reverse.ReverseDocTypes.Practical).Take(Math.Clamp(limit, 1, 40)).ToList();
         var sb = new StringBuilder();
         if (hits.Count > 0)
@@ -86,6 +93,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
             }
             if (ReverseItemKinds.ParseRef(raw.Replace("§", " ")) is not null)
             {
+                RequireReverse();
                 foreach (var item in await reverse.GetItemsAsync([raw], module, ct))
                 {
                     sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}")
@@ -124,6 +132,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         string? card = null,
         CancellationToken ct = default) => Safe(async () =>
     {
+        RequireReverse();
         var m = await reverse.GetModuleAsync(module, [], ct);
         var sb = new StringBuilder();
         sb.AppendLine($"{m.Key} — {m.DisplayName ?? m.Name} ({m.World}){(m.BusinessArea is null ? "" : " · area " + m.BusinessArea)} · engenharia reversa "
@@ -154,6 +163,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         [Description("Tabela, item, modulo ou tag")] string term,
         CancellationToken ct = default) => Safe(async () =>
     {
+        RequireReverse();
         var hits = await reverse.ImpactAsync(term, 120, ct);
         if (hits.Count == 0) return $"Nenhum item publicado cita '{term}'. (As relacoes do grafo antigo: prmake_base_module.)";
         var sb = new StringBuilder($"Itens que citam {term} ({hits.Count}):\n");

@@ -15,8 +15,11 @@ namespace solvace.knowledge.application;
 /// o documento vira a seção <c>re-&lt;tipo&gt;</c> do projeto (espelho, busca, Pergunte) e os itens com ID vão para o
 /// índice por item, que as análises consultam pelo MCP sem ler o documento inteiro nem o código.
 /// </summary>
-public partial class ReverseEngineeringApplication(IKnowledgeRepository repository, IReverseSettingsProvider settingsProvider) : IReverseEngineeringApplication
+public partial class ReverseEngineeringApplication(IKnowledgeRepository repository, IReverseSettingsProvider settingsProvider, IReverseAccess? access = null) : IReverseEngineeringApplication
 {
+    /// <summary>0074: a engenharia reversa é só de administrador (a tela, a geração e o que ela publica).</summary>
+    private bool CanRead => access?.CanRead ?? true;
+
     /// <summary>Tipos de projeto que são "módulo" na tela (as visões transversais ficam de fora).</summary>
     public static readonly IReadOnlySet<string> ModuleKinds = new HashSet<string> { "legacy", "revamp", "frontend", "integration", "auth" };
 
@@ -856,6 +859,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<List<ReverseAnswerItem>> GetAnswerContextAsync(string question, IReadOnlyList<string> terms, IReadOnlyCollection<string> boostModules,
         string intent, int limit, int maxRelated, int bodyChars, CancellationToken cancellationToken)
     {
+        // 0074: o "Pergunte" de quem não é administrador não recebe texto da engenharia reversa.
+        if (!CanRead) return [];
         var names = await ModuleNamesAsync(cancellationToken);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         // duas buscas: as palavras da pergunta e os termos da IA (sinônimos, nomes técnicos) — fundidas pela posição
@@ -1112,6 +1117,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// </summary>
     public async Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken)
     {
+        // 0074: quem não é administrador não consulta a engenharia reversa — a trava exigiria o impossível, então não vale para ele.
+        if (!CanRead) return null;
         var s = await settingsProvider.GetAsync(cancellationToken);
         // 0063: a trava aceita uma lista ("consultar-base,investigar-codigo") — planos novos travam na consulta à base,
         // os antigos (sem essa etapa) continuam travando na investigação.

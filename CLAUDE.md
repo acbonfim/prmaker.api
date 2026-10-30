@@ -75,6 +75,10 @@ All modules live under `CIME/modules/`. Each follows clean architecture layers: 
 
 Admin-only (`[Authorize(Roles = "admin")]`; front: `AdminGuard`). Batch PRs to release/hotfix branches: `Promotion/preview|resolve|` (create) |`parse` (Release Manager message — cards by regex, rules by the user's AI) in `solvace.prform.api/Promotion`. Targets per repository kind live in Skills Configurations (`PromotionProfiles`, `PromotionBranchPattern`) — nothing hard-coded. Cherry-picks run on the user's executor (`PromotionExecutor/next|heartbeat|report`, git worktree in `.prmake-wt/promo-<card>`, never force-push, never merge); the server opens the PR with the user's GitHub token and registers it on the card. Items are `PromotionItems` (`prform` schema); an open PR for the same card/repo/target is reused, never duplicated.
 
+### Reverse engineering access (0074)
+
+The reverse engineering (screen, generation, items, and what it publishes in the Base: `re-*` sections, `reverse/*.tsv` in the mirror package, INT items in the graph, the "Pergunte" context) is **admin-only**, enforced in the backend: `ReverseEngineeringController` is `[Authorize(Roles = "admin")]` and the knowledge application filters everything else through `IReverseAccess` (`HttpReverseAccess`: the `admin` role of the request user — api-key or executor credential). Non-admins keep the rest of the Base as it was before the reverse engineering (old sections are not "superseded" for them); the MCP `prmake_base_*` tools deny reverse items to them and fall back to sections/KC; the analysis gate does not apply to them. Outside a request (background work) there is no restriction.
+
 ### Authentication
 
 Custom `X-API-Key` header scheme (JWT issued by Cime.Auth, validated with `Auth:Secret`) with role-based authorization. Roles: `admin`, `support`, `user`, `gestor`. Implemented in `Cime.BuildingBlocks.Security`. Cime.Auth itself uses Bearer JWT; its signing keys are `Auth:Secret` / `Auth:SecretRefresh` (configuration only — it refuses to start without them).

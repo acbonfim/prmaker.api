@@ -15,9 +15,41 @@ namespace solvace.knowledge.application;
 /// O espelho leva só as seções técnicas (público <c>llm</c>); o Guia para pessoas (<c>human</c>, 0038) fica só na tela,
 /// sem pesar no índice da análise nem mudar o hash.
 /// </summary>
-public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings, IReverseSettingsProvider? reverseSettings = null)
+public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledgeSettingsProvider settings, IReverseSettingsProvider? reverseSettings = null,
+    IReverseAccess? reverseAccess = null)
     : IArchitectureApplication
 {
+    /// <summary>0074: quem não é administrador não lê a engenharia reversa — nem as seções <c>re-*</c> que ela publica na Base.</summary>
+    private bool CanReadReverse => reverseAccess?.CanRead ?? true;
+
+    private static bool IsReverseSection(string? sectionKey) =>
+        (sectionKey ?? string.Empty).Trim().StartsWith(domain.Reverse.ReverseDocTypes.SectionPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A seção é da engenharia reversa e quem pede não é administrador: recusa (403) sem revelar o conteúdo.</summary>
+    private void EnsureReadable(string sectionKey)
+    {
+        if (!CanReadReverse && IsReverseSection(sectionKey))
+            throw new ReverseForbiddenException("A engenharia reversa é restrita a administradores.");
+    }
+
+    /// <summary>Módulos da engenharia reversa — vazio para quem não pode ler (a Base dele é a de antes da engenharia reversa).</summary>
+    private async Task<IReadOnlyCollection<ReverseModule>> ReverseModulesAsync(CancellationToken cancellationToken) =>
+        CanReadReverse ? await repository.GetReverseModulesAsync(cancellationToken) : [];
+
+    /// <summary>
+    /// Relações efetivas com as integrações da engenharia reversa. Quem não pode ler a engenharia reversa fica com as relações
+    /// da própria Base (sem os itens INT, mecanismos e contratos que ela acrescenta).
+    /// </summary>
+    private async Task<IReadOnlyCollection<domain.Reverse.ReverseIntegration>> ApplyReverseRelationsAsync(List<ArchitectureProject> projects,
+        IReadOnlyCollection<ReverseModule>? modules, CancellationToken cancellationToken) =>
+        CanReadReverse ? await ReverseRelations.ApplyAsync(repository, projects, modules, cancellationToken) : [];
+
+    /// <summary>Tira as seções <c>re-*</c> de uma resposta (a lista de seções do projeto na tela).</summary>
+    private void HideReverse(ArchitectureProjectResponse response)
+    {
+        if (!CanReadReverse) response.Sections.RemoveAll(s => IsReverseSection(s.Key));
+    }
+
     private async Task<ReverseSettings> ReverseSettingsAsync(CancellationToken cancellationToken) =>
         reverseSettings is null ? ReverseSettings.Default : await reverseSettings.GetAsync(cancellationToken);
 
@@ -25,6 +57,8 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     private async Task<ArchitectureProjectResponse> WithSupersededAsync(ArchitectureProjectResponse response, ArchitectureProject project,
         IReadOnlyCollection<ReverseModule>? modules, CancellationToken cancellationToken)
     {
+        // Quem não lê a engenharia reversa vê as seções antigas como estão (nada foi "substituído" para ele).
+        if (!CanReadReverse) return response;
         modules ??= await repository.GetReverseModulesAsync(cancellationToken);
         return WithSuperseded(response, project, await ReverseSettingsAsync(cancellationToken), modules);
     }
@@ -38,22 +72,26 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<List<ArchitectureProjectResponse>> ListProjectsAsync(CancellationToken cancellationToken)
     {
         var all = await repository.GetProjectHeadsAsync(cancellationToken);
-        var modules = await repository.GetReverseModulesAsync(cancellationToken);
-        await ReverseRelations.ApplyAsync(repository, all, modules, cancellationToken);
+        var modules = await ReverseModulesAsync(cancellationToken);
+        await ApplyReverseRelationsAsync(all, modules, cancellationToken);
         // 0070: a configuração uma vez (antes era lida por projeto) e o "usado por" de um mapa só (antes, varria todos por projeto)
         var settings = await ReverseSettingsAsync(cancellationToken);
         var usedBy = UsedByMap(all);
-        return all.OrderBy(p => p.Order).ThenBy(p => p.Name)
-            .Select(p => WithSuperseded(WithUsedBy(ToResponse(p), usedBy), p, settings, modules)).ToList();
+        var responses = all.OrderBy(p => p.Order).ThenBy(p => p.Name)
+            .Select(p => CanReadReverse ? WithSuperseded(WithUsedBy(ToResponse(p), usedBy), p, settings, modules) : WithUsedBy(ToResponse(p), usedBy)).ToList();
+        responses.ForEach(HideReverse);
+        return responses;
     }
 
     public async Task<ArchitectureProjectResponse> GetProjectAsync(string key, CancellationToken cancellationToken)
     {
         var all = await repository.GetProjectHeadsAsync(cancellationToken);
-        await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken);
+        await ApplyReverseRelationsAsync(all, null, cancellationToken);
         var normalized = ArchitectureProject.NormalizeKey(key);
         var project = all.FirstOrDefault(p => p.Key == normalized) ?? throw new KnowledgeNotFoundException($"Projeto '{key}' não encontrado.");
-        return await WithSupersededAsync(WithUsedBy(ToResponse(project), all), project, null, cancellationToken);
+        var response = await WithSupersededAsync(WithUsedBy(ToResponse(project), all), project, null, cancellationToken);
+        HideReverse(response);
+        return response;
     }
 
     /// <summary>
@@ -63,8 +101,12 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureGraphResponse> GetGraphAsync(CancellationToken cancellationToken)
     {
         var projects = await repository.GetProjectHeadsAsync(cancellationToken);
-        var integrations = await ReverseRelations.ApplyAsync(repository, projects, null, cancellationToken);
-        return BuildGraph(projects, integrations);
+        var integrations = await ApplyReverseRelationsAsync(projects, null, cancellationToken);
+        var graph = BuildGraph(projects, integrations);
+        // Os itens INT por trás de cada ligação (mecanismo, contrato) são texto da engenharia reversa: só administrador.
+        if (!CanReadReverse)
+            foreach (var edge in graph.Edges) edge.Items = [];
+        return graph;
     }
 
     /// <summary>Monta o grafo a partir de relações já efetivas (ver <see cref="ReverseRelations"/>).</summary>
@@ -155,6 +197,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureSectionResponse> GetSectionAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
         // 0070: só a seção pedida — antes lia a Base inteira (todas as seções com texto) para devolver uma (12 s e OOM)
+        EnsureReadable(sectionKey);
         var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         var section = await repository.GetSectionWithContentAsync(head.Id, cancellationToken)
                       ?? throw new KnowledgeNotFoundException($"Seção '{sectionKey}' não encontrada em '{projectKey}'.");
@@ -169,6 +212,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     public async Task<ArchitectureSectionResponse> GetSectionExcerptAsync(string projectKey, string sectionKey, int maxChars,
         IReadOnlyList<string>? terms, CancellationToken cancellationToken)
     {
+        EnsureReadable(sectionKey);
         var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         if (head.Length <= maxChars) return await GetSectionAsync(projectKey, sectionKey, cancellationToken);
         var start = 0;
@@ -186,6 +230,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     /// <summary>0070: sumário da seção em pedaços (sem o texto) — a tela busca cada pedaço com <see cref="GetSectionPartsAsync"/>.</summary>
     public async Task<ArchitectureSectionOutlineResponse> GetSectionOutlineAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
+        EnsureReadable(sectionKey);
         var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         return ToOutline(head, await OutlineAsync(head, cancellationToken));
     }
@@ -193,6 +238,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     /// <summary>0070: pedaços <paramref name="from"/>..<paramref name="to"/> da seção (até <see cref="MaxPartsPerRequest"/>), lidos do banco por trecho.</summary>
     public async Task<ArchitectureSectionPartsResponse> GetSectionPartsAsync(string projectKey, string sectionKey, int from, int to, CancellationToken cancellationToken)
     {
+        EnsureReadable(sectionKey);
         var head = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         var chunks = await OutlineAsync(head, cancellationToken);
         from = Math.Max(0, from);
@@ -292,6 +338,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public async Task<List<ArchitectureSectionVersionResponse>> GetVersionsAsync(string projectKey, string sectionKey, CancellationToken cancellationToken)
     {
+        EnsureReadable(sectionKey);
         var section = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         return (await repository.GetVersionsAsync(section.Id, cancellationToken))
             .OrderByDescending(v => v.Version).Select(v => ToVersion(v, withContent: false)).ToList();
@@ -299,6 +346,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
 
     public async Task<ArchitectureSectionVersionResponse> GetVersionAsync(string projectKey, string sectionKey, int version, CancellationToken cancellationToken)
     {
+        EnsureReadable(sectionKey);
         var section = FindSection(await FindHeadAsync(projectKey, cancellationToken), sectionKey);
         var found = await repository.GetVersionAsync(section.Id, version, cancellationToken)
                     ?? throw new KnowledgeNotFoundException($"Versão {version} não encontrada.");
@@ -359,6 +407,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     {
         var terms = ArchitectureSearch.Terms(query, extraTerms);
         if (terms.Count == 0) return [];
+        withReverseDocs = withReverseDocs && CanReadReverse;
         var (allProjects, articles, _) = await LoadAllAsync(cancellationToken);
         var projects = onlyProjects is { Count: > 0 } ? allProjects.Where(p => onlyProjects.Contains(p.Key)).ToList() : allProjects;
         // 0053: sinônimos do glossário da engenharia reversa ("RCA" acha "A3") também na busca/Pergunte da Base Solvace.
@@ -488,18 +537,19 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 foreach (var section in exported)
                     Add(zip, $"projects/{project.Key}/{section.Order:000}-{section.Key}.md", RenderSection(project, section, contents.GetValueOrDefault(section.Id) ?? section.Content));
             }
-            var integrations = await ReverseRelations.IntegrationsAsync(repository, projects, null, cancellationToken);
+            IReadOnlyCollection<domain.Reverse.ReverseIntegration> integrations = CanReadReverse ? await ReverseRelations.IntegrationsAsync(repository, projects, null, cancellationToken) : [];
             Add(zip, "graph.json", JsonSerializer.Serialize(BuildGraph(projects, integrations), new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
             // 0052: índice por item da engenharia reversa — a skill acha o item com grep e lê só o bloco dele.
             // 0054: armadilhas migradas viram a seção técnica de armadilhas do módulo (a antiga foi substituída)
-            var migrated = (await repository.GetReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
+            var migrated = (await ReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
             if (migrated.Count > 0)
             {
                 var traps = (await repository.GetTrapsAsync(null, cancellationToken)).GroupBy(t => t.ModuleKey).ToDictionary(g => g.Key, g => g.ToList());
                 foreach (var project in projects.Where(p => migrated.Contains(p.Key) && traps.ContainsKey(p.Key)))
                     Add(zip, $"projects/{project.Key}/090-armadilhas.md", ReverseSupersession.RenderTraps(project, traps[project.Key]));
             }
-            var reverse = await repository.GetIndexHeadsAsync(null, null, cancellationToken); // 0070: sem o texto dos itens
+            // 0074: o índice por item (reverse/*.tsv) é a engenharia reversa por dentro: só no pacote de administrador.
+            var reverse = CanReadReverse ? await repository.GetIndexHeadsAsync(null, null, cancellationToken) : []; // 0070: sem o texto dos itens
             if (reverse.Count > 0)
             {
                 Add(zip, "reverse/INDEX.md", RenderReverseIndex(projects, reverse));
@@ -519,10 +569,16 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         // 0070: só as cabeças (sem o texto) — quem precisa do texto lê por seção/projeto
         var projects = (await repository.GetProjectHeadsAsync(cancellationToken)).OrderBy(p => p.Order).ThenBy(p => p.Name).ToList();
         // 0054: uma fonte por módulo — seção antiga já coberta pela engenharia reversa não vai para espelho/busca/catálogo
-        var modules = await repository.GetReverseModulesAsync(cancellationToken);
-        ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), modules);
+        var modules = await ReverseModulesAsync(cancellationToken);
+        if (CanReadReverse)
+            ReverseSupersession.Strip(projects, await ReverseSettingsAsync(cancellationToken), modules);
+        else
+            // 0074: sem permissão, as seções da engenharia reversa (re-*) não entram no espelho, no índice, no catálogo nem na busca
+            // (o hash do pacote muda junto: quem não é admin baixa só o que pode ler). As seções antigas ficam como estavam: para
+            // ele nada foi "substituído" pela engenharia reversa.
+            foreach (var p in projects) p.Sections.RemoveAll(s => IsReverseSection(s.Key));
         // 0066: ligações efetivas (INT da engenharia reversa resolvidos) no índice, nas fichas e no grafo do espelho
-        await ReverseRelations.ApplyAsync(repository, projects, modules, cancellationToken);
+        await ApplyReverseRelationsAsync(projects, modules, cancellationToken);
         var articles = (await repository.GetArticlesAsync(environment, tracked: false, cancellationToken)).OrderBy(a => a.ArticleNumber).ToList();
         return (projects, articles, environment);
     }
@@ -530,7 +586,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     /// <summary>0054: armadilhas migradas entram no pacote — mudam o hash do espelho.</summary>
     private async Task<string> TrapsStampAsync(CancellationToken cancellationToken)
     {
-        var migrated = (await repository.GetReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
+        var migrated = (await ReverseModulesAsync(cancellationToken)).Where(m => m.TrapsMigratedAt is not null).Select(m => m.Key).ToHashSet();
         if (migrated.Count == 0) return string.Empty;
         return string.Join("|", (await repository.GetTrapsAsync(null, cancellationToken)).Where(t => migrated.Contains(t.ModuleKey))
             .OrderBy(t => t.Id).Select(t => $"{t.Id}:{t.UpdatedAt.UtcTicks}:{t.NeedsReview}"));

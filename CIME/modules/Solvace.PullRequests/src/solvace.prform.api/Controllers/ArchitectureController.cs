@@ -224,5 +224,6 @@ public class ArchitectureController(IArchitectureApplication application, solvac
         try { return await action(); }
         catch (DomainException e) { return BadRequest(new { error = e.Message }); }
         catch (KnowledgeNotFoundException e) { return NotFound(new { error = e.Message }); }
+        catch (solvace.knowledge.application.ReverseForbiddenException e) { return StatusCode(StatusCodes.Status403Forbidden, new { error = e.Message }); }
     }
 }

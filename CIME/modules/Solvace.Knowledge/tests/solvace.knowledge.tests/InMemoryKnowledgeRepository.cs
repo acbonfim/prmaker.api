@@ -25,7 +25,9 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     public Task<KnowledgeSyncState?> GetStateAsync(string environment, CancellationToken cancellationToken) => Task.FromResult<KnowledgeSyncState?>(null);
     public void AddState(KnowledgeSyncState state) { }
     public Task<List<ArchitectureProject>> GetProjectsAsync(CancellationToken cancellationToken) => Task.FromResult(_projects.Where(p => !p.IsDeleted).ToList());
-    public Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken) => GetProjectsAsync(cancellationToken);
+    // Como o repositório de verdade: cópias (sem rastreamento) — quem filtra seções da resposta não mexe no que está guardado.
+    public async Task<List<ArchitectureProject>> GetProjectHeadsAsync(CancellationToken cancellationToken) =>
+        (await GetProjectsAsync(cancellationToken)).Select(p => p.ReadCopy()).ToList();
     public Task<ArchitectureProject?> GetProjectAsync(string key, CancellationToken cancellationToken) => Task.FromResult(_projects.FirstOrDefault(p => p.Key == key && !p.IsDeleted));
     public Task<Dictionary<string, string>> GetProjectNamesAsync(CancellationToken cancellationToken) =>
         Task.FromResult(_projects.Where(p => !p.IsDeleted).ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name));
