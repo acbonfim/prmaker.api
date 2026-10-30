@@ -52,4 +52,8 @@ public static class SkillsConfigurationKeys
     public const string CorrectionLocalTests = "CorrectionLocalTests";
     /// <summary>0069: limite em segundos dos testes locais da correção (passou → segue para o PR; o CI valida).</summary>
     public const string CorrectionTestMaxSeconds = "CorrectionTestMaxSeconds";
+    /// <summary>0074: perfis de destino da promoção em lote por tipo de repositório (JSON: {profiles: {kind: {label, targets: [{branch, draft?, mode?}]}}}); {version} = a versão do lote.</summary>
+    public const string PromotionProfiles = "PromotionProfiles";
+    /// <summary>0074: padrão do nome da branch do cherry-pick ({card}, {target}).</summary>
+    public const string PromotionBranchPattern = "PromotionBranchPattern";
 }

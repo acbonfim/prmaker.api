@@ -121,6 +121,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D3B6DE9E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.executionplans.tests", "CIME\modules\Solvace.ExecutionPlans\tests\solvace.executionplans.tests\solvace.executionplans.tests.csproj", "{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{46A0EC3D-A88B-A77C-FA0A-0DF2994F9E4A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "solvace.prform.tests", "CIME\modules\Solvace.PullRequests\tests\solvace.prform.tests\solvace.prform.tests.csproj", "{B23D3E99-1063-44A6-B878-EC2ADE5353B3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -575,6 +579,18 @@ Global
 		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x64.Build.0 = Release|Any CPU
 		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x86.ActiveCfg = Release|Any CPU
 		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E}.Release|x86.Build.0 = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|x64.Build.0 = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Debug|x86.Build.0 = Debug|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|x64.ActiveCfg = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|x64.Build.0 = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|x86.ActiveCfg = Release|Any CPU
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -637,5 +653,7 @@ Global
 		{5CBA1576-1537-44B4-97ED-B2962371C11A} = {744F4450-A22E-87E5-6C50-F00201FD0D15}
 		{D3B6DE9E-F7D1-6E24-9C23-7BF079C7302B} = {5A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C60}
 		{D70FFAD2-E3CC-4A2A-AFFC-0000E5344D9E} = {D3B6DE9E-F7D1-6E24-9C23-7BF079C7302B}
+		{46A0EC3D-A88B-A77C-FA0A-0DF2994F9E4A} = {6BE3B2F4-A3C3-4DA2-89A0-02E9D88A92A7}
+		{B23D3E99-1063-44A6-B878-EC2ADE5353B3} = {46A0EC3D-A88B-A77C-FA0A-0DF2994F9E4A}
 	EndGlobalSection
 EndGlobal
