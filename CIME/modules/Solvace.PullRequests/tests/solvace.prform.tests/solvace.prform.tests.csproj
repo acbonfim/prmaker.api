@@ -18,6 +18,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\solvace.prform.domain\solvace.prform.domain.csproj" />
+        <ProjectReference Include="..\..\src\solvace.prform.api\solvace.prform.api.csproj" />
     </ItemGroup>
 
 </Project>

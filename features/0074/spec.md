@@ -138,6 +138,12 @@ tela da B2**; nada é disparado. O usuário revisa e usa o mesmo botão **Dispar
 
 ---
 
+## Acesso
+A promoção é **só de administrador**: `[Authorize(Roles = "admin")]` em todos os endpoints de `Promotion` (403 para os demais), `heartbeat`/`report`
+do executor exigem o papel e `PromotionExecutor/next` devolve 204 (fila vazia) para quem não é admin — o executor dessa pessoa não registra
+erro. No front, a rota usa `AdminGuard` (redireciona ao dashboard) e o item do menu tem `allowedRoles: ['admin']`. Teste de regressão:
+`PromotionAccessTests`.
+
 ## Fora de escopo
 - Mesclar PRs; criar as branches de release/hotfix (só valida que existem); repositórios do Azure DevOps (só GitHub).
 - Resolver conflito de cherry-pick sozinho com IA (fica para uma próxima; hoje só reporta e deixa retomar no Claude).

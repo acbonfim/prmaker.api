@@ -73,7 +73,7 @@ All modules live under `CIME/modules/`. Each follows clean architecture layers: 
 
 ### Promotion (0074)
 
-Batch PRs to release/hotfix branches: `Promotion/preview|resolve|` (create) |`parse` (Release Manager message — cards by regex, rules by the user's AI) in `solvace.prform.api/Promotion`. Targets per repository kind live in Skills Configurations (`PromotionProfiles`, `PromotionBranchPattern`) — nothing hard-coded. Cherry-picks run on the user's executor (`PromotionExecutor/next|heartbeat|report`, git worktree in `.prmake-wt/promo-<card>`, never force-push, never merge); the server opens the PR with the user's GitHub token and registers it on the card. Items are `PromotionItems` (`prform` schema); an open PR for the same card/repo/target is reused, never duplicated.
+Admin-only (`[Authorize(Roles = "admin")]`; front: `AdminGuard`). Batch PRs to release/hotfix branches: `Promotion/preview|resolve|` (create) |`parse` (Release Manager message — cards by regex, rules by the user's AI) in `solvace.prform.api/Promotion`. Targets per repository kind live in Skills Configurations (`PromotionProfiles`, `PromotionBranchPattern`) — nothing hard-coded. Cherry-picks run on the user's executor (`PromotionExecutor/next|heartbeat|report`, git worktree in `.prmake-wt/promo-<card>`, never force-push, never merge); the server opens the PR with the user's GitHub token and registers it on the card. Items are `PromotionItems` (`prform` schema); an open PR for the same card/repo/target is reused, never duplicated.
 
 ### Authentication
 

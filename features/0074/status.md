@@ -53,3 +53,4 @@ PR-A (histórico) = B1 + F1, pode ir sozinho. PR-B (promoção) = o resto.
 - 2026-10-30 — ajustes pós-uso: loading/skeleton/animações em todas as telas novas; nomes literais (`release-version`/`hotfix-version`, migração
   `UseLiteralPromotionBranches`); branch do card e base pelo registro do PRMake (sem palpite); seletor de branches do repositório; mensagens
   claras ("sem commits", "não existe no repositório"); servidor exige o registro do PRMake ao criar o lote.
+- 2026-10-30 — promoção restrita a admin (back: `Authorize(Roles = "admin")`, executor `next` 204 para não admin; front: `AdminGuard` + menu); `PromotionAccessTests`.
