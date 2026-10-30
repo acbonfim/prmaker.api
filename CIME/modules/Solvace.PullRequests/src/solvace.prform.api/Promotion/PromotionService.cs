@@ -38,8 +38,6 @@ public class PromotionService(
     /// <summary>Quantos itens "direct" (só API, sem git) o servidor abre na própria requisição; o resto fica para o executor.</summary>
     private const int MaxInlineDirect = 20;
     private const int MaxCommitsInPreview = 10;
-    private const int MaxBaseCandidates = 6;
-    private static readonly Regex ReleaseLike = new(@"^(release|hotfix)[-/_]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Guid InlineWorker = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
 
     // ── Configuração ─────────────────────────────────────────────────────────────────────────────
@@ -84,7 +82,7 @@ public class PromotionService(
         var cardNumbers = cards.Select(c => c.Card).ToList();
         var prRows = await context.PullRequestsGithub.AsNoTracking()
             .Where(x => cardNumbers.Contains(x.CardNumber))
-            .Select(x => new KnownPr(x.CardNumber, x.RepositoryId, x.BranchPrefix + x.BranchName, x.TargetBranch, x.Status, x.Url))
+            .Select(x => new KnownPr(x.Id, x.CardNumber, x.RepositoryId, x.BranchPrefix + x.BranchName, x.TargetBranch, x.Status, x.Url))
             .ToListAsync(ct);
 
         var response = new PromotionPreviewResponse
@@ -103,25 +101,32 @@ public class PromotionService(
         {
             summaries.TryGetValue(card.Card, out var summary);
             var known = prRows.Where(r => r.Card == card.Card).ToList();
-            var repos = !string.IsNullOrWhiteSpace(card.Repository)
-                ? [card.Repository.Trim()]
-                : known.Select(r => r.Repository).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var options = known.Select(r => r.Repository).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            if (repos.Count == 0)
+            // Só vale o que o PRMake registrou: sem PR registrado do card não há de onde levar a correção.
+            if (options.Count == 0)
             {
                 var row = BaseRow(card.Card, summary);
-                row.RepositoryOptions = options;
-                row.Errors.Add("O card ainda não tem PR registrado: informe o repositório.");
+                row.Errors.Add($"O card AB#{card.Card} não tem PR registrado no PRMake. A promoção só usa o que foi feito pelo PRMake: abra os PRs do card pela tela Pull Requests primeiro.");
                 response.Rows.Add(row);
                 continue;
             }
+
+            var repos = !string.IsNullOrWhiteSpace(card.Repository)
+                ? [options.FirstOrDefault(o => string.Equals(o, card.Repository.Trim(), StringComparison.OrdinalIgnoreCase)) ?? card.Repository.Trim()]
+                : options;
 
             foreach (var repo in repos)
             {
                 var row = BaseRow(card.Card, summary);
                 row.Repository = repo;
                 row.RepositoryOptions = options;
+                if (!options.Contains(repo, StringComparer.OrdinalIgnoreCase))
+                {
+                    row.Errors.Add($"O card AB#{card.Card} não tem PR registrado no PRMake em {repo} (só em {string.Join(", ", options)}).");
+                    response.Rows.Add(row);
+                    continue;
+                }
                 await FillRowAsync(row, known.Where(r => string.Equals(r.Repository, repo, StringComparison.OrdinalIgnoreCase)).ToList(),
                     settings, version, request.Profiles, request.Refresh, ct);
                 response.Rows.Add(row);
@@ -130,7 +135,10 @@ public class PromotionService(
         return response;
     }
 
-    private record KnownPr(string Card, string Repository, string Branch, string Target, string Status, string Url);
+    private record KnownPr(int Id, string Card, string Repository, string Branch, string Target, string Status, string Url)
+    {
+        public RegisteredBranch AsRegistered() => new(Id, Branch, Target);
+    }
 
     private static PromotionPreviewRow BaseRow(string card, AzureSummary? summary) => new()
     {
@@ -177,46 +185,79 @@ public class PromotionService(
                 : $"Não há perfil de destino para o tipo '{kind}': escolha os destinos.");
         }
 
+        var suffixes = PromotionSource.Suffixes(settings.BranchStrategy);
+        var principals = PromotionSource.Principals(known.Select(k => k.AsRegistered()), suffixes);
+        var preferred = settings.BranchNamePattern.Replace("{card}", row.Card, StringComparison.OrdinalIgnoreCase);
+
         // Branch recém-criada pode não estar na lista em cache (5 min): se algo não foi achado, consulta de novo uma vez.
-        if (!refresh && (MissingPrincipal(branches, settings, row.Card) || MissingTarget(branches, settings, templates, version)))
+        if (!refresh && (PromotionSource.ChoosePrincipal(principals, branches.ToList(), preferred) is null || MissingTarget(branches, templates, version)))
         {
             try { branches = await github.ListBranchesAsync(row.Repository!, ct, bypassCache: true); }
             catch (Exception e) when (e is not OperationCanceledException) { logger.LogWarning(e, "Promoção: não consegui atualizar as branches de {Repository}", row.Repository); }
         }
 
-        // Branch principal: o padrão de nome do PRMake (hotfix/{card}) ou, na falta, bugfix/{card}.
-        var principal = new[] { settings.BranchNamePattern, "bugfix/{card}" }
-            .Select(p => p.Replace("{card}", row.Card, StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.Ordinal)
-            .FirstOrDefault(b => branches.Contains(b, StringComparer.Ordinal));
+        // Branch de tratamento do card: a que o PRMake registrou (sem o sufixo -dev/-qa) e que existe no repositório.
+        var principal = PromotionSource.ChoosePrincipal(principals, branches.ToList(), preferred);
         if (principal is null)
         {
-            row.SourceBranch = settings.BranchNamePattern.Replace("{card}", row.Card, StringComparison.OrdinalIgnoreCase);
-            row.Errors.Add($"Branch principal não encontrada em {row.Repository} ({row.SourceBranch}).");
+            row.SourceBranch = principals.FirstOrDefault();
+            row.Errors.Add(principals.Count == 0
+                ? $"Não achei a branch de tratamento do card nos registros do PRMake em {row.Repository}."
+                : $"A branch de tratamento registrada no PRMake ({string.Join(", ", principals)}) não existe mais em {row.Repository}.");
         }
         else
         {
             row.SourceBranch = principal;
             row.SourceFound = true;
-            // Candidatas a base (de onde a principal foi cortada): os destinos do perfil que existem no remoto entram na disputa.
-            var profileBranches = (templates ?? [])
-                .Select(t => PromotionTargetResolver.Resolve(t, version, branches.ToList()).Branch)
-                .Where(b => b is not null).Cast<string>().ToList();
-            await FillSourceAsync(row, known, branches, profileBranches, ct);
+            // De onde a branch saiu: o que o PRMake registrou (release) ou a base do fluxo de produção — nunca palpite.
+            var (baseName, reason) = PromotionSource.BaseOf(principal, known.Select(k => k.AsRegistered()), kind, settings.BranchStrategy);
+            var baseBranch = branches.FirstOrDefault(b => string.Equals(b, baseName, StringComparison.Ordinal))
+                             ?? branches.FirstOrDefault(b => string.Equals(b, baseName, StringComparison.OrdinalIgnoreCase));
+            row.SourceBase = baseBranch ?? baseName;
+            row.BaseNote = reason;
+            if (baseBranch is null)
+                row.Errors.Add($"A base {baseName} ({reason}) não existe em {row.Repository}: não dá para saber quais commits levar.");
+            else
+                await FillCommitsAsync(row, baseBranch, ct);
         }
 
         row.Targets.AddRange(BuildTargets(templates ?? [], version, branches, row.SourceBase, row.SourceBranch, known));
-
-        if (row.SourceFound && row.CommitCount == 0 && !row.Errors.Any())
-            row.Warnings.Add("Não encontrei commits da branch principal em relação à base — confira antes de disparar.");
     }
 
-    private static bool MissingPrincipal(IReadOnlyList<string> branches, Settings settings, string card) =>
-        !new[] { settings.BranchNamePattern, "bugfix/{card}" }
-            .Select(p => p.Replace("{card}", card, StringComparison.OrdinalIgnoreCase))
-            .Any(b => branches.Contains(b, StringComparer.Ordinal));
+    /// <summary>Commits da branch de tratamento em relação à base registrada (sem merges).</summary>
+    private async Task FillCommitsAsync(PromotionPreviewRow row, string baseBranch, CancellationToken ct)
+    {
+        solvace.github.domain.Responses.BranchDeltaResponse? delta;
+        try
+        {
+            delta = await github.GetBranchDeltaAsync(row.Repository!, baseBranch, row.SourceBranch!, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Promoção: compare {Base}...{Head} falhou em {Repository}", baseBranch, row.SourceBranch, row.Repository);
+            row.Errors.Add($"Não consegui comparar {row.SourceBranch} com {baseBranch} no GitHub: {e.Message}");
+            return;
+        }
+        if (delta is null)
+        {
+            row.Errors.Add($"O GitHub não encontrou {row.SourceBranch} ou {baseBranch} ao comparar as duas.");
+            return;
+        }
 
-    private static bool MissingTarget(IReadOnlyList<string> branches, Settings settings, List<PromotionTarget>? templates, string version) =>
+        row.CommitCount = delta.Commits.Count;
+        row.CommitsTruncated = delta.Truncated;
+        row.Commits = delta.Commits.Take(MaxCommitsInPreview).Select(c => new PromotionCommitResponse { Sha = c.Sha, Title = c.Title }).ToList();
+        if (delta.Commits.Count == 0)
+        {
+            row.Warnings.Add(delta.BehindBy > 0 && delta.AheadBy == 0
+                ? $"Tudo o que há em {row.SourceBranch} já está em {baseBranch} (a base registrada): provavelmente a correção já foi mesclada lá, então não há commits para levar aos destinos."
+                : $"{row.SourceBranch} não tem commits próprios além de {baseBranch}, que é a base registrada no PRMake: não há o que levar aos destinos.");
+        }
+        else if (delta.Truncated)
+            row.Warnings.Add("A branch tem muitos commits: a lista está cortada (o cherry-pick leva todos).");
+    }
+
+    private static bool MissingTarget(IReadOnlyList<string> branches, List<PromotionTarget>? templates, string version) =>
         (templates ?? []).Any(t => PromotionTargetResolver.Resolve(t, version, branches.ToList()).Status != PromotionTargetStatus.Resolved);
 
     /// <summary>Resolve os modelos de destino contra as branches do remoto e marca o que já tem PR aberto.</summary>
@@ -233,6 +274,7 @@ public class PromotionService(
                 Branch = resolved.Branch,
                 Status = resolved.Status,
                 Candidates = resolved.Candidates.ToList(),
+                Expected = resolved.Expected,
                 Draft = resolved.Draft,
                 Mode = resolved.Mode
             };
@@ -244,7 +286,7 @@ public class PromotionService(
                     && target.Mode == PromotionMode.CherryPick)
                 {
                     target.Mode = PromotionMode.Direct;
-                    target.Note = $"A branch {sourceBranch} foi cortada de {sourceBase}: PR direto, sem cherry-pick.";
+                    target.Note = $"{resolved.Branch} é a base de onde {sourceBranch} saiu (registro do PRMake): PR direto da própria branch, sem cherry-pick.";
                 }
                 var open = known.FirstOrDefault(k => string.Equals(k.Target, resolved.Branch, StringComparison.OrdinalIgnoreCase)
                                                      && k.Status == PullRequestGithubStatus.Open);
@@ -257,6 +299,23 @@ public class PromotionService(
             result.Add(target);
         }
         return result;
+    }
+
+    /// <summary>Branches do repositório para o seletor da tela (filtra por trecho do nome, sem diferenciar maiúsculas).</summary>
+    public async Task<List<string>> SearchBranchesAsync(string repository, string? search, int take, bool refresh, CancellationToken ct)
+    {
+        var repo = repository?.Trim() ?? string.Empty;
+        if (repo.Length == 0)
+            throw new PrDomainException("Informe o repositório.");
+        var branches = await github.ListBranchesAsync(repo, ct, bypassCache: refresh);
+        var term = search?.Trim() ?? string.Empty;
+        return branches
+            .Where(b => term.Length == 0 || b.Contains(term, StringComparison.OrdinalIgnoreCase))
+            // o que começa pelo termo vem antes; depois, ordem alfabética
+            .OrderBy(b => term.Length > 0 && b.StartsWith(term, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(b => b, StringComparer.OrdinalIgnoreCase)
+            .Take(Math.Clamp(take, 1, 100))
+            .ToList();
     }
 
     /// <summary>Resolve destinos digitados na tela (adicionar um destino a uma linha) sem refazer a prévia inteira.</summary>
@@ -273,7 +332,7 @@ public class PromotionService(
         var card = NormalizeCard(request.Card);
         var known = (await context.PullRequestsGithub.AsNoTracking()
                 .Where(x => x.CardNumber == card)
-                .Select(x => new KnownPr(x.CardNumber, x.RepositoryId, x.BranchPrefix + x.BranchName, x.TargetBranch, x.Status, x.Url))
+                .Select(x => new KnownPr(x.Id, x.CardNumber, x.RepositoryId, x.BranchPrefix + x.BranchName, x.TargetBranch, x.Status, x.Url))
                 .ToListAsync(ct))
             .Where(k => string.Equals(k.Repository, repo, StringComparison.OrdinalIgnoreCase)).ToList();
         var branches = await github.ListBranchesAsync(repo, ct);
@@ -291,54 +350,6 @@ public class PromotionService(
         return built;
     }
 
-    /// <summary>Base de corte (a que deixa menos commits à frente) e os commits da branch principal em relação a ela.</summary>
-    private async Task FillSourceAsync(PromotionPreviewRow row, List<KnownPr> known, IReadOnlyList<string> branches, IReadOnlyList<string> profileBranches, CancellationToken ct)
-    {
-        // A base é a branch (master ou uma release) de que a principal saiu: a que deixa MENOS commits à frente. Ordem de
-        // tentativa: master, os destinos dos PRs já registrados do card, os destinos do perfil e, por fim, as branches
-        // release/hotfix mais novas — no máximo MaxBaseCandidates comparações.
-        var candidates = new List<string> { "master" };
-        candidates.AddRange(known.Where(k => string.Equals(k.Branch, row.SourceBranch, StringComparison.Ordinal)).Select(k => k.Target));
-        candidates.AddRange(profileBranches);
-        candidates.AddRange(branches.Where(b => ReleaseLike.IsMatch(b))
-            .OrderByDescending(b => b, StringComparer.OrdinalIgnoreCase));
-        var bases = candidates
-            .Where(b => !string.Equals(b, row.SourceBranch, StringComparison.Ordinal))
-            .Select(b => branches.FirstOrDefault(x => string.Equals(x, b, StringComparison.OrdinalIgnoreCase)))
-            .Where(b => b is not null)
-            .Cast<string>()
-            .Distinct(StringComparer.Ordinal)
-            .Take(MaxBaseCandidates)
-            .ToList();
-
-        solvace.github.domain.Responses.BranchDeltaResponse? best = null;
-        foreach (var candidate in bases)
-        {
-            try
-            {
-                var delta = await github.GetBranchDeltaAsync(row.Repository!, candidate, row.SourceBranch!, ct);
-                if (delta is not null && (best is null || delta.AheadBy < best.AheadBy))
-                    best = delta;
-            }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                logger.LogWarning(e, "Promoção: compare {Base}...{Head} falhou em {Repository}", candidate, row.SourceBranch, row.Repository);
-            }
-        }
-
-        if (best is null)
-        {
-            row.Warnings.Add("Não consegui calcular os commits da branch principal.");
-            return;
-        }
-        row.SourceBase = best.Base;
-        row.CommitCount = best.Commits.Count;
-        row.CommitsTruncated = best.Truncated;
-        row.Commits = best.Commits.Take(MaxCommitsInPreview).Select(c => new PromotionCommitResponse { Sha = c.Sha, Title = c.Title }).ToList();
-        if (best.Truncated)
-            row.Warnings.Add("A branch tem muitos commits: a lista está cortada (o cherry-pick leva todos).");
-    }
-
     // ── Criação e reenvio ────────────────────────────────────────────────────────────────────────
 
     public async Task<PromotionBatchResponse> CreateAsync(PromotionCreateRequest request, Guid userId, string userName, CancellationToken ct)
@@ -352,6 +363,12 @@ public class PromotionService(
         var batch = new PromotionBatch(request.Version, request.Kind, userId, userName, now);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var branchesByRepo = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var suffixes = PromotionSource.Suffixes((await LoadSettingsAsync(ct)).BranchStrategy);
+        var cardsInBatch = request.Items.Select(i => NormalizeCard(i.Card)).Distinct().ToList();
+        var registered = await context.PullRequestsGithub.AsNoTracking()
+            .Where(x => cardsInBatch.Contains(x.CardNumber))
+            .Select(x => new KnownPr(x.Id, x.CardNumber, x.RepositoryId, x.BranchPrefix + x.BranchName, x.TargetBranch, x.Status, x.Url))
+            .ToListAsync(ct);
 
         foreach (var item in request.Items)
         {
@@ -361,6 +378,13 @@ public class PromotionService(
                 throw new PrDomainException("Todo item precisa de card e repositório.");
             if (item.Targets.Count == 0)
                 throw new PrDomainException($"O card {card} ({repo}) não tem destino.");
+
+            // A promoção só usa o que o PRMake registrou: o card precisa ter PR neste repositório e a branch de tratamento é a registrada.
+            var cardRows = registered.Where(r => r.Card == card && string.Equals(r.Repository, repo, StringComparison.OrdinalIgnoreCase)).Select(r => r.AsRegistered()).ToList();
+            if (cardRows.Count == 0)
+                throw new PrDomainException($"O card {card} não tem PR registrado no PRMake em {repo}: abra os PRs pelo PRMake antes de promover.");
+            if (!PromotionSource.Principals(cardRows, suffixes).Contains(item.SourceBranch?.Trim() ?? string.Empty, StringComparer.Ordinal))
+                throw new PrDomainException($"A branch {item.SourceBranch} não é a branch de tratamento registrada no PRMake para o card {card} em {repo}.");
 
             if (!branchesByRepo.TryGetValue(repo, out var branches))
                 branchesByRepo[repo] = branches = await github.ListBranchesAsync(repo, ct);

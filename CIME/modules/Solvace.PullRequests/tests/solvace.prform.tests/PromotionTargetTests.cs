@@ -151,4 +151,53 @@ public class PromotionTargetTests
     {
         Assert.Equal(PromotionTargetStatus.Missing, PromotionTargetResolver.Resolve(new PromotionTarget("hotfix-{version}"), "???", Remote).Status);
     }
+
+    // ── nomes literais (release-version / hotfix-version são branches reais) ──────────────────────
+
+    private static readonly string[] RealRemote = ["master", "edge", "development", "release-version", "hotfix-version", "release-3.274.9"];
+
+    [Fact]
+    public void Literal_branch_names_win_and_the_version_is_not_substituted()
+    {
+        var r = PromotionTargetResolver.Resolve(new PromotionTarget("hotfix-version"), "3.274.10", RealRemote);
+
+        Assert.Equal(PromotionTargetStatus.Resolved, r.Status);
+        Assert.Equal("hotfix-version", r.Branch);
+    }
+
+    [Fact]
+    public void A_name_ending_in_version_falls_back_to_the_numbered_branch_when_the_literal_does_not_exist()
+    {
+        var r = PromotionTargetResolver.Resolve(new PromotionTarget("release-version"), "3.274.10", ["master", "release-3.274.10"]);
+
+        Assert.Equal(PromotionTargetStatus.Resolved, r.Status);
+        Assert.Equal("release-3.274.10", r.Branch);
+    }
+
+    [Fact]
+    public void Missing_literal_shows_the_name_as_written_without_braces()
+    {
+        var r = PromotionTargetResolver.Resolve(new PromotionTarget("release-version"), "3.274.10", ["master"]);
+
+        Assert.Equal(PromotionTargetStatus.Missing, r.Status);
+        Assert.Equal("release-version", r.Expected);
+    }
+
+    [Fact]
+    public void Missing_template_shows_the_expected_name_with_the_version_in_place()
+    {
+        var r = PromotionTargetResolver.Resolve(new PromotionTarget("release-{version}"), "V3.274.10", ["master"]);
+
+        Assert.Equal(PromotionTargetStatus.Missing, r.Status);
+        Assert.Equal("release-3.274.10", r.Expected);
+        Assert.DoesNotContain("{", r.Expected);
+    }
+
+    [Fact]
+    public void A_literal_that_is_not_about_the_version_never_gets_a_numbered_fallback()
+    {
+        var r = PromotionTargetResolver.Resolve(new PromotionTarget("edge"), "3.274.10", ["master", "edge-3.274.10"]);
+
+        Assert.Equal(PromotionTargetStatus.Missing, r.Status);
+    }
 }

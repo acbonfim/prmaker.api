@@ -93,6 +93,8 @@ public class PromotionPreviewTarget
     /// <summary>resolved | missing | ambiguous.</summary>
     public string Status { get; set; } = string.Empty;
     public List<string> Candidates { get; set; } = [];
+    /// <summary>O nome que se esperava no remoto (com a versão no lugar, se o modelo a traz) — para a mensagem de "não existe".</summary>
+    public string Expected { get; set; } = string.Empty;
     public bool Draft { get; set; }
     public string Mode { get; set; } = string.Empty;
     /// <summary>Já existe PR aberto deste card para este destino.</summary>
@@ -116,6 +118,8 @@ public class PromotionPreviewRow
     public string? SourceBranch { get; set; }
     public bool SourceFound { get; set; }
     public string? SourceBase { get; set; }
+    /// <summary>Por que esta é a base (registro do PRMake ou base do fluxo) — a tela explica ao passar o mouse.</summary>
+    public string? BaseNote { get; set; }
     public int CommitCount { get; set; }
     public bool CommitsTruncated { get; set; }
     public List<PromotionCommitResponse> Commits { get; set; } = [];

@@ -137,13 +137,13 @@ public class PromotionParser(IAIService ai, IPluginConfigurationResolver configu
     public const string DefaultPrompt = """
         Você lê a mensagem de um Release Manager que pede os PRs dos cards para uma release ou hotfix.
         Responda SOMENTE com um JSON, sem texto fora dele, neste formato:
-        {"version": "3.274.10", "kind": "hotfix", "rules": [{"ticketType": "Netcore", "kind": "legacy", "targets": [{"branch": "hotfix-{version}", "draft": false}]}]}
+        {"version": "3.274.10", "kind": "hotfix", "rules": [{"ticketType": "Netcore", "kind": "legacy", "targets": [{"branch": "hotfix-version", "draft": false}]}]}
 
         - "version": só os números da versão (V3.274.10 → 3.274.10); null se não houver.
         - "kind": "hotfix" ou "release" conforme a mensagem; null se não houver.
         - "rules": uma por tipo de ticket que a mensagem cita ("Branch para ticket Netcore: ..."). "ticketType" é o rótulo como está escrito.
         - "kind" de cada regra: UMA das chaves abaixo (a que melhor corresponde ao tipo de ticket); null se nenhuma corresponder.
-        - "targets": as branches de destino, na ordem escrita. Troque a palavra "version" por {version} (release-version → release-{version}). "draft": true só se a mensagem disser draft/rascunho para aquele destino.
+        - "targets": as branches de destino, na ordem escrita, EXATAMENTE como a mensagem escreve (release-version, hotfix-version, edge, master são nomes reais de branch: não troque "version" por número). "draft": true só se a mensagem disser draft/rascunho para aquele destino.
         - Não invente regras que a mensagem não traz.
 
         Tipos de repositório (chave — rótulo):

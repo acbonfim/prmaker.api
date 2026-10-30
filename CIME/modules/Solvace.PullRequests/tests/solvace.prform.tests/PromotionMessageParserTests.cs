@@ -93,24 +93,25 @@ public class PromotionMessageParserTests
 
         Assert.Equal(3, rules.Count);
         Assert.Equal("Netcore", rules[0].TicketType);
-        Assert.Equal(["hotfix-{version}"], rules[0].Targets.Select(t => t.Branch).ToArray());
+        Assert.Equal(["hotfix-version"], rules[0].Targets.Select(t => t.Branch).ToArray());
 
         Assert.Equal("API De Integrações", rules[1].TicketType);
-        Assert.Equal(["release-{version}", "master"], rules[1].Targets.Select(t => t.Branch).ToArray());
+        Assert.Equal(["release-version", "master"], rules[1].Targets.Select(t => t.Branch).ToArray());
 
         Assert.Equal("Angular", rules[2].TicketType);
-        Assert.Equal(["release-{version}", "edge", "master"], rules[2].Targets.Select(t => t.Branch).ToArray());
+        Assert.Equal(["release-version", "edge", "master"], rules[2].Targets.Select(t => t.Branch).ToArray());
         Assert.False(rules[2].Targets[1].Draft);
         Assert.True(rules[2].Targets[2].Draft);
         Assert.All(rules, r => Assert.Null(r.Kind));
     }
 
     [Theory]
-    [InlineData("release-version", "release-{version}")]
-    [InlineData("hotfix/version", "hotfix/{version}")]
+    [InlineData("release-version", "release-version")]      // branch de verdade: o nome fica como escrito
+    [InlineData("hotfix/version", "hotfix/version")]
     [InlineData("master", "master")]
     [InlineData("edge", "edge")]
-    [InlineData("`release-version`", "release-{version}")]
+    [InlineData("`release-version`", "release-version")]
+    [InlineData("release-{version}", "release-{version}")]   // modelo explícito continua valendo
     [InlineData("rm -rf /", null)]
     [InlineData("a..b", null)]
     [InlineData("", null)]
@@ -140,7 +141,7 @@ public class PromotionMessageParserTests
         Assert.Equal("hotfix", kind);
         Assert.Equal(2, rules.Count);
         Assert.Equal("legacy", rules[0].Kind);
-        Assert.Equal(["release-{version}", "edge", "master"], rules[1].Targets.Select(t => t.Branch).ToArray());
+        Assert.Equal(["release-version", "edge", "master"], rules[1].Targets.Select(t => t.Branch).ToArray());
         Assert.True(rules[1].Targets[2].Draft);
         Assert.Contains(warnings, w => w.Contains("inventado"));
         Assert.Contains(warnings, w => w.Contains("nome inválido"));
