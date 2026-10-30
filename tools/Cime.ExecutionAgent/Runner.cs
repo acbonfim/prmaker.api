@@ -26,6 +26,8 @@ public sealed class Runner(AgentConfig config)
     private int _doctorRunning;
     /// <summary>0068: aviso de que pode haver pedido (relay, sinal de vida) — o laço principal consulta a fila.</summary>
     private readonly SemaphoreSlim _wake = new(0, 1);
+    /// <summary>0074: aviso para a promoção de PRs (o mesmo sinal do relay; o laço da promoção é independente do limite de pedidos do Claude).</summary>
+    private readonly SemaphoreSlim _wakePromotion = new(0, 1);
     private RelayListener? _relay;
 
     public async Task<int> RunAsync(CancellationToken stopping)
@@ -57,7 +59,8 @@ public sealed class Runner(AgentConfig config)
             _relay.RunAsync(stopping),
             Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
-            Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)));
+            Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)),
+            PromotionLoopAsync(client, stopping));
 
         var failures = 0;
         while (!stopping.IsCancellationRequested)
@@ -313,6 +316,57 @@ public sealed class Runner(AgentConfig config)
         catch (SemaphoreFullException)
         {
             // já avisado
+        }
+        try
+        {
+            if (_wakePromotion.CurrentCount == 0) _wakePromotion.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // já avisado
+        }
+    }
+
+    /// <summary>
+    /// 0074: promoção de PRs em lote (cherry-pick com git local). Laço próprio — um item por vez nesta máquina — para não
+    /// esperar o limite de pedidos do Claude. Acordado pelo relay; sem ele, consulta no mesmo ritmo da fila.
+    /// </summary>
+    private async Task PromotionLoopAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var runner = new PromotionRunner(config, client);
+        // Nenhum git pode parar pedindo senha: sem terminal, falha com a mensagem.
+        Environment.SetEnvironmentVariable("GIT_TERMINAL_PROMPT", "0");
+        await Delay(TimeSpan.FromSeconds(15), stopping);
+        var failures = 0;
+        while (!stopping.IsCancellationRequested)
+        {
+            if (_revoked || _state.Status != "active")
+            {
+                await Delay(TimeSpan.FromSeconds(30), stopping);
+                continue;
+            }
+            try
+            {
+                if (await runner.RunNextAsync(stopping))
+                {
+                    failures = 0;
+                    continue; // pode ter mais itens na fila
+                }
+                failures = 0;
+                try { await _wakePromotion.WaitAsync(_relay?.Connected == true ? IdleWithRelay : NextPollEvery, stopping); }
+                catch (OperationCanceledException) { }
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                failures++;
+                var wait = TimeSpan.FromSeconds(Math.Min(120, 5 << Math.Min(failures, 5)));
+                Log.Warn($"promoção: {e.Message} — nova tentativa em {wait.TotalSeconds:0} s");
+                await Delay(wait, stopping);
+            }
         }
     }
 
