@@ -5,14 +5,21 @@ using PrDomainException = solvace.prform.domain.Entities.DomainException;
 
 namespace solvace.prform.Controllers;
 
+/// <summary>Quem pode usar a promoção de PRs (0074).</summary>
+public static class PromotionAccess
+{
+    public const string AdminRole = "admin";
+}
+
 /// <summary>
 /// Promoção de PRs em lote para release/hotfix (0074): prévia por card, criação do lote, acompanhamento e reenvio.
 /// O cherry-pick roda no executor do usuário (<see cref="PromotionExecutorController"/>); aqui só se pede e se acompanha.
+/// Só administradores: abrir PR para release/hotfix/master é uma ação de quem coordena a entrega.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-[Authorize]
+[Authorize(Roles = PromotionAccess.AdminRole)]
 public class PromotionController(PromotionService promotion, PromotionParser parser, solvace.timeline.application.Contracts.IUserRepository users)
     : ExecutionControllerBase(users)
 {
@@ -82,6 +89,8 @@ public class PromotionController(PromotionService promotion, PromotionParser par
 /// <summary>
 /// Lado do executor (<c>prmake-agent</c>) da promoção (0074): pega o próximo item, manda heartbeat e diz como terminou.
 /// A credencial do executor leva as claims do dono, então o PR sai com o GitHub dele.
+/// Só administradores promovem: a máquina de quem não é admin recebe "nada na fila" (204) — sem 403, para o executor dela não
+/// registrar erro a cada consulta —, e <c>heartbeat</c>/<c>report</c> exigem o papel.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
@@ -94,6 +103,9 @@ public class PromotionExecutorController(PromotionService promotion, solvace.tim
     [HttpPost("next")]
     public async Task<ActionResult<PromotionClaimResponse>> Next(CancellationToken ct)
     {
+        // Quem não é admin não promove: o executor dele só vê a fila vazia.
+        if (!User.IsInRole(PromotionAccess.AdminRole))
+            return NoContent();
         try
         {
             var claim = await promotion.NextForExecutorAsync(RequireUserId(), RequireWorkerId(), ct);
@@ -105,6 +117,7 @@ public class PromotionExecutorController(PromotionService promotion, solvace.tim
         }
     }
 
+    [Authorize(Roles = PromotionAccess.AdminRole)]
     [HttpPost("items/{id:guid}/heartbeat")]
     public async Task<ActionResult<PromotionHeartbeatResponse>> Heartbeat([FromRoute] Guid id, CancellationToken ct)
     {
@@ -118,6 +131,7 @@ public class PromotionExecutorController(PromotionService promotion, solvace.tim
         }
     }
 
+    [Authorize(Roles = PromotionAccess.AdminRole)]
     [HttpPost("items/{id:guid}/report")]
     public async Task<ActionResult<PromotionItemResponse>> Report([FromRoute] Guid id, [FromBody] PromotionReportRequest request, CancellationToken ct)
     {
