@@ -48,6 +48,8 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionQueueSettings, solvace.prform.Execution.ExecutionQueueSettings>();
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
+builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
+builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();

@@ -18,4 +18,12 @@ public interface IGitHubService
     Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null);
     Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default);
     Task<List<BranchCommitResponse>> GetBranchCommitsAsync(string repository, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>0074: nomes de todas as branches do repositório (cache curto). Quem chama filtra.</summary>
+    /// <param name="bypassCache">true consulta o GitHub de novo (branch recém-criada).</param>
+    Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default, bool bypassCache = false);
+    /// <summary>0074: a branch existe no remoto?</summary>
+    Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default);
+    /// <summary>0074: commits de <paramref name="head"/> que não estão em <paramref name="base"/> (sem merges); null se alguma das refs não existe.</summary>
+    Task<BranchDeltaResponse?> GetBranchDeltaAsync(string repository, string @base, string head, CancellationToken cancellationToken = default);
 }

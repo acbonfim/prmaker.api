@@ -33,12 +33,14 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
             .ToListAsync(cancellationToken);
         var questions = await GetOpenQuestionsAsync(plans.Select(p => p.Id).ToList(), cancellationToken);
 
-        return plans.Select(p =>
+        var summaries = plans.Select(p =>
         {
             var summary = p.FillSummary(new ExecutionPlanSummaryResponse(), p.Steps.Count, p.Steps.Count(s => s.Status == ExecutionStatus.Completed));
             summary.UserPending = p.UserActions(questions.Where(q => q.PlanId == p.Id)).Count;
             return summary;
         }).ToList();
+        ExecutionPlanMappings.AssignVersionNumbers(summaries);
+        return summaries;
     }
 
     public Task<List<ExecutionPlan>> GetActivePlansByUserAsync(Guid userId, CancellationToken cancellationToken)

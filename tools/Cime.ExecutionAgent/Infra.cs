@@ -210,6 +210,28 @@ public sealed class PrmakeClient : IDisposable
     public Task FinishAsync(Guid id, FinishRequest request, CancellationToken ct) =>
         PostAsync($"ExecutionQueue/{id}/finish", request, AgentJson.Default.FinishRequest, AgentJson.Default.DictionaryStringJsonElement, ct);
 
+    /// <summary>0074: próximo item de promoção de PRs do dono (cherry-pick local); null = nada agora.</summary>
+    public async Task<PromotionClaim?> NextPromotionAsync(CancellationToken ct)
+    {
+        using var response = await _http.PostAsync("PromotionExecutor/next", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        await EnsureAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync(AgentJson.Default.PromotionClaim, ct);
+    }
+
+    public async Task<PromotionHeartbeat> PromotionHeartbeatAsync(Guid itemId, CancellationToken ct)
+    {
+        using var response = await _http.PostAsync($"PromotionExecutor/items/{itemId}/heartbeat", null, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync(AgentJson.Default.PromotionHeartbeat, ct)) ?? new PromotionHeartbeat();
+    }
+
+    public async Task ReportPromotionAsync(Guid itemId, PromotionReport report, CancellationToken ct)
+    {
+        using var response = await _http.PostAsJsonAsync($"PromotionExecutor/items/{itemId}/report", report, AgentJson.Default.PromotionReport, ct);
+        await EnsureAsync(response, ct);
+    }
+
     public async Task<PlanPending?> CurrentPlanAsync(string card, CancellationToken ct)
     {
         using var response = await _http.GetAsync($"ExecutionPlan/card/{Uri.EscapeDataString(card)}/current", ct);

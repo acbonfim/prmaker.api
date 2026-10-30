@@ -13,6 +13,8 @@ public class ExecutionPlanSummaryResponse
     public string? StatusReason { get; set; }
     public string? StatusChangedBy { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
+    /// <summary>0074: externalId de quem criou — a tela busca a foto (avatar) por ele.</summary>
+    public Guid? CreatedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
@@ -20,6 +22,12 @@ public class ExecutionPlanSummaryResponse
     public DateTimeOffset? LastActivityAt { get; set; }
     public int StepsTotal { get; set; }
     public int StepsCompleted { get; set; }
+
+    /// <summary>
+    /// 0074: número da versão do plano entre os do mesmo card e fase (1 = o mais antigo). Só é preenchido no histórico
+    /// do card (<c>GET ExecutionPlan/card/{n}</c>); em outras respostas fica 0. Não confundir com o token de concorrência <c>Version</c> (xmin).
+    /// </summary>
+    public int VersionNumber { get; set; }
 
     /// <summary>analysis | correction (0024).</summary>
     public string Phase { get; set; } = ExecutionPhase.Analysis;
@@ -415,6 +423,20 @@ public static class ExecutionPlanMappings
         return actions;
     }
 
+    /// <summary>
+    /// 0074: numera os planos do histórico de um card por fase (análise e correção contam separado), do mais antigo (1)
+    /// ao mais novo, pela data de criação (empate desfeito pelo Id, para a numeração não mudar entre chamadas).
+    /// </summary>
+    public static void AssignVersionNumbers(IEnumerable<ExecutionPlanSummaryResponse> summaries)
+    {
+        foreach (var phase in summaries.GroupBy(s => s.Phase))
+        {
+            var number = 0;
+            foreach (var s in phase.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id))
+                s.VersionNumber = ++number;
+        }
+    }
+
     public static T FillSummary<T>(this ExecutionPlan plan, T target, int stepsTotal, int stepsCompleted)
         where T : ExecutionPlanSummaryResponse
     {
@@ -426,6 +448,7 @@ public static class ExecutionPlanMappings
         target.StatusReason = plan.StatusReason;
         target.StatusChangedBy = plan.StatusChangedBy;
         target.CreatedBy = plan.CreatedBy;
+        target.CreatedByUserId = plan.CreatedByUserId;
         target.CreatedAt = plan.CreatedAt;
         target.UpdatedAt = plan.UpdatedAt;
         target.StartedAt = plan.StartedAt;

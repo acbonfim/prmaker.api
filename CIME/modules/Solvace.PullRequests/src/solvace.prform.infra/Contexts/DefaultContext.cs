@@ -15,6 +15,9 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     public DbSet<UserPluginConfiguration> UserPluginConfigurations { get; set; }
     /// <summary>Consumo de IA por chamada (0042).</summary>
     public DbSet<AiUsageRecord> AiUsageRecords { get; set; }
+    /// <summary>Lotes de promoção de PRs para release/hotfix (0074).</summary>
+    public DbSet<PromotionBatch> PromotionBatches { get; set; }
+    public DbSet<PromotionItem> PromotionItems { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
     public const string Schema = "prform";
@@ -45,6 +48,42 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
             b.Property(x => x.Error).HasMaxLength(AiUsageRecord.MaxErrorLength);
             b.HasIndex(x => new { x.UserExternalId, x.CreatedAt });
             b.HasIndex(x => x.CreatedAt);
+        });
+
+        // 0074: promoção de PRs em lote (release/hotfix) — um lote tem N itens (card × repositório × destino).
+        modelBuilder.Entity<PromotionBatch>(b =>
+        {
+            b.ToTable("PromotionBatches");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Version).IsRequired().HasMaxLength(PromotionBatch.MaxVersionLength);
+            b.Property(x => x.Kind).HasMaxLength(PromotionBatch.MaxKindLength);
+            b.Property(x => x.OwnerName).IsRequired().HasMaxLength(PromotionBatch.MaxOwnerNameLength);
+            b.HasIndex(x => new { x.OwnerUserId, x.CreatedAt });
+            b.HasMany(x => x.Items).WithOne(x => x.Batch).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
+            b.Navigation(x => x.Items).HasField("_items");
+        });
+
+        modelBuilder.Entity<PromotionItem>(b =>
+        {
+            b.ToTable("PromotionItems");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.CardNumber).IsRequired().HasMaxLength(PromotionItem.MaxCardLength);
+            b.Property(x => x.CardTitle).IsRequired().HasMaxLength(PromotionItem.MaxTitleLength);
+            b.Property(x => x.RepositoryId).IsRequired().HasMaxLength(PromotionItem.MaxRepositoryLength);
+            b.Property(x => x.SourceBranch).IsRequired().HasMaxLength(PromotionItem.MaxBranchLength);
+            b.Property(x => x.SourceBase).HasMaxLength(PromotionItem.MaxBranchLength);
+            b.Property(x => x.TargetTemplate).IsRequired().HasMaxLength(PromotionItem.MaxBranchLength);
+            b.Property(x => x.TargetBranch).IsRequired().HasMaxLength(PromotionItem.MaxBranchLength);
+            b.Property(x => x.Mode).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            b.Property(x => x.Message).HasMaxLength(PromotionItem.MaxMessageLength);
+            b.Property(x => x.NewBranch).HasMaxLength(PromotionItem.MaxBranchLength);
+            b.Property(x => x.ConflictFiles).HasMaxLength(PromotionItem.MaxFilesLength);
+            b.Property(x => x.PullRequestUrl).HasMaxLength(PromotionItem.MaxUrlLength);
+            b.Property(x => x.RowVersion).IsRowVersion();
+            b.HasIndex(x => new { x.BatchId, x.Position });
+            b.HasIndex(x => new { x.Status, x.WorkerId });
+            b.HasIndex(x => new { x.CardNumber, x.RepositoryId, x.TargetBranch });
         });
 
         // Handover nasce público. O default no banco garante que os registros já existentes
