@@ -788,6 +788,86 @@ public class GitHubService : IGitHubService
         }).ToList();
     }
 
+    private const int BranchesCacheMinutes = 5;
+
+    public async Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default)
+    {
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        var key = $"github:branches:{_tokenScope}:{owner}/{repo}".ToLowerInvariant();
+        if (_cacheService.TryGetValue<List<string>>(key, out var cached) && cached is not null)
+            return cached;
+
+        var branches = await Client.Repository.Branch.GetAll(owner, repo, new ApiOptions { PageSize = 100 });
+        var names = branches.Select(b => b.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _cacheService.Set(key, names, BranchesCacheMinutes);
+        LogRateLimit();
+        return names;
+    }
+
+    public async Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(branch))
+            return false;
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+        try
+        {
+            await Client.Git.Reference.Get(owner, repo, $"heads/{branch.Trim()}");
+            return true;
+        }
+        catch (NotFoundException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<BranchDeltaResponse?> GetBranchDeltaAsync(string repository, string @base, string head, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
+            return null;
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        CompareResult compare;
+        try
+        {
+            compare = await Client.Repository.Commit.Compare(owner, repo, @base.Trim(), head.Trim());
+        }
+        catch (NotFoundException)
+        {
+            return null;
+        }
+
+        var commits = (compare.Commits ?? [])
+            .Where(c => c.Parents is null || c.Parents.Count <= 1) // merge não entra no cherry-pick
+            .Select(c =>
+            {
+                var message = c.Commit.Message ?? string.Empty;
+                return new BranchDeltaCommit
+                {
+                    Sha = c.Sha,
+                    Title = message.Split('\n', 2)[0].Trim(),
+                    Author = c.Commit.Author?.Name ?? c.Author?.Login ?? string.Empty,
+                    Date = c.Commit.Author?.Date.ToString("o") ?? string.Empty,
+                    Url = c.HtmlUrl
+                };
+            })
+            .ToList();
+
+        return new BranchDeltaResponse
+        {
+            Base = @base.Trim(),
+            Head = head.Trim(),
+            MergeBaseSha = compare.MergeBaseCommit?.Sha,
+            AheadBy = compare.AheadBy,
+            BehindBy = compare.BehindBy,
+            Commits = commits,
+            Truncated = compare.AheadBy > (compare.Commits?.Count ?? 0)
+        };
+    }
+
     public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
     {
         await EnsureClientAsync(cancellationToken);
