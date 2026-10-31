@@ -18,7 +18,7 @@ namespace solvace.prform.Controllers;
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin")]   // 0074: engenharia reversa (tela, geração, itens, base) só para administrador
 public class ReverseEngineeringController(IReverseEngineeringApplication application, solvace.timeline.application.Contracts.IUserRepository users,
     Cime.BuildingBlocks.RealTime.IRealTimeNotifier realTime, solvace.executionplans.application.Contracts.IExecutionTimelineWriter timeline,
     ILogger<ReverseEngineeringController> logger) : ControllerBase
