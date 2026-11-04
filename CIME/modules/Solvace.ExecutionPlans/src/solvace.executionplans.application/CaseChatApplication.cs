@@ -275,6 +275,19 @@ public class CaseChatApplication(
         proposal.Accept(request.Execute, actor.Name, now);
         await cases.SaveChangesAsync(cancellationToken);
         var note = await planApp.AddNoteAsync(plan.Id, proposal.InstructionText(actor.Name), null, [], actor.AsExecutionActor(), cancellationToken);
+        // Aceitar é decisão explícita: o Claude do tratamento começa já (sem a espera que junta comentários).
+        if (actor.UserId is { } me && me == plan.CreatedByUserId)
+        {
+            try
+            {
+                await queue.CreateAsync(new CreateExecutionRequestRequest { CardNumber = card }, actor.AsExecutionActor(), ExecutionRequestSource.CaseProposal,
+                    cancellationToken);
+            }
+            catch (DomainException)
+            {
+                // sem executor: o comentário fica no plano e a sessão lê quando voltar
+            }
+        }
         cases.ClearTracking();
         var saved = await cases.GetProposalAsync(card, proposalId, cancellationToken) ?? proposal;
         saved.SetPlanNote(note.Number);
@@ -374,7 +387,9 @@ public class CaseChatApplication(
                 cases.ClearTracking();
             }
         }
-        return messages.Select(m => m.ToResponse(files[m.Id])).ToList();
+        // As dele mesmo (respostas, propostas, ações) não são "novas" para ele; marcar lido só no que ele leu evita pular
+        // a mensagem que alguém mandou enquanto ele escrevia.
+        return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(files[m.Id])).ToList();
     }
 
     /// <summary>Resposta do especialista (com os passos que ele fez e os arquivos que gerou).</summary>
@@ -406,7 +421,6 @@ public class CaseChatApplication(
                         f.AttachTo(message.Id); // valida (arquivo de outra mensagem não muda de lugar)
                     await cases.AttachFilesAsync(attached.Select(f => f.Id).ToList(), message.Id, cancellationToken);
                 }
-                await MarkReadUpToAsync(card, number, now, cancellationToken);
                 await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number }, cancellationToken);
                 return message.ToResponse(await cases.GetFilesAsync(card, [message.Id], cancellationToken));
             }
@@ -628,26 +642,6 @@ public class CaseChatApplication(
             number => new CaseMessage(card, number, CaseAuthorKind.System, null, "PRMake", CaseMessageKind.System, text, false, now),
             [], "PRMake", false, cancellationToken);
         await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number = message.Number }, cancellationToken);
-    }
-
-    private async Task MarkReadUpToAsync(string card, int number, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        try
-        {
-            cases.ClearTracking();
-            var chat = await cases.GetChatAsync(card, cancellationToken);
-            if (chat is null)
-            {
-                chat = new CaseChat(card, now);
-                cases.AddChat(chat);
-            }
-            chat.MarkRead(number, now);
-            await cases.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException)
-        {
-            cases.ClearTracking();
-        }
     }
 
     private async Task<ExecutionPlan?> CurrentPlanAsync(string card, CancellationToken cancellationToken) =>

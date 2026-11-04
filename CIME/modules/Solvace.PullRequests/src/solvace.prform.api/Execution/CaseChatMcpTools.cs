@@ -19,7 +19,11 @@ namespace solvace.prform.Execution;
 [McpServerToolType]
 public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor http)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
+    // Acentos como estão (menos tokens que \u00E3) — o texto vai para o modelo, não para HTML.
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = false, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     [McpServerTool(Name = "prmake_case_context", ReadOnly = true)]
     [Description("Contexto compacto do caso (Especialista do caso): planos e versoes (com o motivo de cancelamento), decisoes, perguntas abertas, " +

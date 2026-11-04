@@ -122,7 +122,8 @@ public partial class ExecutionQueueApplication
         {
             _cases.ClearTracking();
             var written = await _cases.GetMessagesByRequestAsync(r.Id, cancellationToken);
-            if (written.LastOrDefault() is { } last)
+            // O consumo fica na resposta (texto); só sem resposta, no último cartão (proposta/ação).
+            if ((written.LastOrDefault(m => m.Kind == CaseMessageKind.Text) ?? written.LastOrDefault()) is { } last)
             {
                 var ms = r.StartedAt is { } st && r.FinishedAt is { } ft ? (int?)Math.Max(0, (ft - st).TotalMilliseconds) : null;
                 last.SetUsage(r.InputTokens, r.OutputTokens, ms, r.Model);
