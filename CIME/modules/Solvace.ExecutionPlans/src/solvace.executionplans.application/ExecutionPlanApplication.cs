@@ -767,7 +767,10 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 new { cardNumber = plan.CardNumber, planId = plan.Id, action, stepKey, status = plan.Status },
                 cancellationToken);
             // 0075: a situação do card (o que está sendo aguardado) pode ter mudado.
-            if (action is not (ExecutionPlanRealTimeEvents.Actions.Log or ExecutionPlanRealTimeEvents.Actions.Activity or ExecutionPlanRealTimeEvents.Actions.CodeRef))
+            // Só as ações que mudam o que é aguardado (andamento, arquivos, comentários e fotografias não mudam).
+            if (action is ExecutionPlanRealTimeEvents.Actions.Created or ExecutionPlanRealTimeEvents.Actions.Steps or ExecutionPlanRealTimeEvents.Actions.Step
+                or ExecutionPlanRealTimeEvents.Actions.Status or ExecutionPlanRealTimeEvents.Actions.Question or ExecutionPlanRealTimeEvents.Actions.Link
+                or ExecutionPlanRealTimeEvents.Actions.Situation)
                 await TrackSituationAsync(plan, cancellationToken);
             // 0037: pendências do usuário fora do card (recentes, título da aba). Andamento não muda pendência.
             if (action != ExecutionPlanRealTimeEvents.Actions.Log)

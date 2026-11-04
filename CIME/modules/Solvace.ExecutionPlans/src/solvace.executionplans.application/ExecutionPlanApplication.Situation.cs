@@ -15,12 +15,15 @@ namespace solvace.executionplans.application;
 public partial class ExecutionPlanApplication
 {
     private static readonly ConcurrentDictionary<Guid, byte> DevTestInQaRunning = new();
+    /// <summary>Conferência do Dev Test in QA no máximo a cada 30 s por plano (a leitura do plano é frequente).</summary>
+    private static readonly TimeSpan DevTestInQaCheckInterval = TimeSpan.FromSeconds(30);
+    private static readonly ConcurrentDictionary<Guid, DateTimeOffset> LastDevTestInQaCheck = new();
 
     public async Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken)
     {
         var card = cardNumber.Trim();
         var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken);
-        var situation = planId is { } id ? (await BuildSituationAsync(id, cancellationToken)).Situation : CardSituation.Build(null, [], [], [], _ => false, card);
+        var situation = planId is { } id ? await BuildSituationAsync(id, true, cancellationToken) : CardSituation.Build(null, [], [], [], _ => false, card);
         if (withDevOps && _devOps is not null)
         {
             try
@@ -60,16 +63,15 @@ public partial class ExecutionPlanApplication
         return commentId;
     }
 
-    /// <returns>A situação e o tipo gravado no plano (para saber se mudou).</returns>
-    private async Task<(CardSituationResponse Situation, string? Stored)> BuildSituationAsync(Guid planId, CancellationToken cancellationToken)
+    /// <param name="withFiles">Arquivos das etapas de chamado (só para o texto; o tipo não depende deles).</param>
+    private async Task<CardSituationResponse> BuildSituationAsync(Guid planId, bool withFiles, CancellationToken cancellationToken)
     {
         var plan = await LoadAsync(planId, cancellationToken);
         var links = await _repository.GetLinksAsync(planId, cancellationToken);
         var questions = await _repository.GetQuestionsAsync(planId, cancellationToken);
-        var artifacts = await _repository.GetArtifactsAsync(planId, cancellationToken);
+        var artifacts = withFiles ? await _repository.GetArtifactsAsync(planId, cancellationToken) : [];
         var settings = await QaSettingsAsync(cancellationToken);
-        _repository.ClearTracking();
-        return (CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber), plan.SituationKind);
+        return CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
     }
 
     private async Task<ExecutionQaSettings> QaSettingsAsync(CancellationToken cancellationToken)
@@ -93,11 +95,14 @@ public partial class ExecutionPlanApplication
     {
         try
         {
-            var (situation, stored) = await BuildSituationAsync(plan.Id, cancellationToken);
+            var situation = await BuildSituationAsync(plan.Id, false, cancellationToken);
+            var stored = await _repository.GetSituationKindAsync(plan.Id, cancellationToken);
             var before = stored ?? CardSituationKind.None;
             if (situation.Kind == before
                 || !await _repository.SetSituationKindAsync(plan.Id, stored, situation.Kind, DateTimeOffset.UtcNow, cancellationToken))
                 return;
+            if (CardSituationKind.Milestone(situation.Kind))
+                situation = await BuildSituationAsync(plan.Id, true, cancellationToken);
 
             var finished = situation.PlanStatus is ExecutionStatus.Completed or ExecutionStatus.Cancelled or ExecutionStatus.Failed;
             if (CardSituationKind.Milestone(situation.Kind))
@@ -114,7 +119,7 @@ public partial class ExecutionPlanApplication
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            _repository.ClearTracking();
+            // Best-effort: a situação é recalculada na próxima mudança.
         }
     }
 
@@ -126,6 +131,9 @@ public partial class ExecutionPlanApplication
     {
         if (_devOps is null) return;
         var now = DateTimeOffset.UtcNow;
+        if (LastDevTestInQaCheck.TryGetValue(planId, out var last) && now - last < DevTestInQaCheckInterval)
+            return;
+        LastDevTestInQaCheck[planId] = now;
         var peek = await _repository.GetPlanWithStepsAsync(planId, cancellationToken);
         _repository.ClearTracking();
         if (peek is null || peek.Phase != ExecutionPhase.Correction || peek.IsFinished || !peek.DevTestInQaDue(now)

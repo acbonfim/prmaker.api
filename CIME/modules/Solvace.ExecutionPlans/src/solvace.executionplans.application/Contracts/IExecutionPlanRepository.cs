@@ -80,6 +80,8 @@ public interface IExecutionPlanRepository
     /// 0075: troca o tipo de situação registrado se ainda for <paramref name="expected"/> (direto no banco). True = esta
     /// chamada fez a troca (só ela escreve na Timeline).
     /// </summary>
+    /// <summary>0075: tipo de situação gravado, lido do banco (o agregado rastreado não vê o ExecuteUpdate).</summary>
+    Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken);
     Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken);
 
     // Fotografias do código citado (0075)

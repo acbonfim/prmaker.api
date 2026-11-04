@@ -247,6 +247,9 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
          orderby a.Number
          select a).ToListAsync(cancellationToken);
 
+    public Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => p.SituationKind).FirstOrDefaultAsync(cancellationToken);
+
     public async Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken) =>
         await _context.Plans.Where(p => p.Id == planId && p.SituationKind == expected)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.SituationKind, kind).SetProperty(p => p.SituationAt, at), cancellationToken) > 0;
