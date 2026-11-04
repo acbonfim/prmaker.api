@@ -92,7 +92,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | crie com `dependsOn` numa etapa sua que prepara o script (ex.: `preparar-script-<nome>`, `claude`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | ~~`orientar-cliente`~~ — **nao e etapa** | — | — | a orientacao ao cliente (o que aconteceu, o que fazer, passo a passo, por que nao e bug) **e o resumo nao tecnico PT/EN** que o `fechar-card` publica na discussion: redija em `analises/orientacao-cliente.md` e use esse texto no resumo (ver abaixo) |
-| Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); quando ela ficar pronta, mova o card para Dev Test in QA (`devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar |
+| Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); key exatamente `validar-qa` (0075: o PRMake move o card para Dev Test in QA sozinho quando o PR para a branch de QA e mesclado — confira no `prmake_plan`/`situation`; so se ele avisar erro, mova com `devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar — o diálogo de conclusao ja oferece mover para Ready for QA |
 | Validar o ambiente (`validar-dados`, `validar-configuracao`) | `validation` | claude ou user | **antes** do fechamento, quando o caso pede conferir o resultado (ex.: SQL somente leitura depois do script). A confirmacao **com o cliente** nao e etapa: ela acontece depois do *Test in Production*, fora do plano — so crie uma etapa assim se o usuario pedir |
 | Gerar PRMake (RCA no DevOps, resumo, campos) — **com codigo** | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA ja gerados e salvos na etapa de PR (nao gere de novo) |
 
@@ -206,6 +206,14 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   "Aguardando voce" no topo do plano e no sino), e siga com as outras etapas prontas.
 - Etapa sua travada por algo do usuario (permissao, VPN, credencial, acesso): `block` na hora — ver
   `ref.sh plano block`.
+- **Entrou em espera → contexto da passagem (0075)**: sempre que o plano passa a esperar algo de fora — chamado aberto,
+  PRs aguardando aprovacao/merge, correcao em QA esperando a validacao — grave **na hora** `prmake_handoff(card, texto)`
+  (script: `handoff <card> "..."`): ate ~1.500 caracteres, para alguem que nunca viu o card assumir — **o que foi feito**
+  (correcao, PRs, script), **o que se espera e de quem** (revisor, time do chamado, QA), **riscos/pegadinhas** (o que
+  checar se o chamado voltar recusado, o que o QA deve testar, refs `[...](ref:<id>)` do que mudou) e **como retomar**.
+  Os fatos (PRs, aprovacoes, CI, chamado, estado no DevOps, desde quando) o PRMake ja junta sozinho no resumo
+  *Situacao atual* do card — nao repita links/status, explique o contexto. Atualize quando a espera mudar (chamado
+  resolvido → PR; PR mesclado → QA).
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**

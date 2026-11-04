@@ -23,6 +23,10 @@
 #                                                        citacoes caminho:linha abrem o popover com o codigo real, o diff
 #                                                        proposto e as notas). Le na copia da master (ou --dir); --after =
 #                                                        so as linhas novas que substituem A-B (o script faz o diff)
+#   handoff     <card> [texto|STDIN]                    0075: contexto da passagem ao entrar em ESPERA (chamado, PR, QA): o que
+#                                                        foi feito, o que se espera e de quem, riscos, como retomar — vai no
+#                                                        resumo "Situacao atual" do card e no handover (vazio limpa)
+#   situation   <card>                                   0075: a situacao atual do card (o que esta sendo aguardado), em markdown
 #   coderef     <card> <ref> --implemented <sha> --file <caminho> --dir <worktree>
 #                                                        0075 (correcao): grava o diff REAL do commit na ref
 #   upload      <card> <arquivo> [kind] [key] [descricao] envia um arquivo (kind: script|analysis|data|image|attachment)
@@ -607,6 +611,21 @@ case "$CMD" in
     fi
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em coderef $REF: $(resp_error)"
     jq -r '"OK coderef \(.ref) \(.change) \(.path):\(.startLine)-\(.endLine)\(if .hasProposal then " +proposta" else "" end)\(if .hasImplemented then " +feito" else "" end) — cite com [texto](ref:\(.ref))"' "$TMP/resp"
+    ;;
+
+  handoff)
+    require_plan; TEXT="${1:-}"
+    [[ -n "$TEXT" ]] || TEXT="$(cat)"
+    jq -n --arg t "$TEXT" '{text:$t}' > "$TMP/body"
+    api PUT "/$PLAN/handoff" "$TMP/body"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em handoff: $(resp_error)"
+    jq -r '"OK handoff — situacao: \(.icon) \(.title)\(if .next then " · proximo: \(.next)" else "" end)"' "$TMP/resp"
+    ;;
+
+  situation)
+    api GET "/card/$CARD/situation"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em situation: $(resp_error)"
+    jq -r '.markdown' "$TMP/resp"
     ;;
 
   upload)

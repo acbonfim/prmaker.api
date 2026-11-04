@@ -70,11 +70,16 @@ RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
 ## Dev Test in QA e Ready for QA
 **Dev Test in QA → Ready for QA** (ex.: card 74572 — estado "In Development (doing)", coluna "Dev Test in QA" = o
 dev validando a correcao em QA):
-- Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**: quando a etapa `validar-qa`
-  ficar pronta (PRs mesclados/correcao em QA), rode `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> dev-test-in-qa`
+- Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**. **0075: quem move e o PRMake** — ao
+  ver o PR para a branch de QA (`QaBranchPattern`, padrao `qa`) mesclado com `validar-qa` pendente, ele move o card uma
+  vez (config `AutoDevTestInQa`), registra na Timeline e a *Situacao atual* vira 🧪 *Validar em QA*. Voce so confere
+  (`prmake_plan`/`bash $PLAN situation <card>`): se a situacao mostrar erro ao mover (sem integracao, 409) ou a
+  automacao estiver desligada, rode `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> dev-test-in-qa`
   — **pode mover sem perguntar**. Estado e coluna vem do `config` (AI Configurations); nunca escreva de memoria.
-- **Ready for QA so com autorizacao**: rode `devops <card> ready-for-qa` **somente** quando (a) o usuario
-  concluir a etapa `validar-qa` na tela do plano (o `control`/`watch` mostra `etapa validar-qa: ... -> completed`)
+  Grave tambem o `prmake_handoff` com o roteiro do que o QA deve validar (`ref.sh correcao 8`).
+- **Ready for QA so com autorizacao**: ao concluir `validar-qa` na tela, o PRMake ja oferece "Mover para Ready for QA
+  agora" (0075) — se o card ja estiver em Ready for QA, nao mova de novo. Rode `devops <card> ready-for-qa` **somente**
+  quando (a) o usuario concluir a etapa `validar-qa` na tela do plano (o `control`/`watch` mostra `etapa validar-qa: ... -> completed`)
   ou (b) o usuario autorizar explicitamente depois disso, pelo chat ou por comentario no plano ("pode mover para
   Ready for QA"). A resposta a pergunta de fechamento do passo 6 **nao** autoriza o Ready for QA — ela veio antes
   da validacao. Sem (a) ou (b), nao mova: deixe o `watch` em segundo plano e siga quando a etapa for concluida.

@@ -43,6 +43,8 @@ public partial class PrmakeMcpTools(
         "prmake_ask/prmake_answer (nova rodada da analise: a pergunta revisada leva replaces e as que perderam o sentido vao para " +
         "prmake_cancel_questions — so ficam abertas as que ainda decidem o plano), prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
         "Git e o 'status' final ficam no prmake-plan.sh. " +
+        "0075: codigo citado = fotografia (prmake-plan.sh coderef; cite [caminho:linhas](ref:<id>); ajuste com prmake_code_ref); " +
+        "ao entrar em espera (chamado, PR, QA) grave prmake_handoff com o contexto da passagem. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
         "Codigo so para confirmar o 'Onde:' que o item cita.";

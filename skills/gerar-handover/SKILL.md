@@ -30,6 +30,7 @@ lê o layout do formulário configurado, cruza os dados do card e salva o formul
 | PR salvo | `GET /PullRequest/GetByCardNumber?cardNumber={card}` |
 | Linha do tempo | `GET /Timeline/card/{card}` |
 | Handover atual | `GET /Handover/GetByCardNumber?cardNumber={card}` |
+| Situação atual (0075: o que o card aguarda — chamado, aprovação/merge, QA — com o contexto da passagem) | `GET /ExecutionPlan/card/{card}/situation` |
 | **Salvar** (upsert por card) | `POST /Handover` `{cardNumber, content, repositoryId?, isPublic}` |
 | Visibilidade (opcional) | `PUT /Handover/{card}/visibility` `{isPublic}` |
 
@@ -78,6 +79,8 @@ Siga `prompt.txt`, que tem as mesmas regras da tela:
 - Seja objetivo e técnico. Priorize o que o próximo turno precisa: o que já foi investigado, onde está o
   problema, o que foi descartado, a causa provável e o próximo passo.
 - Respeite as regras que vierem dentro do próprio layout.
+- **Situação atual (0075)**: com `situacaoAtual` no contexto (`jq '.situacaoAtual'`), o card está esperando algo —
+  use o resumo dela no status/próximo passo do layout; sem campo para isso, acrescente `## Situação atual` no fim.
 - **Nunca invente.** Use só o que está nos arquivos. Datas no formato `dd/mm/aaaa`. "De:" = quem vem
   tratando o card (timeline, histórico ou autor do PR). "Para:" = `—`, a menos que o usuário informe.
 - Se estiver em um repositório com o código do card, pode complementar "Onde está o problema" com
