@@ -77,13 +77,16 @@ fi
 fetch "$BASE/PullRequest/GetByCardNumber?cardNumber=$CARD_ENC" "$OUTDIR/pr.json" "GET PullRequest" 0 '{}'
 fetch "$BASE/Timeline/card/$CARD_ENC" "$OUTDIR/timeline.json" "GET Timeline" 0 '[]'
 fetch "$BASE/Handover/GetByCardNumber?cardNumber=$CARD_ENC" "$OUTDIR/handover_atual.json" "GET Handover" 0 '{}'
+# 0075: situacao atual do card (o que esta sendo aguardado: chamado, aprovacao/merge, QA...) — fatos do plano + handoff
+fetch "$BASE/ExecutionPlan/card/$CARD_ENC/situation" "$OUTDIR/situacao.json" "GET situation" 0 '{}'
 
 # --- contexto no mesmo formato da tela (handover-dialog.component.ts > buildPrompt) ---
 jq -n --arg card "$CARD" \
       --slurpfile cf "$OUTDIR/card.json" \
       --slurpfile pr "$OUTDIR/pr.json" \
-      --slurpfile tl "$OUTDIR/timeline.json" '
-  ($cf[0]) as $c | ($pr[0] // {}) as $p | ($tl[0] // []) as $t |
+      --slurpfile tl "$OUTDIR/timeline.json" \
+      --slurpfile st "$OUTDIR/situacao.json" '
+  ($cf[0]) as $c | ($pr[0] // {}) as $p | ($tl[0] // []) as $t | ($st[0] // {}) as $s |
   {
     card: {
       numero: $card,
@@ -100,7 +103,8 @@ jq -n --arg card "$CARD" \
       branch: (($p.branchPrefix // "") + ($p.branchName // "")),
       repositorio: $p.repositoryId
     },
-    linhaDoTempo: [ $t[] | { quando: .createdAt, quem: .userName, registro: .description } ]
+    linhaDoTempo: [ $t[] | { quando: .createdAt, quem: .userName, registro: .description } ],
+    situacaoAtual: (if ($s.kind // "none") == "none" then null else { tipo: $s.kind, titulo: $s.title, desde: $s.since, resumo: $s.markdown } end)
   }' > "$OUTDIR/context.json"
 
 # --- prompt (mesmo texto da tela) ---
@@ -114,6 +118,7 @@ Regras:
 - Responda em português.
 - Saída em MARKDOWN, contendo APENAS o formulário preenchido, sem nenhum texto antes ou depois e sem blocos de código (```).
 - Seja objetivo e técnico; priorize o que ajuda o próximo turno a continuar (o que já foi investigado, onde está o problema, o que foi descartado, causa provável e próximo passo).
+- Se houver "situacaoAtual" nos dados (o card está aguardando algo: chamado, aprovação/merge de PR, validação em QA...), ela é o estado de agora: use-a nos campos de status/próximo passo do layout e, se o layout não tiver onde, acrescente no fim a seção "## Situação atual" com o resumo dela (links de PRs/chamados, desde quando, próximo passo).
 
 LAYOUT A PREENCHER:
 EOF
@@ -135,7 +140,8 @@ historico=$(jq '.history | length' "$OUTDIR/card.json")
 prSalvo=$(jq -r 'if (.id // 0) != 0 then "sim" else "nao" end' "$OUTDIR/pr.json")
 repositoryId=$(jq -r '.repositoryId // ""' "$OUTDIR/pr.json")
 timeline=$(jq 'length' "$OUTDIR/timeline.json")
+situacao=$(jq -r '.kind // "none"' "$OUTDIR/situacao.json")
 handoverExistente=$(jq -r 'if (.content // "") != "" then "sim (isPublic=\(.isPublic), atualizado=\(.updatedAt // .createdAt))" else "nao" end' "$OUTDIR/handover_atual.json")
 templateLinhas=$(wc -l < "$OUTDIR/template.md" | tr -d ' ')
-arquivos=$OUTDIR/{template.md,context.json,prompt.txt,card.json,pr.json,timeline.json,handover_atual.json}
+arquivos=$OUTDIR/{template.md,context.json,prompt.txt,card.json,pr.json,timeline.json,handover_atual.json,situacao.json}
 EOF

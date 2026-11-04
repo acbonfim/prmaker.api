@@ -32,7 +32,8 @@ public partial class PrmakeMcpTools(
     solvace.prform.Skills.SkillsConfigService skillsConfig,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
-    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse)
+    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+    CodeCitationGate citations)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -42,6 +43,8 @@ public partial class PrmakeMcpTools(
         "prmake_ask/prmake_answer (nova rodada da analise: a pergunta revisada leva replaces e as que perderam o sentido vao para " +
         "prmake_cancel_questions — so ficam abertas as que ainda decidem o plano), prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
         "Git e o 'status' final ficam no prmake-plan.sh. " +
+        "0075: codigo citado = fotografia (prmake-plan.sh coderef; cite [caminho:linhas](ref:<id>); ajuste com prmake_code_ref); " +
+        "ao entrar em espera (chamado, PR, QA) grave prmake_handoff com o contexto da passagem. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
         "Codigo so para confirmar o 'Onde:' que o item cita.";
@@ -60,6 +63,7 @@ public partial class PrmakeMcpTools(
     {
         var plan = await plans.GetAsync(await PlanIdAsync(card, phase, ct), ct);
         var request = (await queue.GetCardAsync(card, null, ct)).Active;
+        var codeRefs = await plans.GetCardCodeRefHeadsAsync(card, ct);
         return Serialize(new
         {
             plan.Id, plan.Phase, plan.Status, plan.StatusReason, plan.Title,
@@ -82,6 +86,8 @@ public partial class PrmakeMcpTools(
             userActions = plan.UserActions.Count,
             lastUserNote = plan.Notes.Where(n => !n.FromExecutor).Select(n => n.Number).DefaultIfEmpty(0).Max(),
             plan.NotesReadNumber,
+            // 0075: fotografias de codigo do card (cite com [texto](ref:<id>))
+            codeRefs = codeRefs.Count > 0 ? codeRefs.Select(r => $"{r.Ref} {r.Change} {r.Path}:{r.StartLine}-{r.EndLine}").ToList() : null,
             request = request is null ? null : new { request.Id, request.Kind, request.Status, request.Attempts, request.WaitReason }
         });
     });
@@ -220,11 +226,14 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_attachment", ReadOnly = true)]
-    [Description("Abre um anexo do card: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem), ou o nome do arquivo.")]
+    [Description("Abre um anexo do card ou um arquivo dos planos: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem anexada pelo usuario), ou o nome do arquivo (ex.: mock-depois.png).")]
     public Task<CallToolResult> Attachment(string card, [Description("'#12', 'imagem 2', 'print.png'...")] string reference, CancellationToken ct = default) => Safe(async () =>
     {
-        var all = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
-        var found = Resolve(all, reference);
+        var attachments = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
+        // 0075: número/nome também acham os arquivos do plano (mock-depois.png, analise-inicial.md); "imagem n" segue
+        // contando só as imagens que o usuário anexou.
+        var all = (await plans.GetCardArtifactsAsync(card.Trim(), ct)).Where(a => a.NoteId is null).Concat(attachments).OrderBy(a => a.Number).ToList();
+        var found = OrdinalRef().IsMatch(reference.Trim()) ? Resolve(attachments, reference) : Resolve(all, reference);
         if (found is null)
             return Error($"Anexo '{reference}' nao encontrado. Anexos do card: " +
                          (all.Count == 0 ? "nenhum" : string.Join(", ", all.Select(a => $"#{a.Number} {a.Name}"))));
@@ -377,6 +386,9 @@ public partial class PrmakeMcpTools(
         // 0052: módulo com engenharia reversa completa — a investigação só conclui consultando a base ou citando item/lacuna.
         if (await reverse.CheckGateAsync(card, from, message, ct) is { } gate)
             throw new McpException(gate);
+        // 0075: análise/soluções só concluem com toda citação de código fotografada.
+        if (await citations.CheckAsync(planId, from, ct) is { } missing)
+            throw new McpException(missing);
         if (!string.IsNullOrWhiteSpace(message))
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {
@@ -468,6 +480,50 @@ public partial class PrmakeMcpTools(
             Encoding.UTF8.GetBytes(content));
         var artifact = await plans.UploadArtifactAsync(await PlanIdAsync(card, phase, ct), upload, await ActorAsync(ct), ct);
         return Serialize(new { artifact.Id, artifact.Number, artifact.Name, artifact.Kind, artifact.Size, artifact.StepKey });
+    });
+
+    [McpServerTool(Name = "prmake_code_ref")]
+    [Description("0075: fotografia de um trecho de codigo citado na analise/correcao (o popover do link ref:<id> e das citacoes caminho:linha). " +
+                 "A fotografia (codigo real) se grava pelo script: prmake-plan.sh coderef (le o arquivo local, nao cole codigo aqui). " +
+                 "Aqui: ajuste why/notas/proposta/change de uma ref existente (do plano ou de outro plano do card), ou crie uma 'create' (arquivo novo) " +
+                 "informando path + linhas + proposal. Notas: [{side: old|new, from, to, text}] — por que este codigo, por que faz sentido.")]
+    public Task<string> CodeRef(string card,
+        [Description("Id da ref (slug: sa3-init); o texto cita [texto](ref:sa3-init)")] string reference,
+        [Description("change | create | remove | suspect | read")] string? change = null,
+        string? title = null,
+        [Description("Por que o trecho importa / muda (1-3 frases)")] string? why = null,
+        [Description("Mudanca proposta em diff unificado")] string? proposal = null,
+        [Description("Notas por faixa de linhas: [{ side: old|new, from, to, text }]")] List<ExecutionCodeAnnotation>? annotations = null,
+        [Description("So para criar 'create' sem fotografia: caminho do arquivo novo no repositorio")] string? path = null,
+        string? repository = null, int? startLine = null, int? endLine = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var planId = await PlanIdAsync(card, phase, ct);
+        var actor = await ActorAsync(ct);
+        ExecutionCodeRefResponse saved;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            if (!string.Equals(change?.Trim(), ExecutionCodeChange.Create, StringComparison.OrdinalIgnoreCase))
+                throw new McpException("Fotografia de codigo existente so pelo script (prmake-plan.sh coderef); aqui, path so para change=create.");
+            saved = await plans.SaveCodeRefAsync(planId, reference, new ExecutionCodeCapture(repository, path, null, null, null,
+                startLine ?? 1, endLine, null, null, change, title, why, proposal, annotations), actor, ct);
+        }
+        else
+        {
+            saved = await plans.PatchCodeRefAsync(planId, reference,
+                new ExecutionCodeRefPatch(change, title, why, proposal, annotations), actor, ct);
+        }
+        return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
+    });
+
+    [McpServerTool(Name = "prmake_handoff")]
+    [Description("0075: contexto da passagem (handoff) ao entrar em ESPERA (chamado aberto, PR aguardando aprovacao/merge, validacao em QA): " +
+                 "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
+                 "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card e no handover. Texto vazio limpa.")]
+    public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
+        return Serialize(new { situation.Kind, situation.Title, situation.Since, situation.Next });
     });
 
     [McpServerTool(Name = "prmake_link")]

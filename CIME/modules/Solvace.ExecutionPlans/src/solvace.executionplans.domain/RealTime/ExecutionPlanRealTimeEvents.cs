@@ -53,5 +53,9 @@ public static class ExecutionPlanRealTimeEvents
         /// a linha "agora" sem refazer o GET do plano.
         /// </summary>
         public const string Activity = "activity";
+        /// <summary>0075: fotografias de código do card mudaram (a tela refaz <c>GET card/{card}/code-refs</c>).</summary>
+        public const string CodeRef = "codeRef";
+        /// <summary>0075: a situação do card (o que está sendo aguardado) ou o contexto da passagem mudou.</summary>
+        public const string Situation = "situation";
     }
 }

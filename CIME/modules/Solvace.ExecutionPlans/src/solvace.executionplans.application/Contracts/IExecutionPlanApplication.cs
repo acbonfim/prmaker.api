@@ -1,3 +1,4 @@
+using solvace.executionplans.domain.Entities;
 using solvace.executionplans.domain.Requests;
 using solvace.executionplans.domain.Responses;
 
@@ -32,6 +33,24 @@ public interface IExecutionPlanApplication
     Task<ExecutionLinkResponse> AddLinkAsync(Guid planId, string stepKey, AddExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteLinkAsync(Guid planId, Guid linkId, ExecutionActor actor, CancellationToken cancellationToken);
+
+    // 0075 — arquivos do card (todos os planos) e um arquivo pelo nome (imagem anexo:<nome> no texto)
+    Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
+
+    // 0075 — situação atual do card (o que está sendo aguardado) e o contexto da passagem
+    Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken);
+    Task<CardSituationResponse> SetHandoffAsync(Guid planId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pela tela.</summary>
+    Task<int> PublishSituationAsync(string cardNumber, string html, ExecutionActor actor, CancellationToken cancellationToken);
+
+    // 0075 — fotografias do código citado
+    Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionCodeRefResponse> PatchCodeRefAsync(Guid planId, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);
+    Task DeleteCodeRefAsync(Guid planId, string reference, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(Guid planId, CancellationToken cancellationToken);
+    Task<List<ExecutionCodeRefHeadResponse>> GetCardCodeRefHeadsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionCodeRefResponse> GetCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken);
 
     /// <summary>Heartbeat da skill: registra o sinal de vida e diz se ela segue, espera ou para.</summary>
     Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken);

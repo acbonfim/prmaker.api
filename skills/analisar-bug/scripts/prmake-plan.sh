@@ -17,6 +17,18 @@
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
 #   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
+#   coderef     <card> <ref> --repo <r> --file <caminho> --lines A[-B] [--change change|create|remove|suspect|read]
+#                 [--title ...] [--why ...] [--after <trecho-novo|->] [--notes <notas.json>] [--dir <pasta>] [--context N]
+#                                                        0075: FOTOGRAFIA do codigo citado (o link [texto](ref:<ref>) e as
+#                                                        citacoes caminho:linha abrem o popover com o codigo real, o diff
+#                                                        proposto e as notas). Le na copia da master (ou --dir); --after =
+#                                                        so as linhas novas que substituem A-B (o script faz o diff)
+#   handoff     <card> [texto|STDIN]                    0075: contexto da passagem ao entrar em ESPERA (chamado, PR, QA): o que
+#                                                        foi feito, o que se espera e de quem, riscos, como retomar — vai no
+#                                                        resumo "Situacao atual" do card e no handover (vazio limpa)
+#   situation   <card>                                   0075: a situacao atual do card (o que esta sendo aguardado), em markdown
+#   coderef     <card> <ref> --implemented <sha> --file <caminho> --dir <worktree>
+#                                                        0075 (correcao): grava o diff REAL do commit na ref
 #   upload      <card> <arquivo> [kind] [key] [descricao] envia um arquivo (kind: script|analysis|data|image|attachment)
 #   sync        <card> [key]                             envia o que mudou em scripts/ analises/ dados/ imagens/ anexos/
 #   status      <card> <running|completed|failed|paused|cancelled> [motivo] [resumo.md]
@@ -560,6 +572,60 @@ case "$CMD" in
     [[ -n "$TEXT" ]] || TEXT="$(cat)"
     jq -n --arg c "$TEXT" '{checkpoint:$c}' > "$TMP/body"
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK checkpoint $KEY"
+    ;;
+
+  coderef)
+    # 0075: fotografia do codigo citado — o Claude indica arquivo/linhas/trecho novo, o script le e faz o diff.
+    require_plan; REF="${1:?ref (ex.: sa3-init)}"; shift
+    CR_REPO=""; CR_DIR=""; CR_FILE=""; CR_SHA=""; CR_CTX=""; CR_ARGS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --repo) CR_REPO="${2:?}"; shift 2 ;;
+        --dir) CR_DIR="${2:?}"; shift 2 ;;
+        --file) CR_FILE="${2:?}"; shift 2 ;;
+        --implemented) CR_SHA="${2:?}"; shift 2 ;;
+        --context) CR_CTX="${2:?}"; shift 2 ;;
+        --lines|--change|--title|--why|--after|--notes|--branch) CR_ARGS+=("$1" "${2:?$1 sem valor}"); shift 2 ;;
+        *) die "coderef: opcao desconhecida '$1'" ;;
+      esac
+    done
+    [[ -n "$CR_FILE" ]] || die "coderef: informe --file <caminho relativo ao repositorio>"
+    if [[ -z "$CR_DIR" ]]; then
+      [[ -n "$CR_REPO" ]] || die "coderef: informe --repo <repositorio> (ou --dir <pasta>)"
+      CR_DIR="$(bash "$(dirname "$0")/revamp-repos.sh" master "$CR_REPO")" || die "coderef: repositorio '$CR_REPO' nao encontrado (revamp-repos.sh where)"
+      CR_ARGS+=(--branch master)
+    fi
+    [[ -n "$CR_REPO" ]] || CR_REPO="$(basename "$(git -C "$CR_DIR" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null)"
+    if [[ -n "$CR_SHA" ]]; then
+      python3 "$(dirname "$0")/coderef.py" implemented --dir "$CR_DIR" --file "$CR_FILE" --sha "$CR_SHA" > "$TMP/body" || exit 1
+      api PATCH "/$PLAN/code-refs/$REF" "$TMP/body"
+    else
+      if [[ -z "$CR_CTX" ]]; then
+        [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
+        CR_CTX="$( [[ -s "$SETTINGS" ]] && setting CodeRefContextLines 2>/dev/null)"
+      fi
+      [[ "$CR_CTX" =~ ^[0-9]+$ ]] || CR_CTX=30
+      python3 "$(dirname "$0")/coderef.py" snapshot --dir "$CR_DIR" --file "$CR_FILE" --repo "$CR_REPO" --context "$CR_CTX" \
+        ${CR_ARGS[@]+"${CR_ARGS[@]}"} > "$TMP/body" || exit 1
+      api PUT "/$PLAN/code-refs/$REF" "$TMP/body"
+    fi
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em coderef $REF: $(resp_error)"
+    jq -r '"OK coderef \(.ref) \(.change) \(.path):\(.startLine)-\(.endLine)\(if .hasProposal then " +proposta" else "" end)\(if .hasImplemented then " +feito" else "" end) — cite com [texto](ref:\(.ref))"' "$TMP/resp"
+    ;;
+
+  handoff)
+    require_plan; TEXT="${1:-}"
+    [[ -n "$TEXT" ]] || TEXT="$(cat)"
+    jq -n --arg t "$TEXT" '{text:$t}' > "$TMP/body"
+    api PUT "/$PLAN/handoff" "$TMP/body"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em handoff: $(resp_error)"
+    jq -r '"OK handoff — situacao: \(.icon) \(.title)\(if .next then " · proximo: \(.next)" else "" end)"' "$TMP/resp"
+    ;;
+
+  situation)
+    api GET "/card/$CARD/situation"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em situation: $(resp_error)"
+    jq -r '.markdown' "$TMP/resp"
     ;;
 
   upload)

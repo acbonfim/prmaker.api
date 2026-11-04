@@ -139,6 +139,9 @@ public partial class ExecutionPlanApplication
                             checksChanged = true;
                             if (newFailure) failedCi.Add(link);
                         }
+                        // 0075: aprovações e revisores pendentes (vêm na mesma consulta do CI).
+                        if (link.ChangeReviews(ci.Approvals, ci.ChangesRequested, ci.ReviewersPending))
+                            checksChanged = true;
                     }
                 }
 
@@ -205,9 +208,7 @@ public partial class ExecutionPlanApplication
                 case ExecutionStatus.Completed: lines.Add($"✅ Etapa concluída: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Cancelled: lines.Add($"⛔ Etapa cancelada: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Failed: lines.Add($"❌ Etapa falhou: **{step.Title}**{reason}"); break;
-                // "Aguardando" de chamado/PR (o de pergunta já sai no registro das perguntas).
-                case ExecutionStatus.Waiting when step.Kind is ExecutionStepKind.Ticket or ExecutionStepKind.PullRequest:
-                    lines.Add($"⏳ Etapa aguardando: **{step.Title}**{reason}"); break;
+                // "Aguardando" de chamado/PR: a situação do card (0075) escreve o resumo na Timeline.
             }
         }
 

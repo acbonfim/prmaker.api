@@ -8,7 +8,12 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    (arquivo, funcao, tabela ou item da engenharia reversa) — 0063. Escreva `$CARD_DIR/analises/solucoes.md`: 1 a 3
    opcoes, cada uma com o que muda (repositorios/arquivos), **o impacto na base** (quem mais usa aquele ponto, pelo
    `prmake_base_impact`: telas/modulos/itens), riscos, se precisa de script de dados (chamado) e o esforco; marque a
-   recomendada. **Opcao com chamado (0050): nao grave o script nem o texto do chamado aqui** — descreva o que o
+   recomendada. **Formato (0075)** — o mesmo da analise (`ref.sh analise 4`): abra com `> [!SUMMARY]` (a recomendada e por
+   que), depois uma secao `### <nome da opcao>` por opcao (nome da solucao, nunca "Opcao 1"), cada uma com as mesmas
+   subsecoes em negrito: **O que muda** (tabela `# · Onde · Mudanca · Por que`, com cada trecho como
+   `[caminho:linhas](ref:<id>)`), **Impacto na base**, **Riscos**, **Esforco**, **Antes x Depois** (mudanca visivel,
+   `ref.sh analise 4c`). Cada trecho que a opcao muda tem fotografia com proposta, `--why` e notas (`ref.sh analise 4b`)
+   — refs diferentes por opcao quando o codigo novo difere (`sa3-init-a`, `sa3-init-b`). **Opcao com chamado (0050): nao grave o script nem o texto do chamado aqui** — descreva o que o
    script vai fazer (tabelas, filtro, linhas afetadas estimadas, rollback) e diga que ele e o texto do chamado serao
    anexados no plano de correcao, na etapa do chamado. O resumo do checkpoint leva o que a correcao precisa para
    escreve-lo (ids, consultas usadas, host/banco). `sync <card> propor-solucoes` (no executor: `prmake_file(card, "solucoes.md", conteudo, "analysis",
@@ -49,7 +54,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    texto)` (sem MCP: `checkpoint <card> propor-solucoes "..."`), ate ~3.000 caracteres, **autossuficiente**: no
    executor a correcao roda numa sessao nova que le **so isto** (+ respostas, comentarios e arquivos), sem esta
    conversa. Inclua: causa raiz e a evidencia (ids, consultas, host/banco usados); onde mexer em cada opcao — repo
-   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha`, funcao/SP; consultas usadas (nomes nos arquivos do
+   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha` com a ref (`[...](ref:<id>)` — a correcao le a proposta
+   e as notas pela fotografia, sem reler a analise), funcao/SP; consultas usadas (nomes nos arquivos do
    plano) e, com chamado, o que o script de alteracao deve fazer (a correcao o escreve); branches levantadas pelo `branches`; riscos; o que o usuario pediu nos comentarios. Sem repetir a analise
    inteira — ela continua na Timeline e em `analises/`.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
@@ -86,7 +92,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | crie com `dependsOn` numa etapa sua que prepara o script (ex.: `preparar-script-<nome>`, `claude`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | ~~`orientar-cliente`~~ — **nao e etapa** | — | — | a orientacao ao cliente (o que aconteceu, o que fazer, passo a passo, por que nao e bug) **e o resumo nao tecnico PT/EN** que o `fechar-card` publica na discussion: redija em `analises/orientacao-cliente.md` e use esse texto no resumo (ver abaixo) |
-| Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); quando ela ficar pronta, mova o card para Dev Test in QA (`devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar |
+| Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | depois dos PRs (correcao publicada em QA); key exatamente `validar-qa` (0075: o PRMake move o card para Dev Test in QA sozinho quando o PR para a branch de QA e mesclado — confira no `prmake_plan`/`situation`; so se ele avisar erro, mova com `devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar — o diálogo de conclusao ja oferece mover para Ready for QA |
 | Validar o ambiente (`validar-dados`, `validar-configuracao`) | `validation` | claude ou user | **antes** do fechamento, quando o caso pede conferir o resultado (ex.: SQL somente leitura depois do script). A confirmacao **com o cliente** nao e etapa: ela acontece depois do *Test in Production*, fora do plano — so crie uma etapa assim se o usuario pedir |
 | Gerar PRMake (RCA no DevOps, resumo, campos) — **com codigo** | `task` | claude | skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA ja gerados e salvos na etapa de PR (nao gere de novo) |
 
@@ -176,6 +182,10 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   (`$PLAN test` so dos arquivos da falha), commit no padrao e `push` — o CI roda de novo e o PRMake acompanha. Falha
   de infraestrutura/instavel ou de outra parte do codigo → `log` (kind `warning`) com o porque e encerre a vez, sem
   mexer no codigo.
+- **Diff feito na fotografia (0075)**: depois do commit da correcao, para cada ref que a correcao mudou, `bash $PLAN coderef
+  <card> <ref> --implemented <sha> --file <caminho> --dir "$WT"` — o popover mostra *Proposta x Feito*. Arquivo mudado
+  sem ref na analise (a correcao precisou de mais): fotografe com `--dir "$WT"` antes do commit (`--change change --after`)
+  e grave o `--implemented` depois.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
   1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.
@@ -196,6 +206,14 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   "Aguardando voce" no topo do plano e no sino), e siga com as outras etapas prontas.
 - Etapa sua travada por algo do usuario (permissao, VPN, credencial, acesso): `block` na hora — ver
   `ref.sh plano block`.
+- **Entrou em espera → contexto da passagem (0075)**: sempre que o plano passa a esperar algo de fora — chamado aberto,
+  PRs aguardando aprovacao/merge, correcao em QA esperando a validacao — grave **na hora** `prmake_handoff(card, texto)`
+  (script: `handoff <card> "..."`): ate ~1.500 caracteres, para alguem que nunca viu o card assumir — **o que foi feito**
+  (correcao, PRs, script), **o que se espera e de quem** (revisor, time do chamado, QA), **riscos/pegadinhas** (o que
+  checar se o chamado voltar recusado, o que o QA deve testar, refs `[...](ref:<id>)` do que mudou) e **como retomar**.
+  Os fatos (PRs, aprovacoes, CI, chamado, estado no DevOps, desde quando) o PRMake ja junta sozinho no resumo
+  *Situacao atual* do card — nao repita links/status, explique o contexto. Atualize quando a espera mudar (chamado
+  resolvido → PR; PR mesclado → QA).
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**

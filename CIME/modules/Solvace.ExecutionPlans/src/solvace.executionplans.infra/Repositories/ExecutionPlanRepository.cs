@@ -240,6 +240,57 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         return (last, changed);
     }
 
+    public Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken) =>
+        (from a in _context.Artifacts.AsNoTracking()
+         join p in _context.Plans on a.PlanId equals p.Id
+         where p.CardNumber == cardNumber
+         orderby a.Number
+         select a).ToListAsync(cancellationToken);
+
+    public Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => p.SituationKind).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken) =>
+        await _context.Plans.Where(p => p.Id == planId && p.SituationKind == expected)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.SituationKind, kind).SetProperty(p => p.SituationAt, at), cancellationToken) > 0;
+
+    // Fotografias do código citado (0075)
+
+    public Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken) =>
+        _context.CodeRefs.FirstOrDefaultAsync(r => r.PlanId == planId && r.Ref == reference, cancellationToken);
+
+    public Task<int> CountCodeRefsAsync(Guid planId, CancellationToken cancellationToken) =>
+        _context.CodeRefs.CountAsync(r => r.PlanId == planId, cancellationToken);
+
+    public void AddCodeRef(ExecutionCodeRef codeRef) => _context.CodeRefs.Add(codeRef);
+
+    public void RemoveCodeRef(ExecutionCodeRef codeRef) => _context.CodeRefs.Remove(codeRef);
+
+    public Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(string cardNumber, Guid? planId, CancellationToken cancellationToken) =>
+        _context.CodeRefs.AsNoTracking()
+            .Where(r => r.CardNumber == cardNumber && (planId == null || r.PlanId == planId))
+            .OrderBy(r => r.Ref)
+            .Select(r => new ExecutionCodeRefHeadResponse
+            {
+                Id = r.Id,
+                PlanId = r.PlanId,
+                Ref = r.Ref,
+                Repository = r.Repository,
+                Path = r.Path,
+                StartLine = r.StartLine,
+                EndLine = r.EndLine,
+                Change = r.Change,
+                Title = r.Title,
+                CommitSha = r.CommitSha,
+                HasProposal = r.Proposal != null,
+                HasImplemented = r.Implemented != null,
+                UpdatedAt = r.UpdatedAt ?? r.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+    public Task<ExecutionCodeRef?> GetCodeRefAsync(Guid id, CancellationToken cancellationToken) =>
+        _context.CodeRefs.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

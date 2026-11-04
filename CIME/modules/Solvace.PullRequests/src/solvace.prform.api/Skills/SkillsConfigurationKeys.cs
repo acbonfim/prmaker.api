@@ -56,4 +56,12 @@ public static class SkillsConfigurationKeys
     public const string PromotionProfiles = "PromotionProfiles";
     /// <summary>0074: padrão do nome da branch do cherry-pick ({card}, {target}).</summary>
     public const string PromotionBranchPattern = "PromotionBranchPattern";
+    /// <summary>0075: linhas de contexto antes e depois do foco na fotografia do código citado (prmake-plan.sh coderef).</summary>
+    public const string CodeRefContextLines = "CodeRefContextLines";
+    /// <summary>0075: etapas da analisar-bug que só concluem com toda citação caminho:linha fotografada (lista; vazio desliga).</summary>
+    public const string CodeRefGateSteps = "CodeRefGateSteps";
+    /// <summary>0075: PR da branch de QA mesclado move o card para Dev Test in QA sozinho (true/false).</summary>
+    public const string AutoDevTestInQa = "AutoDevTestInQa";
+    /// <summary>0075: branches de destino que contam como QA (lista; "qa*" = prefixo).</summary>
+    public const string QaBranchPattern = "QaBranchPattern";
 }

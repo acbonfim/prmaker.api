@@ -95,7 +95,9 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
 | estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
+| contexto da passagem ao entrar em espera (0075) · situacao atual | `prmake_handoff(card, text)` | `handoff` · `situation` |
 | arquivo nos arquivos do plano (script `.sql`, analise `.md`, texto do chamado) | `prmake_file(card, name, content, kind?, key?)` | `upload` · `sync` |
+| **fotografia do codigo citado** (0075: popover com codigo real, diff e notas) · ajustar why/notas | `prmake_code_ref(card, reference, ...)` (so ajuste) | **`coderef`** (le o arquivo local — sempre por ele) |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
 
@@ -168,9 +170,16 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   voce gera os textos; nada direto no Azure DevOps/GitHub. Falta endpoint → pare e avise.
 - **Configuracao vem do PRMake** (`prmake_config` · `prmake_devops_config` — acoes e classificacoes; sem MCP: `bash $PLAN settings <card>`, `devops <card> config|classifications`; `branches` sempre pelo script): nunca escreva de
   memoria estados, areas, branches, titulos. Faltou regra → pergunte e sugira configurar no PRMake.
-- **Ready for QA so com autorizacao**: com a correcao em QA, mova para Dev Test in QA (`devops <card> dev-test-in-qa`,
-  sem perguntar); `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano ou
+- **Ready for QA so com autorizacao**: com a correcao em QA o PRMake move o card para Dev Test in QA sozinho (0075, PR
+  da branch de QA mesclado); voce confere e, se ele avisar erro, move (`devops <card> dev-test-in-qa`, sem perguntar);
+  `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano (a tela ja oferece mover) ou
   autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
+- **Espera = contexto da passagem (0075)**: ao entrar em espera (chamado aberto, PR aguardando aprovacao/merge, QA),
+  grave `prmake_handoff` — o que foi feito, o que se espera e de quem, riscos, como retomar (`$REF correcao 8`). O
+  PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover).
+- **Codigo citado = fotografia (0075)**: na analise, nas solucoes, no checkpoint e nas perguntas, cite codigo so como
+  `[caminho:linhas](ref:<id>)` com a fotografia gravada pelo `coderef` (`$REF analise 4b`) — nunca cole blocos de codigo
+  nem `caminho:linha` solto; o *porque* de cada trecho vai no `--why` e nas notas, e o texto fica curto.
 - **Foco no card**: solucoes/scripts so para o caso relatado; outros afetados → so um aviso curto.
 - **Analise e somente leitura**; codigo muda so depois da resposta do usuario, **sem comentarios novos no codigo**
   (o porque vai no commit/PR/plano). **Nunca merge nem aprovacao de PR.** Nunca escrita em banco/Cognito.
@@ -215,7 +224,9 @@ codigo divergir da Base Solvace, registre um `log warning` e proponha a correcao
 
 **4–5. Analise e Timeline** — monte `$CARD_DIR/analises/analise-inicial.md` pelo modelo de `$REF analise 4`
 (publicacao: `$REF analise 5`; inclua "Regras de negocio (Knowledge Center)" com os ART-n usados), `sync` e publique
-com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
+com `prmake-timeline`. O plano de analise segue para `propor-solucoes`. **0075**: todo codigo citado e uma fotografia
+(`$REF analise 4b` — `coderef`, link `[caminho:linhas](ref:<id>)`, `--why` e notas) e mudanca visivel leva Antes x
+Depois em imagem (`$REF analise 4c` — `mock-shot.sh`); o PRMake recusa concluir com citacao sem fotografia.
 
 **6–8b. Solucoes, plano de correcao e execucao** — uma secao por passo: `$REF correcao 6`, depois `7`, `8`, `8b`
 (perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo
@@ -244,7 +255,7 @@ pela tela) sem terminal: executor do PRMake — `bash ~/.claude/skills/.prmake/p
 |---|---|
 | passo 3: localizar codigo, Cognito, banco | `$REF consultas 3a` · `3b` · `3c` |
 | passo 3/6/7: padrao do caso (A–H) | `$REF catalogo catalogo` |
-| passos 4–5 | `$REF analise 4` · `$REF analise 5` |
+| passos 4–5 | `$REF analise 4` · `4b` (fotografias) · `4c` (mock visual) · `$REF analise 5` |
 | passos 6–8b | `$REF correcao 6` · `7` · `8` · `8b` |
 | fechamento | `$REF catalogo fechamento` · `"ready for qa"` · `mover` · `"quem grava"` |
 | detalhe do plano | `$REF plano comandos` · `retomar` · `control` · `block` · `watch` · `anexos` |

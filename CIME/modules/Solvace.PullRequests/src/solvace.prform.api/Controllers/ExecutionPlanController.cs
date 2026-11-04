@@ -72,7 +72,8 @@ public class ExecutionPlanController : ControllerBase
     /// <summary>Atualiza uma etapa (status, atividade atual, checkpoint...). Etapa nova é criada no fim.</summary>
     [HttpPatch("{id:guid}/steps/{key}")]
     public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request,
-        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse, CancellationToken ct) =>
+        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () =>
         {
             // 0052: a skill concluindo a investigação de card com engenharia reversa completa precisa ter consultado/citado a base.
@@ -81,6 +82,9 @@ public class ExecutionPlanController : ControllerBase
                 var plan = await _application.GetAsync(id, ct);
                 if (await reverse.CheckGateAsync(plan.CardNumber, key, request.Message ?? request.Reason, ct) is { } gate)
                     return BadRequest(new { error = gate });
+                // 0075: análise/soluções só concluem com toda citação de código fotografada.
+                if (await citations.CheckAsync(id, key, ct) is { } missing)
+                    return BadRequest(new { error = missing });
             }
             return Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct));
         });
@@ -222,6 +226,80 @@ public class ExecutionPlanController : ControllerBase
         {
             await _application.DeleteArtifactAsync(id, artifactId, ct);
             return NoContent();
+        });
+
+    // ── 0075: situação atual do card ───────────────────────────────────────────────────────────────
+
+    /// <summary>O que o card está aguardando (chamado, aprovação/merge, QA, resposta, você), com os fatos e o contexto da passagem.</summary>
+    [HttpGet("card/{cardNumber}/situation")]
+    public Task<ActionResult<CardSituationResponse>> GetSituation([FromRoute] string cardNumber, [FromQuery] bool devops = true, CancellationToken ct = default) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.GetSituationAsync(cardNumber, devops, ct)));
+
+    /// <summary>A skill grava o contexto da passagem ao entrar em espera (texto vazio limpa).</summary>
+    [HttpPut("{id:guid}/handoff")]
+    public Task<ActionResult<CardSituationResponse>> SetHandoff([FromRoute] Guid id, [FromBody] SetExecutionHandoffRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () =>
+            Ok(await _application.SetHandoffAsync(id, request.Text, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pelo botão da tela.</summary>
+    [HttpPost("card/{cardNumber}/situation/publish")]
+    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest request, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var commentId = await _application.PublishSituationAsync(cardNumber, request.Html ?? string.Empty, await GetActorAsync(ct, executor: false), ct);
+            return Ok(new { commentId });
+        });
+
+    // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────
+
+    /// <summary>Grava (ou substitui) a fotografia de um trecho de código — a skill, pelo <c>coderef</c>.</summary>
+    [HttpPut("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> SaveCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] SaveExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.SaveCodeRefAsync(id, reference, request.ToCapture(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Ajusta por quê, notas, proposta ou o diff feito, sem nova fotografia.</summary>
+    [HttpPatch("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> PatchCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] PatchExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.PatchCodeRefAsync(id, reference, request.ToPatch(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpDelete("{id:guid}/code-refs/{reference}")]
+    public Task<ActionResult> DeleteCodeRef([FromRoute] Guid id, [FromRoute] string reference, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteCodeRefAsync(id, reference, await GetActorAsync(ct, executor: IsExecutorRequest()), ct);
+            return NoContent();
+        });
+
+    /// <summary>Cabeças das fotografias do plano (sem o código).</summary>
+    [HttpGet("{id:guid}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCodeRefs([FromRoute] Guid id, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCodeRefHeadsAsync(id, ct)));
+
+    /// <summary>Cabeças das fotografias do card (uma por ref, a mais recente) — a tela liga as citações a elas.</summary>
+    [HttpGet("card/{cardNumber}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCardCodeRefs([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCardCodeRefHeadsAsync(cardNumber, ct)));
+
+    /// <summary>Uma fotografia completa (código, proposta, notas) — o popover.</summary>
+    [HttpGet("card/{cardNumber}/code-refs/{reference}")]
+    public Task<ActionResult<ExecutionCodeRefResponse>> GetCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () => Ok(await _application.GetCardCodeRefAsync(cardNumber, reference, ct)));
+
+    /// <summary>0075: arquivo do card pelo nome (qualquer plano) — imagens <c>anexo:&lt;nome&gt;</c> do texto da análise.</summary>
+    [HttpGet("card/{cardNumber}/artifacts/by-name/{name}/content")]
+    public Task<ActionResult> GetCardArtifactByName([FromRoute] string cardNumber, [FromRoute] string name, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var file = await _application.GetCardArtifactFileByNameAsync(cardNumber, name, ct);
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(file.Artifact.Name)}";
+            return File(file.Data, file.Artifact.ContentType);
         });
 
     // ── 0031: comentários com anexos ──────────────────────────────────────────────────────────────

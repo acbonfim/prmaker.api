@@ -73,6 +73,28 @@ public interface IExecutionPlanRepository
     /// <summary>Maior número e última mudança dos comentários do usuário no card (para o vigia da skill).</summary>
     Task<(int LastNumber, DateTimeOffset? ChangedAt)> GetUserNotesStateAsync(string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>0075: arquivos de todos os planos do card (da skill e anexos de comentário), sem o conteúdo.</summary>
+    Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 0075: troca o tipo de situação registrado se ainda for <paramref name="expected"/> (direto no banco). True = esta
+    /// chamada fez a troca (só ela escreve na Timeline).
+    /// </summary>
+    /// <summary>0075: tipo de situação gravado, lido do banco (o agregado rastreado não vê o ExecuteUpdate).</summary>
+    Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken);
+    Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken);
+
+    // Fotografias do código citado (0075)
+    /// <summary>Ref do plano, rastreada (upsert).</summary>
+    Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken);
+    Task<int> CountCodeRefsAsync(Guid planId, CancellationToken cancellationToken);
+    void AddCodeRef(ExecutionCodeRef codeRef);
+    void RemoveCodeRef(ExecutionCodeRef codeRef);
+    /// <summary>Cabeças das refs (sem o código) de todos os planos do card — ou só de um plano.</summary>
+    Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(string cardNumber, Guid? planId, CancellationToken cancellationToken);
+    /// <summary>Ref completa, sem rastrear.</summary>
+    Task<ExecutionCodeRef?> GetCodeRefAsync(Guid id, CancellationToken cancellationToken);
+
     /// <summary>Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 
