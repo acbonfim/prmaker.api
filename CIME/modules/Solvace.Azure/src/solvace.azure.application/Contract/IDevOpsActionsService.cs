@@ -19,6 +19,12 @@ public interface IDevOpsActionsService
     Task<DevOpsActionResponse> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 
+    /// <summary>0077: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
+    Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>0077: lança horas trabalhadas — soma em Completed Work e tira do Remaining Work (sem ficar negativo).</summary>
+    Task<DevOpsActionResponse> LogHoursAsync(string cardNumber, decimal hours, CancellationToken cancellationToken = default);
+
     /// <summary>Opções de classificação (padrão ou as do "AI Configurations") — feature 0028.</summary>
     Task<IReadOnlyList<DevOpsClassificationPreset>> GetClassificationPresetsAsync(CancellationToken cancellationToken = default);
 

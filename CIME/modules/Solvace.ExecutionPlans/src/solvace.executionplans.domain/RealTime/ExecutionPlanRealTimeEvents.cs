@@ -57,5 +57,7 @@ public static class ExecutionPlanRealTimeEvents
         public const string CodeRef = "codeRef";
         /// <summary>0075: a situação do card (o que está sendo aguardado) ou o contexto da passagem mudou.</summary>
         public const string Situation = "situation";
+        /// <summary>0077: o assistente do card tem sugestão nova ou respondida.</summary>
+        public const string Suggestion = "suggestion";
     }
 }

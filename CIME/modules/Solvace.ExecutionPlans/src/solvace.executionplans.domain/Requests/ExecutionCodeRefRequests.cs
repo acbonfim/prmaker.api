@@ -46,6 +46,20 @@ public class SetExecutionHandoffRequest
 public class PublishExecutionSituationRequest
 {
     public string? Html { get; set; }
+    /// <summary>0077: texto editado pela pessoa (markdown); vazio = o resumo gerado.</summary>
+    public string? Markdown { get; set; }
+}
+
+/// <summary>0077: responder uma sugestão do assistente.</summary>
+public class ActOnSuggestionRequest
+{
+    public string? Action { get; set; }
+}
+
+/// <summary>0077: texto novo de um arquivo do plano.</summary>
+public class UpdateArtifactTextRequest
+{
+    public string? Content { get; set; }
 }
 
 /// <summary>0075: ajuste parcial (campo ausente = não muda; texto vazio limpa).</summary>

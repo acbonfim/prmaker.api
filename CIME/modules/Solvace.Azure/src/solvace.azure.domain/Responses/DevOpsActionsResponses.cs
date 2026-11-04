@@ -64,6 +64,14 @@ public class DevOpsClassificationPreset
 }
 
 /// <summary>Resultado de uma ação no card.</summary>
+/// <summary>0077: horas do card no DevOps.</summary>
+public class DevOpsEffortResponse
+{
+    public decimal? OriginalEstimate { get; set; }
+    public decimal? CompletedWork { get; set; }
+    public decimal? RemainingWork { get; set; }
+}
+
 public class DevOpsActionResponse
 {
     public long Rev { get; set; }

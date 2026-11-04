@@ -237,6 +237,40 @@ public class DevOpsActionsService : IDevOpsActionsService
         return new DevOpsActionResponse { Rev = rev, Message = $"Remaining Work zerado (era {Format(remaining)})" };
     }
 
+    public async Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default)
+    {
+        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        return new DevOpsEffortResponse
+        {
+            OriginalEstimate = GetNumber(card, names.OriginalEstimate),
+            CompletedWork = GetNumber(card, names.CompletedWork),
+            RemainingWork = GetNumber(card, names.RemainingWork),
+        };
+    }
+
+    public async Task<DevOpsActionResponse> LogHoursAsync(string cardNumber, decimal hours, CancellationToken cancellationToken = default)
+    {
+        if (hours is <= 0 or > 24)
+            throw DevOpsActionException.Conflict("Informe de 0,5 a 24 horas.");
+        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        var completed = GetNumber(card, names.CompletedWork) ?? 0m;
+        var remaining = GetNumber(card, names.RemainingWork) ?? 0m;
+        var newCompleted = completed + hours;
+        var newRemaining = Math.Max(0m, remaining - hours);
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object>
+        {
+            [names.CompletedWork] = newCompleted,
+            [names.RemainingWork] = newRemaining
+        }, cancellationToken);
+        return new DevOpsActionResponse
+        {
+            Rev = rev,
+            Message = $"Horas lançadas: +{Format(hours)}h — Completed Work {Format(completed)} → {Format(newCompleted)}, Remaining Work {Format(remaining)} → {Format(newRemaining)}"
+        };
+    }
+
     public async Task<IReadOnlyList<DevOpsClassificationPreset>> GetClassificationPresetsAsync(CancellationToken cancellationToken = default)
     {
         try

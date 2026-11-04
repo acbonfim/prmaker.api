@@ -51,7 +51,7 @@ public partial class ExecutionPlanApplication
     }
 
     /// <summary>Publicação pela tela (botão Publicar). Sem <paramref name="html"/>, o PRMake monta o mesmo texto da automática.</summary>
-    public async Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken)
+    public async Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken, string? markdown = null)
     {
         if (_devOps is null)
             throw new DomainException("Integração com o DevOps indisponível.");
@@ -59,10 +59,12 @@ public partial class ExecutionPlanApplication
         var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken)
                      ?? throw new ExecutionPlanNotFoundException("O card não tem plano.");
         var situation = await GetSituationAsync(card, true, cancellationToken);
-        var body = string.IsNullOrWhiteSpace(html) ? SituationHtml.Build(situation, DateTimeOffset.UtcNow, CardSituation.Brasilia) : html;
+        // 0077: texto editado pela pessoa vale como está (o PRMake só converte para o HTML da discussion).
+        var text = string.IsNullOrWhiteSpace(markdown) ? situation.Markdown : markdown.Trim();
+        var body = string.IsNullOrWhiteSpace(html) ? SituationHtml.Build(text, DateTimeOffset.UtcNow, CardSituation.Brasilia) : html;
         var existing = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
         var commentId = await _devOps.UpsertCommentAsync(card, body, existing, cancellationToken);
-        await _repository.SetSituationPostedAsync(planId, commentId, situation.Markdown, actor.Name, DateTimeOffset.UtcNow, cancellationToken);
+        await _repository.SetSituationPostedAsync(planId, commentId, text, actor.Name, DateTimeOffset.UtcNow, cancellationToken);
         var plan = await LoadAsync(planId, cancellationToken);
         await WriteTimelineAsync(plan, $"📣 **Situação publicada na discussion do DevOps** por {actor.Name}", actor, cancellationToken);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Situation, null, cancellationToken);
@@ -89,9 +91,14 @@ public partial class ExecutionPlanApplication
         var situation = CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
         if (withFiles)
         {
-            // 0076: automático = preferência do dono do plano (quem trata o card) ou o padrão global.
-            var own = plan.CreatedByUserId is { } owner ? await _repository.GetSituationAutoPostAsync(owner, cancellationToken) : null;
-            situation.AutoPost = own ?? settings.PostSituationToDevOps;
+            // 0076/0077: automático = escolha feita para este card (plano atual ou a análise), senão a preferência do dono do
+            // plano (quem trata o card), senão o padrão global.
+            var card = plan.SituationAutoPost;
+            if (card is null && plan.ParentPlanId is { } parentId)
+                card = (await _repository.GetPlanWithStepsAsync(parentId, cancellationToken))?.SituationAutoPost;
+            var own = card is null && plan.CreatedByUserId is { } owner ? await _repository.GetSituationAutoPostAsync(owner, cancellationToken) : null;
+            situation.AutoPost = card ?? own ?? settings.PostSituationToDevOps;
+            situation.AutoPostSource = card is not null ? "card" : own is not null ? "user" : "global";
             situation.PublishPending = situation.Markdown != situation.PublishedMarkdown
                                        && CardSituationKind.PostToDevOps(situation, plan.SituationCommentId is not null);
         }

@@ -232,6 +232,33 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
+    // ── 0077: assistente do card (sugestões que não travam) e textos gerados ──────────────────────
+
+    /// <summary>Sugestões do assistente no card (abertas primeiro).</summary>
+    [HttpGet("card/{cardNumber}/suggestions")]
+    public Task<ActionResult<List<ExecutionSuggestionResponse>>> GetSuggestions([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionSuggestionResponse>>(async () => Ok(await _application.GetSuggestionsAsync(cardNumber, ct)));
+
+    /// <summary>Responde uma sugestão (a ação usa a integração do DevOps de quem clicou).</summary>
+    [HttpPost("suggestions/{suggestionId:guid}/act")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> ActOnSuggestion([FromRoute] Guid suggestionId, [FromBody] ActOnSuggestionRequest request, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.ActOnSuggestionAsync(suggestionId, request.Action ?? string.Empty, await GetActorAsync(ct, executor: false), ct)));
+
+    [HttpPost("suggestions/{suggestionId:guid}/dismiss")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> DismissSuggestion([FromRoute] Guid suggestionId, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.DismissSuggestionAsync(suggestionId, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Publicação automática da situação só neste card (null = volta para a preferência/padrão).</summary>
+    [HttpPut("card/{cardNumber}/situation/auto-post")]
+    public Task<ActionResult<CardSituationResponse>> SetCardAutoPost([FromRoute] string cardNumber, [FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.SetCardSituationAutoPostAsync(cardNumber, request.AutoPost, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Edita o texto de um arquivo gerado no plano (análise, soluções, chamado, orientação...).</summary>
+    [HttpPut("{id:guid}/artifacts/{artifactId:guid}/text")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public Task<ActionResult<ExecutionArtifactResponse>> UpdateArtifactText([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromBody] UpdateArtifactTextRequest request, CancellationToken ct) =>
+        Run<ExecutionArtifactResponse>(async () => Ok(await _application.UpdateArtifactTextAsync(id, artifactId, request.Content ?? string.Empty, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
     // ── 0076: evidências do card no DevOps ─────────────────────────────────────────────────────────
 
     /// <summary>Importa (idempotente) as evidências do card no DevOps para os arquivos do plano e devolve a lista.</summary>
@@ -267,7 +294,7 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest? request, CancellationToken ct) =>
         RunPlain(async () =>
         {
-            var commentId = await _application.PublishSituationAsync(cardNumber, request?.Html, await GetActorAsync(ct, executor: false), ct);
+            var commentId = await _application.PublishSituationAsync(cardNumber, request?.Html, await GetActorAsync(ct, executor: false), ct, request?.Markdown);
             return Ok(new { commentId });
         });
 

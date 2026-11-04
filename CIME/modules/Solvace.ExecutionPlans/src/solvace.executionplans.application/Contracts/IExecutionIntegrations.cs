@@ -52,6 +52,32 @@ public interface IExecutionCardDevOps
 
     /// <summary>Cria ou atualiza o comentário HTML na discussion; devolve o id.</summary>
     Task<int> UpsertCommentAsync(string cardNumber, string html, int? commentId, CancellationToken cancellationToken);
+
+    /// <summary>0077: horas do card (null = não deu para ler).</summary>
+    Task<CardEffort?> GetEffortAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0077: estimativa inicial configurada. Ok = gravou; senão a mensagem do DevOps.</summary>
+    Task<(bool Ok, string Message)> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0077: soma em Completed Work e tira do Remaining Work.</summary>
+    Task<(bool Ok, string Message)> LogHoursAsync(string cardNumber, decimal hours, CancellationToken cancellationToken);
+    /// <summary>0077: o que o assistente sugere (Skills Configurations).</summary>
+    Task<ExecutionAssistantSettings> GetAssistantSettingsAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>0077: horas do card no DevOps.</summary>
+public record CardEffort(decimal? OriginalEstimate, decimal? CompletedWork, decimal? RemainingWork);
+
+/// <summary>
+/// 0077: assistente do card — ligado, etapas que sugerem lançar horas (<c>corrigir-*</c> = prefixo), horas por etapa e a
+/// média do time por card.
+/// </summary>
+public record ExecutionAssistantSettings(bool Enabled, IReadOnlyList<string> HoursSteps, decimal HoursPerStep, decimal AverageHours)
+{
+    public static readonly ExecutionAssistantSettings Default =
+        new(true, ["montar-analise", "propor-solucoes", "corrigir-*", "validar-qa"], 1m, 3m);
+
+    public bool SuggestsHoursFor(string stepKey) =>
+        HoursSteps.Any(p => p.EndsWith('*') ? stepKey.StartsWith(p[..^1], StringComparison.OrdinalIgnoreCase)
+                                            : stepKey.Equals(p, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>

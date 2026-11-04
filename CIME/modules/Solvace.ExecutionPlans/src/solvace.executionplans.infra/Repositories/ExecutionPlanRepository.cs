@@ -284,6 +284,23 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         await _context.Artifacts.Where(a => a.Id == artifactId && a.ReadAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.ReadAt, now), cancellationToken);
 
+    public Task<ExecutionArtifact?> FindArtifactWithContentAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken) =>
+        _context.Artifacts.Include(a => a.Content).FirstOrDefaultAsync(a => a.PlanId == planId && a.Id == artifactId, cancellationToken);
+
+    // Assistente do card (0077)
+
+    public void AddSuggestion(ExecutionSuggestion suggestion) => _context.Suggestions.Add(suggestion);
+
+    public Task<bool> SuggestionExistsAsync(string cardNumber, string dedupKey, CancellationToken cancellationToken) =>
+        _context.Suggestions.AnyAsync(s => s.CardNumber == cardNumber && s.DedupKey == dedupKey, cancellationToken);
+
+    public Task<ExecutionSuggestion?> FindSuggestionAsync(Guid id, CancellationToken cancellationToken) =>
+        _context.Suggestions.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
+    public Task<List<ExecutionSuggestion>> GetSuggestionsAsync(string cardNumber, CancellationToken cancellationToken) =>
+        _context.Suggestions.AsNoTracking().Where(s => s.CardNumber == cardNumber)
+            .OrderByDescending(s => s.CreatedAt).Take(60).ToListAsync(cancellationToken);
+
     // Fotografias do código citado (0075)
 
     public Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken) =>
