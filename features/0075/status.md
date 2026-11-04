@@ -8,35 +8,57 @@
 
 | Fase | Descrição | Repo | Depende de | Onda | Status | Responsável | Início | Conclusão | Commits |
 |---|---|---|---|---|---|---|---|---|---|
-| B1 | Code refs: modelo, API, MCP, config | back | — | 1 | ⬜ | | | | |
-| F1 | Markdown com extensões (callouts, `ref:`, auto-link, `anexo:`) | front | — | 1 | ⬜ | | | | |
-| S2 | `prmake-plan.sh coderef` + `coderef.py` | skills | B1 (teste) | 1 | ⬜ | | | | |
-| F2 | Popover da ref (diff anotado, highlight) | front | B1, F1 | 2 | ⬜ | | | | |
-| F3 | Imagens `anexo:` no markdown, Antes × Depois | front | F1, B3 | 2 | ⬜ | | | | |
-| B2 | Regra das citações no `advance` | back | B1 | 2 | ⬜ | | | | |
-| B3 | Arquivo do plano por nome + `prmake_attachment` | back | — | 2 | ⬜ | | | | |
-| S1 | Modelo novo da análise e das soluções | skills | B1, S2 | 2 | ⬜ | | | | |
-| S3 | Mocks visuais (`mock-shot.sh` + receitas) | skills | B3 | 2 | ⬜ | | | | |
-| B4 | Situação do card (serviço, handoff, Timeline, Home) | back | B5 | 3 | ⬜ | | | | |
-| B5 | Revisões dos PRs (aprovações) | back | — | 3 | ⬜ | | | | |
-| B6 | Dev Test in QA automático + Ready for QA na conclusão | back | — | 3 | ⬜ | | | | |
-| B7 | Publicar situação no DevOps (manual) | back | B4, D1 | 3 | ⬜ | | | | |
-| F4 | Cartão "Situação atual" + fato + chip | front | B4, F1, F2 | 3 | ⬜ | | | | |
-| F5 | Concluir "Validar em QA" → Ready for QA | front | B6 | 3 | ⬜ | | | | |
-| S4 | Skill: handoff, QA, handover com situação | skills | B4, B6 | 3 | ⬜ | | | | |
-| Q1 | Integração e e2e local (`.t0075/`) | ambos | todas | 4 | ⬜ | | | | |
+| B1 | Code refs: modelo, API, MCP, config | back | — | 1 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 50ea9d1 |
+| F1 | Markdown com extensões (callouts, `ref:`, auto-link, `anexo:`) | front | — | 1 | ✅ | Claude (subagente) | 2026-11-04 | 2026-11-04 | front 1f0bb8d |
+| S2 | `prmake-plan.sh coderef` + `coderef.py` | skills | B1 (teste) | 1 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 78b1a85 |
+| F2 | Popover da ref (diff anotado, highlight) | front | B1, F1 | 2 | ✅ | Claude (subagente) | 2026-11-04 | 2026-11-04 | front 2025163 |
+| F3 | Imagens `anexo:` no markdown, Antes × Depois | front | F1, B3 | 2 | ✅ | Claude (subagente) | 2026-11-04 | 2026-11-04 | front 2025163 |
+| B2 | Regra das citações no `advance` | back | B1 | 2 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 3697f5c |
+| B3 | Arquivo do plano por nome + `prmake_attachment` | back | — | 2 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 3697f5c |
+| S1 | Modelo novo da análise e das soluções | skills | B1, S2 | 2 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 1ce7eec |
+| S3 | Mocks visuais (`mock-shot.sh` + receitas) | skills | B3 | 2 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 1ce7eec |
+| B4 | Situação do card (serviço, handoff, Timeline, Home) | back | B5 | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6, 7265b61, ee7f82f |
+| B5 | Revisões dos PRs (aprovações) | back | — | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6 |
+| B6 | Dev Test in QA automático (+ Ready for QA pela tela, endpoint existente) | back | — | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6, ee7f82f |
+| B7 | Publicar situação no DevOps (manual) | back | B4, D1 | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6 |
+| F4 | Cartão "Situação atual" + fato + chip + handover | front | B4, F1, F2 | 3 | 🟡 | Claude (subagente) | 2026-11-04 | | |
+| F5 | Concluir "Validar em QA" → Ready for QA | front | B6 | 3 | 🟡 | Claude (subagente) | 2026-11-04 | | |
+| S4 | Skill: handoff, QA, handover com situação | skills | B4, B6 | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | af5d13a |
+| Q1 | Integração e e2e local (`.t0075/`) | ambos | todas | 4 | 🟡 | Claude | 2026-11-04 | | |
 | Q2 | Produção | ambos | Q1 | 4 | ⬜ | | | | |
 
-PR-A (análise legível) = B1, B2, B3, F1, F2, F3, S1, S2, S3. PR-B (situação + QA) = B4–B7, F4, F5, S4.
+**Entrega**: um PR por repositório com a feature inteira (o usuário pediu para abrir e mesclar ao final — back e
+front juntos, 2026-11-04). PR-A/PR-B do plano viraram um só.
 
 ## Decisões
-- **D1** (pendente) — publicar a situação na discussion do DevOps: manual (padrão da spec) ou automático por config.
-- **D2** — fotografia: foco ± 30 linhas, máx. 600 linhas/64 KB por ref, 80 refs por plano (config).
+- **D1** — publicar a situação na discussion do DevOps: **manual** (botão com confirmação; o cliente lê a discussion);
+  republicar atualiza o mesmo comentário.
+- **D2** — fotografia: foco ± `CodeRefContextLines` (30), máx. 600 linhas/64 KB por ref, 30 notas, 80 refs por plano.
+- **D3** — Ready for QA na conclusão de *Validar em QA* usa o endpoint existente `POST Azure/card/{id}/actions/ready-for-qa`
+  (sem endpoint novo no plano).
+- **D4** — "Abrir no GitHub" fora do popover: a API só conhece o nome do repositório (sem o dono).
+
+## Q1 — back (Postgres 18 isolado, porta 55475; API 5083; auth falso 8099; tudo em `.t0075/`)
+- Migrações de todos os contextos aplicadas do zero (`--migrate`); seed `SeedSkillsSettings0075` com as 4 chaves.
+- Fluxo real pelo `prmake-plan.sh`: `start` → análise com as citações do item 1.6 → `advance montar-analise` **recusado**
+  listando as 5 citações e os 2 `ref:` sem fotografia → 3 × `coderef` (change com `--after` + notas; read; suspect) →
+  `advance` aceito. `GET card/{c}/code-refs` (cabeças) e `/{ref}` (foco, notas do jsonb, diff) ok; 404 sem ref.
+- Mocks Antes × Depois a partir do markup real do SA3 + CSS limitless da cópia do legado (`mock-shot.sh`), `upload`
+  e `GET artifacts/by-name/...` idêntico ao arquivo.
+- Correção: PRs abertos → 🔀 aguardando aprovação e merge; chamado com `01_*.sql`/`chamado-*.md` → 🎫 (PR em "também");
+  chamado resolvido + PRs mesclados (dev e `qa`) → o PRMake tentou mover para Dev Test in QA sozinho (sem o plugin
+  AI Configurations no banco isolado: erro gravado, aviso único no plano, situação 🧪 com o aviso e o roteiro do
+  `impacto-na-base`); `handoff` pelo script e pelo MCP; Timeline com uma entrada por mudança de situação.
+- MCP (`/mcp` JSON-RPC): 31 ferramentas; `prmake_code_ref`, `prmake_handoff`, `prmake_plan` (codeRefs) e
+  `prmake_attachment` achando arquivo do plano pelo nome.
+- Testes: executionplans 38/38, prform 114/114.
 
 ## Notas de handoff
 - Worktrees: back `../prform.api-0075`, front `../solvace.prform.web/prform-app-0075` (`node_modules` → `prform-app-0019`).
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
+- Specs do front: build de teste completo quebra por specs antigos (`async` do Angular) — rodar só os da fase com um
+  tsconfig temporário (ver F1/F2).
 
 ## Log
-- 2026-11-04 — spec, plano e status escritos; branches `feature/0075` criadas nos dois repos a partir da master
-  (back 94a08a4, front b08550d).
+- 2026-11-04 — spec, plano e status; branches `feature/0075` (back 94a08a4, front b08550d).
+- 2026-11-04 — B1–B7, S1–S4, F1–F3 concluídas; Q1 do back ok; F4/F5 + e2e do navegador em andamento.
