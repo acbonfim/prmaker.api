@@ -166,6 +166,7 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
         var dayIndex = new Dictionary<DateTime, DayAcc>();
         for (var d = firstDay; d <= lastDay; d = d.AddDays(1)) dayIndex[d] = new DayAcc();
         var heat = new int[7, 24];
+        var heatEvents = new int[7, 24];
         foreach (var h in hourly)
         {
             var local = Local(h.Hour);
@@ -175,6 +176,7 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
                 acc.Views += h.Views; acc.Actions += h.Actions; acc.Clicks += h.Clicks; acc.Errors += h.Errors; acc.Events += h.Total;
             }
             heat[(int)local.DayOfWeek, local.Hour]++;
+            heatEvents[(int)local.DayOfWeek, local.Hour] += h.Total;
         }
         foreach (var s in sessions)
             if (dayIndex.TryGetValue(Local(s.StartedAt).Date, out var acc)) acc.Sessions++;
@@ -251,8 +253,10 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
                 errors = d.Value.Errors,
                 events = d.Value.Events
             }),
-            // Usuários ativos por dia da semana (0 = domingo) × hora (soma das horas em que cada usuário teve atividade).
-            heatmap = Enumerable.Range(0, 7).SelectMany(w => Enumerable.Range(0, 24).Select(h => new { weekday = w, hour = h, count = heat[w, h] }))
+            // Dia da semana (0 = domingo) × hora: count = usuários ativos (soma das horas em que cada usuário teve
+            // atividade naquele horário ao longo do período); events = eventos.
+            heatmap = Enumerable.Range(0, 7).SelectMany(w => Enumerable.Range(0, 24)
+                    .Select(h => new { weekday = w, hour = h, count = heat[w, h], users = heat[w, h], events = heatEvents[w, h] }))
                 .Where(x => x.count > 0),
             screens,
             actions,
@@ -407,10 +411,17 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
             .GroupBy(_ => 1)
             .Select(g => new { sessions = g.Count(), foregroundMs = g.Sum(x => x.ForegroundMs), views = g.Sum(x => x.Views), actions = g.Sum(x => x.Actions) })
             .FirstOrDefaultAsync(cancellationToken);
+        var errors = await db.UsageEvents.AsNoTracking()
+            .CountAsync(e => e.UserExternalId == externalId && e.At >= since && e.Kind == "error", cancellationToken);
         object logins = Array.Empty<object>();
+        int loginCount = 0, failedLoginCount = 0;
         try
         {
             var sinceAuth = since.UtcDateTime;
+            var counts = await auth.LoginEvents.AsNoTracking().Where(l => l.UserExternalId == externalId && l.At >= sinceAuth)
+                .GroupBy(l => l.Success).Select(g => new { g.Key, n = g.Count() }).ToListAsync(cancellationToken);
+            loginCount = counts.FirstOrDefault(c => c.Key)?.n ?? 0;
+            failedLoginCount = counts.FirstOrDefault(c => !c.Key)?.n ?? 0;
             var rows = await auth.LoginEvents.AsNoTracking().Where(l => l.UserExternalId == externalId && l.At >= sinceAuth)
                 .OrderByDescending(l => l.At).Take(20).ToListAsync(cancellationToken);
             logins = rows.Select(l => new { l.Id, at = AsUtc(l.At), l.Success, l.Reason, l.Ip, l.UserAgent }).ToList();
@@ -424,7 +435,16 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
             logins,
             sessions = sessions.Select(SessionView),
             events,
-            totals = totals ?? new { sessions = 0, foregroundMs = 0L, views = 0, actions = 0 }
+            totals = new
+            {
+                sessions = totals?.sessions ?? 0,
+                foregroundMs = totals?.foregroundMs ?? 0L,
+                views = totals?.views ?? 0,
+                actions = totals?.actions ?? 0,
+                errors,
+                logins = loginCount,
+                failedLogins = failedLoginCount
+            }
         });
     }
 
