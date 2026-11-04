@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Cime.BuildingBlocks.RealTime;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
@@ -187,6 +187,7 @@ public class CaseChatApplication(
         if (!string.IsNullOrWhiteSpace(extra))
             text.AppendLine().AppendLine(extra.Trim());
         var note = await planApp.AddNoteAsync(plan.Id, text.ToString(), null, [], actor.AsExecutionActor(), cancellationToken);
+        await RequestWhenPlanStoppedAsync(card, plan, ExecutionRequestSource.CaseProposal, text.ToString(), actor, cancellationToken);
         await SystemMessageAsync(card, $"{actor.Name} levou a mensagem {message.Number} para o plano (comentário #{note.Number}).", cancellationToken);
         return note;
     }
@@ -274,11 +275,13 @@ public class CaseChatApplication(
             throw new DomainException("O card ainda não tem plano — peça a análise antes de aceitar a proposta.");
         proposal.Accept(request.Execute, actor.Name, now);
         await cases.SaveChangesAsync(cancellationToken);
-        var note = await planApp.AddNoteAsync(plan.Id, proposal.InstructionText(actor.Name), null, [], actor.AsExecutionActor(), cancellationToken);
+        var instruction = proposal.InstructionText(actor.Name);
+        var note = await planApp.AddNoteAsync(plan.Id, instruction, null, [], actor.AsExecutionActor(), cancellationToken);
         cases.ClearTracking();
         var saved = await cases.GetProposalAsync(card, proposalId, cancellationToken) ?? proposal;
         saved.SetPlanNote(note.Number);
         await cases.SaveChangesAsync(cancellationToken);
+        await RequestWhenPlanStoppedAsync(card, plan, ExecutionRequestSource.CaseProposal, instruction, actor, cancellationToken);
         await SystemMessageAsync(card,
             $"{actor.Name} aceitou a proposta #{saved.Number}{(saved.Execute ? " para já executar" : string.Empty)} — virou o comentário #{note.Number} do plano e o " +
             "Claude do tratamento monta a nova versão.", cancellationToken);
@@ -633,6 +636,27 @@ public class CaseChatApplication(
 
     private async Task<ExecutionPlan?> CurrentPlanAsync(string card, CancellationToken cancellationToken) =>
         await plans.GetCurrentPlanIdAsync(card, cancellationToken) is { } id ? await plans.GetPlanWithStepsAsync(id, cancellationToken) : null;
+
+    /// <summary>
+    /// O comentário só retoma plano ativo: com o plano cancelado, concluído ou com falha ninguém chamava o executor e a
+    /// proposta aceita ficava parada (card 77900). Aí o pedido vai direto para a fila — nova análise (ou retomada, na
+    /// falha) com a instrução no prompt.
+    /// </summary>
+    private async Task RequestWhenPlanStoppedAsync(string card, ExecutionPlan plan, string source, string instruction, CaseActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (!plan.IsFinished && plan.Status != ExecutionStatus.Failed)
+            return;
+        try
+        {
+            await queue.CreateAsync(new CreateExecutionRequestRequest { CardNumber = card, Note = instruction }, actor.AsExecutionActor(), source,
+                cancellationToken);
+        }
+        catch (DomainException e)
+        {
+            await SystemMessageAsync(card, $"O Claude do tratamento não pôde ser chamado: {e.Message}", cancellationToken);
+        }
+    }
 
     private static bool CanDecide(CaseActor actor, ExecutionPlan? plan) =>
         !actor.IsSpecialist && (actor.IsManager || (actor.UserId is { } me && plan?.CreatedByUserId == me));
