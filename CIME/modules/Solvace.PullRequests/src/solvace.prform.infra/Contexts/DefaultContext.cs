@@ -1,6 +1,7 @@
 using Cime.BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.domain.Entities;
+using solvace.prform.domain.Entities.Usage;
 
 namespace solvace.prform.Infra.Contexts;
 
@@ -18,6 +19,9 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     /// <summary>Lotes de promoção de PRs para release/hotfix (0074).</summary>
     public DbSet<PromotionBatch> PromotionBatches { get; set; }
     public DbSet<PromotionItem> PromotionItems { get; set; }
+    /// <summary>Dados de uso (0079): abas abertas e os passos do usuário.</summary>
+    public DbSet<UsageSession> UsageSessions { get; set; }
+    public DbSet<UsageEvent> UsageEvents { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
     public const string Schema = "prform";
@@ -48,6 +52,43 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
             b.Property(x => x.Error).HasMaxLength(AiUsageRecord.MaxErrorLength);
             b.HasIndex(x => new { x.UserExternalId, x.CreatedAt });
             b.HasIndex(x => x.CreatedAt);
+        });
+
+        // 0079: dados de uso — sessões (abas) e eventos, gravados em lote pelo navegador.
+        modelBuilder.Entity<UsageSession>(b =>
+        {
+            b.ToTable("UsageSessions");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.UserName).IsRequired().HasMaxLength(UsageSession.MaxUserNameLength);
+            b.Property(x => x.Ip).HasMaxLength(UsageSession.MaxIpLength);
+            b.Property(x => x.UserAgent).HasMaxLength(UsageSession.MaxUserAgentLength);
+            b.Property(x => x.Browser).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.Os).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.Device).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.ScreenSize).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.Language).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.TimeZone).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.AppVersion).HasMaxLength(UsageSession.MaxShortLength);
+            b.Property(x => x.LastScreen).HasMaxLength(UsageSession.MaxScreenLength);
+            b.Property(x => x.LastRoute).HasMaxLength(UsageSession.MaxRouteLength);
+            b.HasIndex(x => x.LastSeenAt);
+            b.HasIndex(x => new { x.UserExternalId, x.LastSeenAt });
+        });
+        modelBuilder.Entity<UsageEvent>(b =>
+        {
+            b.ToTable("UsageEvents");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.UserName).IsRequired().HasMaxLength(UsageSession.MaxUserNameLength);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(UsageEvent.MaxKindLength);
+            b.Property(x => x.Screen).HasMaxLength(UsageEvent.MaxScreenLength);
+            b.Property(x => x.Route).HasMaxLength(UsageEvent.MaxRouteLength);
+            b.Property(x => x.Card).HasMaxLength(UsageEvent.MaxCardLength);
+            b.Property(x => x.Name).HasMaxLength(UsageEvent.MaxNameLength);
+            b.Property(x => x.Detail).HasMaxLength(UsageEvent.MaxDetailLength);
+            b.HasIndex(x => x.At);
+            b.HasIndex(x => new { x.UserExternalId, x.At });
+            b.HasIndex(x => new { x.SessionId, x.At });
         });
 
         // 0074: promoção de PRs em lote (release/hotfix) — um lote tem N itens (card × repositório × destino).
