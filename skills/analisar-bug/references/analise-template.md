@@ -50,6 +50,12 @@ que sera feito; o detalhe tecnico fica nos popovers das fotografias. Regras:
 ### Como reproduz
 <o caminho do usuario ate o erro, numerado, do que se entende>
 
+### Evidencias do card
+<cada evidencia do DevOps (lista do `contexto`/`prmake_evidence`): `#n` + origem (repro steps, discussion de Fulano em
+03/11, anexo) + o que ela mostrou e se confirma ou contradiz a hipotese — imagem com `![...](anexo:<nome>)` quando
+ajuda; video/compactado: "nao aberto (motivo)"; card sem evidencias: diga isso. A discussion lida tambem entra aqui
+(o que o cliente/suporte disse que muda a analise).>
+
 ### Causa raiz
 - ✅ **Confirmado:** <fato + evidencia (consulta, linha de codigo com ref, item RN/UC)>
 - ❓ **Hipotese:** <o que falta confirmar e como>
