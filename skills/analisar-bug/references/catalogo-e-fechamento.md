@@ -83,8 +83,12 @@ dev validando a correcao em QA):
   ou (b) o usuario autorizar explicitamente depois disso, pelo chat ou por comentario no plano ("pode mover para
   Ready for QA"). A resposta a pergunta de fechamento do passo 6 **nao** autoriza o Ready for QA — ela veio antes
   da validacao. Sem (a) ou (b), nao mova: deixe o `watch` em segundo plano e siga quando a etapa for concluida.
-- Por isso, com codigo, o `fechar-card` tem `dependsOn: ["validar-qa"]`; o root cause, a classificacao e o resumo
-  podem ser gravados antes, mas o `ready-for-qa` fica para depois da validacao.
+- Por isso, com codigo, o fechamento e dividido (0075): **`preparar-fechamento` antes da validacao** (logo depois de abrir
+  os PRs: root cause, classificacao, resumo PT/EN e `zero-remaining` — itens 1–4 de *Fechamento do card*, sem mover) e
+  `validar-qa` depende dele; o `fechar-card` tem `dependsOn: ["validar-qa"]` e so confere (`prmake_card`) e move para
+  Ready for QA se o card ainda nao estiver la. Assim, quando o usuario conclui *Validar em QA* e escolhe "Mover para
+  Ready for QA agora", o card nao tem pendencias (o DevOps recusa com 409 se faltar Root Cause, Resolution Type,
+  classificacoes ou Remaining zerado — card 77698).
 
 ## Mover o card (permissao, DevOps fora do ar, 409)
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e

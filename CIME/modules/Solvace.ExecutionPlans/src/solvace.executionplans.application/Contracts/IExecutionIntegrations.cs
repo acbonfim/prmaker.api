@@ -54,8 +54,11 @@ public interface IExecutionCardDevOps
     Task<int> UpsertCommentAsync(string cardNumber, string html, int? commentId, CancellationToken cancellationToken);
 }
 
-/// <summary>0075: <c>AutoDevTestInQa</c> e as branches de QA (<c>QaBranchPattern</c>: lista; <c>qa*</c> = prefixo).</summary>
-public record ExecutionQaSettings(bool AutoDevTestInQa, IReadOnlyList<string> QaBranches)
+/// <summary>
+/// 0075: <c>AutoDevTestInQa</c>, as branches de QA (<c>QaBranchPattern</c>: lista; <c>qa*</c> = prefixo) e
+/// <c>SituationPostToDevOps</c> (o resumo da situação vai sozinho para a discussion do card).
+/// </summary>
+public record ExecutionQaSettings(bool AutoDevTestInQa, IReadOnlyList<string> QaBranches, bool PostSituationToDevOps = true)
 {
     public static readonly ExecutionQaSettings Default = new(true, ["qa"]);
 

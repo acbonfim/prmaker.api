@@ -18,6 +18,8 @@ public partial class ExecutionPlanApplication
     /// <summary>Conferência do Dev Test in QA no máximo a cada 30 s por plano (a leitura do plano é frequente).</summary>
     private static readonly TimeSpan DevTestInQaCheckInterval = TimeSpan.FromSeconds(30);
     private static readonly ConcurrentDictionary<Guid, DateTimeOffset> LastDevTestInQaCheck = new();
+    /// <summary>Último erro ao publicar a situação na discussion, por plano (o aviso no plano sai uma vez por erro).</summary>
+    private static readonly ConcurrentDictionary<Guid, string> LastDiscussionError = new();
 
     public async Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken)
     {
@@ -43,6 +45,8 @@ public partial class ExecutionPlanApplication
     {
         var plan = await MutateAsync(planId, p => p.SetHandoff(text, actor.Name, DateTimeOffset.UtcNow), cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Situation, null, cancellationToken);
+        // O contexto da passagem mudou o resumo: o comentário da discussion acompanha.
+        await PostSituationToDevOpsAsync(plan.Id, plan.CardNumber, cancellationToken);
         return await GetSituationAsync(plan.CardNumber, false, cancellationToken);
     }
 
@@ -55,9 +59,8 @@ public partial class ExecutionPlanApplication
         var card = cardNumber.Trim();
         var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken)
                      ?? throw new ExecutionPlanNotFoundException("O card não tem plano.");
-        var current = await LoadAsync(planId, cancellationToken);
-        var commentId = await _devOps.UpsertCommentAsync(card, html, current.SituationCommentId, cancellationToken);
-        _repository.ClearTracking();
+        var existing = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
+        var commentId = await _devOps.UpsertCommentAsync(card, html, existing, cancellationToken);
         var plan = await MutateAsync(planId, p => p.SetSituationComment(commentId, DateTimeOffset.UtcNow), cancellationToken, actor);
         await WriteTimelineAsync(plan, $"📣 **Situação publicada no DevOps** por {actor.Name}", actor, cancellationToken);
         return commentId;
@@ -72,6 +75,62 @@ public partial class ExecutionPlanApplication
         var artifacts = withFiles ? await _repository.GetArtifactsAsync(planId, cancellationToken) : [];
         var settings = await QaSettingsAsync(cancellationToken);
         return CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
+    }
+
+    /// <summary>
+    /// Publica sozinho (cria ou atualiza o mesmo comentário) o resumo da situação na discussion do card no DevOps —
+    /// em chamado, PR ou QA, e para atualizar o comentário quando a espera muda ou acaba. Config
+    /// <c>SituationPostToDevOps</c>. Best-effort: falha vira aviso no plano (uma vez por erro), nunca quebra a operação.
+    /// </summary>
+    private async Task PostSituationToDevOpsAsync(Guid planId, string cardNumber, CancellationToken cancellationToken)
+    {
+        if (_devOps is null) return;
+        try
+        {
+            var settings = await QaSettingsAsync(cancellationToken);
+            if (!settings.PostSituationToDevOps) return;
+            var commentId = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
+            var situation = await BuildSituationAsync(planId, true, cancellationToken);
+            if (!CardSituationKind.PostToDevOps(situation.Kind, commentId is not null)) return;
+            try
+            {
+                (situation.DevOpsState, situation.DevOpsColumn) = await _devOps.GetStateAsync(cardNumber, cancellationToken);
+                CardSituation.Finish(situation);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Estado do DevOps é enfeite do resumo.
+            }
+            var html = SituationHtml.Build(situation, DateTimeOffset.UtcNow, CardSituation.Brasilia);
+            var id = await _devOps.UpsertCommentAsync(cardNumber, html, commentId, cancellationToken);
+            if (id != commentId)
+            {
+                await _repository.SetSituationCommentIdAsync(planId, id, cancellationToken);
+                // Primeira vez (ou o comentário foi apagado no DevOps): avisa uma vez na Timeline; depois só atualiza.
+                await WriteTimelineAsync(await LoadAsync(planId, cancellationToken),
+                    $"📣 **Situação publicada na discussion do DevOps** ({situation.Icon} {situation.Title}) — o PRMake atualiza o mesmo comentário a cada mudança.",
+                    SystemActor, cancellationToken);
+            }
+            LastDiscussionError.TryRemove(planId, out _);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            var error = e.Message.Length <= 300 ? e.Message : e.Message[..300];
+            if (LastDiscussionError.TryGetValue(planId, out var last) && last == error) return;
+            LastDiscussionError[planId] = error;
+            try
+            {
+                await AppendLogsAsync(planId, new AppendExecutionLogsRequest
+                {
+                    Logs = [new ExecutionLogItem { Kind = ExecutionLogKind.Warning,
+                        Message = $"Não deu para publicar a situação na discussion do DevOps: {error}. Publique pelo cartão *Situação atual* (Publicar no DevOps)." }]
+                }, cancellationToken);
+            }
+            catch (Exception inner) when (inner is not OperationCanceledException)
+            {
+                // Aviso é best-effort.
+            }
+        }
     }
 
     private async Task<ExecutionQaSettings> QaSettingsAsync(CancellationToken cancellationToken)
@@ -116,6 +175,7 @@ public partial class ExecutionPlanApplication
                 ExecutionPlanRealTimeEvents.EventPlanUpdated,
                 new { cardNumber = plan.CardNumber, planId = plan.Id, action = ExecutionPlanRealTimeEvents.Actions.Situation, stepKey = (string?)null, status = plan.Status },
                 cancellationToken);
+            await PostSituationToDevOpsAsync(plan.Id, plan.CardNumber, cancellationToken);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -168,6 +228,8 @@ public partial class ExecutionPlanApplication
                         Message = $"PR de QA [{merged.DisplayName}]({merged.Url}) mesclado, mas não deu para mover o card para Dev Test in QA: {error}. Nova tentativa em 10 min (ou mova pelo menu do DevOps)." }]
                 }, cancellationToken);
             await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Situation, qa.Key, cancellationToken);
+            // Movido (ou não) para Dev Test in QA: o resumo da discussion mostra o estado novo.
+            await PostSituationToDevOpsAsync(planId, peek.CardNumber, cancellationToken);
         }
         finally
         {
