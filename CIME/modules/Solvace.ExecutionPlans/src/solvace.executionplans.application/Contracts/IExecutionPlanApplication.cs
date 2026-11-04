@@ -38,11 +38,28 @@ public interface IExecutionPlanApplication
     Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
     Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
 
+    // 0076 — evidências do card no DevOps guardadas no plano
+    Task<CardEvidenceResponse> ImportEvidenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> ListEvidenceAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> SkipEvidenceAsync(Guid planId, string reason, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<string?> CheckEvidenceAsync(Guid planId, CancellationToken cancellationToken);
+
+    // 0078 — assistente do card (sugestões que não travam) e publicação por card
+    Task<List<ExecutionSuggestionResponse>> GetSuggestionsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionSuggestionResponse> ActOnSuggestionAsync(Guid suggestionId, string action, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionSuggestionResponse> DismissSuggestionAsync(Guid suggestionId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<CardSituationResponse> SetCardSituationAutoPostAsync(string cardNumber, bool? autoPost, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>0078: edita o texto de um arquivo do plano (análise, soluções, chamado...).</summary>
+    Task<ExecutionArtifactResponse> UpdateArtifactTextAsync(Guid planId, Guid artifactId, string content, ExecutionActor actor, CancellationToken cancellationToken);
+
     // 0075 — situação atual do card (o que está sendo aguardado) e o contexto da passagem
     Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken);
     Task<CardSituationResponse> SetHandoffAsync(Guid planId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
     /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pela tela.</summary>
-    Task<int> PublishSituationAsync(string cardNumber, string html, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken, string? markdown = null);
+    /// <summary>0076: publicação automática da situação — preferência do usuário e o padrão global.</summary>
+    Task<SituationPostSettingsResponse> GetSituationPostSettingsAsync(Guid userId, CancellationToken cancellationToken);
+    Task<SituationPostSettingsResponse> SetSituationPostSettingsAsync(Guid userId, bool? autoPost, CancellationToken cancellationToken);
 
     // 0075 — fotografias do código citado
     Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
@@ -60,7 +77,8 @@ public interface IExecutionPlanApplication
     Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken);
 
     Task<ExecutionArtifactResponse> UploadArtifactAsync(Guid planId, ExecutionArtifactUpload upload, ExecutionActor actor, CancellationToken cancellationToken);
-    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
+    /// <param name="markRead">0076: quem pede é a skill — a evidência conta como aberta.</param>
+    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken, bool markRead = false);
     Task DeleteArtifactAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
 
     // 0031 — comentários com anexos

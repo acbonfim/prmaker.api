@@ -1097,6 +1097,36 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         return result.OrderBy(p => direct.Contains(p) ? 0 : 1).ThenBy(p => p.Kind == "revamp" ? 0 : 1).Select(p => p.Key).Take(6).ToList();
     }
 
+    public async Task<ReverseItemResponse> GetCardItemAsync(string card, string reference, CancellationToken cancellationToken)
+    {
+        var raw = Uri.UnescapeDataString(reference ?? string.Empty).Trim();
+        var parsed = ReverseItemKinds.ParseRef(raw) ?? throw new DomainException($"Referência inválida: '{raw}' (use <módulo>#RN-012).");
+        if (parsed.Module is not null)
+            return (await GetItemsAsync([raw], null, cancellationToken))[0];
+
+        var ctx = await repository.GetCardContextAsync(card.Trim(), tracked: false, cancellationToken);
+        // O módulo do item que a própria análise consultou vence; depois os módulos do card; por fim o índice inteiro.
+        var candidates = (ctx?.ConsultedRefs ?? [])
+            .Select(ReverseItemKinds.ParseRef)
+            .Where(p => p?.Module is not null && p.Value.Id == parsed.Id)
+            .Select(p => p!.Value.Module!)
+            .Concat(ctx?.Modules ?? [])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var module in candidates)
+        {
+            try
+            {
+                return (await GetItemsAsync([parsed.Id], module, cancellationToken))[0];
+            }
+            catch (KnowledgeNotFoundException)
+            {
+                // tenta o próximo módulo do card
+            }
+        }
+        return (await GetItemsAsync([parsed.Id], null, cancellationToken))[0];
+    }
+
     public async Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(card)) return;

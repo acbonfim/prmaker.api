@@ -302,6 +302,9 @@ public class ExecutionArtifactResponse
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    /// <summary>0076: evidência do DevOps (<c>devops:&lt;id&gt;</c>) e quando a skill a abriu.</summary>
+    public string? ExternalKey { get; set; }
+    public DateTimeOffset? ReadAt { get; set; }
 }
 
 /// <summary>
@@ -593,7 +596,9 @@ public static class ExecutionPlanMappings
         Description = artifact.Description,
         CreatedBy = artifact.CreatedBy,
         CreatedAt = artifact.CreatedAt,
-        UpdatedAt = artifact.UpdatedAt
+        UpdatedAt = artifact.UpdatedAt,
+        ExternalKey = artifact.ExternalKey,
+        ReadAt = artifact.ReadAt
     };
 
     public static ExecutionNoteResponse ToResponse(this ExecutionNote note, string planPhase, IEnumerable<ExecutionArtifact> attachments) => new()

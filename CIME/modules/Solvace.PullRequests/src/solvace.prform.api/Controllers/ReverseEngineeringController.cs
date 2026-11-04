@@ -29,6 +29,24 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     /// <summary>Evento: a revisão mudou (andamento, rascunho, envio, revisão, publicação) — payload = cabeça da revisão.</summary>
     public const string RevisionEvent = "reverseRevision";
 
+    /// <summary>0076: um item da engenharia reversa citado no texto de um card (popover do UC-121/RN-012).</summary>
+    [HttpGet("card/{card}/items/{reference}")]
+    public async Task<ActionResult<ReverseItemResponse>> GetCardItem([FromRoute] string card, [FromRoute] string reference, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await application.GetCardItemAsync(card, reference, ct));
+        }
+        catch (KnowledgeNotFoundException e)
+        {
+            return NotFound(new { error = e.Message });
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+    }
+
     [HttpGet("settings")]
     public Task<ActionResult<ReverseSettingsResponse>> Settings(CancellationToken ct) =>
         Run<ReverseSettingsResponse>(async () => Ok(await application.GetSettingsAsync(Roles(), ct)));

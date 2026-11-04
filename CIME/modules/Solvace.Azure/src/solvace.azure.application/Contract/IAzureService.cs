@@ -25,6 +25,18 @@ public interface IAzureService
     Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 0076: evidências do card — arquivos anexados e imagens/arquivos colados nos campos de texto e na discussion,
+    /// sem repetir. Erro do DevOps: <see cref="solvace.azure.domain.Exceptions.DevOpsActionException"/> com a mensagem dele.
+    /// </summary>
+    Task<IReadOnlyList<AzureCardEvidence>> GetCardEvidenceAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 0076: baixa um anexo do DevOps (só da organização configurada). Maior que <paramref name="maxBytes"/> = TooLarge,
+    /// sem o conteúdo.
+    /// </summary>
+    Task<AzureAttachmentDownload> DownloadAttachmentAsync(string url, long maxBytes, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Ids dos work items que casam com a consulta WIQL (0039: regra automática da fila), do projeto configurado, no
     /// máximo <paramref name="top"/>. Erro do DevOps vira exceção com a mensagem dele.
     /// </summary>

@@ -46,6 +46,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("ExternalKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -64,6 +68,9 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.Property<Guid>("PlanId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -420,6 +427,17 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<DateTimeOffset?>("DevTestInQaTriedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("EvidenceCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("EvidenceSkipReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -470,12 +488,25 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<DateTimeOffset?>("SituationAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool?>("SituationAutoPost")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("SituationCommentId")
                         .HasColumnType("integer");
 
                     b.Property<string>("SituationKind")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("SituationPostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SituationPostedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SituationPostedText")
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -872,6 +903,71 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("ExecutionSteps", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionSuggestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ChosenAction")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Result")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Text")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("CardNumber", "DedupKey")
+                        .IsUnique();
+
+                    b.ToTable("ExecutionSuggestions", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionUserSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -909,6 +1005,9 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<decimal?>("DailyBudgetUsd")
                         .HasPrecision(12, 4)
                         .HasColumnType("numeric(12,4)");
+
+                    b.Property<bool?>("SituationAutoPost")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1402,6 +1501,44 @@ namespace solvace.executionplans.infra.Migrations
                         .HasForeignKey("PlanId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionSuggestion", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.ExecutionPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsMany("solvace.executionplans.domain.Entities.ExecutionSuggestionAction", "Actions", b1 =>
+                        {
+                            b1.Property<Guid>("ExecutionSuggestionId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Key")
+                                .IsRequired();
+
+                            b1.Property<string>("Label")
+                                .IsRequired();
+
+                            b1.Property<bool>("Primary");
+
+                            b1.HasKey("ExecutionSuggestionId", "__synthesizedOrdinal");
+
+                            b1.ToTable("ExecutionSuggestions", "execution");
+
+                            b1
+                                .ToJson("Actions")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ExecutionSuggestionId");
+                        });
+
+                    b.Navigation("Actions");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>

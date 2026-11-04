@@ -73,7 +73,8 @@ public class ExecutionPlanController : ControllerBase
     [HttpPatch("{id:guid}/steps/{key}")]
     public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request,
         [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
-        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations,
+        [FromServices] solvace.prform.Execution.EvidenceGate evidence, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () =>
         {
             // 0052: a skill concluindo a investigação de card com engenharia reversa completa precisa ter consultado/citado a base.
@@ -85,6 +86,9 @@ public class ExecutionPlanController : ControllerBase
                 // 0075: análise/soluções só concluem com toda citação de código fotografada.
                 if (await citations.CheckAsync(id, key, ct) is { } missing)
                     return BadRequest(new { error = missing });
+                // 0076: evidências do card importadas e abertas.
+                if (await evidence.CheckAsync(id, key, ct) is { } unread)
+                    return BadRequest(new { error = unread });
             }
             return Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct));
         });
@@ -203,7 +207,7 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult> GetArtifactContent([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromQuery] bool download = false, CancellationToken ct = default) =>
         RunPlain(async () =>
         {
-            var file = await _application.GetArtifactFileAsync(id, artifactId, ct);
+            var file = await _application.GetArtifactFileAsync(id, artifactId, ct, markRead: IsExecutorRequest());
             Response.Headers["X-Content-Type-Options"] = "nosniff";
             if (download)
                 return File(file.Data, file.Artifact.ContentType, file.Artifact.Name);
@@ -228,6 +232,50 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
+    // ── 0078: assistente do card (sugestões que não travam) e textos gerados ──────────────────────
+
+    /// <summary>Sugestões do assistente no card (abertas primeiro).</summary>
+    [HttpGet("card/{cardNumber}/suggestions")]
+    public Task<ActionResult<List<ExecutionSuggestionResponse>>> GetSuggestions([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionSuggestionResponse>>(async () => Ok(await _application.GetSuggestionsAsync(cardNumber, ct)));
+
+    /// <summary>Responde uma sugestão (a ação usa a integração do DevOps de quem clicou).</summary>
+    [HttpPost("suggestions/{suggestionId:guid}/act")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> ActOnSuggestion([FromRoute] Guid suggestionId, [FromBody] ActOnSuggestionRequest request, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.ActOnSuggestionAsync(suggestionId, request.Action ?? string.Empty, await GetActorAsync(ct, executor: false), ct)));
+
+    [HttpPost("suggestions/{suggestionId:guid}/dismiss")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> DismissSuggestion([FromRoute] Guid suggestionId, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.DismissSuggestionAsync(suggestionId, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Publicação automática da situação só neste card (null = volta para a preferência/padrão).</summary>
+    [HttpPut("card/{cardNumber}/situation/auto-post")]
+    public Task<ActionResult<CardSituationResponse>> SetCardAutoPost([FromRoute] string cardNumber, [FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.SetCardSituationAutoPostAsync(cardNumber, request.AutoPost, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Edita o texto de um arquivo gerado no plano (análise, soluções, chamado, orientação...).</summary>
+    [HttpPut("{id:guid}/artifacts/{artifactId:guid}/text")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public Task<ActionResult<ExecutionArtifactResponse>> UpdateArtifactText([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromBody] UpdateArtifactTextRequest request, CancellationToken ct) =>
+        Run<ExecutionArtifactResponse>(async () => Ok(await _application.UpdateArtifactTextAsync(id, artifactId, request.Content ?? string.Empty, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    // ── 0076: evidências do card no DevOps ─────────────────────────────────────────────────────────
+
+    /// <summary>Importa (idempotente) as evidências do card no DevOps para os arquivos do plano e devolve a lista.</summary>
+    [HttpPost("{id:guid}/evidence/import")]
+    public Task<ActionResult<CardEvidenceResponse>> ImportEvidence([FromRoute] Guid id, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.ImportEvidenceAsync(id, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Evidências já guardadas no card (sem ir ao DevOps), com o que a análise já abriu.</summary>
+    [HttpGet("card/{cardNumber}/evidence")]
+    public Task<ActionResult<CardEvidenceResponse>> GetEvidence([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.ListEvidenceAsync(cardNumber, ct)));
+
+    /// <summary>Seguir a análise sem as evidências (o usuário autorizou; motivo obrigatório).</summary>
+    [HttpPost("{id:guid}/evidence/skip")]
+    public Task<ActionResult<CardEvidenceResponse>> SkipEvidence([FromRoute] Guid id, [FromBody] SkipExecutionEvidenceRequest request, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.SkipEvidenceAsync(id, request.Reason ?? string.Empty, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
     // ── 0075: situação atual do card ───────────────────────────────────────────────────────────────
 
     /// <summary>O que o card está aguardando (chamado, aprovação/merge, QA, resposta, você), com os fatos e o contexto da passagem.</summary>
@@ -243,11 +291,30 @@ public class ExecutionPlanController : ControllerBase
 
     /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pelo botão da tela.</summary>
     [HttpPost("card/{cardNumber}/situation/publish")]
-    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest request, CancellationToken ct) =>
+    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest? request, CancellationToken ct) =>
         RunPlain(async () =>
         {
-            var commentId = await _application.PublishSituationAsync(cardNumber, request.Html ?? string.Empty, await GetActorAsync(ct, executor: false), ct);
+            var commentId = await _application.PublishSituationAsync(cardNumber, request?.Html, await GetActorAsync(ct, executor: false), ct, request?.Markdown);
             return Ok(new { commentId });
+        });
+
+    /// <summary>0076: publicação automática da situação na discussion — preferência do usuário logado (null = padrão global).</summary>
+    [HttpGet("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> GetSituationPostSettings(CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.GetSituationPostSettingsAsync(userId, ct));
+        });
+
+    [HttpPut("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> SetSituationPostSettings([FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.SetSituationPostSettingsAsync(userId, request.AutoPost, ct));
         });
 
     // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────

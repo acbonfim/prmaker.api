@@ -177,6 +177,14 @@ public class ExecutionUserSettingsResponse
     public string? AutoLastError { get; set; }
 }
 
+/// <summary>0076: preferência de publicação da situação na discussion (do usuário logado) e o padrão global.</summary>
+public class SituationPostSettingsResponse
+{
+    public bool? AutoPost { get; set; }
+    public bool GlobalDefault { get; set; }
+    public bool Effective => AutoPost ?? GlobalDefault;
+}
+
 public static class ExecutionQueueResponseExtensions
 {
     public static ExecutionRequestResponse ToResponse(this ExecutionRequest r) => new()

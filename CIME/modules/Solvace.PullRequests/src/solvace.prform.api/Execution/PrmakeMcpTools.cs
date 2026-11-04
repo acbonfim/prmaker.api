@@ -33,7 +33,8 @@ public partial class PrmakeMcpTools(
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
     solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
-    CodeCitationGate citations)
+    CodeCitationGate citations,
+    EvidenceGate evidenceGate)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -45,6 +46,7 @@ public partial class PrmakeMcpTools(
         "Git e o 'status' final ficam no prmake-plan.sh. " +
         "0075: codigo citado = fotografia (prmake-plan.sh coderef; cite [caminho:linhas](ref:<id>); ajuste com prmake_code_ref); " +
         "ao entrar em espera (chamado, PR, QA) grave prmake_handoff com o contexto da passagem. " +
+        "0076: evidencias do card (anexos, prints da descricao e da discussion) com prmake_evidence — abra todas antes da causa raiz. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
         "Codigo so para confirmar o 'Onde:' que o item cita.";
@@ -237,7 +239,7 @@ public partial class PrmakeMcpTools(
         if (found is null)
             return Error($"Anexo '{reference}' nao encontrado. Anexos do card: " +
                          (all.Count == 0 ? "nenhum" : string.Join(", ", all.Select(a => $"#{a.Number} {a.Name}"))));
-        var file = await plans.GetArtifactFileAsync(found.PlanId, found.Id, ct);
+        var file = await plans.GetArtifactFileAsync(found.PlanId, found.Id, ct, markRead: true);
         var header = new TextContentBlock { Text = $"#{found.Number} {found.Name} ({found.ContentType}, {found.Size} bytes)" };
         if (found.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !found.ContentType.Contains("svg"))
             return new CallToolResult { Content = [header, ImageContentBlock.FromBytes(file.Data, found.ContentType)] };
@@ -389,6 +391,9 @@ public partial class PrmakeMcpTools(
         // 0075: análise/soluções só concluem com toda citação de código fotografada.
         if (await citations.CheckAsync(planId, from, ct) is { } missing)
             throw new McpException(missing);
+        // 0076: evidências do card importadas e abertas.
+        if (await evidenceGate.CheckAsync(planId, from, ct) is { } unread)
+            throw new McpException(unread);
         if (!string.IsNullOrWhiteSpace(message))
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {
@@ -514,6 +519,31 @@ public partial class PrmakeMcpTools(
                 new ExecutionCodeRefPatch(change, title, why, proposal, annotations), actor, ct);
         }
         return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
+    });
+
+    [McpServerTool(Name = "prmake_evidence")]
+    [Description("0076: EVIDENCIAS do card no DevOps — importa (idempotente) para os arquivos do plano os anexos do card e as imagens/arquivos " +
+                 "colados na descricao, nos campos e na discussion, e lista cada uma com o numero (#n), a origem e se ja foi aberta. " +
+                 "Abra TODAS as legiveis com prmake_attachment(card, \"#n\") antes da causa raiz e diga na analise o que cada uma mostrou — " +
+                 "montar-analise nao conclui sem isso. Sem acesso ao DevOps: pergunte ao usuario e, com o ok dele, skip=\"motivo\".")]
+    public Task<string> Evidence(string card,
+        [Description("So com o ok do usuario: motivo para seguir a analise sem as evidencias")] string? skip = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var planId = await PlanIdAsync(card, phase, ct);
+        var actor = await ActorAsync(ct);
+        var result = string.IsNullOrWhiteSpace(skip)
+            ? await plans.ImportEvidenceAsync(planId, actor, ct)
+            : await plans.SkipEvidenceAsync(planId, skip, actor, ct);
+        var sb = new StringBuilder();
+        if (result.Error is not null) sb.AppendLine($"ERRO: {result.Error}");
+        if (result.SkipReason is not null) sb.AppendLine($"Seguindo sem as evidencias: {result.SkipReason}");
+        sb.AppendLine(result.Items.Count == 0 ? "Nenhuma evidencia no card (sem anexos nem imagens na descricao/discussion)." : $"{result.Items.Count} evidencia(s); {result.Unread} legivel(is) ainda nao aberta(s):");
+        foreach (var i in result.Items)
+            sb.AppendLine(i.Number is { } n
+                ? $"#{n} {i.Name} — {i.SourceDetail} · {(i.ReadAt is null ? (i.Readable ? "NAO ABERTA" : "abrir a mao (video/compactado)") : "aberta")}"
+                : $"(nao importada) {i.Name} — {i.Source}{(i.SourceDetail is null ? "" : $" ({i.SourceDetail})")}: {i.Error}");
+        return sb.ToString().TrimEnd();
     });
 
     [McpServerTool(Name = "prmake_handoff")]

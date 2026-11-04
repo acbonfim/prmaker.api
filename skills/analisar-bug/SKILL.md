@@ -93,6 +93,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | travada esperando o usuario | `prmake_block(card, key, text)` · `prmake_unblock` | `block` · `unblock` |
 | perguntar · resposta dada no chat · cancelar/substituir | `prmake_ask(card, questions)` (`replaces: [n]` na revisada) · `prmake_answer(card, n, text)` · `prmake_answers` · `prmake_cancel_questions(card, [n], motivo)` | `ask` · `answer` · `answers` · `cancel-questions` |
 | comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
+| **evidencias do card no DevOps** (0076: anexos, prints da descricao e da discussion) | `prmake_evidence(card)` · `prmake_attachment(card, "#n")` | `evidencias` · `attachment` + Read · `evidence-text.py` |
 | estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
 | contexto da passagem ao entrar em espera (0075) · situacao atual | `prmake_handoff(card, text)` | `handoff` · `situation` |
@@ -159,6 +160,15 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Perguntas abertas acompanham a analise**: comentario/anexo/resposta que muda a analise → ao refazer as solucoes,
   revise cada pergunta ainda aberta: a revisada vai com `replaces: [n]`, a que perdeu o sentido e cancelada com o
   motivo (`prmake_cancel_questions`) — o usuario nunca cancela pergunta a mao. Detalhes: `$REF correcao 6`.
+- **Evidencias do card no DevOps sao obrigatorias (0076)**: o `contexto` importa para o plano tudo o que o card tem —
+  arquivos anexados, prints colados nos repro steps/descricao e na **discussion** — e mostra a lista (`#n`, origem) e o
+  texto da discussion (`dados/discussion.txt`; `[imagem: ...]` marca onde havia print). **Antes da causa raiz, abra
+  cada evidencia legivel**: `prmake_attachment(card, "#n")` (imagem volta como imagem) ou `bash $PLAN attachment <card>
+  "#n"` + Read (PDF); Office/e-mail: `python3 ~/.claude/skills/analisar-bug/scripts/evidence-text.py <arquivo>`. Video
+  e compactado: diga que nao abriu. Na analise, a secao *Evidencias do card* diz o que cada uma mostrou. O PRMake
+  recusa concluir `montar-analise` sem a importacao ou com evidencia legivel nao aberta. Sem acesso ao DevOps (erro na
+  importacao): `block` com o que fazer; so siga sem com o ok explicito do usuario (`prmake_evidence(card, skip:
+  "motivo")`). Comentario novo com print no meio da analise: `prmake_evidence` de novo (importa so o que falta).
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
@@ -177,6 +187,10 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Fechamento antes da validacao em QA (0075)**: com codigo, root cause, classificacao, resumo PT/EN e Remaining zerado
   vao na etapa `preparar-fechamento`, logo depois de abrir os PRs e **antes** de `validar-qa` — o Ready for QA exige o
   card sem pendencias e o usuario move ao concluir a validacao. O `fechar-card` (depois de `validar-qa`) so confere e move.
+- **Estimativa e horas sao da pessoa (0078)**: o PRMake pergunta na tela (assistente do card, sem travar o plano) se
+  registra a estimativa inicial e sugere lancar horas em Completed conforme as etapas concluem — **nao** rode
+  `initial-estimate` nem lance horas por conta propria; no fechamento siga o `zero-remaining` como sempre. A publicacao
+  dos resumos de espera na discussion tambem e escolha da pessoa (automatica por card/usuario ou manual pelo cartao).
 - **Espera = contexto da passagem (0075)**: ao entrar em espera (chamado aberto, PR aguardando aprovacao/merge, QA),
   grave `prmake_handoff` — o que foi feito, o que se espera e de quem, riscos, como retomar (`$REF correcao 8`). O
   PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover).
@@ -198,7 +212,8 @@ se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`. Ele cria/retoma o plano (se ja existe plano aberto,
 **continue da primeira etapa pronta com o checkpoint**; analise concluida sem correcao → siga do passo 6, sem
 refazer), mostra os campos do card e os repro steps (inteiros em `$CARD_DIR/dados/`), lista comentarios/anexos novos
-(abra cada anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
+(abra cada anexo novo com Read), **importa as evidencias do card no DevOps e mostra a discussion** (0076 — abra todas
+antes da causa raiz), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
 Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas** (`steps`) para este caso concreto.
 **Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.

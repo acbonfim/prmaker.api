@@ -175,7 +175,7 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
     `--no-build` recompila a solucao. Java: o build do modulo alterado basta.
   - Depois do cherry-pick nas branches do fluxo (dev/qa...) **nao compile nem teste de novo** — so se resolveu
     conflito na mao: ai so o que voce tocou (`$PLAN test` ou build + `--no-build` filtrado) nessa branch.
-- **CI do PR (0069)**: o PRMake acompanha o CI de cada PR do plano e mostra na etapa (CI ✅/⏳/❌). Falha que a base ja
+- **CI do PR (0069)**: o PRMake acompanha o CI de cada PR do plano e mostra na etapa (CI ok / rodando / falhou). Falha que a base ja
   tem (o mesmo check vermelho nos PRs recentes para a mesma branch — ex.: `users` em todo PR para development) aparece
   como "ja falhava na base" e **nao e sua**: nao corrija. So falha nova retoma o card ("o CI de um PR falhou"):
   `prmake_plan` mostra o PR, o `ci` e os checks (`alreadyFailsOnBase` = da base); `gh pr checks <url-do-pr>` e `gh run view <run-id> --log-failed | tail -120`

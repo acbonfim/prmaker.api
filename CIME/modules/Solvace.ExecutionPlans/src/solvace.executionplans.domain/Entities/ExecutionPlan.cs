@@ -80,8 +80,52 @@ public class ExecutionPlan
     public string? DevTestInQaError { get; private set; }
     public const int MaxDevTestInQaErrorLength = 500;
 
+    /// <summary>
+    /// 0076: última importação das evidências do card no DevOps (anexos, imagens da descrição e da discussion) e o erro
+    /// dela; ou o motivo, dado pelo usuário, para seguir a análise sem elas.
+    /// </summary>
+    public DateTimeOffset? EvidenceCheckedAt { get; private set; }
+    public string? EvidenceError { get; private set; }
+    public string? EvidenceSkipReason { get; private set; }
+    public const int MaxEvidenceTextLength = 500;
+
+    public void RecordEvidenceCheck(string? error, DateTimeOffset now)
+    {
+        if (error is null)
+        {
+            EvidenceCheckedAt = now;
+            EvidenceError = null;
+        }
+        else
+        {
+            EvidenceError = Clean(error, MaxEvidenceTextLength);
+        }
+        UpdatedAt = now;
+    }
+
+    public void SkipEvidence(string reason, string by, DateTimeOffset now)
+    {
+        var r = Clean(reason, MaxEvidenceTextLength) ?? throw new DomainException("Diga por que a análise segue sem as evidências (o que o usuário respondeu).");
+        EvidenceSkipReason = Clean($"{r} — {by}", MaxEvidenceTextLength);
+        UpdatedAt = now;
+    }
+
     /// <summary>0075: comentário da situação publicado na discussion do DevOps (republicar atualiza o mesmo).</summary>
     public int? SituationCommentId { get; private set; }
+
+    /// <summary>0076: o que foi publicado na discussion (markdown), quando e por quem — a tela mostra e compara com o atual.</summary>
+    public string? SituationPostedText { get; private set; }
+    public DateTimeOffset? SituationPostedAt { get; private set; }
+    public string? SituationPostedBy { get; private set; }
+
+    /// <summary>0078: só este card — publicar sozinho os resumos de espera? null = preferência do dono / padrão global.</summary>
+    public bool? SituationAutoPost { get; private set; }
+
+    public void SetSituationAutoPost(bool? value, DateTimeOffset now)
+    {
+        SituationAutoPost = value;
+        UpdatedAt = now;
+    }
 
     public void SetSituationComment(int commentId, DateTimeOffset now)
     {

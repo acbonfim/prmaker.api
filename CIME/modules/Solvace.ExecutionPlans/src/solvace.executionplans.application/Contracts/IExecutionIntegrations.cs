@@ -52,6 +52,32 @@ public interface IExecutionCardDevOps
 
     /// <summary>Cria ou atualiza o comentário HTML na discussion; devolve o id.</summary>
     Task<int> UpsertCommentAsync(string cardNumber, string html, int? commentId, CancellationToken cancellationToken);
+
+    /// <summary>0078: horas do card (null = não deu para ler).</summary>
+    Task<CardEffort?> GetEffortAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0078: estimativa inicial configurada. Ok = gravou; senão a mensagem do DevOps.</summary>
+    Task<(bool Ok, string Message)> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0078: soma em Completed Work e tira do Remaining Work.</summary>
+    Task<(bool Ok, string Message)> LogHoursAsync(string cardNumber, decimal hours, CancellationToken cancellationToken);
+    /// <summary>0078: o que o assistente sugere (Skills Configurations).</summary>
+    Task<ExecutionAssistantSettings> GetAssistantSettingsAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>0078: horas do card no DevOps.</summary>
+public record CardEffort(decimal? OriginalEstimate, decimal? CompletedWork, decimal? RemainingWork);
+
+/// <summary>
+/// 0078: assistente do card — ligado, etapas que sugerem lançar horas (<c>corrigir-*</c> = prefixo), horas por etapa e a
+/// média do time por card.
+/// </summary>
+public record ExecutionAssistantSettings(bool Enabled, IReadOnlyList<string> HoursSteps, decimal HoursPerStep, decimal AverageHours)
+{
+    public static readonly ExecutionAssistantSettings Default =
+        new(true, ["montar-analise", "propor-solucoes", "corrigir-*", "validar-qa"], 1m, 3m);
+
+    public bool SuggestsHoursFor(string stepKey) =>
+        HoursSteps.Any(p => p.EndsWith('*') ? stepKey.StartsWith(p[..^1], StringComparison.OrdinalIgnoreCase)
+                                            : stepKey.Equals(p, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
@@ -70,6 +96,19 @@ public record ExecutionQaSettings(bool AutoDevTestInQa, IReadOnlyList<string> Qa
             ? b.StartsWith(p[..^1], StringComparison.OrdinalIgnoreCase)
             : string.Equals(b, p, StringComparison.OrdinalIgnoreCase));
     }
+}
+
+/// <summary>0076: evidência do card no DevOps (anexo, imagem colada num campo ou na discussion).</summary>
+public record CardEvidence(string Key, string Url, string FileName, string Source, string? SourceDetail, DateTimeOffset? At, long? Size, string? Comment);
+
+/// <summary>0076: conteúdo baixado (TooLarge = passou do limite, sem conteúdo).</summary>
+public record CardEvidenceFile(byte[] Data, string ContentType, bool TooLarge, long? Size);
+
+/// <summary>0076: evidências do card no DevOps — implementado no host com a integração do DevOps de quem chama.</summary>
+public interface IExecutionCardEvidenceSource
+{
+    Task<IReadOnlyList<CardEvidence>> ListAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<CardEvidenceFile> DownloadAsync(CardEvidence evidence, long maxBytes, CancellationToken cancellationToken);
 }
 
 /// <summary>Escreve na Timeline do card (0024) — implementado no host sobre o módulo Timeline.</summary>

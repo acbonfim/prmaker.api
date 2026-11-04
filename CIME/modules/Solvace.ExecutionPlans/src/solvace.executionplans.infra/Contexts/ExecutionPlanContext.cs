@@ -22,6 +22,7 @@ public class ExecutionPlanContext : DbContext
     public DbSet<ExecutionWorker> Workers { get; set; }
     public DbSet<ExecutionUserSettings> UserSettings { get; set; }
     public DbSet<ExecutionCodeRef> CodeRefs { get; set; }
+    public DbSet<ExecutionSuggestion> Suggestions { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -84,6 +85,10 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.HandoffBy).HasMaxLength(200);
             entity.Property(e => e.SituationKind).HasMaxLength(20);
             entity.Property(e => e.DevTestInQaError).HasMaxLength(ExecutionPlan.MaxDevTestInQaErrorLength);
+            entity.Property(e => e.EvidenceError).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
+            entity.Property(e => e.EvidenceSkipReason).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
+            entity.Property(e => e.SituationPostedText).HasColumnType("text");
+            entity.Property(e => e.SituationPostedBy).HasMaxLength(200);
             entity.Ignore(e => e.QaValidationStep);
         });
 
@@ -143,6 +148,9 @@ public class ExecutionPlanContext : DbContext
 
             entity.HasIndex(e => new { e.PlanId, e.Kind, e.Name }).IsUnique();
             entity.HasIndex(e => e.NoteId);
+            // 0076: evidência do DevOps (não baixa de novo).
+            entity.Property(e => e.ExternalKey).HasMaxLength(ExecutionArtifact.MaxExternalKeyLength);
+            entity.Ignore(e => e.IsEvidence);
         });
 
         modelBuilder.Entity<ExecutionNote>(entity =>
@@ -239,6 +247,28 @@ public class ExecutionPlanContext : DbContext
             entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.PlanId, e.Ref }).IsUnique();
             entity.HasIndex(e => new { e.CardNumber, e.Ref });
+        });
+
+        // 0078: assistente do card (sugestões que não travam o plano).
+        modelBuilder.Entity<ExecutionSuggestion>(entity =>
+        {
+            entity.ToTable("ExecutionSuggestions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.DedupKey).IsRequired().HasMaxLength(120);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(ExecutionSuggestion.MaxTitleLength);
+            entity.Property(e => e.Text).HasMaxLength(ExecutionSuggestion.MaxTextLength);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ChosenAction).HasMaxLength(40);
+            entity.Property(e => e.Result).HasMaxLength(ExecutionSuggestion.MaxResultLength);
+            entity.Property(e => e.ResolvedBy).HasMaxLength(200);
+            entity.OwnsMany(e => e.Actions, a => a.ToJson());
+            entity.Ignore(e => e.IsOpen);
+
+            entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.CardNumber, e.DedupKey }).IsUnique();
         });
 
         // 0039: fila de execução, executores e configurações do usuário.

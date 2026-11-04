@@ -23,6 +23,10 @@
 #                                                        citacoes caminho:linha abrem o popover com o codigo real, o diff
 #                                                        proposto e as notas). Le na copia da master (ou --dir); --after =
 #                                                        so as linhas novas que substituem A-B (o script faz o diff)
+#   evidencias  <card> [--skip "motivo"]               0076: importa para o plano as EVIDENCIAS do card no DevOps (anexos, prints
+#                                                        da descricao e da discussion) e lista (#n, origem, aberta?); abra
+#                                                        cada uma com `attachment <card> "#n"` + Read. --skip = seguir sem
+#                                                        elas, so com o ok do usuario (motivo)
 #   handoff     <card> [texto|STDIN]                    0075: contexto da passagem ao entrar em ESPERA (chamado, PR, QA): o que
 #                                                        foi feito, o que se espera e de quem, riscos, como retomar — vai no
 #                                                        resumo "Situacao atual" do card e no handover (vazio limpa)
@@ -255,7 +259,7 @@ fetch_artifact() { # <planId> <artifactId> <numero> <nome> <sha256>
   mkdir -p "$REFS_DIR"
   local target="$REFS_DIR/$3-$4"
   if [[ ! -f "$target" || "$(sha256 "$target")" != "$5" ]]; then
-    curl -s --max-time 120 -H "x-api-key: $TOKEN" -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$2/content?download=true" \
+    curl -s --max-time 120 -H "x-api-key: $TOKEN" -H 'X-Execution-Client: skill' -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$2/content?download=true" \
       || { warn "falha ao baixar $4"; return 1; }
   fi
   printf '%s' "$target"
@@ -613,6 +617,28 @@ case "$CMD" in
     jq -r '"OK coderef \(.ref) \(.change) \(.path):\(.startLine)-\(.endLine)\(if .hasProposal then " +proposta" else "" end)\(if .hasImplemented then " +feito" else "" end) — cite com [texto](ref:\(.ref))"' "$TMP/resp"
     ;;
 
+  evidencias)
+    require_plan
+    if [[ "${1:-}" == "--skip" ]]; then
+      jq -n --arg r "${2:?motivo (o que o usuario autorizou)}" '{reason:$r}' > "$TMP/body"
+      api POST "/$PLAN/evidence/skip" "$TMP/body"
+    else
+      api POST "/$PLAN/evidence/import"
+    fi
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em evidencias: $(resp_error)"
+    jq -r '
+      (if .error then "ERRO ao ler o DevOps: \(.error)" else empty end),
+      (if .skipReason then "Seguindo sem as evidencias: \(.skipReason)" else empty end),
+      (if (.items | length) == 0 then "Nenhuma evidencia no card (sem anexos nem imagens na descricao/discussion)."
+       else "\(.items | length) evidencia(s) do card no DevOps (guardadas nos arquivos do plano):" end),
+      (.items[] | if .number then
+          "  #\(.number) \(.name) — \(.sourceDetail // .source) · \(if .readAt then "aberta" elif .readable then "NAO ABERTA" else "abrir a mao (video/compactado)" end)"
+        else "  (nao importada) \(.name) — \(.source)\(if .sourceDetail then " (\(.sourceDetail))" else "" end): \(.error // "")" end),
+      (if ([.items[] | select(.number and .readable and (.readAt | not))] | length) > 0
+       then "Abra TODAS as NAO ABERTAS antes da causa raiz: prmake_attachment(card, "#n") ou bash $PLAN attachment <card> "#n" + Read (Office/e-mail: evidence-text.py)." else empty end)
+    ' "$TMP/resp" | sed "s|\$PLAN|$0|"
+    ;;
+
   handoff)
     require_plan; TEXT="${1:-}"
     [[ -n "$TEXT" ]] || TEXT="$(cat)"
@@ -708,6 +734,15 @@ case "$CMD" in
     echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
     bash "$SELF" notes "$CARD" 2>&1
     echo
+    # 0076: tudo o que o card tem de evidencia (anexos, prints da descricao e da discussion) vai para o plano agora.
+    echo "=== EVIDENCIAS DO CARD (DevOps)"
+    bash "$SELF" evidencias "$CARD" 2>&1 || echo "(nao deu para importar — veja o erro acima; a analise nao conclui sem as evidencias)"
+    DISC="$CARD_DIR/dados/discussion.txt"
+    if [[ -s "$DISC" ]]; then
+      echo; echo "=== DISCUSSION DO CARD ($(grep -c '^--- ' "$DISC") comentario(s); inteira em $DISC)"
+      head -c 3500 "$DISC"; [[ $(wc -c < "$DISC") -gt 3500 ]] && echo "…(cortado — leia o arquivo inteiro)"; echo
+    fi
+    echo
     # 0052: engenharia reversa do modulo do card — os itens que casam com o titulo/repro ja vem com o texto, e o card
     # fica registrado (a etapa investigar-codigo so conclui consultando/citando a base quando o modulo esta completo).
     RE_Q="${CTITLE:-} $(head -c 600 "$DESC" 2>/dev/null | tr '\n\r\t' '   ')"
@@ -754,6 +789,9 @@ case "$CMD" in
     echo "(campos e repro steps inteiros em $CARD_DIR/dados/ — abra so se a correcao precisar)"
     echo; echo "=== PLANO"
     bash "$SELF" start "$CARD" 2>&1
+    # 0076: evidencia nova no card depois da analise (print na discussion) entra no plano.
+    echo; echo "=== EVIDENCIAS DO CARD (DevOps)"
+    bash "$SELF" evidencias "$CARD" 2>&1 || true
     ANALYSIS="$(state_get analysisPlanId)"
     if [[ -n "$ANALYSIS" ]]; then
       pull_plan "$ANALYSIS" >/dev/null 2>&1 || true
@@ -1347,9 +1385,15 @@ case "$CMD" in
       echo "Mais de um arquivo para '$REF' — seja mais especifico:"; jq -r 'sort_by(.number)[] | "  #\(.number) \(.name) (\(.kind))"' "$TMP/match.json"; exit 2
     fi
     IFS=$'\t' read -r pid aid num name sha kind ctype size < <(jq -r '.[0] | [.planId, .id, .number, .name, .sha256, .kind, .contentType, .size] | @tsv' "$TMP/match.json")
+    # 0076: abrir pelo comando conta como leitura da evidencia — baixa de novo (o PRMake marca quem abriu).
+    rm -f "$REFS_DIR/$num-$name"
     LOCAL="$(fetch_artifact "$pid" "$aid" "$num" "$name" "$sha")" || die "nao consegui baixar $name"
     echo "anexo #$num $name ($ctype, $(human_size "$size")) -> $LOCAL"
-    echo "(abra com a ferramenta Read para ver/analisar)"
+    case "$name" in
+      *.docx|*.xlsx|*.pptx|*.eml|*.DOCX|*.XLSX|*.PPTX|*.EML)
+        echo "(Office/e-mail: texto com: python3 $(dirname "$0")/evidence-text.py \"$LOCAL\")" ;;
+      *) echo "(abra com a ferramenta Read para ver/analisar)" ;;
+    esac
     ;;
 
   note)

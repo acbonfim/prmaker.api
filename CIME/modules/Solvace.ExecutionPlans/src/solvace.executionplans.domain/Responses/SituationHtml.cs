@@ -26,11 +26,14 @@ public static partial class SituationHtml
     [GeneratedRegex(@"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])")]
     private static partial Regex Italic();
 
-    public static string Build(CardSituationResponse situation, DateTimeOffset now, TimeZoneInfo zone)
+    public static string Build(CardSituationResponse situation, DateTimeOffset now, TimeZoneInfo zone) => Build(situation.Markdown, now, zone);
+
+    /// <summary>0078: o texto (gerado ou editado pela pessoa) com o rodapé de quando foi atualizado.</summary>
+    public static string Build(string markdown, DateTimeOffset now, TimeZoneInfo zone)
     {
         var sb = new StringBuilder();
         sb.Append("<div>");
-        sb.Append(ToHtml(situation.Markdown));
+        sb.Append(ToHtml(markdown));
         var at = TimeZoneInfo.ConvertTime(now, zone).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
         sb.Append($"<p><i>Resumo da situação atualizado automaticamente pelo PRMake em {at}.</i></p>");
         sb.Append("</div>");

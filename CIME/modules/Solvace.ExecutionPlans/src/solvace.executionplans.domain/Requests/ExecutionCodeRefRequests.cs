@@ -24,6 +24,18 @@ public class SaveExecutionCodeRefRequest
         Snapshot, Change, Title, Why, Proposal, Annotations);
 }
 
+/// <summary>0076: preferência de publicação automática da situação (null = seguir o padrão global).</summary>
+public class SituationPostSettingsRequest
+{
+    public bool? AutoPost { get; set; }
+}
+
+/// <summary>0076: seguir a análise sem as evidências do DevOps (o usuário autorizou).</summary>
+public class SkipExecutionEvidenceRequest
+{
+    public string? Reason { get; set; }
+}
+
 /// <summary>0075: contexto da passagem gravado pela skill ao entrar em espera.</summary>
 public class SetExecutionHandoffRequest
 {
@@ -34,6 +46,20 @@ public class SetExecutionHandoffRequest
 public class PublishExecutionSituationRequest
 {
     public string? Html { get; set; }
+    /// <summary>0078: texto editado pela pessoa (markdown); vazio = o resumo gerado.</summary>
+    public string? Markdown { get; set; }
+}
+
+/// <summary>0078: responder uma sugestão do assistente.</summary>
+public class ActOnSuggestionRequest
+{
+    public string? Action { get; set; }
+}
+
+/// <summary>0078: texto novo de um arquivo do plano.</summary>
+public class UpdateArtifactTextRequest
+{
+    public string? Content { get; set; }
 }
 
 /// <summary>0075: ajuste parcial (campo ausente = não muda; texto vazio limpa).</summary>
