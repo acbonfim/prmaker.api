@@ -41,7 +41,8 @@ public class PresenceTracker(TimeProvider clock)
     public void Connected(string connectionId) => _connectedAt.TryAdd(connectionId, clock.GetUtcNow());
 
     /// <summary>Guarda o relato da conexão; null quando descartado (limite de entradas).</summary>
-    public PresenceEntry? Update(string connectionId, string? userId, string? userName, PresenceReport report, HttpContext? http)
+    /// <param name="ip">IP vindo do token (visto pela API); sem ele, o da conexão.</param>
+    public PresenceEntry? Update(string connectionId, string? userId, string? userName, string? ip, PresenceReport report, HttpContext? http)
     {
         if (!_entries.ContainsKey(connectionId) && _entries.Count >= MaxEntries) return null;
         var now = clock.GetUtcNow();
@@ -56,7 +57,7 @@ public class PresenceTracker(TimeProvider clock)
             Cut(report.SessionId, 64), state, report.Visible, report.Focused, Cut(report.Screen, MaxText), Cut(report.Route, MaxText),
             Cut(report.Card, 40), Cut(report.Busy, MaxText), Clamp(report.LastInputAt, now), Clamp(report.Since, now),
             Clamp(report.StartedAt, now), connectedAt, now,
-            previous?.Ip ?? Cut(ClientAddress.From(http), 64),
+            Cut(ip, 64) ?? previous?.Ip ?? Cut(ClientAddress.From(http), 64),
             previous?.UserAgent ?? Cut(http?.Request.Headers.UserAgent.ToString(), 512), client ?? previous?.Client);
         _entries[connectionId] = entry;
         return entry;

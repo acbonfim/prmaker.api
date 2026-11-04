@@ -9,7 +9,8 @@ public interface IRealTimeConnectionService
 {
     /// <param name="name">Nome do usuário (claim <c>name</c>), mostrado na presença (0079).</param>
     /// <param name="roles">Papéis (claims <c>role</c>): o hub só deixa admin acompanhar a presença.</param>
-    RealTimeConnectionInfo GetConnectionInfo(string? userId, string? name = null, IEnumerable<string>? roles = null);
+    /// <param name="ip">IP do navegador visto pela API, levado no token para a presença.</param>
+    RealTimeConnectionInfo GetConnectionInfo(string? userId, string? name = null, IEnumerable<string>? roles = null, string? ip = null);
 }
 
 public class RealTimeConnectionService : IRealTimeConnectionService
@@ -21,7 +22,7 @@ public class RealTimeConnectionService : IRealTimeConnectionService
         _optionsProvider = optionsProvider;
     }
 
-    public RealTimeConnectionInfo GetConnectionInfo(string? userId, string? name = null, IEnumerable<string>? roles = null)
+    public RealTimeConnectionInfo GetConnectionInfo(string? userId, string? name = null, IEnumerable<string>? roles = null, string? ip = null)
     {
         var options = _optionsProvider.GetOptions();
 
@@ -34,6 +35,6 @@ public class RealTimeConnectionService : IRealTimeConnectionService
 
         var lifetime = options.TokenLifetimeMinutes > 0 ? options.TokenLifetimeMinutes : 10;
         var expiresAt = DateTime.UtcNow.AddMinutes(lifetime);
-        return new RealTimeConnectionInfo(url, RealTimeTokens.Create(options.TokenSigningKey, userId, expiresAt, name, roles), expiresAt);
+        return new RealTimeConnectionInfo(url, RealTimeTokens.Create(options.TokenSigningKey, userId, expiresAt, name, roles, ip), expiresAt);
     }
 }

@@ -40,7 +40,8 @@ public class RealTimeHub(PresenceTracker presence) : Hub
         var user = Context.User;
         var userId = user?.FindFirst("sub")?.Value;
         var userName = user?.FindFirst(RealTimeTokens.NameClaim)?.Value;
-        if (presence.Update(Context.ConnectionId, userId, userName, report, Context.GetHttpContext()) is { } entry)
+        var ip = user?.FindFirst(RealTimeTokens.IpClaim)?.Value;
+        if (presence.Update(Context.ConnectionId, userId, userName, ip, report, Context.GetHttpContext()) is { } entry)
             await Clients.Group(PresenceTracker.WatchersGroup).SendAsync(PresenceTracker.ChangedEvent, entry);
     }
 

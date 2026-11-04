@@ -16,6 +16,8 @@ public static class RealTimeTokens
     /// <summary>Claims do token além do <c>sub</c> (0079): nome e papéis, para a presença e o grupo dos admins.</summary>
     public const string NameClaim = "name";
     public const string RoleClaim = "role";
+    /// <summary>IP do navegador visto pela API ao emitir o token (o relay pode estar atrás de proxy).</summary>
+    public const string IpClaim = "ip";
 
     public static SymmetricSecurityKey CreateKey(string signingKey) => new(Encoding.UTF8.GetBytes(signingKey));
 
@@ -50,13 +52,16 @@ public static class RealTimeTokens
         }
     }
 
-    public static string Create(string signingKey, string? subject, DateTime expiresAtUtc, string? name = null, IEnumerable<string>? roles = null)
+    public static string Create(string signingKey, string? subject, DateTime expiresAtUtc, string? name = null, IEnumerable<string>? roles = null,
+        string? ip = null)
     {
         var claims = new List<Claim>();
         if (!string.IsNullOrWhiteSpace(subject))
             claims.Add(new Claim(JwtRegisteredClaimNames.Sub, subject));
         if (!string.IsNullOrWhiteSpace(name))
             claims.Add(new Claim(NameClaim, name));
+        if (!string.IsNullOrWhiteSpace(ip))
+            claims.Add(new Claim(IpClaim, ip));
         foreach (var role in (roles ?? []).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct())
             claims.Add(new Claim(RoleClaim, role));
 

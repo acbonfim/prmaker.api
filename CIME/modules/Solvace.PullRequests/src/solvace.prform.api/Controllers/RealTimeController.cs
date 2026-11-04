@@ -28,6 +28,6 @@ public class RealTimeController : ControllerBase
     {
         var roles = User.FindAll(ClaimTypes.Role).Concat(User.FindAll("role")).Select(c => c.Value);
         var name = User.Identity?.Name ?? User.FindFirst("name")?.Value;
-        return Ok(_connectionService.GetConnectionInfo(User.FindFirst("ExternalId")?.Value, name, roles));
+        return Ok(_connectionService.GetConnectionInfo(User.FindFirst("ExternalId")?.Value, name, roles, ClientAddress.From(HttpContext)));
     }
 }
