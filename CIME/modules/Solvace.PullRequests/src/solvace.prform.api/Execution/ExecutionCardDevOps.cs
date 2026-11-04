@@ -32,7 +32,8 @@ public class ExecutionCardDevOps(
             var branches = values.TryGetValue(SkillsConfigurationKeys.QaBranchPattern, out var b)
                 ? b.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
                 : [];
-            return new ExecutionQaSettings(auto, branches.Count > 0 ? branches : ExecutionQaSettings.Default.QaBranches);
+            var post = !values.TryGetValue(SkillsConfigurationKeys.SituationPostToDevOps, out var p) || !IsOff(p);
+            return new ExecutionQaSettings(auto, branches.Count > 0 ? branches : ExecutionQaSettings.Default.QaBranches, post);
         }
         catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
         {

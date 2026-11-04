@@ -17,6 +17,12 @@ public static class CardSituationKind
     /// <summary>Tipos que viram entrada na Timeline quando o card entra/sai deles (pergunta e "aguardando você" já têm a sua).</summary>
     public static bool Milestone(string? kind) => kind is Ticket or PullRequestReview or QaValidation;
 
+    /// <summary>
+    /// Publica na discussion do DevOps? Em chamado, PR ou QA sempre; fora deles só atualiza o comentário que já existe
+    /// (para não ficar dizendo "aguardando" depois que a espera acabou).
+    /// </summary>
+    public static bool PostToDevOps(string? kind, bool hasComment) => Milestone(kind) || hasComment;
+
     public static string Title(string kind) => kind switch
     {
         Ticket => "Aguardando chamado",
@@ -203,25 +209,17 @@ public static class CardSituation
         return Finish(r);
     }
 
-    private static string? NextText(CardSituationResponse r, ExecutionPlan plan)
+    private static string? NextText(CardSituationResponse r, ExecutionPlan plan) => r.Kind switch
     {
-        // Depois = a etapa que espera por esta (dependsOn); sem ela, a próxima pendente.
-        var pendingSteps = plan.Steps.Where(s => !ExecutionStatus.IsStepFinished(s.Status) && s.Key != r.StepKey).OrderBy(s => s.Order).ToList();
-        var after = (pendingSteps.FirstOrDefault(s => r.StepKey is not null && s.DependsOn.Contains(r.StepKey)) ?? pendingSteps.FirstOrDefault())?.Title;
-        var then = after is null ? "" : $" Depois: *{after}*.";
-        return r.Kind switch
-        {
-            CardSituationKind.Ticket => "Quando o chamado for atendido, marque-o como *Resolvido* na etapa — ela conclui e o plano segue." + then,
-            CardSituationKind.PullRequestReview => "Quando os PRs forem aprovados e mesclados (por outra pessoa), a etapa conclui sozinha." + then,
-            CardSituationKind.QaValidation => (r.DevTestInQaAt is not null ? "Valide"
-                                                  : r.DevTestInQaError is not null ? "O PRMake não conseguiu mover o card para *Dev Test in QA* (aviso acima): mova pelo menu *DevOps*, valide"
-                                                  : "Mova o card para *Dev Test in QA*, valide")
-                                              + " a correção em QA e conclua *" + (r.StepTitle ?? "Validar em QA") + "* — o card vai para *Ready for QA*.",
-            CardSituationKind.Answer => "Responda as perguntas no PRMake (ou no Claude) — o plano segue com as respostas.",
-            CardSituationKind.User => "Faça o que a etapa pede e conclua na tela (botão *Concluir*/*Já resolvi*).",
-            _ => null
-        };
-    }
+        CardSituationKind.Ticket => "Quando o chamado for atendido, marcar como resolvido no PRMake para a correção seguir.",
+        CardSituationKind.PullRequestReview => "Revisar e mesclar os PRs. Com o merge em QA, a correção segue para validação.",
+        CardSituationKind.QaValidation => r.DevTestInQaAt is null
+            ? "Mover o card para Dev Test in QA, validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA."
+            : "Validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA.",
+        CardSituationKind.Answer => "Responder as perguntas no PRMake para a análise seguir.",
+        CardSituationKind.User => "Concluir no PRMake o que a etapa pede.",
+        _ => null
+    };
 
     /// <summary>Monta o markdown (também usado depois de completar o estado do DevOps).</summary>
     public static CardSituationResponse Finish(CardSituationResponse r)
@@ -232,83 +230,123 @@ public static class CardSituation
         return r;
     }
 
+    private static string Headline(string kind) => kind switch
+    {
+        CardSituationKind.Ticket => "Aguardando o atendimento do chamado",
+        CardSituationKind.PullRequestReview => "Aguardando revisão e merge dos PRs",
+        CardSituationKind.QaValidation => "Aguardando validação em QA",
+        CardSituationKind.Answer => "Aguardando resposta",
+        CardSituationKind.User => "Aguardando uma ação no PRMake",
+        _ => "Sem pendências no momento"
+    };
+
+    /// <summary>
+    /// Resumo em texto corrido, como uma pessoa escreveria na discussion: o que aconteceu, o que falta e o próximo passo.
+    /// Vai para a Timeline, para a discussion do DevOps, para o "Copiar resumo" e para o handover.
+    /// </summary>
     public static string Markdown(CardSituationResponse r)
     {
         var sb = new StringBuilder();
-        sb.Append($"{r.Icon} **Situação: {r.Title}**");
-        if (r.Since is { } since) sb.Append($" · desde {Date(since)}");
-        sb.AppendLine();
-        if (r.AlsoWaiting.Count > 0) sb.AppendLine($"Também: {string.Join(" · ", r.AlsoWaiting)}");
-        if (r.PlanTitle is not null)
-            sb.AppendLine($"Plano de {(r.Phase == ExecutionPhase.Correction ? "correção" : "análise")}: {r.PlanTitle}{(r.StepTitle is null ? "" : $" — etapa *{r.StepTitle}*")}");
-        if (r.DevOpsState is not null)
-            sb.AppendLine($"DevOps: **{r.DevOpsState}**{(string.IsNullOrWhiteSpace(r.DevOpsColumn) ? "" : $" · coluna *{r.DevOpsColumn}*")}");
+        sb.AppendLine($"**{Headline(r.Kind)}**").AppendLine();
+        var manyRepos = r.PullRequests.Select(p => p.Repository).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
 
-        if (r.Tickets.Count > 0)
+        switch (r.Kind)
         {
-            sb.AppendLine().AppendLine("**Chamados abertos**");
-            foreach (var t in r.Tickets)
-                sb.AppendLine($"- [{t.Title}]({t.Url}) — aberto em {Date(t.OpenedAt)} por {t.OpenedBy}" +
-                              (t.Files.Count > 0 ? $" · arquivos: {string.Join(", ", t.Files.Select(f => $"`{f}`"))}" : ""));
+            case CardSituationKind.QaValidation:
+            {
+                var qa = r.PullRequests.Where(p => p.IsQa && p.Status == ExecutionLinkStatus.Merged).OrderByDescending(p => p.MergedAt).FirstOrDefault();
+                var text = new StringBuilder("A correção foi publicada em QA");
+                if (qa?.MergedAt is { } at) text.Append($" em {Short(at)}");
+                text.Append('.');
+                if (r.DevTestInQaAt is { } moved)
+                    text.Append($" O card está em Dev Test in QA desde {Short(moved)}.");
+                else if (r.DevTestInQaError is not null)
+                    text.Append($" Não foi possível mover o card para Dev Test in QA automaticamente ({r.DevTestInQaError.TrimEnd('.')}).");
+                sb.AppendLine(text.ToString());
+                if (r.PullRequests.Count > 0)
+                    sb.AppendLine().AppendLine($"PRs mesclados: {Join(r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Merged).Select(p => PrRef(p, manyRepos)))}.");
+                if (!string.IsNullOrWhiteSpace(r.QaChecklist))
+                    sb.AppendLine().AppendLine("**O que validar**").AppendLine(r.QaChecklist);
+                break;
+            }
+            case CardSituationKind.PullRequestReview:
+            {
+                var open = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Open).ToList();
+                sb.AppendLine(open.Count == 1 ? $"O PR da correção está aberto desde {Short(open[0].OpenedAt)}:" : $"Os PRs da correção estão abertos desde {Short(open.Min(p => p.OpenedAt))}:");
+                foreach (var p in open)
+                    sb.AppendLine($"- {PrRef(p, manyRepos)}: {Review(p)}");
+                var merged = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Merged).ToList();
+                if (merged.Count > 0)
+                    sb.AppendLine().AppendLine($"Já mesclados: {Join(merged.Select(p => PrRef(p, manyRepos)))}.");
+                break;
+            }
+            case CardSituationKind.Ticket:
+                foreach (var t in r.Tickets)
+                {
+                    var files = t.Files.Count == 0 ? "" : $", com {(t.Files.Count == 1 ? "o arquivo" : "os arquivos")} {Join(t.Files.Select(f => $"`{f}`"))}";
+                    sb.AppendLine($"Chamado [{t.Title}]({t.Url}) aberto em {Short(t.OpenedAt)} por {t.OpenedBy}{files}.");
+                }
+                sb.AppendLine().AppendLine("A correção segue quando o chamado for atendido.");
+                break;
+            case CardSituationKind.Answer:
+                sb.AppendLine(r.Questions.Count == 1 ? "Há uma pergunta aguardando resposta no PRMake:" : "Há perguntas aguardando resposta no PRMake:");
+                foreach (var q in r.Questions) sb.AppendLine($"- {q}");
+                break;
+            case CardSituationKind.User:
+                sb.AppendLine("Pendente no PRMake:");
+                foreach (var u in r.UserSteps) sb.AppendLine($"- {u}");
+                break;
+            default:
+                sb.AppendLine("Nada aguardando; o plano segue normalmente.");
+                break;
         }
-        if (r.PullRequests.Count > 0)
-        {
-            sb.AppendLine().AppendLine("**Pull requests**");
-            foreach (var p in r.PullRequests)
-                sb.AppendLine($"- [{p.Title}]({p.Url}) — {PrState(p)}");
-        }
-        if (r.Kind == CardSituationKind.QaValidation)
-        {
-            sb.AppendLine().AppendLine("**Validação em QA**");
-            sb.AppendLine(r.DevTestInQaAt is { } moved ? $"- Card em *Dev Test in QA* desde {Date(moved)}"
-                : r.DevTestInQaError is not null ? $"- ⚠️ Não deu para mover para *Dev Test in QA*: {r.DevTestInQaError}"
-                : "- Card ainda não foi para *Dev Test in QA*");
-            if (!string.IsNullOrWhiteSpace(r.QaChecklist))
-                sb.AppendLine().AppendLine("*Roteiro (o que mais usa os pontos alterados):*").AppendLine(r.QaChecklist);
-        }
-        if (r.Questions.Count > 0)
-        {
-            sb.AppendLine().AppendLine("**Perguntas abertas**");
-            foreach (var q in r.Questions) sb.AppendLine($"- {q}");
-        }
-        if (r.UserSteps.Count > 0)
-        {
-            sb.AppendLine().AppendLine("**Com você**");
-            foreach (var s in r.UserSteps) sb.AppendLine($"- {s}");
-        }
-        if (r.Done.Count > 0)
-            sb.AppendLine().AppendLine($"**Já feito:** {string.Join(" · ", r.Done)}");
+
+        if (r.AlsoWaiting.Count > 0)
+            sb.AppendLine().AppendLine($"Também em andamento: {Join(r.AlsoWaiting.Select(Lower))}.");
         if (!string.IsNullOrWhiteSpace(r.Handoff))
-            sb.AppendLine().AppendLine($"**Contexto da passagem**{(r.HandoffBy is null ? "" : $" ({r.HandoffBy}, {Date(r.HandoffAt!.Value)})")}").AppendLine(r.Handoff);
+            sb.AppendLine().AppendLine("**Contexto**").AppendLine(r.Handoff.Trim());
         if (r.Next is not null)
             sb.AppendLine().AppendLine($"**Próximo passo:** {r.Next}");
         return sb.ToString().TrimEnd();
     }
 
-    private static string PrState(CardSituationPullRequest p)
+    private static string PrRef(CardSituationPullRequest p, bool withRepository)
     {
-        // O título do link já traz "→ destino" (sincronização do GitHub); só repete o destino quando não traz.
-        var titled = p.TargetBranch is not null && (p.Title?.Contains($"→ {p.TargetBranch}", StringComparison.OrdinalIgnoreCase) ?? false);
-        var target = (p.TargetBranch is null || titled ? "" : $"→ `{p.TargetBranch}` · ") + (p.IsQa ? "QA · " : "");
-        if (p.Status == ExecutionLinkStatus.Merged)
-            return $"{target}✅ mesclado{(p.MergedAt is { } m ? $" em {Date(m)}" : "")}";
-        var parts = new List<string> { "aberto" };
-        if (p.Approvals is > 0) parts.Add($"{p.Approvals} aprovação(ões)");
-        if (p.ChangesRequested is > 0) parts.Add($"{p.ChangesRequested} pedido(s) de alteração");
-        if (p.Approvals is 0 && p.ChangesRequested is 0 or null) parts.Add("sem aprovação");
-        if (!string.IsNullOrWhiteSpace(p.ReviewersPending)) parts.Add($"aguardando revisão de {p.ReviewersPending}");
-        parts.Add(p.Checks switch
-        {
-            ExecutionLinkChecks.Success => "CI ✅",
-            ExecutionLinkChecks.Failure => "CI ❌",
-            ExecutionLinkChecks.Pending => "CI ⏳",
-            _ => "sem CI"
-        });
-        return target + string.Join(" · ", parts) + $" · aberto em {Date(p.OpenedAt)}";
+        var label = p.Number is { } n ? $"#{n}" : p.Title ?? "PR";
+        var target = p.TargetBranch is null ? "" : $" ({(withRepository && p.Repository is not null ? $"{p.Repository} → " : "")}{p.TargetBranch})";
+        return $"[{label}]({p.Url}){target}";
     }
 
+    private static string Review(CardSituationPullRequest p)
+    {
+        var parts = new List<string>();
+        parts.Add(p.Approvals switch { null => "revisão ainda não lida", 0 => "sem aprovação", 1 => "1 aprovação", var n => $"{n} aprovações" });
+        if (p.ChangesRequested is > 0) parts.Add(p.ChangesRequested == 1 ? "1 pedido de alteração" : $"{p.ChangesRequested} pedidos de alteração");
+        if (!string.IsNullOrWhiteSpace(p.ReviewersPending)) parts.Add($"aguardando revisão de {p.ReviewersPending}");
+        var ci = p.Checks switch
+        {
+            ExecutionLinkChecks.Success => "CI passou",
+            ExecutionLinkChecks.Failure => "CI falhou",
+            ExecutionLinkChecks.Pending => "CI rodando",
+            _ => null
+        };
+        if (ci is not null) parts.Add(ci);
+        return string.Join(", ", parts) + ".";
+    }
+
+    private static string Join(IEnumerable<string> items)
+    {
+        var list = items.ToList();
+        return list.Count <= 1 ? string.Concat(list) : string.Join(", ", list.Take(list.Count - 1)) + " e " + list[^1];
+    }
+
+    private static string Lower(string title) => title.Length == 0 ? title : char.ToLowerInvariant(title[0]) + title[1..];
+
+    private static string Short(DateTimeOffset at) =>
+        TimeZoneInfo.ConvertTime(at, Brasilia).ToString("dd/MM 'às' HH:mm", CultureInfo.InvariantCulture);
+
     // Horário de Brasília (o time está aqui; a Timeline mostra datas assim).
-    private static readonly TimeZoneInfo Brasilia = FindZone();
+    public static readonly TimeZoneInfo Brasilia = FindZone();
 
     private static TimeZoneInfo FindZone()
     {
@@ -319,9 +357,6 @@ public static class CardSituation
         }
         return TimeZoneInfo.CreateCustomTimeZone("BRT", TimeSpan.FromHours(-3), "BRT", "BRT");
     }
-
-    private static string Date(DateTimeOffset at) =>
-        TimeZoneInfo.ConvertTime(at, Brasilia).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
 
     private static string FirstLine(string text)
     {

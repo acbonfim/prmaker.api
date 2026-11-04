@@ -64,4 +64,6 @@ public static class SkillsConfigurationKeys
     public const string AutoDevTestInQa = "AutoDevTestInQa";
     /// <summary>0075: branches de destino que contam como QA (lista; "qa*" = prefixo).</summary>
     public const string QaBranchPattern = "QaBranchPattern";
+    /// <summary>0075: o resumo da situação (chamado, PR, QA) vai sozinho para a discussion do card no DevOps (true/false).</summary>
+    public const string SituationPostToDevOps = "SituationPostToDevOps";
 }

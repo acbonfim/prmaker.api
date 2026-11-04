@@ -174,6 +174,9 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   da branch de QA mesclado); voce confere e, se ele avisar erro, move (`devops <card> dev-test-in-qa`, sem perguntar);
   `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano (a tela ja oferece mover) ou
   autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
+- **Fechamento antes da validacao em QA (0075)**: com codigo, root cause, classificacao, resumo PT/EN e Remaining zerado
+  vao na etapa `preparar-fechamento`, logo depois de abrir os PRs e **antes** de `validar-qa` — o Ready for QA exige o
+  card sem pendencias e o usuario move ao concluir a validacao. O `fechar-card` (depois de `validar-qa`) so confere e move.
 - **Espera = contexto da passagem (0075)**: ao entrar em espera (chamado aberto, PR aguardando aprovacao/merge, QA),
   grave `prmake_handoff` — o que foi feito, o que se espera e de quem, riscos, como retomar (`$REF correcao 8`). O
   PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover).

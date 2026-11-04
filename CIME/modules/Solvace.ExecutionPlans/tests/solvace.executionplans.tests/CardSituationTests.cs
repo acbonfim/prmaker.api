@@ -45,10 +45,12 @@ public class CardSituationTests
         Assert.Equal(CardSituationKind.QaValidation, s.Kind);
         Assert.Equal("validar-qa", s.StepKey);
         Assert.True(s.PullRequests.Single(p => p.Number == 11).IsQa);
-        Assert.Contains("Dev Test in QA", s.Markdown);
+        Assert.StartsWith("**Aguardando validação em QA**", s.Markdown);
+        Assert.Contains("O card está em Dev Test in QA desde", s.Markdown);
+        Assert.Contains("PRs mesclados: [#10](https://github.com/acbonfim/edv-solvace/pull/10) (development) e [#11](https://github.com/acbonfim/edv-solvace/pull/11) (qa).", s.Markdown);
+        Assert.DoesNotContain("Plano de correção", s.Markdown);
+        Assert.DoesNotContain("🧪", s.Markdown);
         Assert.Contains("Ready for QA", s.Next);
-        Assert.DoesNotContain("→ `qa`", s.Markdown); // o título do link já traz o destino
-        Assert.Contains("QA · ✅ mesclado", s.Markdown);
     }
 
     [Fact]
@@ -67,7 +69,8 @@ public class CardSituationTests
 
         Assert.Equal(CardSituationKind.Ticket, s.Kind);
         Assert.Equal(["01_ajuste.sql", "chamado-ajuste.md"], s.Tickets.Single().Files);
-        Assert.Contains("Resolvido", s.Next);
+        Assert.Contains("resolvido", s.Next);
+        Assert.Contains("com os arquivos `01_ajuste.sql` e `chamado-ajuste.md`", s.Markdown);
     }
 
     [Fact]
@@ -82,9 +85,7 @@ public class CardSituationTests
         var s = CardSituation.Build(plan, [pr], [], [], IsQa, plan.CardNumber);
 
         Assert.Equal(CardSituationKind.PullRequestReview, s.Kind);
-        Assert.Contains("1 aprovação", s.Markdown);
-        Assert.Contains("revisor-a", s.Markdown);
-        Assert.Contains("CI ⏳", s.Markdown);
+        Assert.Contains("- [#12](https://github.com/acbonfim/edv-solvace/pull/12) (development): 1 aprovação, aguardando revisão de revisor-a, CI rodando.", s.Markdown);
     }
 
     [Fact]
@@ -95,7 +96,7 @@ public class CardSituationTests
 
         var s = CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber);
 
-        Assert.Contains("Contexto da passagem", s.Markdown);
+        Assert.Contains("**Contexto**", s.Markdown);
         Assert.Contains("revisar o filtro de datas", s.Markdown);
     }
 
@@ -129,7 +130,8 @@ public class CardSituationTests
         plan.CompleteStep("pr-edv-solvace", "ok", "PRMake", Now, false);
         plan.RecordDevTestInQa("sem integração", Now);
         var s = CardSituation.Build(plan, [Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], [], IsQa, plan.CardNumber);
-        Assert.StartsWith("O PRMake não conseguiu", s.Next);
+        Assert.StartsWith("Mover o card para Dev Test in QA", s.Next);
+        Assert.Contains("Não foi possível mover o card para Dev Test in QA automaticamente (sem integração)", s.Markdown);
     }
 
     private static ExecutionArtifact Artifact(ExecutionPlan plan, string name, string step)
@@ -138,4 +140,20 @@ public class CardSituationTests
         a.SetContent([1], "text/plain", step, null, Now, true);
         return a;
     }
+
+    [Fact]
+    public void Discussion_html_is_plain_and_escaped()
+    {
+        var html = SituationHtml.ToHtml("**Aguardando validação em QA**\n\nA correção foi publicada em QA.\n\n- [#11](https://github.com/x/y/pull/11) (qa)\n- veja [sa3.asp:10](ref:sa3-init) <script>\n\n**Próximo passo:** validar.");
+        Assert.Equal("<p><b>Aguardando validação em QA</b></p><p>A correção foi publicada em QA.</p><ul><li><a href=\"https://github.com/x/y/pull/11\">#11</a> (qa)</li><li>veja <code>sa3.asp:10</code> &lt;script&gt;</li></ul><p><b>Próximo passo:</b> validar.</p>", html);
+    }
+
+    [Theory]
+    [InlineData(CardSituationKind.QaValidation, false, true)]
+    [InlineData(CardSituationKind.Ticket, false, true)]
+    [InlineData(CardSituationKind.None, false, false)]
+    [InlineData(CardSituationKind.None, true, true)]
+    [InlineData(CardSituationKind.Answer, false, false)]
+    public void Posts_to_devops_on_waits_and_keeps_the_comment_updated(string kind, bool hasComment, bool expected) =>
+        Assert.Equal(expected, CardSituationKind.PostToDevOps(kind, hasComment));
 }
