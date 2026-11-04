@@ -53,3 +53,14 @@ tratamento**.
 3. Arquivo grande demais aparece como não importado com o motivo; vídeo não trava a análise.
 4. Sem integração do DevOps: a importação devolve o erro claro e a análise registra que as evidências não puderam ser
    lidas (bloqueia `montar-analise` até o usuário resolver ou autorizar seguir sem).
+
+## Melhorias pedidas antes do merge (2026-11-04)
+1. **O sistema conversa**: a tela mostra os textos que o Claude/PRMake gerou no card (análise, soluções, descrição do PR,
+   root cause, orientação, passo a passo, chamado, resumo da situação), com "Ver" e um aviso discreto quando um texto novo
+   aparece. A publicação do resumo da situação na discussion é **configurável por usuário** (automática ou manual; padrão
+   global `SituationPostToDevOps`): manual = fica "pronto para publicar" com Ver/Publicar; a tela mostra o que foi
+   publicado, quando e por quem.
+2. **Itens da engenharia reversa** citados no texto (`UC-121`, `revamp-kaizen#RN-012`) viram link com popover do item
+   (texto, armadilhas, quem cita) — só administradores leem (regra da 0074); os demais veem o aviso.
+3. **Visual de sistema**: tabelas trabalhadas, selos no lugar de emojis (Alterar, Criar, Remover, Só leitura, Suspeito,
+   Confirmado, Hipótese...), callouts discretos; a skill para de gerar emojis e usa os rótulos; notas e callouts com moderação.

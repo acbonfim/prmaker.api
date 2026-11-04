@@ -9,7 +9,10 @@
 | B2 | Plano: importar, leitura, portão, MCP | ✅ | 9da251e |
 | S1 | Skill: discussion, contexto, evidencias, conversão de Office | ✅ | 5d1b9fe |
 | Q1 | Testes + integração com Postgres isolado | ✅ | — |
-| Q2 | PR + merge + deploy | 🟡 | |
+| M1 | Back: publicação configurável/visível, item da ER pelo card | ✅ | d87a186 |
+| M2 | Skill: análise sem emojis (rótulos viram selos) | ✅ | d87a186 |
+| M3 | Front: design do markdown, popover da ER, publicação no cartão, textos gerados | 🟡 | |
+| Q2 | PR + merge + deploy (back e front juntos — autorizado pelo usuário em 2026-11-04) | 🟡 | |
 
 ## Q1
 - Parser com JSON/HTML no formato do DevOps: campos → discussion → anexos, sem repetir; `System.History` fora; download só
@@ -24,4 +27,4 @@
 - Não testado com o DevOps real (precisa da integração pessoal de produção): primeira análise depois do deploy.
 
 ## Log
-- 2026-11-04 — spec/plano; branch `feature/0076` a partir da master 65c770e. Merge: confirmar com o usuário (a autorização do #141 não vale para esta feature).
+- 2026-11-04 — spec/plano; branch `feature/0076` a partir da master 65c770e. Merge autorizado pelo usuário ao final desta demanda (2026-11-04: "faça tudo aqui nessa demanda, ao final pode mergear").
