@@ -15,6 +15,8 @@ var options = builder.Configuration.GetSection(RealTimeOptions.SectionName).Get<
 var requireToken = !string.IsNullOrWhiteSpace(options.TokenSigningKey);
 
 builder.Services.AddSignalR();
+// Presença ao vivo (0079): em memória aqui no relay, sem custo no Cloud Run.
+builder.Services.AddRealTimePresence();
 
 if (requireToken)
 {
