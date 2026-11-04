@@ -21,11 +21,11 @@
 | B5 | Revisões dos PRs (aprovações) | back | — | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6 |
 | B6 | Dev Test in QA automático (+ Ready for QA pela tela, endpoint existente) | back | — | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6, ee7f82f |
 | B7 | Publicar situação no DevOps (manual) | back | B4, D1 | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | 13e25b6 |
-| F4 | Cartão "Situação atual" + fato + chip + handover | front | B4, F1, F2 | 3 | 🟡 | Claude (subagente) | 2026-11-04 | | |
-| F5 | Concluir "Validar em QA" → Ready for QA | front | B6 | 3 | 🟡 | Claude (subagente) | 2026-11-04 | | |
+| F4 | Cartão "Situação atual" + fato + chip + handover | front | B4, F1, F2 | 3 | ✅ | Claude (subagente) | 2026-11-04 | 2026-11-04 | front d6554ea, 11423d6 |
+| F5 | Concluir "Validar em QA" → Ready for QA | front | B6 | 3 | ✅ | Claude (subagente) | 2026-11-04 | 2026-11-04 | front d6554ea, 11423d6 |
 | S4 | Skill: handoff, QA, handover com situação | skills | B4, B6 | 3 | ✅ | Claude (sessão principal) | 2026-11-04 | 2026-11-04 | af5d13a |
-| Q1 | Integração e e2e local (`.t0075/`) | ambos | todas | 4 | 🟡 | Claude | 2026-11-04 | | |
-| Q2 | Produção | ambos | Q1 | 4 | ⬜ | | | | |
+| Q1 | Integração e e2e local (`.t0075/`) | ambos | todas | 4 | ✅ | Claude | 2026-11-04 | 2026-11-04 | 60abf43 |
+| Q2 | Produção | ambos | Q1 | 4 | 🟡 | Claude | 2026-11-04 | | |
 
 **Entrega**: um PR por repositório com a feature inteira (o usuário pediu para abrir e mesclar ao final — back e
 front juntos, 2026-11-04). PR-A/PR-B do plano viraram um só.
@@ -53,6 +53,15 @@ front juntos, 2026-11-04). PR-A/PR-B do plano viraram um só.
   `prmake_attachment` achando arquivo do plano pelo nome.
 - Testes: executionplans 38/38, prform 114/114.
 
+## Q1 — navegador (front servido em localhost:4200 contra a API local; prints em `.t0075/shots/`)
+Timeline com callout e links de código coloridos por tipo (alterar/leitura/suspeito), Antes × Depois lado a lado com
+legenda; popover da `sa3_busca_a3.asp:239-289` (Proposta com notas ①②③, Código atual com foco), suspeito sem proposta,
+zoom da imagem; cartão *Situação atual* (QA) no topo do plano com handoff e link `ref:` abrindo o popover; fato no topo
+do card; celular 390 px (folha inferior, sem rolagem horizontal); chip da Home e diálogo do F5 (resposta simulada —
+o usuário de teste não tem cards na Home; ready-for-qa interceptado). Ajustes do e2e: front 11423d6, back 60abf43.
+Specs do front: 61/61. Pendente para produção: tempo real `situation` ponta a ponta, Publicar no DevOps e Ready for QA
+com o DevOps real.
+
 ## Notas de handoff
 - Worktrees: back `../prform.api-0075`, front `../solvace.prform.web/prform-app-0075` (`node_modules` → `prform-app-0019`).
 - Commitar só os arquivos da fase (`git commit -- <arquivos>`).
@@ -61,4 +70,5 @@ front juntos, 2026-11-04). PR-A/PR-B do plano viraram um só.
 
 ## Log
 - 2026-11-04 — spec, plano e status; branches `feature/0075` (back 94a08a4, front b08550d).
-- 2026-11-04 — B1–B7, S1–S4, F1–F3 concluídas; Q1 do back ok; F4/F5 + e2e do navegador em andamento.
+- 2026-11-04 — B1–B7, S1–S4, F1–F3 concluídas; Q1 do back ok.
+- 2026-11-04 — F4/F5 e e2e do navegador ok; PRs abertos e mesclados (back e front juntos) por pedido do usuário.
