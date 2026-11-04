@@ -187,7 +187,7 @@ IPasswordService passService,
 
     public async Task<RetornoDto> LoginUser(UserLoginDto userLogin)
     {
-        User attempted = null;
+        User? attempted = null;
         var retorno = await LoginUserCore(userLogin, u => attempted = u);
         await RecordLoginAsync(userLogin?.UserName, attempted, retorno);
         return retorno;
@@ -197,7 +197,7 @@ IPasswordService passService,
     /// Grava a tentativa de login (0079) — sucesso ou motivo da falha, IP e navegador. Aguardado dentro da requisição
     /// (Cloud Run estrangula a CPU depois da resposta); falha ao gravar só vira aviso no log.
     /// </summary>
-    private async Task RecordLoginAsync(string typedUserName, User user, RetornoDto retorno)
+    private async Task RecordLoginAsync(string? typedUserName, User? user, RetornoDto retorno)
     {
         try
         {
@@ -232,7 +232,7 @@ IPasswordService passService,
     /// IP do cliente: o último salto do X-Forwarded-For (o que o proxy do Cloud Run acrescentou — os anteriores vêm do
     /// próprio cliente e podem ser forjados) ou o endereço da conexão.
     /// </summary>
-    public static string ClientIp(HttpContext http)
+    public static string? ClientIp(HttpContext? http)
     {
         if (http is null) return null;
         var forwarded = http.Request.Headers["X-Forwarded-For"].ToString();
@@ -245,7 +245,7 @@ IPasswordService passService,
         return remote is null ? null : (remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote).ToString();
     }
 
-    private async Task<RetornoDto> LoginUserCore(UserLoginDto userLogin, Action<User> found)
+    private async Task<RetornoDto> LoginUserCore(UserLoginDto userLogin, Action<User?> found)
     {
         var retorno = new RetornoDto();
 
