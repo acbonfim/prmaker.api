@@ -34,6 +34,10 @@ public interface IExecutionPlanApplication
     Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteLinkAsync(Guid planId, Guid linkId, ExecutionActor actor, CancellationToken cancellationToken);
 
+    // 0075 — arquivos do card (todos os planos) e um arquivo pelo nome (imagem anexo:<nome> no texto)
+    Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
+
     // 0075 — fotografias do código citado
     Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionCodeRefResponse> PatchCodeRefAsync(Guid planId, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);

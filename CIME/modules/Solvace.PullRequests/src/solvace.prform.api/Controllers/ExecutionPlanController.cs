@@ -72,7 +72,8 @@ public class ExecutionPlanController : ControllerBase
     /// <summary>Atualiza uma etapa (status, atividade atual, checkpoint...). Etapa nova é criada no fim.</summary>
     [HttpPatch("{id:guid}/steps/{key}")]
     public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request,
-        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse, CancellationToken ct) =>
+        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () =>
         {
             // 0052: a skill concluindo a investigação de card com engenharia reversa completa precisa ter consultado/citado a base.
@@ -81,6 +82,9 @@ public class ExecutionPlanController : ControllerBase
                 var plan = await _application.GetAsync(id, ct);
                 if (await reverse.CheckGateAsync(plan.CardNumber, key, request.Message ?? request.Reason, ct) is { } gate)
                     return BadRequest(new { error = gate });
+                // 0075: análise/soluções só concluem com toda citação de código fotografada.
+                if (await citations.CheckAsync(id, key, ct) is { } missing)
+                    return BadRequest(new { error = missing });
             }
             return Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct));
         });
@@ -264,6 +268,17 @@ public class ExecutionPlanController : ControllerBase
     [HttpGet("card/{cardNumber}/code-refs/{reference}")]
     public Task<ActionResult<ExecutionCodeRefResponse>> GetCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference, CancellationToken ct) =>
         Run<ExecutionCodeRefResponse>(async () => Ok(await _application.GetCardCodeRefAsync(cardNumber, reference, ct)));
+
+    /// <summary>0075: arquivo do card pelo nome (qualquer plano) — imagens <c>anexo:&lt;nome&gt;</c> do texto da análise.</summary>
+    [HttpGet("card/{cardNumber}/artifacts/by-name/{name}/content")]
+    public Task<ActionResult> GetCardArtifactByName([FromRoute] string cardNumber, [FromRoute] string name, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var file = await _application.GetCardArtifactFileByNameAsync(cardNumber, name, ct);
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(file.Artifact.Name)}";
+            return File(file.Data, file.Artifact.ContentType);
+        });
 
     // ── 0031: comentários com anexos ──────────────────────────────────────────────────────────────
 

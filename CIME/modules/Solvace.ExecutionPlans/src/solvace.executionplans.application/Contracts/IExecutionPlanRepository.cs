@@ -73,6 +73,9 @@ public interface IExecutionPlanRepository
     /// <summary>Maior número e última mudança dos comentários do usuário no card (para o vigia da skill).</summary>
     Task<(int LastNumber, DateTimeOffset? ChangedAt)> GetUserNotesStateAsync(string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>0075: arquivos de todos os planos do card (da skill e anexos de comentário), sem o conteúdo.</summary>
+    Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+
     // Fotografias do código citado (0075)
     /// <summary>Ref do plano, rastreada (upsert).</summary>
     Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken);

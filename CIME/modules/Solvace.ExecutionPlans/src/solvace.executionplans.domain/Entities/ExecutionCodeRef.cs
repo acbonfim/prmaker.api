@@ -220,14 +220,17 @@ public partial class ExecutionCodeRef
     }
 
     /// <summary>A citação <c>caminho:ini-fim</c> aponta para esta ref? (o caminho citado pode ser só o fim do caminho).</summary>
-    public bool Matches(string citedPath, int start, int end)
+    public bool Matches(string citedPath, int start, int end) => Matches(Path, Repository, StartLine, EndLine, citedPath, start, end);
+
+    /// <summary>Mesma regra para a cabeça da ref (lista do card) — e a da tela.</summary>
+    public static bool Matches(string path, string? repository, int startLine, int endLine, string citedPath, int start, int end)
     {
         var cited = citedPath.Trim().Replace('\\', '/').TrimStart('/');
         if (cited.Length == 0) return false;
-        var samePath = Path.Equals(cited, StringComparison.OrdinalIgnoreCase)
-                       || Path.EndsWith("/" + cited, StringComparison.OrdinalIgnoreCase)
-                       || (Repository is not null && $"{Repository}/{Path}".Equals(cited, StringComparison.OrdinalIgnoreCase));
-        return samePath && start <= EndLine && end >= StartLine;
+        var samePath = path.Equals(cited, StringComparison.OrdinalIgnoreCase)
+                       || path.EndsWith("/" + cited, StringComparison.OrdinalIgnoreCase)
+                       || (repository is not null && $"{repository}/{path}".Equals(cited, StringComparison.OrdinalIgnoreCase));
+        return samePath && start <= endLine && end >= startLine;
     }
 }
 

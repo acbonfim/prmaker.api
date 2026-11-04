@@ -32,7 +32,8 @@ public partial class PrmakeMcpTools(
     solvace.prform.Skills.SkillsConfigService skillsConfig,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
-    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse)
+    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+    CodeCitationGate citations)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -223,11 +224,14 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_attachment", ReadOnly = true)]
-    [Description("Abre um anexo do card: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem), ou o nome do arquivo.")]
+    [Description("Abre um anexo do card ou um arquivo dos planos: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem anexada pelo usuario), ou o nome do arquivo (ex.: mock-depois.png).")]
     public Task<CallToolResult> Attachment(string card, [Description("'#12', 'imagem 2', 'print.png'...")] string reference, CancellationToken ct = default) => Safe(async () =>
     {
-        var all = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
-        var found = Resolve(all, reference);
+        var attachments = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
+        // 0075: número/nome também acham os arquivos do plano (mock-depois.png, analise-inicial.md); "imagem n" segue
+        // contando só as imagens que o usuário anexou.
+        var all = (await plans.GetCardArtifactsAsync(card.Trim(), ct)).Where(a => a.NoteId is null).Concat(attachments).OrderBy(a => a.Number).ToList();
+        var found = OrdinalRef().IsMatch(reference.Trim()) ? Resolve(attachments, reference) : Resolve(all, reference);
         if (found is null)
             return Error($"Anexo '{reference}' nao encontrado. Anexos do card: " +
                          (all.Count == 0 ? "nenhum" : string.Join(", ", all.Select(a => $"#{a.Number} {a.Name}"))));
@@ -380,6 +384,9 @@ public partial class PrmakeMcpTools(
         // 0052: módulo com engenharia reversa completa — a investigação só conclui consultando a base ou citando item/lacuna.
         if (await reverse.CheckGateAsync(card, from, message, ct) is { } gate)
             throw new McpException(gate);
+        // 0075: análise/soluções só concluem com toda citação de código fotografada.
+        if (await citations.CheckAsync(planId, from, ct) is { } missing)
+            throw new McpException(missing);
         if (!string.IsNullOrWhiteSpace(message))
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {

@@ -240,6 +240,13 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         return (last, changed);
     }
 
+    public Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken) =>
+        (from a in _context.Artifacts.AsNoTracking()
+         join p in _context.Plans on a.PlanId equals p.Id
+         where p.CardNumber == cardNumber
+         orderby a.Number
+         select a).ToListAsync(cancellationToken);
+
     // Fotografias do código citado (0075)
 
     public Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken) =>

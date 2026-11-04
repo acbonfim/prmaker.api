@@ -109,6 +109,26 @@ public partial class ExecutionPlanApplication
         return codeRef.ToResponse();
     }
 
+    public async Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken) =>
+        (await _repository.GetCardArtifactsAsync(cardNumber.Trim(), cancellationToken)).Select(a => a.ToResponse()).ToList();
+
+    /// <summary>
+    /// O texto cita a imagem pelo nome (<c>![Depois](anexo:mock-depois.png)</c>) e pode estar na Timeline, fora do plano:
+    /// procura em todos os planos do card — arquivo da skill antes de anexo de comentário, o mais recente.
+    /// </summary>
+    public async Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken)
+    {
+        var wanted = (name ?? string.Empty).Trim();
+        var artifact = (await _repository.GetCardArtifactsAsync(cardNumber.Trim(), cancellationToken))
+                       .Where(a => string.Equals(a.Name, wanted, StringComparison.OrdinalIgnoreCase))
+                       .OrderBy(a => a.NoteId is null ? 0 : 1)
+                       .ThenByDescending(a => a.UpdatedAt ?? a.CreatedAt)
+                       .FirstOrDefault()
+                       ?? throw new ExecutionPlanNotFoundException($"Arquivo '{wanted}' não encontrado no card.");
+        var data = await _repository.GetArtifactContentAsync(artifact.Id, cancellationToken) ?? [];
+        return new ExecutionArtifactFile(artifact.ToResponse(), data);
+    }
+
     private static IEnumerable<ExecutionCodeRefHeadResponse> LatestByRef(IEnumerable<ExecutionCodeRefHeadResponse> heads) =>
         heads.GroupBy(h => h.Ref)
             .Select(g => g.OrderByDescending(h => h.UpdatedAt).First())
