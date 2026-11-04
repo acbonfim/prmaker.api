@@ -15,7 +15,7 @@
 #   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress]
 #                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
-#   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error)
+#   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error|divergence)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
 #   coderef     <card> <ref> --repo <r> --file <caminho> --lines A[-B] [--change change|create|remove|suspect|read]
 #                 [--title ...] [--why ...] [--after <trecho-novo|->] [--notes <notas.json>] [--dir <pasta>] [--context N]

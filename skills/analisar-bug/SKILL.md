@@ -173,6 +173,18 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
   `imagens/`/`anexos/` — o `sync` duplicaria). Nunca diga que nao consegue ver um anexo sem tentar.
+- **0080 — a conversa e do Especialista do caso, o plano recebe so decisoes.** As perguntas e a troca de mensagens das
+  pessoas acontecem na conversa do caso (outro agente). Comentario novo no plano agora e uma **instrucao explicita**
+  (veio de "Levar para o plano" ou de proposta aceita): siga. **Nunca responda pergunta no andamento de uma etapa**
+  (`log`) — se precisar de decisao, `prmake_ask`; se for so duvida, ela e do Especialista. Comentario que comeca com
+  **"Proposta do Especialista aceita"**: e a nova versao do plano decidida pela pessoa — monte-a (correcao:
+  `prmake_correction` com as mudancas listadas, citando a proposta no resumo; analise: refaca so o que mudou) e
+  respeite a ultima linha: "NAO execute" = monte as etapas e pare com o plano pronto; "Pode executar" = siga.
+- **0080 — divergencia entre a analise e a base real** (a branch/repositorio onde a correcao vai partir ja tem outro
+  fix, o codigo citado mudou, o ambiente roda outra versao): antes de seguir, `prmake_log(card, kind: "divergence",
+  stepKey: <etapa>, message: "<o que a analise assumiu> x <o que a base real tem> — <o que muda na correcao>")`. O PRMake
+  mostra um alerta e **nao deixa a etapa de PR comecar** ate a pessoa confirmar na tela; registre o que falta com
+  `prmake_block` na etapa de PR e encerre a vez (a confirmacao retoma a sessao).
 - **Regra de negocio: consulte o Knowledge Center antes de perguntar** ao usuario ou concluir o comportamento
   "esperado" (`bash $KC search ...` / `article <n>`); cite o **ART-n** na analise, no RCA e no handover. Sem artigo
   sobre a regra: diga isso (lacuna) — nao invente.
