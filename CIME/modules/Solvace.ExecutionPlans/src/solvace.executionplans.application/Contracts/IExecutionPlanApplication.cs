@@ -82,7 +82,9 @@ public interface IExecutionPlanApplication
     Task DeleteArtifactAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
 
     // 0031 — comentários com anexos
-    Task<ExecutionNoteResponse> AddNoteAsync(Guid planId, string? text, string? stepKey, IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>0080: confirma a divergência pendente (a etapa de PR pode começar).</summary>
+    Task<ExecutionPlanResponse> ConfirmDivergenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+        Task<ExecutionNoteResponse> AddNoteAsync(Guid planId, string? text, string? stepKey, IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionNoteResponse> EditNoteAsync(Guid planId, Guid noteId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteNoteAsync(Guid planId, Guid noteId, ExecutionActor actor, CancellationToken cancellationToken);
     /// <param name="fromExecutor">A skill está lendo: grava até qual comentário ela leu (0037).</param>

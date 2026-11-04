@@ -69,6 +69,37 @@ public class ExecutionPlan
     public string? HandoffBy { get; private set; }
     public const int MaxHandoffLength = 8_000;
 
+    /// <summary>0080: divergência entre a análise e a base real (log <c>divergence</c>), pendente até alguém confirmar.</summary>
+    public string? DivergenceText { get; private set; }
+    public string? DivergenceStepKey { get; private set; }
+    public DateTimeOffset? DivergenceAt { get; private set; }
+    public string? DivergenceConfirmedBy { get; private set; }
+    public DateTimeOffset? DivergenceConfirmedAt { get; private set; }
+    public const int MaxDivergenceLength = 4_000;
+
+    public bool DivergencePending => DivergenceAt is not null && DivergenceConfirmedAt is null;
+
+    public void RaiseDivergence(string text, string? stepKey, DateTimeOffset now)
+    {
+        var t = (text ?? string.Empty).Trim();
+        if (t.Length == 0) return;
+        DivergenceText = t.Length <= MaxDivergenceLength ? t : t[..MaxDivergenceLength];
+        DivergenceStepKey = string.IsNullOrWhiteSpace(stepKey) ? null : ExecutionStep.NormalizeKey(stepKey);
+        DivergenceAt = now;
+        DivergenceConfirmedBy = null;
+        DivergenceConfirmedAt = null;
+        UpdatedAt = now;
+    }
+
+    public void ConfirmDivergence(string by, DateTimeOffset now)
+    {
+        if (!DivergencePending)
+            throw new DomainException("Não há divergência pendente neste plano.");
+        DivergenceConfirmedBy = Clean(by, 200);
+        DivergenceConfirmedAt = now;
+        UpdatedAt = now;
+    }
+
     /// <summary>0075: último tipo de situação registrado (a Timeline ganha uma entrada quando muda). Gravado direto no banco.</summary>
     public string? SituationKind { get; private set; }
     public DateTimeOffset? SituationAt { get; private set; }
@@ -446,6 +477,11 @@ public class ExecutionPlan
         if (!string.IsNullOrWhiteSpace(status))
         {
             var normalizedStatus = status.Trim().ToLowerInvariant();
+            // 0080: base diferente da análise (branch, repositório, código que mudou) — o PR espera alguém confirmar.
+            if (DivergencePending && step.Kind == ExecutionStepKind.PullRequest
+                && normalizedStatus is ExecutionStatus.Running or ExecutionStatus.Completed && step.Status != normalizedStatus)
+                throw new DomainException("Há uma divergência pendente entre a análise e a base real: a etapa de PR só começa depois que " +
+                                          "a pessoa confirmar na tela (\"Confirmar\" no alerta de divergência). Registre e aguarde (prmake_block).");
             step.ChangeStatus(normalizedStatus, reason, actor, now, waitingOn);
 
             // A skill voltou a trabalhar: o plano (pendente, com falha ou já concluído) volta a

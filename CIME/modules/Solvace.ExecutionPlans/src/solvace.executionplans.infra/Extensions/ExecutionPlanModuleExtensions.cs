@@ -23,6 +23,9 @@ public static class ExecutionPlanModuleExtensions
 
         // 0039: fila de execução e executores; o mesmo objeto atende o gatilho de retomada do plano.
         services.AddScoped<IExecutionQueueRepository, ExecutionQueueRepository>();
+        // 0080: Especialista do caso.
+        services.AddScoped<ICaseChatRepository, CaseChatRepository>();
+        services.AddScoped<CaseChatApplication>();
         services.AddScoped<ExecutionQueueApplication>();
         services.AddScoped<IExecutionQueueApplication>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
         services.AddScoped<IExecutionResumeTrigger>(sp => sp.GetRequiredService<ExecutionQueueApplication>());

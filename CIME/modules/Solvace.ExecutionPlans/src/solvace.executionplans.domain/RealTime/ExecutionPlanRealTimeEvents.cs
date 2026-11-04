@@ -35,6 +35,27 @@ public static class ExecutionPlanRealTimeEvents
     /// <summary>0068: grupo dos executores de um usuário (o executor entra com o token de <c>GET ExecutionWorker/realtime</c>).</summary>
     public static string WorkerGroup(Guid ownerUserId) => $"execworkers:{ownerUserId}";
 
+    /// <summary>
+    /// 0080: a conversa do caso (Especialista do caso) mudou — no mesmo grupo do card. Payload:
+    /// <c>{ cardNumber, action, number?, requestId?, status?, activity?, recent?, by?, userId? }</c>.
+    /// </summary>
+    public const string EventCaseUpdated = "caseChatUpdated";
+
+    public static class CaseActions
+    {
+        public const string Message = "message";
+        public const string Edited = "edited";
+        public const string Deleted = "deleted";
+        public const string Typing = "typing";
+        /// <summary>Pedido do especialista mudou (na fila, rodando, terminou).</summary>
+        public const string Run = "run";
+        /// <summary>O que o especialista está fazendo agora (payload com activity/recent).</summary>
+        public const string Activity = "activity";
+        public const string Point = "point";
+        public const string Proposal = "proposal";
+        public const string Action = "action";
+    }
+
     public static class Actions
     {
         public const string Created = "created";

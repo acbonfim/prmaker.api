@@ -8,6 +8,8 @@ public class ExecutionRequestResponse
     public Guid Id { get; set; }
     public string CardNumber { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
+    /// <summary>0080: especialista em "investigar a fundo".</summary>
+    public bool Deep { get; set; }
     public string Source { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public Guid? PlanId { get; set; }
@@ -128,6 +130,12 @@ public class ExecutionClaimResponse
     /// </summary>
     public string Phase { get; set; } = ExecutionPhase.Analysis;
     public string? Model { get; set; }
+    /// <summary>
+    /// 0080: pedido do Especialista do caso — token restrito ao caso (só leitura + conversa; nunca altera o plano), que o
+    /// executor passa ao MCP (<c>--mcp-config --strict-mcp-config</c>) e aos scripts (<c>PRMAKE_TOKEN</c>). Vale só
+    /// enquanto o pedido estiver ativo.
+    /// </summary>
+    public string? CaseToken { get; set; }
 }
 
 public class ExecutionHeartbeatResponse
@@ -192,6 +200,7 @@ public static class ExecutionQueueResponseExtensions
         Id = r.Id,
         CardNumber = r.CardNumber,
         Kind = r.Kind,
+        Deep = r.Deep,
         Source = r.Source,
         Status = r.Status,
         PlanId = r.PlanId,

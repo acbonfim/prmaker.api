@@ -42,6 +42,7 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardRegistrar, ExecutionPlanCardRegistrar>();
 // Fila de execução e executores (0039): credencial do executor, binários publicados e a regra automática (WIQL).
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
+builder.Services.AddSingleton<solvace.prform.Execution.CaseTokenIssuer>();  // 0080: token do Especialista do caso
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
 builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
@@ -75,7 +76,9 @@ builder.Services.AddMcpServer(o =>
     .WithHttpTransport(o => o.Stateless = true)
     .WithTools<solvace.prform.Execution.PrmakeMcpTools>()
     // 0052: Base Solvace (engenharia reversa por item, seções, KC) pelo MCP — a análise consulta antes do código.
-    .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>();
+    .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>()
+    // 0080: Especialista do caso (conversa do card).
+    .WithTools<solvace.prform.Execution.CaseChatMcpTools>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
@@ -186,7 +189,9 @@ app.UseHttpsRedirection()
     .UseCors("CorsPolicy")
     .UseMiddleware<ExceptionHandlerMiddleware>()
     // 0039: credencial do executor só na fila/plano/skills/MCP e revogável na hora.
-    .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>();
+    .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>()
+    // 0080: o token do Especialista do caso só lê e conversa — nunca altera o plano.
+    .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>();
 
 // Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware
 // rode cedo no pipeline (antes da execução dos endpoints).

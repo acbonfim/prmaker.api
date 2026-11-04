@@ -41,6 +41,18 @@ public interface IExecutionQueueApplication
     /// <summary>A credencial do executor ainda vale (não revogado, mesmo jti)?</summary>
     Task<bool> IsCredentialValidAsync(Guid workerId, Guid credentialId, CancellationToken cancellationToken);
 
+    // 0080: Especialista do caso
+    /// <summary>
+    /// Pede uma resposta do especialista no card: na máquina do primeiro candidato que tem executor (quem escreveu, depois o
+    /// dono do plano). Já há pedido na fila → ele lê a mensagem nova; rodando → roda de novo ao terminar.
+    /// </summary>
+    Task<ExecutionRequest?> EnqueueSpecialistAsync(string cardNumber, ExecutionActor requester, IReadOnlyList<(Guid UserId, string Name)> ownerCandidates,
+        bool deep, CancellationToken cancellationToken);
+    /// <summary>Pedido do especialista no card (o ativo, senão o último), com o motivo de espera.</summary>
+    Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>O token do caso ainda vale (o pedido do especialista deste card está ativo)?</summary>
+    Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
+
     // Configurações do usuário
     Task<ExecutionUserSettingsResponse> GetSettingsAsync(Guid userId, CancellationToken cancellationToken);
     Task<ExecutionUserSettingsResponse> UpdateSettingsAsync(Guid userId, UpdateExecutionUserSettingsRequest request, CancellationToken cancellationToken);

@@ -119,6 +119,7 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
     [HttpGet("next")]
     public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait,
         [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
+        [FromServices] CaseTokenIssuer caseTokens,
         [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
         Run<ExecutionClaimResponse>(async () =>
         {
@@ -127,6 +128,13 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
                     new { error = "Executor desatualizado — reinicie o prmake-agent para ele se atualizar (ou rode o instalador de novo)." });
             var claim = await queue.NextAsync(RequireWorkerId(), ct);
             if (claim is null) return NoContent();
+            if (claim.Request.Kind == ExecutionRequestKind.Specialist)
+            {
+                // 0080: o especialista roda com o token do caso (só lê e conversa) e o modelo dele.
+                claim.CaseToken = caseTokens.Issue(User, claim.Request.Id, claim.Request.CardNumber);
+                claim.Model = await ModelForAsync(claim.Request.Deep ? DeepSpecialistPhase : ExecutionQueueApplication.SpecialistPhase, settings, logger, ct);
+                return Ok(claim);
+            }
             claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);
             return Ok(claim);
         });
@@ -141,10 +149,16 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
         try
         {
             var config = await settings.GetEffectiveConfigurationAsync(solvace.prform.Skills.SkillsConfigurationKeys.PluginName, ct);
-            var key = phase == ExecutionPhase.Correction
-                ? solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel
-                : solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel;
-            var model = solvace.prform.domain.Extensions.PluginConfigurationExtensions.GetConfigurationValueOrDefault(config, key, string.Empty).Trim();
+            var key = phase switch
+            {
+                ExecutionPhase.Correction => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel,
+                ExecutionQueueApplication.SpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistModel,
+                DeepSpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistDeepModel,
+                _ => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel
+            };
+            // 0080: sem a chave do especialista, os padrões da decisão 3 (rápido = sonnet, a fundo = opus).
+            var fallback = phase switch { ExecutionQueueApplication.SpecialistPhase => "sonnet", DeepSpecialistPhase => "opus", _ => string.Empty };
+            var model = solvace.prform.domain.Extensions.PluginConfigurationExtensions.GetConfigurationValueOrDefault(config, key, fallback).Trim();
             // Só apelido ou id de modelo (vai como argumento do Claude Code).
             return model.Length is > 0 and <= 100 && model.All(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '_' or '[' or ']') ? model : null;
         }
@@ -154,6 +168,8 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
             return null;
         }
     }
+
+    private const string DeepSpecialistPhase = "specialist-deep";
 
     [HttpPost("{id:guid}/start")]
     public Task<ActionResult<ExecutionRequestResponse>> Start([FromRoute] Guid id, [FromBody] StartExecutionRequestRequest request, CancellationToken ct) =>
@@ -170,7 +186,8 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
         {
             var response = await queue.FinishAsync(id, RequireWorkerId(), request, ct);
             // 0044: consumo FINAL da sessão (lido do transcript pelo executor) — a skill só manda fotos no meio da execução.
-            if (request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
+            // 0080: a sessão do especialista é do caso, não de um plano.
+            if (response.Kind != ExecutionRequestKind.Specialist && request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
             {
                 try
                 {

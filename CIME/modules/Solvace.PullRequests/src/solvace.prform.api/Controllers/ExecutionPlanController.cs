@@ -459,6 +459,11 @@ public class ExecutionPlanController : ControllerBase
             return Ok(await _application.GetUsageReportAsync(all ? null : userId, days, ct));
         });
 
+    /// <summary>0080: a pessoa confirma a divergência entre a análise e a base real (a etapa de PR pode começar).</summary>
+    [HttpPost("{id:guid}/divergence/confirm")]
+    public Task<ActionResult<ExecutionPlanResponse>> ConfirmDivergence([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.ConfirmDivergenceAsync(id, await GetActorAsync(ct, executor: false), ct)));
+
     private bool IsExecutorRequest() =>
         string.Equals(Request.Headers[ExecutorHeader].ToString(), "skill", StringComparison.OrdinalIgnoreCase);
 

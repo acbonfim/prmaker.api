@@ -23,6 +23,14 @@ public class ExecutionPlanContext : DbContext
     public DbSet<ExecutionUserSettings> UserSettings { get; set; }
     public DbSet<ExecutionCodeRef> CodeRefs { get; set; }
     public DbSet<ExecutionSuggestion> Suggestions { get; set; }
+    // 0080: Especialista do caso.
+    public DbSet<CaseChat> CaseChats { get; set; }
+    public DbSet<CaseMessage> CaseMessages { get; set; }
+    public DbSet<CaseFile> CaseFiles { get; set; }
+    public DbSet<CaseFileContent> CaseFileContents { get; set; }
+    public DbSet<CasePoint> CasePoints { get; set; }
+    public DbSet<CaseProposal> CaseProposals { get; set; }
+    public DbSet<CaseAction> CaseActions { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -90,6 +98,11 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.SituationPostedText).HasColumnType("text");
             entity.Property(e => e.SituationPostedBy).HasMaxLength(200);
             entity.Ignore(e => e.QaValidationStep);
+            // 0080: divergência entre a análise e a base real.
+            entity.Property(e => e.DivergenceText).HasMaxLength(ExecutionPlan.MaxDivergenceLength);
+            entity.Property(e => e.DivergenceStepKey).HasMaxLength(ExecutionStep.MaxKeyLength);
+            entity.Property(e => e.DivergenceConfirmedBy).HasMaxLength(200);
+            entity.Ignore(e => e.DivergencePending);
         });
 
         modelBuilder.Entity<ExecutionStep>(entity =>
@@ -304,14 +317,119 @@ public class ExecutionPlanContext : DbContext
             entity.Ignore(e => e.IsActive);
             entity.Ignore(e => e.IsFinished);
 
-            // Um pedido ativo por card: dois cliques (ou tela + regra) não abrem duas sessões.
-            entity.HasIndex(e => e.CardNumber)
+            // Um pedido ativo por card: dois cliques (ou tela + regra) não abrem duas sessões. 0080: por pista — o
+            // especialista do caso tem a dele (um ativo por card) e não disputa com a análise/correção.
+            entity.HasIndex(e => e.CardNumber, "IX_ExecutionRequests_ActiveCard")
                 .IsUnique()
-                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running')")
-                .HasDatabaseName("IX_ExecutionRequests_ActiveCard");
+                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" <> 'specialist'");
+            entity.HasIndex(e => e.CardNumber, "IX_ExecutionRequests_ActiveCaseCard")
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" = 'specialist'");
             entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
             entity.HasIndex(e => new { e.OwnerUserId, e.Status });
             entity.HasIndex(e => new { e.WorkerId, e.Status });
+        });
+
+        // 0080: Especialista do caso — conversa por card, arquivos (conteúdo em tabela própria), pontos, propostas e ações.
+        modelBuilder.Entity<CaseChat>(entity =>
+        {
+            entity.ToTable("CaseChats");
+            entity.HasKey(e => e.CardNumber);
+            entity.Property(e => e.CardNumber).HasMaxLength(100);
+            entity.Property(e => e.SessionId).HasMaxLength(ExecutionSession.MaxSessionIdLength);
+            entity.Property(e => e.SessionHost).HasMaxLength(ExecutionSession.MaxHostLength);
+            entity.Property(e => e.SessionCwd).HasMaxLength(ExecutionSession.MaxCwdLength);
+            entity.Property(e => e.CostUsd).HasPrecision(12, 4);
+            entity.Property(e => e.Version).IsRowVersion();
+        });
+
+        modelBuilder.Entity<CaseMessage>(entity =>
+        {
+            entity.ToTable("CaseMessages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.AuthorKind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.AuthorName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Text).IsRequired().HasColumnType("text");
+            entity.Property(e => e.Transcript).HasMaxLength(CaseMessage.MaxTranscriptLength);
+            entity.Property(e => e.Mentions).HasColumnType("jsonb");
+            entity.Property(e => e.Steps).HasColumnType("jsonb");
+            entity.Property(e => e.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength);
+            entity.Ignore(e => e.IsDeleted);
+            entity.Ignore(e => e.FromSpecialist);
+            entity.Ignore(e => e.FromPerson);
+            entity.Ignore(e => e.MentionsSpecialist);
+
+            entity.HasIndex(e => new { e.CardNumber, e.Number }).IsUnique();
+            entity.HasIndex(e => e.RequestId);
+        });
+
+        modelBuilder.Entity<CaseFile>(entity =>
+        {
+            entity.ToTable("CaseFiles");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(CaseFile.MaxNameLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(150);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.HasOne(e => e.Content).WithOne().HasForeignKey<CaseFileContent>(c => c.FileId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.CardNumber, e.Number }).IsUnique();
+            entity.HasIndex(e => e.MessageId);
+        });
+
+        modelBuilder.Entity<CaseFileContent>(entity =>
+        {
+            entity.ToTable("CaseFileContents");
+            entity.HasKey(e => e.FileId);
+            entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
+        });
+
+        modelBuilder.Entity<CasePoint>(entity =>
+        {
+            entity.ToTable("CasePoints");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Text).IsRequired().HasMaxLength(CasePoint.MaxTextLength);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.CardNumber);
+        });
+
+        modelBuilder.Entity<CaseProposal>(entity =>
+        {
+            entity.ToTable("CaseProposals");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(CaseProposal.MaxTitleLength);
+            entity.Property(e => e.Summary).HasColumnType("text");
+            entity.Property(e => e.Phase).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.DecidedBy).HasMaxLength(200);
+            entity.Property(e => e.RejectReason).HasMaxLength(500);
+            entity.OwnsMany(e => e.Changes, c => c.ToJson());
+            entity.Ignore(e => e.IsPending);
+            entity.HasIndex(e => new { e.CardNumber, e.Number }).IsUnique();
+        });
+
+        modelBuilder.Entity<CaseAction>(entity =>
+        {
+            entity.ToTable("CaseActions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(CaseAction.MaxTitleLength);
+            entity.Property(e => e.Detail).HasMaxLength(CaseAction.MaxDetailLength);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.DecidedBy).HasMaxLength(200);
+            entity.Property(e => e.Result).HasMaxLength(CaseAction.MaxResultLength);
+            entity.HasIndex(e => new { e.CardNumber, e.Number }).IsUnique();
         });
 
         modelBuilder.Entity<ExecutionWorker>(entity =>

@@ -540,6 +540,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
             foreach (var log in fresh.Where(l => l.StepKey is not null && l.Kind is ExecutionLogKind.Info or ExecutionLogKind.Progress))
                 p.TrackActivity(log.StepKey!, log.Message, now);
+            // 0080: divergência entre a análise e a base real fica pendente no plano (alerta + portão do PR).
+            foreach (var log in fresh.Where(l => l.Kind == ExecutionLogKind.Divergence))
+                p.RaiseDivergence(log.Message, log.StepKey, now);
 
             _repository.AddLogs(fresh);
             p.Touch(now, fromExecutor: true);
@@ -550,6 +553,21 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (appended > 0)
             await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Log, lastStepKey, cancellationToken);
         return appended;
+    }
+
+    /// <summary>0080: a pessoa confirmou a divergência — a etapa de PR pode começar e o Claude segue.</summary>
+    public async Task<ExecutionPlanResponse> ConfirmDivergenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            p.ConfirmDivergence(actor.Name, now);
+            p.Touch(now, fromExecutor: false);
+            return Task.CompletedTask;
+        }, cancellationToken, actor, () => "⚠️ **Divergência confirmada** por " + actor.Name);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, plan.DivergenceStepKey, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
+        return await GetAsync(planId, cancellationToken);
     }
 
     public async Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken)
