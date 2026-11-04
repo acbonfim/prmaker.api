@@ -213,7 +213,9 @@ public static class CardSituation
         {
             CardSituationKind.Ticket => "Quando o chamado for atendido, marque-o como *Resolvido* na etapa — ela conclui e o plano segue." + then,
             CardSituationKind.PullRequestReview => "Quando os PRs forem aprovados e mesclados (por outra pessoa), a etapa conclui sozinha." + then,
-            CardSituationKind.QaValidation => (r.DevTestInQaAt is null ? "Mova o card para *Dev Test in QA*, valide" : "Valide")
+            CardSituationKind.QaValidation => (r.DevTestInQaAt is not null ? "Valide"
+                                                  : r.DevTestInQaError is not null ? "O PRMake não conseguiu mover o card para *Dev Test in QA* (aviso acima): mova pelo menu *DevOps*, valide"
+                                                  : "Mova o card para *Dev Test in QA*, valide")
                                               + " a correção em QA e conclua *" + (r.StepTitle ?? "Validar em QA") + "* — o card vai para *Ready for QA*.",
             CardSituationKind.Answer => "Responda as perguntas no PRMake (ou no Claude) — o plano segue com as respostas.",
             CardSituationKind.User => "Faça o que a etapa pede e conclua na tela (botão *Concluir*/*Já resolvi*).",
@@ -285,7 +287,9 @@ public static class CardSituation
 
     private static string PrState(CardSituationPullRequest p)
     {
-        var target = p.TargetBranch is null ? "" : $"→ `{p.TargetBranch}`{(p.IsQa ? " (QA)" : "")} · ";
+        // O título do link já traz "→ destino" (sincronização do GitHub); só repete o destino quando não traz.
+        var titled = p.TargetBranch is not null && (p.Title?.Contains($"→ {p.TargetBranch}", StringComparison.OrdinalIgnoreCase) ?? false);
+        var target = (p.TargetBranch is null || titled ? "" : $"→ `{p.TargetBranch}` · ") + (p.IsQa ? "QA · " : "");
         if (p.Status == ExecutionLinkStatus.Merged)
             return $"{target}✅ mesclado{(p.MergedAt is { } m ? $" em {Date(m)}" : "")}";
         var parts = new List<string> { "aberto" };

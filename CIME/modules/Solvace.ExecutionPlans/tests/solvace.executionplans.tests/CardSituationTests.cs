@@ -47,6 +47,8 @@ public class CardSituationTests
         Assert.True(s.PullRequests.Single(p => p.Number == 11).IsQa);
         Assert.Contains("Dev Test in QA", s.Markdown);
         Assert.Contains("Ready for QA", s.Next);
+        Assert.DoesNotContain("→ `qa`", s.Markdown); // o título do link já traz o destino
+        Assert.Contains("QA · ✅ mesclado", s.Markdown);
     }
 
     [Fact]
@@ -118,6 +120,16 @@ public class CardSituationTests
         plan.RecordDevTestInQa(null, Now.AddMinutes(10));
         Assert.False(plan.DevTestInQaDue(Now.AddDays(1)));
         Assert.Null(CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber).DevTestInQaError);
+    }
+
+    [Fact]
+    public void Failed_automatic_move_tells_to_move_by_the_devops_menu()
+    {
+        var plan = Correction(Step("pr-edv-solvace", ExecutionStepKind.PullRequest), Step("validar-qa", ExecutionStepKind.Validation, ExecutionExecutor.User, "pr-edv-solvace"));
+        plan.CompleteStep("pr-edv-solvace", "ok", "PRMake", Now, false);
+        plan.RecordDevTestInQa("sem integração", Now);
+        var s = CardSituation.Build(plan, [Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], [], IsQa, plan.CardNumber);
+        Assert.StartsWith("O PRMake não conseguiu", s.Next);
     }
 
     private static ExecutionArtifact Artifact(ExecutionPlan plan, string name, string step)
