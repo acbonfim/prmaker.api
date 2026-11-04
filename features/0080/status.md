@@ -40,3 +40,7 @@ executor **simulado com curl** (registro 1.2.0, next/start/heartbeat/finish). Ce
 ## Log
 - 2026-11-04 — spec, mockups e plano; decisões aceitas pelo usuário ("pode seguir com as propostas").
 - 2026-11-04 — B1–B3, E1, S1–S2, F1–F3 e Q1 local. PRs ainda não abertos.
+- 2026-11-04 — ajustes pedidos pelo usuário: (1) sem a espera de 2 min depois de comentário (0049) — o plano retoma na
+  hora (`ExecutorNoteDelaySeconds` não é mais lida; pedido antigo "juntando comentários" começa já); (2) o aviso "sem
+  sinal do Claude" virou ícone no cabeçalho com menu (continuar / copiar o comando); (3) a jornada lê os dois planos do
+  par (decisões da análise, QA e fechamento da correção) mesmo vendo o outro. Testado no harness local.

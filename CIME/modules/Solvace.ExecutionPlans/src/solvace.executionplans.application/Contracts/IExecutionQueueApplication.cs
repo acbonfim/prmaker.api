@@ -80,10 +80,10 @@ public interface IExecutionQueueSettings
 }
 
 /// <param name="CorrectionInNewSession">A correção abre uma sessão nova do Claude em vez de retomar a da análise.</param>
-/// <param name="NoteDelay">Espera depois de um comentário antes de retomar (comentários em sequência = uma retomada).</param>
-public record ExecutionQueueOptions(bool CorrectionInNewSession, TimeSpan NoteDelay)
+/// <remarks>0080: a espera depois de comentário (0049, <c>ExecutorNoteDelaySeconds</c>) saiu — o plano retoma na hora.</remarks>
+public record ExecutionQueueOptions(bool CorrectionInNewSession)
 {
-    public static readonly ExecutionQueueOptions Default = new(true, TimeSpan.FromSeconds(120));
+    public static readonly ExecutionQueueOptions Default = new(true);
 }
 
 /// <summary>Itens do Azure DevOps que casam com a regra automática do usuário (0039) — implementado no host (WIQL).</summary>

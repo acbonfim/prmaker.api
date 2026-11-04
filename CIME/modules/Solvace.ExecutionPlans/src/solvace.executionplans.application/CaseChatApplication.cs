@@ -275,19 +275,6 @@ public class CaseChatApplication(
         proposal.Accept(request.Execute, actor.Name, now);
         await cases.SaveChangesAsync(cancellationToken);
         var note = await planApp.AddNoteAsync(plan.Id, proposal.InstructionText(actor.Name), null, [], actor.AsExecutionActor(), cancellationToken);
-        // Aceitar é decisão explícita: o Claude do tratamento começa já (sem a espera que junta comentários).
-        if (actor.UserId is { } me && me == plan.CreatedByUserId)
-        {
-            try
-            {
-                await queue.CreateAsync(new CreateExecutionRequestRequest { CardNumber = card }, actor.AsExecutionActor(), ExecutionRequestSource.CaseProposal,
-                    cancellationToken);
-            }
-            catch (DomainException)
-            {
-                // sem executor: o comentário fica no plano e a sessão lê quando voltar
-            }
-        }
         cases.ClearTracking();
         var saved = await cases.GetProposalAsync(card, proposalId, cancellationToken) ?? proposal;
         saved.SetPlanNote(note.Number);

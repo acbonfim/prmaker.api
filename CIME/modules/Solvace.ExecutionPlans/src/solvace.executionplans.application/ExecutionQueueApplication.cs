@@ -479,11 +479,10 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         var target = session?.Host is { } host
             ? workers.FirstOrDefault(w => string.Equals(w.Host, host, StringComparison.OrdinalIgnoreCase))?.Id
             : null;
+        // 0080: sem espera depois de comentário — a conversa é do Especialista do caso; o que chega ao plano é decisão
+        // explícita (proposta aceita, "Levar para o plano") e começa na hora.
         var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, plan.CreatedBy,
             actor.UserId, actor.Name, plan.Id, session, target, null, false, now);
-        // 0049: comentário espera um pouco — quem comenta costuma mandar vários em sequência; cada retomada relê o contexto.
-        if (source == ExecutionRequestSource.Note && !explicitRequest && (await OptionsAsync(cancellationToken)).NoteDelay is { } delay && delay > TimeSpan.Zero)
-            request.Delay(now + delay, GatheringText(now + delay), now);
         var saved = await AddRequestAsync(request, cancellationToken);
         if (saved is not null && saved.Id == request.Id)
             await UpdateWaitReasonsAsync(owner, now, cancellationToken);
@@ -494,25 +493,16 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         userIds.Count == 0 ? Task.FromResult(new HashSet<Guid>()) : _queue.GetOwnersWithWorkersAsync(userIds, cancellationToken);
 
     /// <summary>
-    /// 0049: já há pedido no card. Na fila esperando comentários: um comentário novo empurra a espera (até 3× o
-    /// intervalo desde o pedido) e o "Continuar" pela tela começa já. Retorna o pedido só no pedido explícito com ele
-    /// ainda na fila (rodando → null: "o Claude já está trabalhando").
+    /// Já há pedido no card: na fila, ele começa já (0080: sem a espera da 0049 que juntava comentários). Retorna o
+    /// pedido só no pedido explícito com ele ainda na fila (rodando → null: "o Claude já está trabalhando").
     /// </summary>
     private async Task<ExecutionRequest?> GatherIntoAsync(ExecutionRequest active, string source, bool explicitRequest, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         if (active.Status != ExecutionRequestStatus.Queued)
             return null;
-        var changed = false;
-        if (explicitRequest || (source != ExecutionRequestSource.Note && active.Source == ExecutionRequestSource.Note))
-            // "Continuar" ou outra ação do usuário (respondeu, "Já resolvi"...) não espera mais comentários.
-            changed = active.RunNow(now);
-        else if (source == ExecutionRequestSource.Note && active.Attempts == 0 && active.NotBefore is { } nb && nb > now)
-        {
-            var delay = (await OptionsAsync(cancellationToken)).NoteDelay;
-            var until = new[] { now + delay, active.CreatedAt + 3 * delay }.Min();
-            changed = active.Delay(until, GatheringText(until), now);
-        }
+        // 0080: nada espera mais comentários — um pedido antigo ainda "juntando comentários" começa já.
+        var changed = active.RunNow(now);
         if (changed)
         {
             try

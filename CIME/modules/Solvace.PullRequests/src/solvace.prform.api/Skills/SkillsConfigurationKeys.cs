@@ -22,7 +22,7 @@ public static class SkillsConfigurationKeys
     public const string ExecutorCorrectionModel = "ExecutorCorrectionModel";
     /// <summary>0049: a correção abre uma sessão nova do Claude (só o resumo da análise) em vez de retomar a da análise.</summary>
     public const string ExecutorCorrectionNewSession = "ExecutorCorrectionNewSession";
-    /// <summary>0049: segundos de espera depois de um comentário antes de retomar o card (0 = na hora).</summary>
+    /// <summary>0049: segundos de espera depois de um comentário. 0080: não é mais lida (o plano retoma na hora).</summary>
     public const string ExecutorNoteDelaySeconds = "ExecutorNoteDelaySeconds";
     /// <summary>0052: papéis que aprovam e publicam a engenharia reversa ("admin,gestor").</summary>
     public const string ReverseEngineeringApproverRoles = "ReverseEngineeringApproverRoles";
