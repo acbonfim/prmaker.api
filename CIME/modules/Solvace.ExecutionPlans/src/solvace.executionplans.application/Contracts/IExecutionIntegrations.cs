@@ -18,7 +18,13 @@ public interface IExecutionPullRequestSource
 }
 
 /// <summary>0069: CI de um PR — State pending | success | failure; null = o commit não tem CI. HeadSha = commit avaliado.</summary>
-public record CardPullRequestChecks(string? State, string? HeadSha, IReadOnlyList<ExecutionCheckItem> Failed);
+public record CardPullRequestChecks(string? State, string? HeadSha, IReadOnlyList<ExecutionCheckItem> Failed)
+{
+    /// <summary>0075: revisões do PR (aprovações vigentes, pedidos de alteração vigentes, revisores ainda pedidos).</summary>
+    public int Approvals { get; init; }
+    public int ChangesRequested { get; init; }
+    public IReadOnlyList<string> ReviewersPending { get; init; } = [];
+}
 
 /// <summary>
 /// "Salvar o card" (0037): garante o registro do card no PRMake (PullRequest) — o mesmo do botão Salvar da tela — assim
@@ -28,6 +34,39 @@ public interface IExecutionCardRegistrar
 {
     /// <returns>true quando criou o registro agora; false se ele já existia (nada muda).</returns>
     Task<bool> EnsureRegisteredAsync(string cardNumber, Guid userId, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// 0075: o card no DevOps para o plano — branch de QA e automação (Skills Configurations), mover para Dev Test in QA,
+/// estado/coluna atuais e o comentário da situação. Implementado no host com a integração de quem está chamando.
+/// </summary>
+public interface IExecutionCardDevOps
+{
+    Task<ExecutionQaSettings> GetQaSettingsAsync(CancellationToken cancellationToken);
+
+    /// <returns>null = movido; senão o motivo (sem integração, 409 do DevOps...).</returns>
+    Task<string?> MoveToDevTestInQaAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>Estado e coluna do board (null quando não deu para ler — é enfeite do resumo).</summary>
+    Task<(string? State, string? Column)> GetStateAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>Cria ou atualiza o comentário HTML na discussion; devolve o id.</summary>
+    Task<int> UpsertCommentAsync(string cardNumber, string html, int? commentId, CancellationToken cancellationToken);
+}
+
+/// <summary>0075: <c>AutoDevTestInQa</c> e as branches de QA (<c>QaBranchPattern</c>: lista; <c>qa*</c> = prefixo).</summary>
+public record ExecutionQaSettings(bool AutoDevTestInQa, IReadOnlyList<string> QaBranches)
+{
+    public static readonly ExecutionQaSettings Default = new(true, ["qa"]);
+
+    public bool IsQaBranch(string? branch)
+    {
+        var b = branch?.Trim();
+        if (string.IsNullOrEmpty(b)) return false;
+        return QaBranches.Any(p => p.EndsWith('*')
+            ? b.StartsWith(p[..^1], StringComparison.OrdinalIgnoreCase)
+            : string.Equals(b, p, StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 /// <summary>Escreve na Timeline do card (0024) — implementado no host sobre o módulo Timeline.</summary>

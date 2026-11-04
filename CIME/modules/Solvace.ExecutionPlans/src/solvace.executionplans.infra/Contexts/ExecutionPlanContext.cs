@@ -79,6 +79,12 @@ public class ExecutionPlanContext : DbContext
                 s.OwnsMany(x => x.BaseExploredFiles, f => f.Property(x => x.Path).HasMaxLength(ExecutionExploredFile.MaxPathLength));
             });
             entity.Property(e => e.ResumeRequestedBy).HasMaxLength(200);
+            // 0075: situação do card, contexto da passagem e Dev Test in QA automático.
+            entity.Property(e => e.Handoff).HasColumnType("text");
+            entity.Property(e => e.HandoffBy).HasMaxLength(200);
+            entity.Property(e => e.SituationKind).HasMaxLength(20);
+            entity.Property(e => e.DevTestInQaError).HasMaxLength(ExecutionPlan.MaxDevTestInQaErrorLength);
+            entity.Ignore(e => e.QaValidationStep);
         });
 
         modelBuilder.Entity<ExecutionStep>(entity =>
@@ -193,6 +199,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.ChecksStatus).HasMaxLength(20);
             entity.Property(e => e.ChecksFailed).HasMaxLength(ExecutionLink.MaxChecksFailedLength);
             entity.Property(e => e.ChecksHeadSha).HasMaxLength(64);
+            entity.Property(e => e.ReviewersPending).HasMaxLength(ExecutionLink.MaxReviewersLength);
             entity.Ignore(e => e.DisplayName);
 
             entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);

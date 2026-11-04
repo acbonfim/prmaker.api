@@ -82,3 +82,20 @@ public class CodeCitationGateTests
         Assert.NotNull(CodeCitationGate.Missing("solvace-asp/systems/sa3/sa3_busca_a3.asp:239-289", heads, "1"));
     }
 }
+
+/// <summary>0075: qual destino de PR conta como QA (Dev Test in QA automático).</summary>
+public class QaBranchTests
+{
+    [Theory]
+    [InlineData("qa", true)]
+    [InlineData("QA", true)]
+    [InlineData("development", false)]
+    [InlineData("qa-legacy", false)]
+    [InlineData(null, false)]
+    public void Default_is_the_qa_branch(string? branch, bool expected) =>
+        Assert.Equal(expected, solvace.executionplans.application.Contracts.ExecutionQaSettings.Default.IsQaBranch(branch));
+
+    [Fact]
+    public void Star_is_a_prefix() =>
+        Assert.True(new solvace.executionplans.application.Contracts.ExecutionQaSettings(true, ["qa*", "homolog"]).IsQaBranch("qa-legacy"));
+}

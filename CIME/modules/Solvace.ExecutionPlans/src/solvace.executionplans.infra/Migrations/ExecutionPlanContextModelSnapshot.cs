@@ -204,8 +204,14 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("Approvals")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("BlocksStep")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("ChangesRequested")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("ChecksChangedAt")
                         .HasColumnType("timestamp with time zone");
@@ -244,6 +250,10 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<string>("Repository")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ReviewersPending")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Status")
                         .HasMaxLength(20)
@@ -400,8 +410,28 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("DevTestInQaAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DevTestInQaError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("DevTestInQaTriedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Handoff")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("HandoffAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HandoffBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -436,6 +466,16 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<string>("ResumeRequestedBy")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("SituationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("SituationCommentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SituationKind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");

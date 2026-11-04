@@ -448,6 +448,8 @@ public class GitHubService : IGitHubService
                     f.Preexisting = baseline.Contains(f.Name);
             }
 
+            await ReadReviewsAsync(prOwner, prRepo, number, result, cancellationToken);
+
             var pending = runs.CheckRuns.Any(r => r.Status.Value != CheckStatus.Completed)
                           || statuses.Statuses.Any(s => s.State.Value == CommitState.Pending);
             var any = runs.CheckRuns.Count > 0 || statuses.Statuses.Count > 0;
@@ -471,6 +473,33 @@ public class GitHubService : IGitHubService
             result.Error = e is TimeoutException ? "Tempo esgotado ao consultar o GitHub" : "Falha ao consultar o GitHub";
         }
         return result;
+    }
+
+    /// <summary>
+    /// 0075: revisões do PR para o resumo da situação do card — vale a última revisão de cada pessoa (aprovou, pediu
+    /// alteração ou foi dispensada) e os revisores ainda pedidos. Best-effort: sem permissão, fica sem revisões.
+    /// </summary>
+    private async Task ReadReviewsAsync(string owner, string repo, int number, PullRequestChecksResponse result, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reviews = await Client.PullRequest.Review.GetAll(owner, repo, number).WaitAsync(StatusRequestTimeout, cancellationToken);
+            var latest = reviews
+                .Where(r => r.User is not null && r.State.Value is PullRequestReviewState.Approved or PullRequestReviewState.ChangesRequested or PullRequestReviewState.Dismissed)
+                .GroupBy(r => r.User.Login, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderBy(r => r.SubmittedAt).Last().State.Value)
+                .ToList();
+            result.Approvals = latest.Count(s => s == PullRequestReviewState.Approved);
+            result.ChangesRequested = latest.Count(s => s == PullRequestReviewState.ChangesRequested);
+            var requested = await Client.PullRequest.ReviewRequest.Get(owner, repo, number).WaitAsync(StatusRequestTimeout, cancellationToken);
+            result.ReviewersPending = requested.Users.Select(u => u.Login)
+                .Concat(requested.Teams.Select(t => t.Slug is null ? t.Name : $"@{t.Slug}"))
+                .Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogInformation("Revisões do PR {Owner}/{Repo}#{Number} indisponíveis: {Error}", owner, repo, number, e.Message);
+        }
     }
 
     /// <summary>

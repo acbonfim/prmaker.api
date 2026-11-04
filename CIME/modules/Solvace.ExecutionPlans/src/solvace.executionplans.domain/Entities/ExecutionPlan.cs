@@ -60,6 +60,35 @@ public class ExecutionPlan
 
     public const int MaxSessions = 50;
 
+    /// <summary>
+    /// 0075: contexto da passagem (handoff) — o que a skill deixa escrito ao entrar em espera (o que foi feito, o que se
+    /// espera, riscos, como retomar). Vai no resumo "Situação atual" do card junto com os fatos do PRMake.
+    /// </summary>
+    public string? Handoff { get; private set; }
+    public DateTimeOffset? HandoffAt { get; private set; }
+    public string? HandoffBy { get; private set; }
+    public const int MaxHandoffLength = 8_000;
+
+    /// <summary>0075: último tipo de situação registrado (a Timeline ganha uma entrada quando muda). Gravado direto no banco.</summary>
+    public string? SituationKind { get; private set; }
+    public DateTimeOffset? SituationAt { get; private set; }
+
+    /// <summary>0075: o PRMake moveu o card para Dev Test in QA (PR da branch de QA mesclado) — uma vez só.</summary>
+    public DateTimeOffset? DevTestInQaAt { get; private set; }
+    /// <summary>0075: última tentativa e o erro dela (sem integração, 409...) — nova tentativa no máximo a cada 10 min.</summary>
+    public DateTimeOffset? DevTestInQaTriedAt { get; private set; }
+    public string? DevTestInQaError { get; private set; }
+    public const int MaxDevTestInQaErrorLength = 500;
+
+    /// <summary>0075: comentário da situação publicado na discussion do DevOps (republicar atualiza o mesmo).</summary>
+    public int? SituationCommentId { get; private set; }
+
+    public void SetSituationComment(int commentId, DateTimeOffset now)
+    {
+        SituationCommentId = commentId;
+        UpdatedAt = now;
+    }
+
     public ExecutionSession? CurrentSession => Sessions.OrderByDescending(s => s.LastSeenAt).FirstOrDefault();
 
     public bool ResumePending => ResumeRequestedAt is { } requested && (ResumeHandledAt is null || ResumeHandledAt < requested);
@@ -239,6 +268,36 @@ public class ExecutionPlan
 
     /// <summary>Completed/cancelled: o plano terminou. Só "completed" pode ser reaberto (pela skill).</summary>
     public bool IsFinished => Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled;
+
+    /// <summary>0075: grava o contexto da passagem (texto vazio limpa).</summary>
+    public void SetHandoff(string? text, string by, DateTimeOffset now)
+    {
+        var t = text?.Trim();
+        if (t is { Length: > MaxHandoffLength })
+            throw new DomainException($"O resumo da passagem pode ter no máximo {MaxHandoffLength} caracteres.");
+        Handoff = string.IsNullOrEmpty(t) ? null : t;
+        HandoffAt = Handoff is null ? null : now;
+        HandoffBy = Handoff is null ? null : Clean(by, 200);
+        UpdatedAt = now;
+    }
+
+    /// <summary>0075: resultado da tentativa de mover para Dev Test in QA (erro null = movido).</summary>
+    public void RecordDevTestInQa(string? error, DateTimeOffset now)
+    {
+        DevTestInQaTriedAt = now;
+        DevTestInQaError = Clean(error, MaxDevTestInQaErrorLength);
+        if (error is null)
+            DevTestInQaAt = now;
+    }
+
+    /// <summary>0075: pode tentar mover para Dev Test in QA agora? (nunca movido e sem tentativa nos últimos 10 min).</summary>
+    public bool DevTestInQaDue(DateTimeOffset now) =>
+        DevTestInQaAt is null && (DevTestInQaTriedAt is null || now - DevTestInQaTriedAt >= TimeSpan.FromMinutes(10));
+
+    /// <summary>0075: etapa de validação em QA (key validar-qa ou validar-qa-*), se o plano tiver.</summary>
+    public ExecutionStep? QaValidationStep =>
+        Steps.Where(s => s.Key == "validar-qa" || s.Key.StartsWith("validar-qa-", StringComparison.Ordinal))
+            .OrderBy(s => ExecutionStatus.IsStepFinished(s.Status) ? 1 : 0).ThenBy(s => s.Order).FirstOrDefault();
 
     public void SetTitle(string? title)
     {

@@ -76,6 +76,12 @@ public interface IExecutionPlanRepository
     /// <summary>0075: arquivos de todos os planos do card (da skill e anexos de comentário), sem o conteúdo.</summary>
     Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// 0075: troca o tipo de situação registrado se ainda for <paramref name="expected"/> (direto no banco). True = esta
+    /// chamada fez a troca (só ela escreve na Timeline).
+    /// </summary>
+    Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken);
+
     // Fotografias do código citado (0075)
     /// <summary>Ref do plano, rastreada (upsert).</summary>
     Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken);

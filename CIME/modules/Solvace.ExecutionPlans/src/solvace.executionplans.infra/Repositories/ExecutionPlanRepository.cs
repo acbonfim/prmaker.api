@@ -247,6 +247,10 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
          orderby a.Number
          select a).ToListAsync(cancellationToken);
 
+    public async Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken) =>
+        await _context.Plans.Where(p => p.Id == planId && p.SituationKind == expected)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.SituationKind, kind).SetProperty(p => p.SituationAt, at), cancellationToken) > 0;
+
     // Fotografias do código citado (0075)
 
     public Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken) =>

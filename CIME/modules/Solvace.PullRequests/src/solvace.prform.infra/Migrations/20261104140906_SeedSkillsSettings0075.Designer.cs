@@ -12,8 +12,8 @@ using solvace.prform.Infra.Contexts;
 namespace solvace.prform.infra.Migrations
 {
     [DbContext(typeof(DefaultContext))]
-    [Migration("20261104140906_SeedCodeRefContextLines")]
-    partial class SeedCodeRefContextLines
+    [Migration("20261104140906_SeedSkillsSettings0075")]
+    partial class SeedSkillsSettings0075
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

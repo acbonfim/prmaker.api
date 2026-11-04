@@ -514,6 +514,16 @@ public partial class PrmakeMcpTools(
         return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
     });
 
+    [McpServerTool(Name = "prmake_handoff")]
+    [Description("0075: contexto da passagem (handoff) ao entrar em ESPERA (chamado aberto, PR aguardando aprovacao/merge, validacao em QA): " +
+                 "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
+                 "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card e no handover. Texto vazio limpa.")]
+    public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
+        return Serialize(new { situation.Kind, situation.Title, situation.Since, situation.Next });
+    });
+
     [McpServerTool(Name = "prmake_link")]
     [Description("Anexa um link a etapa: chamado (kind ticket; blocks=true trava a etapa ate ser resolvido), PR, documento.")]
     public Task<string> Link(string card, string key, string url, string? title = null,

@@ -24,6 +24,18 @@ public class SaveExecutionCodeRefRequest
         Snapshot, Change, Title, Why, Proposal, Annotations);
 }
 
+/// <summary>0075: contexto da passagem gravado pela skill ao entrar em espera.</summary>
+public class SetExecutionHandoffRequest
+{
+    public string? Text { get; set; }
+}
+
+/// <summary>0075: a situação renderizada (HTML) para a discussion do DevOps.</summary>
+public class PublishExecutionSituationRequest
+{
+    public string? Html { get; set; }
+}
+
 /// <summary>0075: ajuste parcial (campo ausente = não muda; texto vazio limpa).</summary>
 public class PatchExecutionCodeRefRequest
 {

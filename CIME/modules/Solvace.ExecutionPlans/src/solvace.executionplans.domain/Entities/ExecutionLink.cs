@@ -39,6 +39,12 @@ public class ExecutionLink
     public string? ChecksHeadSha { get; private set; }
     public DateTimeOffset? ChecksChangedAt { get; private set; }
 
+    /// <summary>0075: revisões do PR aberto — aprovações, alterações pedidas e quem ainda precisa revisar (logins, vírgula).</summary>
+    public int? Approvals { get; private set; }
+    public int? ChangesRequested { get; private set; }
+    public string? ReviewersPending { get; private set; }
+    public const int MaxReviewersLength = 500;
+
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
     public string? StatusChangedBy { get; private set; }
@@ -115,6 +121,21 @@ public class ExecutionLink
         ChecksFailed = json;
         ChecksHeadSha = sha;
         ChecksChangedAt = now;
+        return true;
+    }
+
+    /// <summary>0075: revisões do PR (pela sincronização do GitHub). True quando mudou.</summary>
+    public bool ChangeReviews(int approvals, int changesRequested, IReadOnlyList<string> pending)
+    {
+        if (Kind != ExecutionLinkKind.PullRequest)
+            throw new DomainException("Só PR tem revisões.");
+        var list = string.Join(", ", pending.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).Distinct());
+        var reviewers = list.Length == 0 ? null : list.Length <= MaxReviewersLength ? list : list[..MaxReviewersLength];
+        if (Approvals == approvals && ChangesRequested == changesRequested && ReviewersPending == reviewers)
+            return false;
+        Approvals = Math.Max(0, approvals);
+        ChangesRequested = Math.Max(0, changesRequested);
+        ReviewersPending = reviewers;
         return true;
     }
 

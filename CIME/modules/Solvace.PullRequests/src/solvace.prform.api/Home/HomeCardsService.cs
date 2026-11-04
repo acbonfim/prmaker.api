@@ -271,7 +271,7 @@ public sealed partial class HomeCardsService(
             .Select(x => new
             {
                 x.Id, x.CardNumber, x.Phase, x.Title, x.Status, x.StatusChangedBy, x.CreatedByUserId, x.CreatedBy,
-                x.CreatedAt, x.UpdatedAt, x.ResumeRequestedBy, x.ResumeRequestedAt
+                x.CreatedAt, x.UpdatedAt, x.ResumeRequestedBy, x.ResumeRequestedAt, x.SituationKind, x.SituationAt
             })
             .ToListAsync(ct);
         var latestPlans = cardPlans.GroupBy(p => p.CardNumber)
@@ -391,6 +391,8 @@ public sealed partial class HomeCardsService(
                     WaitingOn = current?.Status == ExecutionStatus.Waiting ? current.WaitingOn : null,
                     WaitingReason = current?.Status == ExecutionStatus.Waiting ? current.StatusReason : null,
                     OpenQuestions = openQuestions.GetValueOrDefault(card),
+                    SituationKind = plan.SituationKind,
+                    SituationAt = plan.SituationAt,
                     Phases = cardPlans.Where(p => p.CardNumber == card).Select(p => p.Phase).Distinct().ToList(),
                     UpdatedAt = plan.UpdatedAt,
                 };

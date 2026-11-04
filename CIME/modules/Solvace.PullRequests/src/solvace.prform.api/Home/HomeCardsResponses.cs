@@ -76,6 +76,9 @@ public sealed class HomeCardPlan
     public string? WaitingOn { get; init; }
     public string? WaitingReason { get; init; }
     public int OpenQuestions { get; init; }
+    /// <summary>0075: o que o card está aguardando (none|ticket|pr-review|qa-validation|answer|user) e desde quando.</summary>
+    public string? SituationKind { get; init; }
+    public DateTimeOffset? SituationAt { get; init; }
     /// <summary>Fases que o card tem (análise e/ou correção).</summary>
     public IReadOnlyList<string> Phases { get; init; } = [];
     public DateTimeOffset UpdatedAt { get; init; }

@@ -23,11 +23,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IExecutionTimelineWriter _timeline;
     private readonly IExecutionCardRegistrar? _cards;
     private readonly IExecutionResumeTrigger? _resumeTrigger;
+    private readonly IExecutionCardDevOps? _devOps;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
-        IExecutionResumeTrigger? resumeTrigger = null)
+        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null)
     {
+        _devOps = devOps;
         _cards = cards;
         _resumeTrigger = resumeTrigger;
         _repository = repository;
@@ -102,6 +104,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionPlanResponse> GetAsync(Guid planId, CancellationToken cancellationToken)
     {
         await SyncPullRequestsAsync(planId, cancellationToken);
+        await EnsureDevTestInQaAsync(planId, cancellationToken);
         var plan = await LoadAsync(planId, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
@@ -166,6 +169,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken)
     {
         await SyncPullRequestsAsync(planId, cancellationToken);
+        await EnsureDevTestInQaAsync(planId, cancellationToken);
         var plan = await MutateAsync(planId, p => p.Touch(DateTimeOffset.UtcNow, fromExecutor: true), cancellationToken);
 
         var action = plan.Status switch
@@ -762,6 +766,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 ExecutionPlanRealTimeEvents.EventPlanUpdated,
                 new { cardNumber = plan.CardNumber, planId = plan.Id, action, stepKey, status = plan.Status },
                 cancellationToken);
+            // 0075: a situação do card (o que está sendo aguardado) pode ter mudado.
+            if (action is not (ExecutionPlanRealTimeEvents.Actions.Log or ExecutionPlanRealTimeEvents.Actions.Activity or ExecutionPlanRealTimeEvents.Actions.CodeRef))
+                await TrackSituationAsync(plan, cancellationToken);
             // 0037: pendências do usuário fora do card (recentes, título da aba). Andamento não muda pendência.
             if (action != ExecutionPlanRealTimeEvents.Actions.Log)
                 await _realTimeNotifier.NotifyGroupAsync(

@@ -228,6 +228,28 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
+    // ── 0075: situação atual do card ───────────────────────────────────────────────────────────────
+
+    /// <summary>O que o card está aguardando (chamado, aprovação/merge, QA, resposta, você), com os fatos e o contexto da passagem.</summary>
+    [HttpGet("card/{cardNumber}/situation")]
+    public Task<ActionResult<CardSituationResponse>> GetSituation([FromRoute] string cardNumber, [FromQuery] bool devops = true, CancellationToken ct = default) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.GetSituationAsync(cardNumber, devops, ct)));
+
+    /// <summary>A skill grava o contexto da passagem ao entrar em espera (texto vazio limpa).</summary>
+    [HttpPut("{id:guid}/handoff")]
+    public Task<ActionResult<CardSituationResponse>> SetHandoff([FromRoute] Guid id, [FromBody] SetExecutionHandoffRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () =>
+            Ok(await _application.SetHandoffAsync(id, request.Text, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pelo botão da tela.</summary>
+    [HttpPost("card/{cardNumber}/situation/publish")]
+    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest request, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var commentId = await _application.PublishSituationAsync(cardNumber, request.Html ?? string.Empty, await GetActorAsync(ct, executor: false), ct);
+            return Ok(new { commentId });
+        });
+
     // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────
 
     /// <summary>Grava (ou substitui) a fotografia de um trecho de código — a skill, pelo <c>coderef</c>.</summary>

@@ -60,4 +60,8 @@ public static class SkillsConfigurationKeys
     public const string CodeRefContextLines = "CodeRefContextLines";
     /// <summary>0075: etapas da analisar-bug que só concluem com toda citação caminho:linha fotografada (lista; vazio desliga).</summary>
     public const string CodeRefGateSteps = "CodeRefGateSteps";
+    /// <summary>0075: PR da branch de QA mesclado move o card para Dev Test in QA sozinho (true/false).</summary>
+    public const string AutoDevTestInQa = "AutoDevTestInQa";
+    /// <summary>0075: branches de destino que contam como QA (lista; "qa*" = prefixo).</summary>
+    public const string QaBranchPattern = "QaBranchPattern";
 }
