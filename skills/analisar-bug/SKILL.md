@@ -187,7 +187,7 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Fechamento antes da validacao em QA (0075)**: com codigo, root cause, classificacao, resumo PT/EN e Remaining zerado
   vao na etapa `preparar-fechamento`, logo depois de abrir os PRs e **antes** de `validar-qa` — o Ready for QA exige o
   card sem pendencias e o usuario move ao concluir a validacao. O `fechar-card` (depois de `validar-qa`) so confere e move.
-- **Estimativa e horas sao da pessoa (0077)**: o PRMake pergunta na tela (assistente do card, sem travar o plano) se
+- **Estimativa e horas sao da pessoa (0078)**: o PRMake pergunta na tela (assistente do card, sem travar o plano) se
   registra a estimativa inicial e sugere lancar horas em Completed conforme as etapas concluem — **nao** rode
   `initial-estimate` nem lance horas por conta propria; no fechamento siga o `zero-remaining` como sempre. A publicacao
   dos resumos de espera na discussion tambem e escolha da pessoa (automatica por card/usuario ou manual pelo cartao).

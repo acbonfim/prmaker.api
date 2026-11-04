@@ -1,4 +1,4 @@
-# Feature 0077 — Status
+# Feature 0078 — Status
 
 > Spec: [`spec.md`](./spec.md). Entregue junto com a 0076 (mesmos PRs, branch `feature/0076`).
 

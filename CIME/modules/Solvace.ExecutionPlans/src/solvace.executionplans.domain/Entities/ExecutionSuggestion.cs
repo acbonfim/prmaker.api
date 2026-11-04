@@ -1,7 +1,7 @@
 namespace solvace.executionplans.domain.Entities;
 
 /// <summary>
-/// 0077: o PRMake conversa com quem trata o card sem travar nada — uma sugestão com ações (ex.: "Registrar a estimativa
+/// 0078: o PRMake conversa com quem trata o card sem travar nada — uma sugestão com ações (ex.: "Registrar a estimativa
 /// inicial?", "Lançar 1h em Completed?", "Publicar os resumos de espera na discussion?"). Ninguém espera a resposta: o
 /// plano segue; a sugestão só fica disponível até ser respondida ou dispensada. Uma por card e <see cref="DedupKey"/>.
 /// </summary>

@@ -22,7 +22,7 @@ public class DevOpsActionRunner(IDevOpsActionsService actions, ITimelineApplicat
 
     public Task<DevOpsActionsConfigResponse> ConfigAsync(CancellationToken cancellationToken) => actions.GetConfigAsync(cancellationToken);
 
-    /// <summary>0077: horas do card (Original/Completed/Remaining).</summary>
+    /// <summary>0078: horas do card (Original/Completed/Remaining).</summary>
     public Task<DevOpsEffortResponse> EffortAsync(string cardNumber, CancellationToken cancellationToken) => actions.GetEffortAsync(cardNumber, cancellationToken);
 
     public Task<IReadOnlyList<DevOpsClassificationPreset>> ClassificationsAsync(CancellationToken cancellationToken) =>

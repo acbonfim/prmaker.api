@@ -232,7 +232,7 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
-    // ── 0077: assistente do card (sugestões que não travam) e textos gerados ──────────────────────
+    // ── 0078: assistente do card (sugestões que não travam) e textos gerados ──────────────────────
 
     /// <summary>Sugestões do assistente no card (abertas primeiro).</summary>
     [HttpGet("card/{cardNumber}/suggestions")]

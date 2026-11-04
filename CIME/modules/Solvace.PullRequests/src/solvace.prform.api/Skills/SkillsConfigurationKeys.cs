@@ -68,12 +68,12 @@ public static class SkillsConfigurationKeys
     public const string SituationPostToDevOps = "SituationPostToDevOps";
     /// <summary>0076: etapas da analisar-bug que só concluem com as evidências do card (DevOps) importadas e abertas (lista; vazio desliga).</summary>
     public const string EvidenceGateSteps = "EvidenceGateSteps";
-    /// <summary>0077: assistente do card (sugestões que não travam: estimativa, horas, publicação) ligado (true/false).</summary>
+    /// <summary>0078: assistente do card (sugestões que não travam: estimativa, horas, publicação) ligado (true/false).</summary>
     public const string AssistantEnabled = "AssistantEnabled";
-    /// <summary>0077: etapas que sugerem lançar horas ao concluir (lista; "corrigir-*" = prefixo).</summary>
+    /// <summary>0078: etapas que sugerem lançar horas ao concluir (lista; "corrigir-*" = prefixo).</summary>
     public const string AssistantHoursSteps = "AssistantHoursSteps";
-    /// <summary>0077: horas sugeridas por etapa concluída.</summary>
+    /// <summary>0078: horas sugeridas por etapa concluída.</summary>
     public const string AssistantHoursPerStep = "AssistantHoursPerStep";
-    /// <summary>0077: média de horas do time por card (o assistente avisa quando passa).</summary>
+    /// <summary>0078: média de horas do time por card (o assistente avisa quando passa).</summary>
     public const string AssistantAverageHours = "AssistantAverageHours";
 }

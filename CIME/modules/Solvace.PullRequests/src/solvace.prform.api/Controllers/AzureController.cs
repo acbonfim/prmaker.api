@@ -9,7 +9,7 @@ using solvace.timeline.domain.Requests;
 
 namespace solvace.prform.Controllers;
 
-/// <summary>0077: horas a lançar no card.</summary>
+/// <summary>0078: horas a lançar no card.</summary>
 public class LogHoursRequest
 {
     public decimal Hours { get; set; }
@@ -122,7 +122,7 @@ public class AzureController : ControllerBase
     public Task<ActionResult<DevOpsActionResponse>> Classify(string id, [FromBody] ClassifyCardRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.ClassifyAsync(id, request, cancellationToken), cancellationToken);
 
-    /// <summary>0077: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
+    /// <summary>0078: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
     [HttpGet("card/{id}/effort")]
     public async Task<ActionResult<DevOpsEffortResponse>> GetEffort(string id, CancellationToken cancellationToken)
     {
@@ -134,9 +134,14 @@ public class AzureController : ControllerBase
         {
             return StatusCode(e.StatusCode, new { error = e.Message });
         }
+        catch (Exception e) when (e is InvalidOperationException or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException)
+        {
+            // Sem integração do DevOps configurada: a tela mostra "Horas indisponíveis".
+            return Conflict(new { error = e.Message });
+        }
     }
 
-    /// <summary>0077: lança horas — soma em Completed Work e tira do Remaining Work.</summary>
+    /// <summary>0078: lança horas — soma em Completed Work e tira do Remaining Work.</summary>
     [HttpPost("card/{id}/actions/log-hours")]
     public Task<ActionResult<DevOpsActionResponse>> LogHours(string id, [FromBody] LogHoursRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.LogHoursAsync(id, request.Hours, cancellationToken), cancellationToken);

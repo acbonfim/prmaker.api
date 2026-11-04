@@ -249,7 +249,7 @@ public class ExecutionPlanContext : DbContext
             entity.HasIndex(e => new { e.CardNumber, e.Ref });
         });
 
-        // 0077: assistente do card (sugestões que não travam o plano).
+        // 0078: assistente do card (sugestões que não travam o plano).
         modelBuilder.Entity<ExecutionSuggestion>(entity =>
         {
             entity.ToTable("ExecutionSuggestions");

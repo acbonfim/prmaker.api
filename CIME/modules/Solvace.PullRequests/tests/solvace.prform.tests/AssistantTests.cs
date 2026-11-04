@@ -6,7 +6,7 @@ using Xunit;
 
 namespace solvace.prform.tests;
 
-/// <summary>0077: etapas que sugerem horas e a rota do controller das ações do DevOps.</summary>
+/// <summary>0078: etapas que sugerem horas e a rota do controller das ações do DevOps.</summary>
 public class AssistantTests
 {
     [Theory]

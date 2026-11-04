@@ -49,11 +49,7 @@ public class ExecutionCardDevOps(
             await runner.RunAsync(cardNumber, a => a.MoveToDevTestInQaAsync(cardNumber, cancellationToken), User, cancellationToken);
             return null;
         }
-        catch (DevOpsActionException e)
-        {
-            return e.Message;
-        }
-        catch (PersonalIntegrationRequiredException e)
+        catch (Exception e) when (e is DevOpsActionException or PersonalIntegrationRequiredException or InvalidOperationException or HttpRequestException)
         {
             return e.Message;
         }
@@ -117,12 +113,10 @@ public class ExecutionCardDevOps(
             var result = await runner.RunAsync(cardNumber.Trim(), action, User, cancellationToken);
             return (true, result.Message);
         }
-        catch (DevOpsActionException e)
+        catch (Exception e) when (e is DevOpsActionException or PersonalIntegrationRequiredException or InvalidOperationException or HttpRequestException)
         {
-            return (false, e.Message);
-        }
-        catch (PersonalIntegrationRequiredException e)
-        {
+            // Sem integração do DevOps ("Plugin ... não encontrado"), regra não atendida, DevOps fora: a sugestão fica
+            // como falhou, com a mensagem — nunca 500.
             return (false, e.Message);
         }
     }

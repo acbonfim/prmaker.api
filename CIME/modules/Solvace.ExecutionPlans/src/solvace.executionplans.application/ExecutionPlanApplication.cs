@@ -75,7 +75,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
         await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
-        // 0077: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
+        // 0078: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
         await SuggestOnCreateAsync(plan, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
             await WriteTimelineAsync(plan, CorrectionPlanCreatedText(plan), actor, cancellationToken);
@@ -706,7 +706,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             {
                 await _repository.SaveChangesAsync(cancellationToken);
                 await WriteMilestonesAsync(before, plan, actor ?? SystemActor, headline?.Invoke(), cancellationToken);
-                // 0077: etapa concluída pode render uma sugestão de lançar horas.
+                // 0078: etapa concluída pode render uma sugestão de lançar horas.
                 await SuggestAfterStepsAsync(before, plan, cancellationToken);
                 return plan;
             }

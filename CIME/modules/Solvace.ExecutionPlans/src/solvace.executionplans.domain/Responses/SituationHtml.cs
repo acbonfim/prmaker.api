@@ -28,7 +28,7 @@ public static partial class SituationHtml
 
     public static string Build(CardSituationResponse situation, DateTimeOffset now, TimeZoneInfo zone) => Build(situation.Markdown, now, zone);
 
-    /// <summary>0077: o texto (gerado ou editado pela pessoa) com o rodapé de quando foi atualizado.</summary>
+    /// <summary>0078: o texto (gerado ou editado pela pessoa) com o rodapé de quando foi atualizado.</summary>
     public static string Build(string markdown, DateTimeOffset now, TimeZoneInfo zone)
     {
         var sb = new StringBuilder();

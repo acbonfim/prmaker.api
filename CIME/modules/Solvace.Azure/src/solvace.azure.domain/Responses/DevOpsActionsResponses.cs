@@ -64,7 +64,7 @@ public class DevOpsClassificationPreset
 }
 
 /// <summary>Resultado de uma ação no card.</summary>
-/// <summary>0077: horas do card no DevOps.</summary>
+/// <summary>0078: horas do card no DevOps.</summary>
 public class DevOpsEffortResponse
 {
     public decimal? OriginalEstimate { get; set; }

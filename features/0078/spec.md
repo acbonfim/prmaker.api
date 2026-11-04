@@ -1,4 +1,4 @@
-# 0077 — O PRMake conversa com quem trata o card (assistente, textos gerados editáveis, horas)
+# 0078 — O PRMake conversa com quem trata o card (assistente, textos gerados editáveis, horas)
 
 ## Pedido (do usuário, 2026-11-04)
 - A aplicação conversar comigo **sem travar nenhum fluxo**: ao iniciar a análise, perguntar se quero a estimativa inicial;

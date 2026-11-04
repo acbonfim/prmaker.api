@@ -44,12 +44,12 @@ public interface IExecutionPlanApplication
     Task<CardEvidenceResponse> SkipEvidenceAsync(Guid planId, string reason, ExecutionActor actor, CancellationToken cancellationToken);
     Task<string?> CheckEvidenceAsync(Guid planId, CancellationToken cancellationToken);
 
-    // 0077 — assistente do card (sugestões que não travam) e publicação por card
+    // 0078 — assistente do card (sugestões que não travam) e publicação por card
     Task<List<ExecutionSuggestionResponse>> GetSuggestionsAsync(string cardNumber, CancellationToken cancellationToken);
     Task<ExecutionSuggestionResponse> ActOnSuggestionAsync(Guid suggestionId, string action, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionSuggestionResponse> DismissSuggestionAsync(Guid suggestionId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<CardSituationResponse> SetCardSituationAutoPostAsync(string cardNumber, bool? autoPost, ExecutionActor actor, CancellationToken cancellationToken);
-    /// <summary>0077: edita o texto de um arquivo do plano (análise, soluções, chamado...).</summary>
+    /// <summary>0078: edita o texto de um arquivo do plano (análise, soluções, chamado...).</summary>
     Task<ExecutionArtifactResponse> UpdateArtifactTextAsync(Guid planId, Guid artifactId, string content, ExecutionActor actor, CancellationToken cancellationToken);
 
     // 0075 — situação atual do card (o que está sendo aguardado) e o contexto da passagem

@@ -287,7 +287,7 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
     public Task<ExecutionArtifact?> FindArtifactWithContentAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken) =>
         _context.Artifacts.Include(a => a.Content).FirstOrDefaultAsync(a => a.PlanId == planId && a.Id == artifactId, cancellationToken);
 
-    // Assistente do card (0077)
+    // Assistente do card (0078)
 
     public void AddSuggestion(ExecutionSuggestion suggestion) => _context.Suggestions.Add(suggestion);
 

@@ -59,11 +59,20 @@ public partial class ExecutionPlanApplication
         var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken)
                      ?? throw new ExecutionPlanNotFoundException("O card não tem plano.");
         var situation = await GetSituationAsync(card, true, cancellationToken);
-        // 0077: texto editado pela pessoa vale como está (o PRMake só converte para o HTML da discussion).
+        // 0078: texto editado pela pessoa vale como está (o PRMake só converte para o HTML da discussion).
         var text = string.IsNullOrWhiteSpace(markdown) ? situation.Markdown : markdown.Trim();
         var body = string.IsNullOrWhiteSpace(html) ? SituationHtml.Build(text, DateTimeOffset.UtcNow, CardSituation.Brasilia) : html;
         var existing = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
-        var commentId = await _devOps.UpsertCommentAsync(card, body, existing, cancellationToken);
+        int commentId;
+        try
+        {
+            commentId = await _devOps.UpsertCommentAsync(card, body, existing, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not DomainException)
+        {
+            // Sem integração do DevOps, DevOps fora: mensagem clara para a tela (400), não 500.
+            throw new DomainException($"Não deu para publicar na discussion do DevOps: {e.Message}");
+        }
         await _repository.SetSituationPostedAsync(planId, commentId, text, actor.Name, DateTimeOffset.UtcNow, cancellationToken);
         var plan = await LoadAsync(planId, cancellationToken);
         await WriteTimelineAsync(plan, $"📣 **Situação publicada na discussion do DevOps** por {actor.Name}", actor, cancellationToken);
@@ -91,7 +100,7 @@ public partial class ExecutionPlanApplication
         var situation = CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
         if (withFiles)
         {
-            // 0076/0077: automático = escolha feita para este card (plano atual ou a análise), senão a preferência do dono do
+            // 0076/0078: automático = escolha feita para este card (plano atual ou a análise), senão a preferência do dono do
             // plano (quem trata o card), senão o padrão global.
             var card = plan.SituationAutoPost;
             if (card is null && plan.ParentPlanId is { } parentId)

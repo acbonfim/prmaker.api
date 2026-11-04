@@ -2,7 +2,7 @@ using solvace.executionplans.domain.Entities;
 
 namespace solvace.executionplans.domain.Responses;
 
-/// <summary>0077: uma sugestão do assistente do card.</summary>
+/// <summary>0078: uma sugestão do assistente do card.</summary>
 public class ExecutionSuggestionResponse
 {
     public Guid Id { get; set; }

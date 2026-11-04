@@ -123,7 +123,7 @@ public class CardSituationResponse
 
     /// <summary>0076: a publicação na discussion é automática para este card (preferência do dono do plano ou padrão global).</summary>
     public bool AutoPost { get; set; }
-    /// <summary>0077: de onde vem o modo: card (escolhido para este card) | user (preferência do dono) | global.</summary>
+    /// <summary>0078: de onde vem o modo: card (escolhido para este card) | user (preferência do dono) | global.</summary>
     public string AutoPostSource { get; set; } = "global";
     /// <summary>0076: o último resumo publicado na discussion.</summary>
     public DateTimeOffset? PublishedAt { get; set; }

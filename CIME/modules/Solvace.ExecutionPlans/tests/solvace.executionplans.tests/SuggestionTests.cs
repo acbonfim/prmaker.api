@@ -3,7 +3,7 @@ using Xunit;
 
 namespace solvace.executionplans.tests;
 
-/// <summary>0077: sugestões do assistente do card — respondem uma vez, falha pode tentar de novo.</summary>
+/// <summary>0078: sugestões do assistente do card — respondem uma vez, falha pode tentar de novo.</summary>
 public class SuggestionTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-04T12:00:00Z");

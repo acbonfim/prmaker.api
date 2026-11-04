@@ -118,7 +118,7 @@ public class ExecutionPlan
     public DateTimeOffset? SituationPostedAt { get; private set; }
     public string? SituationPostedBy { get; private set; }
 
-    /// <summary>0077: só este card — publicar sozinho os resumos de espera? null = preferência do dono / padrão global.</summary>
+    /// <summary>0078: só este card — publicar sozinho os resumos de espera? null = preferência do dono / padrão global.</summary>
     public bool? SituationAutoPost { get; private set; }
 
     public void SetSituationAutoPost(bool? value, DateTimeOffset now)

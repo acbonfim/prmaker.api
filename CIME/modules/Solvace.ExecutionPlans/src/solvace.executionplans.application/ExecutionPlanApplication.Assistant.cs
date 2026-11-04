@@ -7,7 +7,7 @@ using solvace.executionplans.domain.Responses;
 namespace solvace.executionplans.application;
 
 /// <summary>
-/// 0077: assistente do card — o PRMake conversa com quem trata o card sem travar nada: pergunta se registra a estimativa
+/// 0078: assistente do card — o PRMake conversa com quem trata o card sem travar nada: pergunta se registra a estimativa
 /// inicial, se publica sozinho os resumos de espera na discussion e sugere lançar horas em Completed conforme as etapas
 /// avançam. Cada sugestão só aparece uma vez por card; quem responde é a pessoa (a ação usa a integração dela).
 /// </summary>
@@ -29,7 +29,17 @@ public partial class ExecutionPlanApplication
         if (suggestion.Actions.All(a => a.Key != key))
             throw new DomainException($"Ação inválida: '{action}'.");
 
-        var (ok, result) = await RunSuggestionAsync(suggestion, key, actor, cancellationToken);
+        bool ok;
+        string? result;
+        try
+        {
+            (ok, result) = await RunSuggestionAsync(suggestion, key, actor, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Qualquer falha da ação vira "falhou" com a mensagem (dá para tentar de novo) — nunca 500.
+            (ok, result) = (false, e.Message);
+        }
         suggestion.Resolve(key, ok, result, actor.Name, DateTimeOffset.UtcNow);
         await _repository.SaveChangesAsync(cancellationToken);
         await NotifySuggestionAsync(suggestion, cancellationToken);
@@ -176,7 +186,7 @@ public partial class ExecutionPlanApplication
                     text += $" Passa da média do time ({Hours(settings.AverageHours)} por card) — vale conferir se a complexidade justifica.";
             }
             if (await AddSuggestionAsync(new ExecutionSuggestion(plan.Id, plan.CardNumber, ExecutionSuggestionKind.LogHours, $"log-hours:{step.Key}",
-                    $"Lançar {Hours(h)} em Completed?", text,
+                    $"Lançar {Hours(h)} em Completed — {step.Title}", text,
                     [new() { Key = $"{h.ToString(CultureInfo.InvariantCulture)}h", Label = $"Lançar {Hours(h)}", Primary = true },
                      new() { Key = $"{(h * 2).ToString(CultureInfo.InvariantCulture)}h", Label = $"Lançar {Hours(h * 2)}" },
                      new() { Key = "skip", Label = "Agora não" }], DateTimeOffset.UtcNow), cancellationToken))

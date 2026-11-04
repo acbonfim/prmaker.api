@@ -95,10 +95,10 @@ public interface IExecutionPlanRepository
     /// <summary>0076: marca a evidência como aberta pela skill (só a primeira vez).</summary>
     Task MarkArtifactReadAsync(Guid artifactId, DateTimeOffset now, CancellationToken cancellationToken);
 
-    /// <summary>0077: arquivo do plano com o conteúdo, rastreado (editar o texto).</summary>
+    /// <summary>0078: arquivo do plano com o conteúdo, rastreado (editar o texto).</summary>
     Task<ExecutionArtifact?> FindArtifactWithContentAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
 
-    // Assistente do card (0077)
+    // Assistente do card (0078)
     void AddSuggestion(ExecutionSuggestion suggestion);
     Task<bool> SuggestionExistsAsync(string cardNumber, string dedupKey, CancellationToken cancellationToken);
     Task<ExecutionSuggestion?> FindSuggestionAsync(Guid id, CancellationToken cancellationToken);
