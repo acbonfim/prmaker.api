@@ -37,6 +37,10 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     public DateTimeOffset? ThrottledUntil { get; private set; }
 
     public Guid RequestId => claim.Request.Id;
+    /// <summary>0080: resposta do Especialista do caso (pista própria, token do caso, MCP só do caso).</summary>
+    public bool IsSpecialist => claim.Request.Kind == "specialist";
+    /// <summary>0080: uma resposta do especialista não deveria passar disso.</summary>
+    private static readonly TimeSpan SpecialistTimeout = TimeSpan.FromMinutes(20);
     public string Card => claim.Request.CardNumber;
     public int? Pid { get; private set; }
 
@@ -64,7 +68,13 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var workspace = ConfigStore.ResolveWorkspace(config);
         _workspace = workspace;
         _repos = RepoMap.Load()?.Repos ?? [];
-        var resume = r.Kind == "resume" && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
+        if (IsSpecialist && string.IsNullOrEmpty(claim.CaseToken))
+        {
+            await FinishAsync(new FinishRequest { Outcome = "failed", Retryable = false, Error = "O PRMake não mandou o token do caso para o especialista" });
+            return;
+        }
+        // 0080: o especialista retoma a sessão do caso (a conversa continua de onde parou).
+        var resume = (r.Kind == "resume" || IsSpecialist) && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
         var sessionId = resume ? r.SessionId! : Guid.NewGuid().ToString();
         _sessionId = sessionId;
         var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : workspace;
@@ -72,7 +82,15 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
         args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
+            "--settings", ClaudeSettings.Ensure(IsSpecialist), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
+        string? caseMcp = null;
+        if (IsSpecialist)
+        {
+            // 0080: só o MCP do PRMake com o token do caso (o do usuário, com o token pessoal, fica de fora).
+            caseMcp = CaseMcpConfig(ConfigStore.ResolveApiBase(config), claim.CaseToken!, r.Id);
+            _caseMcp = caseMcp;
+            args.AddRange(["--mcp-config", caseMcp, "--strict-mcp-config"]);
+        }
         if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
             args.AddRange(["--add-dir", workspace]);
         // 0048: repositórios do mapa fora do workspace (em dontAsk o Claude não lê fora das pastas liberadas).
@@ -98,6 +116,11 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         psi.Environment["PRMAKE_WORKSPACE"] = workspace;
         if (Environment.GetEnvironmentVariable("PRMAKE_API_BASE") is null)
             psi.Environment["PRMAKE_API_BASE"] = ConfigStore.ResolveApiBase(config);
+        if (IsSpecialist)
+        {
+            psi.Environment["PRMAKE_SPECIALIST"] = "1";
+            psi.Environment["PRMAKE_TOKEN"] = claim.CaseToken;
+        }
 
         Log.Info($"card {r.CardNumber}: {(resume ? $"retomando a sessão {sessionId}" : $"sessão nova {sessionId}")} em {cwd} (pedido {r.Id}, tentativa {r.Attempts}/{r.MaxAttempts})");
 
@@ -150,7 +173,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             }
             if (!tick.IsCompleted) continue; // atividade nova: recalcula quando mandar
 
-            if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes)))
+            if (DateTimeOffset.UtcNow - started > MaxRuntime)
             {
                 _killedByTimeout = true;
                 KillTree(process);
@@ -247,7 +270,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         if (_killedByPause)
             return With(finish, "done", "Plano pausado pela tela — a sessão continua no próximo 'Continuar'", null, false);
         if (_killedByTimeout)
-            return With(finish, "failed", null, $"Passou do tempo máximo de {config.TimeoutMinutes} min", false);
+            return With(finish, "failed", null, $"Passou do tempo máximo de {MaxRuntime.TotalMinutes:0} min", false);
         if (_killReason is not null)
             return With(finish, "failed", null, $"Executor encerrado ({_killReason})", true);
 
@@ -297,6 +320,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private async Task FinishAsync(FinishRequest finish)
     {
+        DeleteCaseMcp();
         for (var attempt = 1; attempt <= 5; attempt++)
         {
             try
@@ -434,6 +458,47 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         System.Text.RegularExpressions.Regex.Replace(line,
             @"(eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+|sk-ant-[A-Za-z0-9_\-]+|ghp_[A-Za-z0-9]+|(password|senha|token|secret)\s*[=:]\s*\S+)",
             "[oculto]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private TimeSpan MaxRuntime
+    {
+        get
+        {
+            var configured = TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes));
+            return IsSpecialist && configured > SpecialistTimeout ? SpecialistTimeout : configured;
+        }
+    }
+
+    private string? _caseMcp;
+
+    /// <summary>
+    /// 0080: config de MCP só com o PRMake e o token do caso (arquivo 0600, apagado no fim). O endereço segue o
+    /// instalador das skills: a base da API sem o /api/vN, mais /mcp.
+    /// </summary>
+    private static string CaseMcpConfig(string apiBase, string token, Guid requestId)
+    {
+        var trimmed = apiBase.TrimEnd('/');
+        var cut = System.Text.RegularExpressions.Regex.Match(trimmed, "/api/v[^/]*$");
+        var mcp = (cut.Success ? trimmed[..cut.Index] : trimmed) + "/mcp";
+        var path = Path.Combine(Paths.Root, $"case-mcp-{requestId:N}.json");
+        var json = JsonSerializer.Serialize(new
+        {
+            mcpServers = new Dictionary<string, object>
+            {
+                ["prmake"] = new { type = "http", url = mcp, headers = new Dictionary<string, string> { ["x-api-key"] = token } }
+            }
+        });
+        File.WriteAllText(path, json);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        return path;
+    }
+
+    private void DeleteCaseMcp()
+    {
+        if (_caseMcp is null) return;
+        try { File.Delete(_caseMcp); } catch { /* fica na pasta do executor (0600) */ }
+        _caseMcp = null;
+    }
 
     private static int? SafeExitCode(Process p)
     {

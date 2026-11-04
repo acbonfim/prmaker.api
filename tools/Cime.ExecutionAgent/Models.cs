@@ -116,6 +116,8 @@ public sealed class ClaimResponse
     /// <summary>0047: fase do card (analysis | correction) e o modelo do Claude Code para ela (null = padrão da máquina).</summary>
     public string? Phase { get; set; }
     public string? Model { get; set; }
+    /// <summary>0080: pedido do Especialista do caso — token restrito ao caso (MCP e scripts; nunca altera o plano).</summary>
+    public string? CaseToken { get; set; }
 }
 
 public sealed class StartRequest

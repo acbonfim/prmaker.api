@@ -10,9 +10,14 @@ namespace Cime.ExecutionAgent;
 /// </summary>
 public static class ClaudeSettings
 {
-    public static string Ensure()
+    /// <param name="specialist">
+    /// 0080: perfil do Especialista do caso — sem o token pessoal do usuário (ele usa o token do caso, que só lê e
+    /// conversa) e sem commit/push/abrir PR (o especialista não altera código nem plano).
+    /// </param>
+    public static string Ensure(bool specialist = false)
     {
         Directory.CreateDirectory(Paths.Root);
+        var target = specialist ? Paths.CaseClaudeSettings : Paths.ClaudeSettings;
         var self = Environment.ProcessPath ?? Paths.Bin;
         var guard = Paths.IsWindows ? $"\"{self.Replace("\\", "/")}\" guard" : $"'{self.Replace("'", "'\\''")}' guard";
         using var buffer = new MemoryStream();
@@ -29,7 +34,9 @@ public static class ClaudeSettings
                      {
                          "Bash(gh pr merge:*)", "Bash(gh pr review:*)", "Bash(git push --force:*)", "Bash(git push -f:*)",
                          "Bash(git push --force-with-lease:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~:*)"
-                     })
+                     }.Concat(specialist
+                         ? ["Read(~/.claude/prmake-token.txt)", "Edit(~/.claude/prmake-token.txt)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(gh pr create:*)"]
+                         : []))
                 w.WriteStringValue(d);
             w.WriteEndArray();
             w.WriteEndObject();
@@ -49,9 +56,9 @@ public static class ClaudeSettings
             w.WriteEndObject();
         }
         var json = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
-        if (!File.Exists(Paths.ClaudeSettings) || File.ReadAllText(Paths.ClaudeSettings) != json)
-            File.WriteAllText(Paths.ClaudeSettings, json);
-        return Paths.ClaudeSettings;
+        if (!File.Exists(target) || File.ReadAllText(target) != json)
+            File.WriteAllText(target, json);
+        return target;
     }
 }
 
@@ -107,8 +114,14 @@ public static partial class Guard
         return 2;
     }
 
+    [GeneratedRegex(@"prmake-token|\bgit\s+(push|commit)\b|\bgh\s+pr\s+(create|edit|close)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SpecialistForbidden();
+
     public static string? Check(string command)
     {
+        // 0080: o Especialista do caso só lê e conversa — nada de token pessoal, commit, push ou PR.
+        if (Environment.GetEnvironmentVariable("PRMAKE_SPECIALIST") == "1" && SpecialistForbidden().IsMatch(command))
+            return "o Especialista do caso não usa o token pessoal nem altera código/PR — proponha a mudança na conversa (prmake_case_propose)";
         if (MergeOrApprove().IsMatch(command))
             return "merge e aprovação de PR são sempre de uma pessoa (o Claude só abre PRs)";
         if (ForcePush().IsMatch(command))
