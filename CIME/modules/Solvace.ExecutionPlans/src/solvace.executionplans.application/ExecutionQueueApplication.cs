@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using Cime.BuildingBlocks.RealTime;
 using solvace.executionplans.application.Contracts;
@@ -1080,6 +1080,7 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         ExecutionRequestSource.PullRequest => "PR mesclado",
         ExecutionRequestSource.Checks => "o CI de um PR falhou",
         ExecutionRequestSource.Rule => "regra automatica",
+        ExecutionRequestSource.CaseProposal => $"{r.RequestedBy} decidiu na conversa com o Especialista do caso",
         _ => $"pedido de {r.RequestedBy}"
     };
 
