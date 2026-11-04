@@ -72,6 +72,19 @@ public record ExecutionQaSettings(bool AutoDevTestInQa, IReadOnlyList<string> Qa
     }
 }
 
+/// <summary>0076: evidência do card no DevOps (anexo, imagem colada num campo ou na discussion).</summary>
+public record CardEvidence(string Key, string Url, string FileName, string Source, string? SourceDetail, DateTimeOffset? At, long? Size, string? Comment);
+
+/// <summary>0076: conteúdo baixado (TooLarge = passou do limite, sem conteúdo).</summary>
+public record CardEvidenceFile(byte[] Data, string ContentType, bool TooLarge, long? Size);
+
+/// <summary>0076: evidências do card no DevOps — implementado no host com a integração do DevOps de quem chama.</summary>
+public interface IExecutionCardEvidenceSource
+{
+    Task<IReadOnlyList<CardEvidence>> ListAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<CardEvidenceFile> DownloadAsync(CardEvidence evidence, long maxBytes, CancellationToken cancellationToken);
+}
+
 /// <summary>Escreve na Timeline do card (0024) — implementado no host sobre o módulo Timeline.</summary>
 public interface IExecutionTimelineWriter
 {

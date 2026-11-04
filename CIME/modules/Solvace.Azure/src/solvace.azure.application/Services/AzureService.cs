@@ -518,6 +518,69 @@ public class AzureService : IAzureService
         return null;
     }
 
+    public async Task<IReadOnlyList<AzureCardEvidence>> GetCardEvidenceAsync(string id, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var baseUrl = GetAzureBaseUrl();
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
+        if (string.IsNullOrWhiteSpace(apiVersion))
+            apiVersion = "7.0";
+        var client = CreateClient();
+
+        var response = await client.GetAsync($"{baseUrl}/wit/workitems/{Uri.EscapeDataString(id)}?$expand=all&api-version={apiVersion}", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new DevOpsActionException(502, $"O DevOps recusou a leitura do card {id} (HTTP {(int)response.StatusCode}).");
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+
+        var comments = new List<AzureCardComment>();
+        var cResp = await client.GetAsync($"{baseUrl}/wit/workItems/{Uri.EscapeDataString(id)}/comments?api-version=7.1-preview.4", cancellationToken);
+        if (cResp.IsSuccessStatusCode)
+        {
+            using var cDoc = JsonDocument.Parse(await cResp.Content.ReadAsStringAsync(cancellationToken));
+            if (cDoc.RootElement.TryGetProperty("comments", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                foreach (var c in arr.EnumerateArray())
+                    comments.Add(new AzureCardComment
+                    {
+                        Id = c.TryGetProperty("id", out var ci) && ci.TryGetInt64(out var civ) ? civ : 0,
+                        Text = c.TryGetProperty("text", out var ct) ? ct.GetString() : null,
+                        CreatedByName = GetIdentityName(c, "createdBy"),
+                        CreatedDate = GetDate(c, "createdDate"),
+                    });
+        }
+        return AzureCardEvidenceParser.Parse(doc.RootElement, comments);
+    }
+
+    public async Task<AzureAttachmentDownload> DownloadAttachmentAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var organization = Config.GetConfigurationValue("Organization") ?? string.Empty;
+        if (!AzureCardEvidenceParser.IsAllowedDownload(url, organization))
+            throw new DevOpsActionException(400, "Anexo fora do DevOps da organização configurada — não baixado.");
+        var target = url.Contains("api-version=", StringComparison.OrdinalIgnoreCase) ? url : url + (url.Contains('?') ? "&" : "?") + "api-version=7.0";
+        if (!target.Contains("download=", StringComparison.OrdinalIgnoreCase)) target += "&download=true";
+
+        var client = CreateClient();
+        using var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new DevOpsActionException(502, $"O DevOps recusou o anexo (HTTP {(int)response.StatusCode}).");
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var declared = response.Content.Headers.ContentLength;
+        if (declared > maxBytes)
+            return new AzureAttachmentDownload([], contentType, true, declared);
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > maxBytes)
+                return new AzureAttachmentDownload([], contentType, true, null);
+        }
+        return new AzureAttachmentDownload(buffer.ToArray(), contentType, false, buffer.Length);
+    }
+
     private static string? StripHtml(string? s)
         => string.IsNullOrEmpty(s)
             ? s

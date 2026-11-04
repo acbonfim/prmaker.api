@@ -88,6 +88,9 @@ public interface IExecutionPlanRepository
     Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken);
     Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken);
 
+    /// <summary>0076: marca a evidência como aberta pela skill (só a primeira vez).</summary>
+    Task MarkArtifactReadAsync(Guid artifactId, DateTimeOffset now, CancellationToken cancellationToken);
+
     // Fotografias do código citado (0075)
     /// <summary>Ref do plano, rastreada (upsert).</summary>
     Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken);

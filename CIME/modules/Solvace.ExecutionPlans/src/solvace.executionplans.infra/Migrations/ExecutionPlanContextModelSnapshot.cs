@@ -46,6 +46,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("ExternalKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -64,6 +68,9 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.Property<Guid>("PlanId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -419,6 +426,17 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.Property<DateTimeOffset?>("DevTestInQaTriedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("EvidenceCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("EvidenceSkipReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");

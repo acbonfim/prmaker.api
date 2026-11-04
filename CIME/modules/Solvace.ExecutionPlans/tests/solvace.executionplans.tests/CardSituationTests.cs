@@ -155,5 +155,25 @@ public class CardSituationTests
     [InlineData(CardSituationKind.None, true, true)]
     [InlineData(CardSituationKind.Answer, false, false)]
     public void Posts_to_devops_on_waits_and_keeps_the_comment_updated(string kind, bool hasComment, bool expected) =>
-        Assert.Equal(expected, CardSituationKind.PostToDevOps(kind, hasComment));
+        Assert.Equal(expected, CardSituationKind.PostToDevOps(new CardSituationResponse { Kind = kind }, hasComment));
+
+    [Fact]
+    public void Planned_user_step_in_the_correction_is_published_but_a_skill_block_is_not()
+    {
+        var plan = Correction(Step("configurar-multilingual", ExecutionStepKind.Task, ExecutionExecutor.User),
+            Step("fechar-card", ExecutionStepKind.Task, ExecutionExecutor.Claude, "configurar-multilingual"));
+        plan.UpdateStep("configurar-multilingual", ExecutionStatus.Waiting, "Restaurar Delayed — passo a passo em configuracao.md", null, null, null, null, "claude", Now, ExecutionWaitingOn.User);
+        var task = CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber);
+        Assert.Equal(CardSituationKind.User, task.Kind);
+        Assert.True(task.PlannedTask);
+        Assert.True(CardSituationKind.PostToDevOps(task, false));
+        Assert.StartsWith("**Aguardando: configurar-multilingual**", task.Markdown);
+
+        var blocked = Correction(Step("corrigir"));
+        blocked.UpdateStep("corrigir", ExecutionStatus.Waiting, "Libere a permissão do Bash no Claude Code", null, null, null, null, "claude", Now, ExecutionWaitingOn.User);
+        var block = CardSituation.Build(blocked, [], [], [], IsQa, blocked.CardNumber);
+        Assert.Equal(CardSituationKind.User, block.Kind);
+        Assert.False(block.PlannedTask);
+        Assert.False(CardSituationKind.PostToDevOps(block, false));
+    }
 }

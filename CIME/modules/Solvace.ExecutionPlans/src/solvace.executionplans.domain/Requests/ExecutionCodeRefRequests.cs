@@ -24,6 +24,12 @@ public class SaveExecutionCodeRefRequest
         Snapshot, Change, Title, Why, Proposal, Annotations);
 }
 
+/// <summary>0076: seguir a análise sem as evidências do DevOps (o usuário autorizou).</summary>
+public class SkipExecutionEvidenceRequest
+{
+    public string? Reason { get; set; }
+}
+
 /// <summary>0075: contexto da passagem gravado pela skill ao entrar em espera.</summary>
 public class SetExecutionHandoffRequest
 {

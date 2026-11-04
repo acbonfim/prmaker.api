@@ -84,6 +84,8 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.HandoffBy).HasMaxLength(200);
             entity.Property(e => e.SituationKind).HasMaxLength(20);
             entity.Property(e => e.DevTestInQaError).HasMaxLength(ExecutionPlan.MaxDevTestInQaErrorLength);
+            entity.Property(e => e.EvidenceError).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
+            entity.Property(e => e.EvidenceSkipReason).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
             entity.Ignore(e => e.QaValidationStep);
         });
 
@@ -143,6 +145,9 @@ public class ExecutionPlanContext : DbContext
 
             entity.HasIndex(e => new { e.PlanId, e.Kind, e.Name }).IsUnique();
             entity.HasIndex(e => e.NoteId);
+            // 0076: evidência do DevOps (não baixa de novo).
+            entity.Property(e => e.ExternalKey).HasMaxLength(ExecutionArtifact.MaxExternalKeyLength);
+            entity.Ignore(e => e.IsEvidence);
         });
 
         modelBuilder.Entity<ExecutionNote>(entity =>

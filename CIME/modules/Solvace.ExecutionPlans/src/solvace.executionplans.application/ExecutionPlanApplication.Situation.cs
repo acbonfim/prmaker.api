@@ -91,7 +91,7 @@ public partial class ExecutionPlanApplication
             if (!settings.PostSituationToDevOps) return;
             var commentId = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
             var situation = await BuildSituationAsync(planId, true, cancellationToken);
-            if (!CardSituationKind.PostToDevOps(situation.Kind, commentId is not null)) return;
+            if (!CardSituationKind.PostToDevOps(situation, commentId is not null)) return;
             try
             {
                 (situation.DevOpsState, situation.DevOpsColumn) = await _devOps.GetStateAsync(cardNumber, cancellationToken);
@@ -160,13 +160,13 @@ public partial class ExecutionPlanApplication
             if (situation.Kind == before
                 || !await _repository.SetSituationKindAsync(plan.Id, stored, situation.Kind, DateTimeOffset.UtcNow, cancellationToken))
                 return;
-            if (CardSituationKind.Milestone(situation.Kind))
+            if (CardSituationKind.Milestone(situation))
                 situation = await BuildSituationAsync(plan.Id, true, cancellationToken);
 
             var finished = situation.PlanStatus is ExecutionStatus.Completed or ExecutionStatus.Cancelled or ExecutionStatus.Failed;
-            if (CardSituationKind.Milestone(situation.Kind))
+            if (CardSituationKind.Milestone(situation))
                 await WriteTimelineAsync(plan, situation.Markdown, SystemActor, cancellationToken);
-            else if (CardSituationKind.Milestone(before) && !finished)
+            else if ((CardSituationKind.Milestone(before) || before == CardSituationKind.User) && !finished)
                 await WriteTimelineAsync(plan, $"▶️ **Situação:** não está mais em *{CardSituationKind.Title(before)}*" +
                                                (situation.Kind == CardSituationKind.None ? " — o plano segue." : $" — agora: *{situation.Title}*."), SystemActor, cancellationToken);
 

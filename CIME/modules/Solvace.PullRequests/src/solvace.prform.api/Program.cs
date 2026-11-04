@@ -54,6 +54,8 @@ builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
+builder.Services.AddScoped<solvace.prform.Execution.EvidenceGate>();  // 0076: evidências do card abertas na análise
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardEvidenceSource, solvace.prform.Execution.ExecutionCardEvidenceSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardDevOps, solvace.prform.Execution.ExecutionCardDevOps>();  // 0075: Dev Test in QA, situação
 builder.Services.AddMemoryCache();
 // 0070: respostas comprimidas (documentos da engenharia reversa chegam a 1 MB de markdown; o export, a 8 MB).

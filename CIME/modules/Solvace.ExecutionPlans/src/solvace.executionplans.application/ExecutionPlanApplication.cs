@@ -24,12 +24,14 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IExecutionCardRegistrar? _cards;
     private readonly IExecutionResumeTrigger? _resumeTrigger;
     private readonly IExecutionCardDevOps? _devOps;
+    private readonly IExecutionCardEvidenceSource? _evidence;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
-        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null)
+        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null)
     {
         _devOps = devOps;
+        _evidence = evidence;
         _cards = cards;
         _resumeTrigger = resumeTrigger;
         _repository = repository;
@@ -605,10 +607,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return saved.ToResponse();
     }
 
-    public async Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken)
+    public async Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken, bool markRead = false)
     {
         var artifact = await _repository.GetArtifactAsync(planId, artifactId, cancellationToken)
                        ?? throw new ExecutionPlanNotFoundException("Arquivo não encontrado.");
+        // 0076: a skill abriu a evidência (a análise só conclui depois de abrir todas).
+        if (markRead && artifact.ExternalKey is not null && artifact.ReadAt is null)
+            await _repository.MarkArtifactReadAsync(artifact.Id, DateTimeOffset.UtcNow, cancellationToken);
         var data = await _repository.GetArtifactContentAsync(artifact.Id, cancellationToken) ?? [];
         return new ExecutionArtifactFile(artifact.ToResponse(), data);
     }

@@ -66,4 +66,6 @@ public static class SkillsConfigurationKeys
     public const string QaBranchPattern = "QaBranchPattern";
     /// <summary>0075: o resumo da situação (chamado, PR, QA) vai sozinho para a discussion do card no DevOps (true/false).</summary>
     public const string SituationPostToDevOps = "SituationPostToDevOps";
+    /// <summary>0076: etapas da analisar-bug que só concluem com as evidências do card (DevOps) importadas e abertas (lista; vazio desliga).</summary>
+    public const string EvidenceGateSteps = "EvidenceGateSteps";
 }

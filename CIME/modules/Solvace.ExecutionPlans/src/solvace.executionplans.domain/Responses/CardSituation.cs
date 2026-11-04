@@ -18,10 +18,16 @@ public static class CardSituationKind
     public static bool Milestone(string? kind) => kind is Ticket or PullRequestReview or QaValidation;
 
     /// <summary>
+    /// A situação vira entrada na Timeline e resumo na discussion? Chamado, PR, QA e — na correção — etapa prevista no
+    /// plano para quem trata o card (ex.: configurar no sistema). Trava interna ("liberar permissão", VPN) não.
+    /// </summary>
+    public static bool Milestone(CardSituationResponse r) => Milestone(r.Kind) || (r.Kind == User && r.PlannedTask);
+
+    /// <summary>
     /// Publica na discussion do DevOps? Em chamado, PR ou QA sempre; fora deles só atualiza o comentário que já existe
     /// (para não ficar dizendo "aguardando" depois que a espera acabou).
     /// </summary>
-    public static bool PostToDevOps(string? kind, bool hasComment) => Milestone(kind) || hasComment;
+    public static bool PostToDevOps(CardSituationResponse r, bool hasComment) => Milestone(r) || hasComment;
 
     public static string Title(string kind) => kind switch
     {
@@ -98,6 +104,8 @@ public class CardSituationResponse
     public List<CardSituationTicket> Tickets { get; set; } = [];
     public List<string> Questions { get; set; } = [];
     public List<string> UserSteps { get; set; } = [];
+    /// <summary>Correção esperando uma etapa prevista no plano para quem trata o card (não uma trava da skill).</summary>
+    public bool PlannedTask { get; set; }
 
     public DateTimeOffset? DevTestInQaAt { get; set; }
     public string? DevTestInQaError { get; set; }
@@ -189,7 +197,12 @@ public static class CardSituation
         var userSteps = pending.Where(s => s != qaStep && !ticketSteps.Contains(s)).ToList();
         r.UserSteps = userSteps.Select(s => s.Status == ExecutionStatus.Waiting && s.StatusReason is not null ? $"{s.Title}: {s.StatusReason}" : s.Title).ToList();
         if (userSteps.Count > 0)
-            waits.Add((CardSituationKind.User, userSteps.Min(s => (DateTimeOffset?)s.UpdatedAt), userSteps[0]));
+        {
+            // Etapa do usuário prevista no plano de correção (configurar, validar...) primeiro; trava da skill depois.
+            var planned = plan.Phase == ExecutionPhase.Correction ? userSteps.FirstOrDefault(s => s.Executor == ExecutionExecutor.User) : null;
+            waits.Add((CardSituationKind.User, userSteps.Min(s => (DateTimeOffset?)s.UpdatedAt), planned ?? userSteps[0]));
+            r.PlannedTask = planned is not null && waits.Count == 1;
+        }
 
         if (waits.Count > 0)
         {
@@ -217,6 +230,7 @@ public static class CardSituation
             ? "Mover o card para Dev Test in QA, validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA."
             : "Validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA.",
         CardSituationKind.Answer => "Responder as perguntas no PRMake para a análise seguir.",
+        CardSituationKind.User when r.PlannedTask => "Fazer o que a etapa pede (o passo a passo está nos arquivos do plano) e concluí-la no PRMake; em seguida vem o fechamento do card.",
         CardSituationKind.User => "Concluir no PRMake o que a etapa pede.",
         _ => null
     };
@@ -247,7 +261,8 @@ public static class CardSituation
     public static string Markdown(CardSituationResponse r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"**{Headline(r.Kind)}**").AppendLine();
+        sb.AppendLine(r.Kind == CardSituationKind.User && r.PlannedTask && r.StepTitle is not null
+            ? $"**Aguardando: {r.StepTitle}**" : $"**{Headline(r.Kind)}**").AppendLine();
         var manyRepos = r.PullRequests.Select(p => p.Repository).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
 
         switch (r.Kind)
@@ -291,6 +306,14 @@ public static class CardSituation
             case CardSituationKind.Answer:
                 sb.AppendLine(r.Questions.Count == 1 ? "Há uma pergunta aguardando resposta no PRMake:" : "Há perguntas aguardando resposta no PRMake:");
                 foreach (var q in r.Questions) sb.AppendLine($"- {q}");
+                break;
+            case CardSituationKind.User when r.PlannedTask:
+                sb.AppendLine("A correção depende desta etapa, feita por quem trata o card (fora do código), antes do fechamento.");
+                if (r.UserSteps.Count > 1)
+                {
+                    sb.AppendLine().AppendLine("Também pendente:");
+                    foreach (var u in r.UserSteps.Skip(1)) sb.AppendLine($"- {u}");
+                }
                 break;
             case CardSituationKind.User:
                 sb.AppendLine("Pendente no PRMake:");

@@ -38,6 +38,12 @@ public interface IExecutionPlanApplication
     Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
     Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
 
+    // 0076 — evidências do card no DevOps guardadas no plano
+    Task<CardEvidenceResponse> ImportEvidenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> ListEvidenceAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> SkipEvidenceAsync(Guid planId, string reason, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<string?> CheckEvidenceAsync(Guid planId, CancellationToken cancellationToken);
+
     // 0075 — situação atual do card (o que está sendo aguardado) e o contexto da passagem
     Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken);
     Task<CardSituationResponse> SetHandoffAsync(Guid planId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
@@ -60,7 +66,8 @@ public interface IExecutionPlanApplication
     Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken);
 
     Task<ExecutionArtifactResponse> UploadArtifactAsync(Guid planId, ExecutionArtifactUpload upload, ExecutionActor actor, CancellationToken cancellationToken);
-    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
+    /// <param name="markRead">0076: quem pede é a skill — a evidência conta como aberta.</param>
+    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken, bool markRead = false);
     Task DeleteArtifactAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
 
     // 0031 — comentários com anexos
