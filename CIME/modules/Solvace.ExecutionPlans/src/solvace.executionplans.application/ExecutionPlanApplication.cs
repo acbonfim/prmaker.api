@@ -160,11 +160,25 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionPlanResponse> ChangeStatusAsync(Guid planId, ChangeExecutionPlanStatusRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
-        var plan = await MutateAsync(planId, p =>
-            p.ChangeStatus(request.Status, request.Reason, request.Summary, actor.Name, actor.IsExecutor, DateTimeOffset.UtcNow),
-            cancellationToken, actor);
+        List<ExecutionQuestion> cancelled = [];
+        var plan = await MutateAsync(planId, async p =>
+        {
+            p.ChangeStatus(request.Status, request.Reason, request.Summary, actor.Name, actor.IsExecutor, DateTimeOffset.UtcNow);
+            // Plano cancelado/concluído: as perguntas abertas não decidem mais nada — saem da espera do usuário (card 77900).
+            cancelled = [];
+            if (p.IsFinished)
+            {
+                var reason = p.Status == ExecutionStatus.Cancelled ? "Plano cancelado" : "Plano concluído";
+                cancelled = (await _repository.GetQuestionsAsync(p.Id, cancellationToken))
+                    .Where(q => q.Status == ExecutionQuestionStatus.Open).ToList();
+                foreach (var q in cancelled)
+                    q.Cancel(reason);
+            }
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
+        if (cancelled.Count > 0)
+            await WriteTimelineAsync(plan, QuestionsCancelledText(cancelled, actor), actor, cancellationToken);
         if (plan.Status == ExecutionStatus.Running)
             await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Resume, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
