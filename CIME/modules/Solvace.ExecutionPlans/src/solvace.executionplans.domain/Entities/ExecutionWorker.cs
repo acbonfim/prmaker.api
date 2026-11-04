@@ -217,7 +217,16 @@ public class ExecutionUserSettings
     public DateTimeOffset? AutoLastCheckAt { get; private set; }
     public string? AutoLastError { get; private set; }
 
+    /// <summary>0076: a situação dos cards dele vai sozinha para a discussion do DevOps? null = segue o padrão global.</summary>
+    public bool? SituationAutoPost { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public void SetSituationAutoPost(bool? value, DateTimeOffset now)
+    {
+        SituationAutoPost = value;
+        UpdatedAt = now;
+    }
 
     protected ExecutionUserSettings() { }
 

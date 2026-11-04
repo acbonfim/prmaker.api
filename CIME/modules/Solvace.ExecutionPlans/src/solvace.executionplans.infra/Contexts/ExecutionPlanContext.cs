@@ -86,6 +86,8 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.DevTestInQaError).HasMaxLength(ExecutionPlan.MaxDevTestInQaErrorLength);
             entity.Property(e => e.EvidenceError).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
             entity.Property(e => e.EvidenceSkipReason).HasMaxLength(ExecutionPlan.MaxEvidenceTextLength);
+            entity.Property(e => e.SituationPostedText).HasColumnType("text");
+            entity.Property(e => e.SituationPostedBy).HasMaxLength(200);
             entity.Ignore(e => e.QaValidationStep);
         });
 

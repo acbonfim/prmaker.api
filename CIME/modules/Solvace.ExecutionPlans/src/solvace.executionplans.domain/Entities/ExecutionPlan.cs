@@ -113,6 +113,11 @@ public class ExecutionPlan
     /// <summary>0075: comentário da situação publicado na discussion do DevOps (republicar atualiza o mesmo).</summary>
     public int? SituationCommentId { get; private set; }
 
+    /// <summary>0076: o que foi publicado na discussion (markdown), quando e por quem — a tela mostra e compara com o atual.</summary>
+    public string? SituationPostedText { get; private set; }
+    public DateTimeOffset? SituationPostedAt { get; private set; }
+    public string? SituationPostedBy { get; private set; }
+
     public void SetSituationComment(int commentId, DateTimeOffset now)
     {
         SituationCommentId = commentId;

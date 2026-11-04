@@ -264,11 +264,30 @@ public class ExecutionPlanController : ControllerBase
 
     /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pelo botão da tela.</summary>
     [HttpPost("card/{cardNumber}/situation/publish")]
-    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest request, CancellationToken ct) =>
+    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest? request, CancellationToken ct) =>
         RunPlain(async () =>
         {
-            var commentId = await _application.PublishSituationAsync(cardNumber, request.Html ?? string.Empty, await GetActorAsync(ct, executor: false), ct);
+            var commentId = await _application.PublishSituationAsync(cardNumber, request?.Html, await GetActorAsync(ct, executor: false), ct);
             return Ok(new { commentId });
+        });
+
+    /// <summary>0076: publicação automática da situação na discussion — preferência do usuário logado (null = padrão global).</summary>
+    [HttpGet("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> GetSituationPostSettings(CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.GetSituationPostSettingsAsync(userId, ct));
+        });
+
+    [HttpPut("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> SetSituationPostSettings([FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.SetSituationPostSettingsAsync(userId, request.AutoPost, ct));
         });
 
     // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────

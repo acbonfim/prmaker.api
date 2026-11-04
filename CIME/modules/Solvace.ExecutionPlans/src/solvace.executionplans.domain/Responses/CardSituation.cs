@@ -120,6 +120,16 @@ public class CardSituationResponse
     public string? HandoffBy { get; set; }
 
     public string? Next { get; set; }
+
+    /// <summary>0076: a publicação na discussion é automática para este card (preferência do dono do plano ou padrão global).</summary>
+    public bool AutoPost { get; set; }
+    /// <summary>0076: o último resumo publicado na discussion.</summary>
+    public DateTimeOffset? PublishedAt { get; set; }
+    public string? PublishedBy { get; set; }
+    public string? PublishedMarkdown { get; set; }
+    /// <summary>0076: há um resumo diferente do publicado, pronto para a discussion.</summary>
+    public bool PublishPending { get; set; }
+
     /// <summary>Resumo pronto para copiar/handover/Timeline.</summary>
     public string Markdown { get; set; } = string.Empty;
 }
@@ -144,6 +154,9 @@ public static class CardSituation
         r.HandoffAt = plan.HandoffAt;
         r.HandoffBy = plan.HandoffBy;
         r.DevTestInQaAt = plan.DevTestInQaAt;
+        r.PublishedAt = plan.SituationPostedAt;
+        r.PublishedBy = plan.SituationPostedBy;
+        r.PublishedMarkdown = plan.SituationPostedText;
         r.DevTestInQaError = plan.DevTestInQaAt is null ? plan.DevTestInQaError : null;
         r.Done = plan.Steps.Where(s => s.Status == ExecutionStatus.Completed).OrderBy(s => s.Order).Select(s => s.Title).ToList();
 

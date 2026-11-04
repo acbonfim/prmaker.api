@@ -50,20 +50,32 @@ public partial class ExecutionPlanApplication
         return await GetSituationAsync(plan.CardNumber, false, cancellationToken);
     }
 
-    public async Task<int> PublishSituationAsync(string cardNumber, string html, ExecutionActor actor, CancellationToken cancellationToken)
+    /// <summary>Publicação pela tela (botão Publicar). Sem <paramref name="html"/>, o PRMake monta o mesmo texto da automática.</summary>
+    public async Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken)
     {
         if (_devOps is null)
             throw new DomainException("Integração com o DevOps indisponível.");
-        if (string.IsNullOrWhiteSpace(html))
-            throw new DomainException("Resumo vazio.");
         var card = cardNumber.Trim();
         var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken)
                      ?? throw new ExecutionPlanNotFoundException("O card não tem plano.");
+        var situation = await GetSituationAsync(card, true, cancellationToken);
+        var body = string.IsNullOrWhiteSpace(html) ? SituationHtml.Build(situation, DateTimeOffset.UtcNow, CardSituation.Brasilia) : html;
         var existing = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
-        var commentId = await _devOps.UpsertCommentAsync(card, html, existing, cancellationToken);
-        var plan = await MutateAsync(planId, p => p.SetSituationComment(commentId, DateTimeOffset.UtcNow), cancellationToken, actor);
-        await WriteTimelineAsync(plan, $"📣 **Situação publicada no DevOps** por {actor.Name}", actor, cancellationToken);
+        var commentId = await _devOps.UpsertCommentAsync(card, body, existing, cancellationToken);
+        await _repository.SetSituationPostedAsync(planId, commentId, situation.Markdown, actor.Name, DateTimeOffset.UtcNow, cancellationToken);
+        var plan = await LoadAsync(planId, cancellationToken);
+        await WriteTimelineAsync(plan, $"📣 **Situação publicada na discussion do DevOps** por {actor.Name}", actor, cancellationToken);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Situation, null, cancellationToken);
         return commentId;
+    }
+
+    public async Task<SituationPostSettingsResponse> GetSituationPostSettingsAsync(Guid userId, CancellationToken cancellationToken) =>
+        new() { AutoPost = await _repository.GetSituationAutoPostAsync(userId, cancellationToken), GlobalDefault = (await QaSettingsAsync(cancellationToken)).PostSituationToDevOps };
+
+    public async Task<SituationPostSettingsResponse> SetSituationPostSettingsAsync(Guid userId, bool? autoPost, CancellationToken cancellationToken)
+    {
+        await _repository.SetSituationAutoPostAsync(userId, autoPost, cancellationToken);
+        return await GetSituationPostSettingsAsync(userId, cancellationToken);
     }
 
     /// <param name="withFiles">Arquivos das etapas de chamado (só para o texto; o tipo não depende deles).</param>
@@ -74,7 +86,16 @@ public partial class ExecutionPlanApplication
         var questions = await _repository.GetQuestionsAsync(planId, cancellationToken);
         var artifacts = withFiles ? await _repository.GetArtifactsAsync(planId, cancellationToken) : [];
         var settings = await QaSettingsAsync(cancellationToken);
-        return CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
+        var situation = CardSituation.Build(plan, links, questions, artifacts, settings.IsQaBranch, plan.CardNumber);
+        if (withFiles)
+        {
+            // 0076: automático = preferência do dono do plano (quem trata o card) ou o padrão global.
+            var own = plan.CreatedByUserId is { } owner ? await _repository.GetSituationAutoPostAsync(owner, cancellationToken) : null;
+            situation.AutoPost = own ?? settings.PostSituationToDevOps;
+            situation.PublishPending = situation.Markdown != situation.PublishedMarkdown
+                                       && CardSituationKind.PostToDevOps(situation, plan.SituationCommentId is not null);
+        }
+        return situation;
     }
 
     /// <summary>
@@ -87,11 +108,11 @@ public partial class ExecutionPlanApplication
         if (_devOps is null) return;
         try
         {
-            var settings = await QaSettingsAsync(cancellationToken);
-            if (!settings.PostSituationToDevOps) return;
             var commentId = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
             var situation = await BuildSituationAsync(planId, true, cancellationToken);
-            if (!CardSituationKind.PostToDevOps(situation, commentId is not null)) return;
+            // Manual (preferência do dono ou padrão): fica pendente na tela, com o botão Publicar.
+            if (!situation.AutoPost || !CardSituationKind.PostToDevOps(situation, commentId is not null)) return;
+            if (situation.Markdown == situation.PublishedMarkdown) return;
             try
             {
                 (situation.DevOpsState, situation.DevOpsColumn) = await _devOps.GetStateAsync(cardNumber, cancellationToken);
@@ -103,14 +124,12 @@ public partial class ExecutionPlanApplication
             }
             var html = SituationHtml.Build(situation, DateTimeOffset.UtcNow, CardSituation.Brasilia);
             var id = await _devOps.UpsertCommentAsync(cardNumber, html, commentId, cancellationToken);
+            await _repository.SetSituationPostedAsync(planId, id, situation.Markdown, "PRMake (automático)", DateTimeOffset.UtcNow, cancellationToken);
             if (id != commentId)
-            {
-                await _repository.SetSituationCommentIdAsync(planId, id, cancellationToken);
                 // Primeira vez (ou o comentário foi apagado no DevOps): avisa uma vez na Timeline; depois só atualiza.
                 await WriteTimelineAsync(await LoadAsync(planId, cancellationToken),
-                    $"📣 **Situação publicada na discussion do DevOps** ({situation.Icon} {situation.Title}) — o PRMake atualiza o mesmo comentário a cada mudança.",
+                    $"📣 **Situação publicada na discussion do DevOps** ({situation.Title}) — o PRMake atualiza o mesmo comentário a cada mudança.",
                     SystemActor, cancellationToken);
-            }
             LastDiscussionError.TryRemove(planId, out _);
         }
         catch (Exception e) when (e is not OperationCanceledException)

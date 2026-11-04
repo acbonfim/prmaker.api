@@ -24,6 +24,12 @@ public class SaveExecutionCodeRefRequest
         Snapshot, Change, Title, Why, Proposal, Annotations);
 }
 
+/// <summary>0076: preferência de publicação automática da situação (null = seguir o padrão global).</summary>
+public class SituationPostSettingsRequest
+{
+    public bool? AutoPost { get; set; }
+}
+
 /// <summary>0076: seguir a análise sem as evidências do DevOps (o usuário autorizou).</summary>
 public class SkipExecutionEvidenceRequest
 {

@@ -48,7 +48,10 @@ public interface IExecutionPlanApplication
     Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken);
     Task<CardSituationResponse> SetHandoffAsync(Guid planId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
     /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pela tela.</summary>
-    Task<int> PublishSituationAsync(string cardNumber, string html, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>0076: publicação automática da situação — preferência do usuário e o padrão global.</summary>
+    Task<SituationPostSettingsResponse> GetSituationPostSettingsAsync(Guid userId, CancellationToken cancellationToken);
+    Task<SituationPostSettingsResponse> SetSituationPostSettingsAsync(Guid userId, bool? autoPost, CancellationToken cancellationToken);
 
     // 0075 — fotografias do código citado
     Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);

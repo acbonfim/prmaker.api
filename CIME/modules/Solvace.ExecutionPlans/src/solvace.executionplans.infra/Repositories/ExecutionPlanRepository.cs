@@ -250,9 +250,28 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
     public Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken) =>
         _context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => p.SituationCommentId).FirstOrDefaultAsync(cancellationToken);
 
-    public async Task SetSituationCommentIdAsync(Guid planId, int commentId, CancellationToken cancellationToken) =>
+    public async Task SetSituationPostedAsync(Guid planId, int commentId, string markdown, string by, DateTimeOffset at, CancellationToken cancellationToken) =>
         await _context.Plans.Where(p => p.Id == planId)
-            .ExecuteUpdateAsync(s => s.SetProperty(p => p.SituationCommentId, commentId), cancellationToken);
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.SituationCommentId, commentId)
+                .SetProperty(p => p.SituationPostedText, markdown)
+                .SetProperty(p => p.SituationPostedBy, by.Length <= 200 ? by : by.Substring(0, 200))
+                .SetProperty(p => p.SituationPostedAt, at), cancellationToken);
+
+    public Task<bool?> GetSituationAutoPostAsync(Guid userId, CancellationToken cancellationToken) =>
+        _context.UserSettings.AsNoTracking().Where(s => s.UserId == userId).Select(s => s.SituationAutoPost).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task SetSituationAutoPostAsync(Guid userId, bool? value, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var settings = await _context.UserSettings.FirstOrDefaultAsync(s => s.UserId == userId, cancellationToken);
+        if (settings is null)
+        {
+            settings = new ExecutionUserSettings(userId, now);
+            _context.UserSettings.Add(settings);
+        }
+        settings.SetSituationAutoPost(value, now);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 
     public Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken) =>
         _context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => p.SituationKind).FirstOrDefaultAsync(cancellationToken);

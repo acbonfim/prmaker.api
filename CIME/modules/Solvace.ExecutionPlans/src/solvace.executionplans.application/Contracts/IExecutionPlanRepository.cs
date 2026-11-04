@@ -82,7 +82,11 @@ public interface IExecutionPlanRepository
     /// </summary>
     /// <summary>0075: comentário da situação na discussion (id) — lido e gravado direto no banco.</summary>
     Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken);
-    Task SetSituationCommentIdAsync(Guid planId, int commentId, CancellationToken cancellationToken);
+    /// <summary>0076: comentário publicado + o texto, quando e por quem (direto no banco).</summary>
+    Task SetSituationPostedAsync(Guid planId, int commentId, string markdown, string by, DateTimeOffset at, CancellationToken cancellationToken);
+    /// <summary>0076: preferência do usuário para publicar a situação (null = sem preferência).</summary>
+    Task<bool?> GetSituationAutoPostAsync(Guid userId, CancellationToken cancellationToken);
+    Task SetSituationAutoPostAsync(Guid userId, bool? value, CancellationToken cancellationToken);
 
     /// <summary>0075: tipo de situação gravado, lido do banco (o agregado rastreado não vê o ExecuteUpdate).</summary>
     Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken);

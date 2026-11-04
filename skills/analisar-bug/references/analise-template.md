@@ -19,7 +19,15 @@ que sera feito; o detalhe tecnico fica nos popovers das fotografias. Regras:
 - **Sempre a mesma ordem e os mesmos titulos `###`** (abaixo) — o usuario acha cada coisa no mesmo lugar.
 - Abra com o callout `> [!SUMMARY]` (3 linhas: problema, causa, o que vamos fazer). Use `> [!WARNING]` para risco
   real e `> [!NOTE]` para contexto; nao abuse (no maximo 3 callouts).
-- **Confirmado x hipotese** sempre marcados: `✅ **Confirmado:**` / `❓ **Hipotese:**`, com a evidencia em 1 linha.
+- **Confirmado x hipotese** sempre marcados: `**Confirmado:**` / `**Hipótese:**`, com a evidencia em 1 linha.
+- **Visual de sistema, sem cara de IA (0076)**: **nenhum emoji** no texto. Os rotulos em negrito abaixo viram **selos**
+  coloridos no PRMake — escreva exatamente assim (com acento): `**Alterar**`, `**Criar**`, `**Remover**`, `**Suspeito**`,
+  `**Só leitura**`, `**Confirmado:**`, `**Hipótese:**`, `**Descartado**`, `**Recomendada**`. Callouts com moderacao: so o
+  `> [!SUMMARY]` do topo e, se houver risco real, **um** `> [!WARNING]`. Tabela so quando ha 2+ linhas comparaveis
+  (o *O que vai ser feito*); o resto em frases curtas ou listas. Notas das fotografias: 2–4 por trecho, so as que
+  explicam algo que o codigo nao diz.
+- **Itens da engenharia reversa** (`UC-121`, `revamp-kaizen#RN-012`) viram link com popover do texto do item — cite o id
+  (com o modulo quando o card toca mais de um) em vez de copiar a regra.
 - **Todo codigo citado e um link para a fotografia** (`[caminho:linhas](ref:<id>)`, passo 4b) — nunca `caminho:linha`
   solto, nunca bloco de codigo colado (o popover mostra o codigo real, o diff e as notas). O PRMake recusa concluir
   `montar-analise` com citacao sem fotografia.
@@ -37,12 +45,12 @@ que sera feito; o detalhe tecnico fica nos popovers das fotografias. Regras:
 ### O que vai ser feito
 | # | Onde | Mudanca | Por que |
 |---|---|---|---|
-| 1 | [`<arquivo>:<linhas>`](ref:<id>) | ✏️ alterar · ➕ criar · 🗑️ remover | <1 linha> |
-| 2 | [`<arquivo>:<linhas>`](ref:<id>) | 👁️ so leitura | <por que e citado e nao muda> |
+| 1 | [`<arquivo>:<linhas>`](ref:<id>) | **Alterar** (ou **Criar** / **Remover**) | <1 linha> |
+| 2 | [`<arquivo>:<linhas>`](ref:<id>) | **Só leitura** | <por que e citado e nao muda> |
 <so a recomendada; as outras opcoes ficam em solucoes.md. Sem codigo (dados/config/orientacao): diga o que muda e onde>
 
 ### Onde parou
-<o estado real do plano em 1 linha: ✅ o que ja foi feito · ⏳ o que esta aguardando e de quem · proximo passo>
+<o estado real do plano em 1 linha: o que ja foi feito, o que esta aguardando e de quem, e o proximo passo>
 
 ### Problema relatado
 <resumo do comportamento descrito nos repro steps e nos comentarios>
@@ -57,8 +65,8 @@ ajuda; video/compactado: "nao aberto (motivo)"; card sem evidencias: diga isso. 
 (o que o cliente/suporte disse que muda a analise).>
 
 ### Causa raiz
-- ✅ **Confirmado:** <fato + evidencia (consulta, linha de codigo com ref, item RN/UC)>
-- ❓ **Hipotese:** <o que falta confirmar e como>
+- **Confirmado:** <fato + evidencia (consulta, linha de codigo com ref, item `RN-012`/`UC-121`)>
+- **Hipótese:** <o que falta confirmar e como>
 
 ### Evidencias
 - **Codigo:** mundo/repositorio (legado `edv-solvace` ou `revamp-<modulo>`), commit da master lido; os trechos sao as refs acima

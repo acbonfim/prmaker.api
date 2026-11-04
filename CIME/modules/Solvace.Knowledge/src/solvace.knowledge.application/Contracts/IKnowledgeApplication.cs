@@ -102,6 +102,12 @@ public interface IReverseEngineeringApplication
     /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 0076: um item citado no texto de um card (popover). Sem módulo (<c>UC-121</c>), usa o que a análise do card
+    /// consultou e os módulos do card; ambíguo = erro com os módulos.
+    /// </summary>
+    Task<ReverseItemResponse> GetCardItemAsync(string card, string reference, CancellationToken cancellationToken);
     // 0054
     Task<ReverseInfraResponse?> GetInfraAsync(string key, CancellationToken cancellationToken);
     Task<ReverseInfraResponse> UpsertInfraAsync(string key, UpsertReverseInfraRequest request, string actor, CancellationToken cancellationToken);

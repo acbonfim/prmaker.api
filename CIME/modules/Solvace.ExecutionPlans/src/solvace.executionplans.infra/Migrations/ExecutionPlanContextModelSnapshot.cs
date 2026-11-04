@@ -495,6 +495,16 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<DateTimeOffset?>("SituationPostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SituationPostedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SituationPostedText")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -927,6 +937,9 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<decimal?>("DailyBudgetUsd")
                         .HasPrecision(12, 4)
                         .HasColumnType("numeric(12,4)");
+
+                    b.Property<bool?>("SituationAutoPost")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
