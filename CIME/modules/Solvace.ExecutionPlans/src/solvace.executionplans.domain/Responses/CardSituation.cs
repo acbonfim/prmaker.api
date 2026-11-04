@@ -205,8 +205,9 @@ public static class CardSituation
 
     private static string? NextText(CardSituationResponse r, ExecutionPlan plan)
     {
-        var after = plan.Steps.Where(s => !ExecutionStatus.IsStepFinished(s.Status) && s.Key != r.StepKey)
-            .OrderBy(s => s.Order).Select(s => s.Title).FirstOrDefault();
+        // Depois = a etapa que espera por esta (dependsOn); sem ela, a próxima pendente.
+        var pendingSteps = plan.Steps.Where(s => !ExecutionStatus.IsStepFinished(s.Status) && s.Key != r.StepKey).OrderBy(s => s.Order).ToList();
+        var after = (pendingSteps.FirstOrDefault(s => r.StepKey is not null && s.DependsOn.Contains(r.StepKey)) ?? pendingSteps.FirstOrDefault())?.Title;
         var then = after is null ? "" : $" Depois: *{after}*.";
         return r.Kind switch
         {
