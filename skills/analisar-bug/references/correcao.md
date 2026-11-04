@@ -8,7 +8,12 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    (arquivo, funcao, tabela ou item da engenharia reversa) — 0063. Escreva `$CARD_DIR/analises/solucoes.md`: 1 a 3
    opcoes, cada uma com o que muda (repositorios/arquivos), **o impacto na base** (quem mais usa aquele ponto, pelo
    `prmake_base_impact`: telas/modulos/itens), riscos, se precisa de script de dados (chamado) e o esforco; marque a
-   recomendada. **Opcao com chamado (0050): nao grave o script nem o texto do chamado aqui** — descreva o que o
+   recomendada. **Formato (0075)** — o mesmo da analise (`ref.sh analise 4`): abra com `> [!SUMMARY]` (a recomendada e por
+   que), depois uma secao `### <nome da opcao>` por opcao (nome da solucao, nunca "Opcao 1"), cada uma com as mesmas
+   subsecoes em negrito: **O que muda** (tabela `# · Onde · Mudanca · Por que`, com cada trecho como
+   `[caminho:linhas](ref:<id>)`), **Impacto na base**, **Riscos**, **Esforco**, **Antes x Depois** (mudanca visivel,
+   `ref.sh analise 4c`). Cada trecho que a opcao muda tem fotografia com proposta, `--why` e notas (`ref.sh analise 4b`)
+   — refs diferentes por opcao quando o codigo novo difere (`sa3-init-a`, `sa3-init-b`). **Opcao com chamado (0050): nao grave o script nem o texto do chamado aqui** — descreva o que o
    script vai fazer (tabelas, filtro, linhas afetadas estimadas, rollback) e diga que ele e o texto do chamado serao
    anexados no plano de correcao, na etapa do chamado. O resumo do checkpoint leva o que a correcao precisa para
    escreve-lo (ids, consultas usadas, host/banco). `sync <card> propor-solucoes` (no executor: `prmake_file(card, "solucoes.md", conteudo, "analysis",
@@ -49,7 +54,8 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    texto)` (sem MCP: `checkpoint <card> propor-solucoes "..."`), ate ~3.000 caracteres, **autossuficiente**: no
    executor a correcao roda numa sessao nova que le **so isto** (+ respostas, comentarios e arquivos), sem esta
    conversa. Inclua: causa raiz e a evidencia (ids, consultas, host/banco usados); onde mexer em cada opcao — repo
-   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha`, funcao/SP; consultas usadas (nomes nos arquivos do
+   (legado `edv-solvace` ou `revamp-<modulo>`), `caminho:linha` com a ref (`[...](ref:<id>)` — a correcao le a proposta
+   e as notas pela fotografia, sem reler a analise), funcao/SP; consultas usadas (nomes nos arquivos do
    plano) e, com chamado, o que o script de alteracao deve fazer (a correcao o escreve); branches levantadas pelo `branches`; riscos; o que o usuario pediu nos comentarios. Sem repetir a analise
    inteira — ela continua na Timeline e em `analises/`.
 3. **Espere as duas pontas ao mesmo tempo** — o usuario pode responder pela tela (PRMake) ou aqui:
@@ -176,6 +182,10 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
   (`$PLAN test` so dos arquivos da falha), commit no padrao e `push` — o CI roda de novo e o PRMake acompanha. Falha
   de infraestrutura/instavel ou de outra parte do codigo → `log` (kind `warning`) com o porque e encerre a vez, sem
   mexer no codigo.
+- **Diff feito na fotografia (0075)**: depois do commit da correcao, para cada ref que a correcao mudou, `bash $PLAN coderef
+  <card> <ref> --implemented <sha> --file <caminho> --dir "$WT"` — o popover mostra *Proposta x Feito*. Arquivo mudado
+  sem ref na analise (a correcao precisou de mais): fotografe com `--dir "$WT"` antes do commit (`--change change --after`)
+  e grave o `--implemented` depois.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
   1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.
