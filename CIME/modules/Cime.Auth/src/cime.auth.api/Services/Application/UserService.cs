@@ -16,6 +16,8 @@ using ProSales.Repository.Contexts;
 using cliqx.auth.api.Services;
 using cliqx.auth.api.Models.Types;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
+using LoginEvent = cliqx.auth.api.Models.LoginEvent;
 
 namespace ProAuth.Services.Application;
 
@@ -27,14 +29,20 @@ public class UserService : IUserService
     public IMapper _mapper { get; }
     public readonly DefaultContext context;
     private readonly IPasswordService _passService;
+    private readonly IHttpContextAccessor _http;
+    private readonly ILogger<UserService> _logger;
 
     public UserService(UserManager<User> UserManager
     , SignInManager<User> signInManager
     , RoleManager<Role> roleInManager
     , IMapper mapper
     , DefaultContext context,
-IPasswordService passService)
+IPasswordService passService,
+    IHttpContextAccessor http,
+    ILogger<UserService> logger)
     {
+        _http = http;
+        _logger = logger;
         _userManager = UserManager;
         _signInManager = signInManager;
         _roleInManager = roleInManager;
@@ -179,6 +187,66 @@ IPasswordService passService)
 
     public async Task<RetornoDto> LoginUser(UserLoginDto userLogin)
     {
+        User attempted = null;
+        var retorno = await LoginUserCore(userLogin, u => attempted = u);
+        await RecordLoginAsync(userLogin?.UserName, attempted, retorno);
+        return retorno;
+    }
+
+    /// <summary>
+    /// Grava a tentativa de login (0079) — sucesso ou motivo da falha, IP e navegador. Aguardado dentro da requisição
+    /// (Cloud Run estrangula a CPU depois da resposta); falha ao gravar só vira aviso no log.
+    /// </summary>
+    private async Task RecordLoginAsync(string typedUserName, User user, RetornoDto retorno)
+    {
+        try
+        {
+            var request = _http.HttpContext?.Request;
+            var reason = retorno.Success ? LoginEvent.ReasonOk : retorno.StatusCode switch
+            {
+                StatusCodes.Status404NotFound => LoginEvent.ReasonNotFound,
+                StatusCodes.Status401Unauthorized => LoginEvent.ReasonWrongPassword,
+                StatusCodes.Status403Forbidden => user is { Active: false } ? LoginEvent.ReasonInactive : LoginEvent.ReasonUnconfirmed,
+                _ => LoginEvent.ReasonError
+            };
+            context.LoginEvents.Add(new LoginEvent
+            {
+                At = DateTime.Now,
+                UserId = user?.Id,
+                UserExternalId = user?.ExternalId,
+                UserName = LoginEvent.Cut(user?.UserName ?? typedUserName, LoginEvent.MaxUserNameLength) ?? "",
+                Success = retorno.Success,
+                Reason = reason,
+                Ip = LoginEvent.Cut(ClientIp(_http.HttpContext), LoginEvent.MaxIpLength),
+                UserAgent = LoginEvent.Cut(request?.Headers.UserAgent.ToString(), LoginEvent.MaxUserAgentLength)
+            });
+            await context.SaveChangesAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Não registrei a tentativa de login de {UserName}", typedUserName);
+        }
+    }
+
+    /// <summary>
+    /// IP do cliente: o último salto do X-Forwarded-For (o que o proxy do Cloud Run acrescentou — os anteriores vêm do
+    /// próprio cliente e podem ser forjados) ou o endereço da conexão.
+    /// </summary>
+    public static string ClientIp(HttpContext http)
+    {
+        if (http is null) return null;
+        var forwarded = http.Request.Headers["X-Forwarded-For"].ToString();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            var last = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+            if (!string.IsNullOrEmpty(last)) return last;
+        }
+        var remote = http.Connection.RemoteIpAddress;
+        return remote is null ? null : (remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote).ToString();
+    }
+
+    private async Task<RetornoDto> LoginUserCore(UserLoginDto userLogin, Action<User> found)
+    {
         var retorno = new RetornoDto();
 
         try
@@ -189,6 +257,7 @@ IPasswordService passService)
 
             var userFound = await _userManager.Users
                 .FirstOrDefaultAsync(u => u.NormalizedUserName == userLogin.UserName.ToUpper());
+            found(userFound);
 
             if (userFound == null)
             {
@@ -459,6 +528,7 @@ IPasswordService passService)
                 CompanyId = u.CompanyId,
                 ChannelOrigin = u.ChannelOrigin,
                 ImagemUrlUser = u.ImagemUrlUser,
+                LastLoginAt = u.DataUltimoLogin <= DateTime.MinValue.AddDays(1) ? null : u.DataUltimoLogin,
                 UserRoles = (u.UserRoles ?? new List<UserRole>())
                     .Where(ur => ur.Role != null)
                     .Select(ur => new UserRoleItemDto
