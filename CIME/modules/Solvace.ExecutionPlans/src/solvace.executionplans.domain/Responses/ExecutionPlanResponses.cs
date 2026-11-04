@@ -209,6 +209,19 @@ public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
 
     /// <summary>Hora do servidor na resposta — o front calcula "sem sinal há X min" sem depender do relógio local.</summary>
     public DateTimeOffset ServerTime { get; set; }
+
+    /// <summary>0080: divergência entre a análise e a base real (pendente = a etapa de PR espera a confirmação).</summary>
+    public ExecutionDivergenceResponse? Divergence { get; set; }
+}
+
+public class ExecutionDivergenceResponse
+{
+    public string Text { get; set; } = string.Empty;
+    public string? StepKey { get; set; }
+    public DateTimeOffset At { get; set; }
+    public bool Pending { get; set; }
+    public string? ConfirmedBy { get; set; }
+    public DateTimeOffset? ConfirmedAt { get; set; }
 }
 
 public class ExecutionStepResponse
@@ -386,7 +399,14 @@ public static class ExecutionPlanMappings
             UserActions = plan.UserActions(questions ?? []),
             LastLogId = lastLogId,
             ServerTime = now,
-            Notes = notes ?? []
+            Notes = notes ?? [],
+            Divergence = plan.DivergenceAt is { } at && plan.DivergenceText is { } text
+                ? new ExecutionDivergenceResponse
+                {
+                    Text = text, StepKey = plan.DivergenceStepKey, At = at, Pending = plan.DivergencePending,
+                    ConfirmedBy = plan.DivergenceConfirmedBy, ConfirmedAt = plan.DivergenceConfirmedAt
+                }
+                : null
         };
         plan.FillSummary(response, plan.Steps.Count, plan.Steps.Count(s => s.Status == ExecutionStatus.Completed));
         response.UserPending = response.UserActions.Count;

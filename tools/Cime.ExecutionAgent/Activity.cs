@@ -118,6 +118,14 @@ public static partial class ActivityLabel
         "log" or "timeline" => "Registrando na Timeline",
         "devops" => "Atualizando o card no DevOps",
         "config" or "devops_config" => "Lendo a configuração do PRMake",
+        // 0080: Especialista do caso
+        "case_context" => "Lendo o contexto do caso",
+        "case_messages" => "Lendo as mensagens novas",
+        "case_reply" => "Escrevendo a resposta",
+        "case_point" => "Anotando um ponto combinado",
+        "case_propose" => "Montando a proposta de nova versão do plano",
+        "case_action" or "case_action_done" => "Pedindo confirmação de uma ação",
+        "case_file" => Str(input, "name") is { Length: > 0 } cf ? $"Gerando {Cut(Path.GetFileName(cf), 50)}" : "Gerando um arquivo",
         _ => $"PRMake: {Cut(tool.Replace('_', ' '), 30)}"
     };
 

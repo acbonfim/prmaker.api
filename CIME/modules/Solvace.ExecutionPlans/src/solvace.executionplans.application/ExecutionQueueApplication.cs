@@ -15,7 +15,7 @@ namespace solvace.executionplans.application;
 /// automática) é avaliado quando o executor do dono pergunta ou alguém olha o card: no Cloud Run só há CPU durante o
 /// request, então nada depende de serviço em segundo plano.
 /// </summary>
-public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionResumeTrigger
+public partial class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionResumeTrigger
 {
     /// <summary>Sinal da skill mais novo que isso (e depois do último pedido) = tem uma sessão viva no card.</summary>
     public static readonly TimeSpan AliveWindow = TimeSpan.FromSeconds(150);
@@ -35,11 +35,19 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     private readonly IExecutionWorkItemSource? _workItems;
     private readonly IExecutionAgentInfo? _agentInfo;
     private readonly IExecutionQueueSettings? _settings;
+    private readonly ICaseChatRepository? _cases;
     private ExecutionQueueOptions? _options;
 
+    /// <summary>0080: respostas do especialista rodando ao mesmo tempo por máquina (além do limite da pista principal).</summary>
+    public const int SpecialistSlots = 2;
+    /// <summary>0080: versão do executor que conhece a pista do especialista (token restrito, MCP só do caso).</summary>
+    public const string SpecialistAgentVersion = "1.2.0";
+
     public ExecutionQueueApplication(IExecutionQueueRepository queue, IExecutionPlanRepository plans, IRealTimeNotifier realTime,
-        IExecutionWorkItemSource? workItems = null, IExecutionAgentInfo? agentInfo = null, IExecutionQueueSettings? settings = null)
+        IExecutionWorkItemSource? workItems = null, IExecutionAgentInfo? agentInfo = null, IExecutionQueueSettings? settings = null,
+        ICaseChatRepository? cases = null)
     {
+        _cases = cases;
         _queue = queue;
         _plans = plans;
         _realTime = realTime;
@@ -72,6 +80,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         if (card.Length == 0)
             throw new DomainException("Informe o número do card.");
         var now = DateTimeOffset.UtcNow;
+        if (string.Equals(request.Kind?.Trim(), ExecutionRequestKind.Specialist, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("O Especialista do caso responde pela conversa do caso, não por pedido direto.");
 
         if (await _queue.GetActiveRequestForCardAsync(card, cancellationToken) is { } existing)
         {
@@ -202,6 +212,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         var now = DateTimeOffset.UtcNow;
         var r = await MutateRequestAsync(requestId, x => x.Start(workerId, request.Pid, request.SessionId, now), cancellationToken);
         await TouchWorkerAsync(workerId, now, cancellationToken);
+        if (r.Kind == ExecutionRequestKind.Specialist)
+            await RegisterCaseSessionAsync(r, workerId, now, cancellationToken);
         await NotifyAsync(r, cancellationToken);
         return r.ToResponse();
     }
@@ -225,6 +237,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         }, cancellationToken);
         await TouchWorkerAsync(workerId, now, cancellationToken);
         if (activityChanged) await NotifyActivityAsync(r, cancellationToken);
+        if (r.Kind == ExecutionRequestKind.Specialist)
+            return new ExecutionHeartbeatResponse { Action = "continue", RequestStatus = r.Status };
 
         var plan = await FindPlanAsync(r, cancellationToken);
         if (plan is not null && plan.Status == ExecutionStatus.Cancelled && plan.UpdatedAt >= (r.StartedAt ?? r.CreatedAt))
@@ -275,6 +289,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             await TouchWorkerAsync(workerId, now, cancellationToken);
         await NotifyAsync(r, cancellationToken);
         if (r.Status == ExecutionRequestStatus.Queued) await WakeWorkersAsync(r.OwnerUserId, cancellationToken);
+        if (r.Kind == ExecutionRequestKind.Specialist && r.IsFinished)
+            await AfterSpecialistAsync(r, request, now, cancellationToken);
         return r.ToResponse();
     }
 
@@ -463,11 +479,10 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         var target = session?.Host is { } host
             ? workers.FirstOrDefault(w => string.Equals(w.Host, host, StringComparison.OrdinalIgnoreCase))?.Id
             : null;
+        // 0080: sem espera depois de comentário — a conversa é do Especialista do caso; o que chega ao plano é decisão
+        // explícita (proposta aceita, "Levar para o plano") e começa na hora.
         var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, plan.CreatedBy,
             actor.UserId, actor.Name, plan.Id, session, target, null, false, now);
-        // 0049: comentário espera um pouco — quem comenta costuma mandar vários em sequência; cada retomada relê o contexto.
-        if (source == ExecutionRequestSource.Note && !explicitRequest && (await OptionsAsync(cancellationToken)).NoteDelay is { } delay && delay > TimeSpan.Zero)
-            request.Delay(now + delay, GatheringText(now + delay), now);
         var saved = await AddRequestAsync(request, cancellationToken);
         if (saved is not null && saved.Id == request.Id)
             await UpdateWaitReasonsAsync(owner, now, cancellationToken);
@@ -478,25 +493,16 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         userIds.Count == 0 ? Task.FromResult(new HashSet<Guid>()) : _queue.GetOwnersWithWorkersAsync(userIds, cancellationToken);
 
     /// <summary>
-    /// 0049: já há pedido no card. Na fila esperando comentários: um comentário novo empurra a espera (até 3× o
-    /// intervalo desde o pedido) e o "Continuar" pela tela começa já. Retorna o pedido só no pedido explícito com ele
-    /// ainda na fila (rodando → null: "o Claude já está trabalhando").
+    /// Já há pedido no card: na fila, ele começa já (0080: sem a espera da 0049 que juntava comentários). Retorna o
+    /// pedido só no pedido explícito com ele ainda na fila (rodando → null: "o Claude já está trabalhando").
     /// </summary>
     private async Task<ExecutionRequest?> GatherIntoAsync(ExecutionRequest active, string source, bool explicitRequest, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         if (active.Status != ExecutionRequestStatus.Queued)
             return null;
-        var changed = false;
-        if (explicitRequest || (source != ExecutionRequestSource.Note && active.Source == ExecutionRequestSource.Note))
-            // "Continuar" ou outra ação do usuário (respondeu, "Já resolvi"...) não espera mais comentários.
-            changed = active.RunNow(now);
-        else if (source == ExecutionRequestSource.Note && active.Attempts == 0 && active.NotBefore is { } nb && nb > now)
-        {
-            var delay = (await OptionsAsync(cancellationToken)).NoteDelay;
-            var until = new[] { now + delay, active.CreatedAt + 3 * delay }.Min();
-            changed = active.Delay(until, GatheringText(until), now);
-        }
+        // 0080: nada espera mais comentários — um pedido antigo ainda "juntando comentários" começa já.
+        var changed = active.RunNow(now);
         if (changed)
         {
             try
@@ -546,16 +552,23 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     {
         if (worker.Status != ExecutionWorkerStatus.Active || worker.IsThrottled(now))
             return ([], null, 0);
+        // 0080: duas pistas — a principal (limite da máquina) e a do especialista (só executor que a conhece).
         var counts = await _queue.CountActiveByWorkerAsync(worker.OwnerUserId, cancellationToken);
-        if (counts.GetValueOrDefault(worker.Id) >= worker.MaxConcurrency)
+        var mainFree = counts.GetValueOrDefault(worker.Id) < worker.MaxConcurrency;
+        var specialistFree = SupportsSpecialist(worker)
+                             && (await _queue.CountActiveSpecialistsByWorkerAsync(worker.OwnerUserId, cancellationToken)).GetValueOrDefault(worker.Id) < SpecialistSlots;
+        if (!mainFree && !specialistFree)
             return ([], null, 0);
 
         var queued = await _queue.GetQueuedForOwnerAsync(worker.OwnerUserId, cancellationToken);
+        queued = queued.Where(r => ExecutionLane.Of(r.Kind) == ExecutionLane.Specialist ? specialistFree : mainFree).ToList();
         if (queued.Count == 0)
             return ([], null, 0);
         var (budget, spent) = await BudgetAsync(worker.OwnerUserId, now, cancellationToken);
         var overBudget = budget is { } b && spent >= b;
-        return (queued.Where(r => r.CanBeClaimedBy(worker, now) && (!overBudget || r.Force)).ToList(), budget, spent);
+        // Respostas do especialista primeiro: são curtas e alguém está esperando na conversa.
+        return (queued.Where(r => r.CanBeClaimedBy(worker, now) && (!overBudget || r.Force))
+            .OrderBy(r => r.Kind == ExecutionRequestKind.Specialist ? 0 : 1).ToList(), budget, spent);
     }
 
     private async Task<ExecutionClaimResponse?> TryClaimAsync(ExecutionWorker worker, DateTimeOffset now, CancellationToken cancellationToken)
@@ -563,7 +576,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         var (claimable, budget, spent) = await ClaimableAsync(worker, now, cancellationToken);
         foreach (var request in claimable)
         {
-            var (phase, newSession) = await PhaseOfAsync(request, cancellationToken);
+            var (phase, newSession) = request.Kind == ExecutionRequestKind.Specialist
+                ? (SpecialistPhase, false)
+                : await PhaseOfAsync(request, cancellationToken);
             request.Claim(worker, now, phase);
             if (newSession)
                 request.StartInNewSession(now);
@@ -649,14 +664,16 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         }
     }
 
-    private record WaitContext(List<ExecutionWorker> Workers, Dictionary<Guid, int> Busy, decimal? Budget, decimal Spent, string? LatestAgentVersion = null);
+    private record WaitContext(List<ExecutionWorker> Workers, Dictionary<Guid, int> Busy, decimal? Budget, decimal Spent, string? LatestAgentVersion = null,
+        Dictionary<Guid, int>? SpecialistBusy = null);
 
     private async Task<WaitContext> WaitContextAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var workers = (await _queue.GetWorkersByOwnerAsync(owner, cancellationToken)).ToList();
         var busy = await _queue.CountActiveByWorkerAsync(owner, cancellationToken);
+        var specialistBusy = await _queue.CountActiveSpecialistsByWorkerAsync(owner, cancellationToken);
         var (budget, spent) = await BudgetAsync(owner, now, cancellationToken);
-        return new WaitContext(workers, busy, budget, spent, _agentInfo?.LatestVersion);
+        return new WaitContext(workers, busy, budget, spent, _agentInfo?.LatestVersion, specialistBusy);
     }
 
     /// <summary>(código, texto) do motivo de espera; (null, null) = vai começar assim que um executor perguntar.</summary>
@@ -687,6 +704,16 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
             return ("paused", online.Count == 1 ? $"O executor de {online[0].Name} está pausado" : "Seus executores estão pausados");
         if (ctx.Budget is { } budget && ctx.Spent >= budget && !r.Force)
             return ("budget", $"Orçamento do dia atingido (US$ {ctx.Spent:0.00} de US$ {budget:0.00}) — libere o pedido ou aumente o orçamento");
+        if (r.Kind == ExecutionRequestKind.Specialist)
+        {
+            // 0080: pista própria — só executor que a conhece, até SpecialistSlots respostas por máquina.
+            var able = active.Where(SupportsSpecialist).ToList();
+            if (able.Count == 0)
+                return ("updating", $"O Especialista do caso precisa do executor {SpecialistAgentVersion} ou mais novo — ele se atualiza sozinho em até 1 minuto");
+            if (able.All(w => (ctx.SpecialistBusy?.GetValueOrDefault(w.Id) ?? 0) >= SpecialistSlots))
+                return ("busy", "O especialista está respondendo em outros cards — esta resposta vem em seguida");
+            return (null, null);
+        }
         if (active.All(w => ctx.Busy.GetValueOrDefault(w.Id) >= w.MaxConcurrency))
             return ("busy", active.Count == 1 ? $"Aguardando {active[0].Name} terminar outro pedido" : "Suas máquinas estão ocupadas com outros pedidos");
         // 0050: executor livre e desatualizado se atualiza no próximo sinal de vida (até 1 min) antes de pegar pedidos.
@@ -758,7 +785,9 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         catch (ExecutionRequestDuplicateException)
         {
             _queue.ClearTracking();
-            return await _queue.GetActiveRequestForCardAsync(request.CardNumber, cancellationToken);
+            return request.Kind == ExecutionRequestKind.Specialist
+                ? await _queue.GetActiveSpecialistForCardAsync(request.CardNumber, cancellationToken)
+                : await _queue.GetActiveRequestForCardAsync(request.CardNumber, cancellationToken);
         }
         await NotifyAsync(request, cancellationToken);
         await WakeWorkersAsync(request.OwnerUserId, cancellationToken);
@@ -995,6 +1024,8 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     private static string FreshPrompt(ExecutionRequest r, string phase)
     {
+        if (r.Kind == ExecutionRequestKind.Specialist)
+            return SpecialistPrompt(r, fresh: true);
         if (phase == ExecutionPhase.Correction)
             // 0049: a correção não carrega a conversa da análise — só o resumo que a análise deixou no plano. Sem invocar
             // a skill: o "model: opus" do cabeçalho dela valeria para a execução inteira do claude -p, por cima do --model
@@ -1014,7 +1045,7 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
         return prompt + ExecutorSuffix(r);
     }
 
-    private static string ResumePrompt(ExecutionRequest r) =>
+    private static string ResumePrompt(ExecutionRequest r) => r.Kind == ExecutionRequestKind.Specialist ? SpecialistPrompt(r, fresh: false) :
         // 0045: MCP primeiro (menos tokens que o script); o script fica de reserva quando o MCP nao esta na sessao.
         $"Retomando o card {r.CardNumber} pelo PRMake ({SourceText(r)}). Antes de continuar, veja o que mudou na tela enquanto voce estava " +
         $"parado (respostas, comentarios, pausa, etapas) com as ferramentas MCP prmake_plan, prmake_notes e prmake_answers (card {r.CardNumber}) " +
@@ -1054,6 +1085,15 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
 
     private async Task NotifyAsync(ExecutionRequest request, CancellationToken cancellationToken)
     {
+        if (request.Kind == ExecutionRequestKind.Specialist)
+        {
+            await NotifyCaseAsync(request.CardNumber, new
+            {
+                cardNumber = request.CardNumber, action = ExecutionPlanRealTimeEvents.CaseActions.Run, requestId = request.Id, status = request.Status
+            }, cancellationToken);
+            await NotifyWorkersAsync(request.OwnerUserId, cancellationToken);
+            return;
+        }
         try
         {
             await _realTime.NotifyGroupAsync(
@@ -1072,6 +1112,16 @@ public class ExecutionQueueApplication : IExecutionQueueApplication, IExecutionR
     /// <summary>0050: atividade nova — a tela atualiza a linha "agora" com o payload (sem refazer o GET).</summary>
     private async Task NotifyActivityAsync(ExecutionRequest request, CancellationToken cancellationToken)
     {
+        if (request.Kind == ExecutionRequestKind.Specialist)
+        {
+            var r = request.ToResponse();
+            await NotifyCaseAsync(request.CardNumber, new
+            {
+                cardNumber = request.CardNumber, action = ExecutionPlanRealTimeEvents.CaseActions.Activity, requestId = request.Id,
+                status = request.Status, activity = r.CurrentActivity, recent = r.RecentActivities
+            }, cancellationToken);
+            return;
+        }
         try
         {
             var response = request.ToResponse();

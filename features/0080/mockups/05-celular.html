@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>0080 — Celular</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  body { width: 900px; height: 900px; display: flex; gap: 40px; justify-content: center; align-items: center; background: #121316; }
+  .ph { width: 390px; height: 820px; border-radius: 36px; border: 8px solid #2b2c30; background: var(--s1); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .sb { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; font-size: 12px; color: #ddd; flex: none; }
+  .hd { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--s2); flex: none; }
+  .hd b { font-size: 14px; }
+  .hero { margin: 10px 12px; padding: 12px; border-radius: 14px; border: 1px solid rgba(171,199,255,.22); background: rgba(171,199,255,.07); font-size: 13px; }
+  .hero .k { font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; color: var(--pri); font-weight: 600; margin-bottom: 4px; }
+  .jr { display: flex; gap: 6px; padding: 4px 12px 0; overflow: hidden; }
+  .jr span { flex: none; }
+  .st { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .fab { margin: auto 12px 14px; }
+  .msgs { flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .m { display: flex; gap: 7px; }
+  .m--me { flex-direction: row-reverse; }
+  .b { border-radius: 4px 14px 14px 14px; padding: 8px 10px; background: var(--s3); font-size: 12.5px; max-width: 270px; }
+  .m--me .b { border-radius: 14px 4px 14px 14px; background: #2b4a78; }
+  .b--spec { background: color-mix(in srgb, var(--spec) 10%, #2f3034); border: 1px solid rgba(196,167,255,.16); }
+  .who { font-size: 10.5px; color: var(--mut); margin-bottom: 2px; }
+  .act { font-size: 11.5px; color: var(--spec); display: flex; align-items: center; gap: 6px; padding-left: 32px; }
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(196,167,255,.3); border-top-color: var(--spec); }
+  .rec { flex: none; margin: 0 10px 12px; border-radius: 22px; background: var(--s2); padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 4px rgba(244,112,103,.25); }
+  .wave { display: flex; align-items: center; gap: 2px; flex: 1; }
+  .wave i { width: 3px; border-radius: 2px; background: #e9b2ad; }
+  .send { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #8e6cf0, #6a4fd0); display: flex; align-items: center; justify-content: center; color: #fff; }
+  .cap { text-align: center; color: var(--mut); font-size: 12px; margin-top: 10px; }
+</style></head>
+<body>
+<div>
+  <div class="ph">
+    <div class="sb"><span>17:20</span><span>●●● 5G</span></div>
+    <div class="hd"><span class="mi" style="color:var(--pri)">arrow_back</span><b>#77881 · Plano</b><span class="sp"></span><span class="chip chip--bad">cancelada</span><span class="mi" style="color:var(--mut)">more_vert</span></div>
+    <div class="jr">
+      <span class="chip chip--ok"><span class="mi">check</span>Análise v2</span><span class="chip chip--ok"><span class="mi">check</span>Decisões</span><span class="chip chip--bad"><span class="mi">close</span>Correção v1</span><span class="chip chip--run">Correção v2</span>
+    </div>
+    <div class="hero"><div class="k">Em que pé está</div>Você cancelou a correção v1. Ponto em aberto: <b>por que o PNG dá erro na QA</b>.</div>
+    <div class="st"><span class="mi" style="color:var(--warn)">difference</span><span>Base qa difere da análise (master)</span></div>
+    <div class="st"><span class="mi" style="color:var(--ok)">done_all</span><span>3 etapas concluídas</span></div>
+    <div class="st"><span class="mi" style="color:var(--bad)">close</span><span>PR para QA · #3021 fechado</span></div>
+    <div class="fab"><span class="btn btn--spec" style="width:100%;justify-content:center;height:46px;border-radius:23px;font-size:14px"><span class="mi">psychology</span>Especialista do caso · 2 novas</span></div>
+  </div>
+  <div class="cap">Plano no celular: o botão do especialista fica fixo embaixo</div>
+</div>
+<div>
+  <div class="ph">
+    <div class="sb"><span>17:21</span><span>●●● 5G</span></div>
+    <div class="hd"><span class="mi" style="color:var(--pri)">arrow_back</span><span class="av av--sm av--spec"><span class="mi">psychology</span></span><div><b>Especialista do caso</b><div style="font-size:10.5px;color:var(--ok)">ativo · Bruno, Daniel</div></div><span class="sp"></span><span class="mi" style="color:var(--mut)">push_pin</span></div>
+    <div class="msgs">
+      <div class="m"><span class="av av--sm av--ds">DS</span><div><div class="who">Daniel · 17:15</div><div class="b">@Especialista o 18 está com limite menor que 300 KB?</div></div></div>
+      <div class="m"><span class="av av--sm av--spec"><span class="mi">psychology</span></span><div><div class="who">Especialista · 17:15</div><div class="b b--spec">Está com <b>1 MB</b>, então 300 KB passa. O seu PNG de 1,4 MB é que estoura. <span style="color:var(--mut);font-size:11px">(ilustrativo)</span></div></div></div>
+      <div class="m m--me"><span class="av av--sm av--bf">BF</span><div><div class="who" style="text-align:right">Você · 17:21</div><div class="b"><span class="mi" style="font-size:15px">image</span> fundo-login-250kb.png<br>tenta com esse aqui na QA</div></div></div>
+      <div class="act"><span class="spin"></span>subindo o arquivo no upload-image da QA…</div>
+    </div>
+    <div class="rec"><span class="dot"></span><span style="font-size:12px;color:#e9b2ad">0:06</span>
+      <span class="wave"><i style="height:6px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:10px"></i><i style="height:16px"></i><i style="height:22px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:18px"></i><i style="height:14px"></i><i style="height:6px"></i><i style="height:12px"></i><i style="height:19px"></i><i style="height:9px"></i></span>
+      <span class="mi" style="color:var(--mut)">delete</span><span class="send"><span class="mi">send</span></span></div>
+  </div>
+  <div class="cap">Chat em tela cheia, gravando uma mensagem de voz</div>
+</div>
+</body></html>

@@ -41,6 +41,18 @@ public interface IExecutionQueueApplication
     /// <summary>A credencial do executor ainda vale (não revogado, mesmo jti)?</summary>
     Task<bool> IsCredentialValidAsync(Guid workerId, Guid credentialId, CancellationToken cancellationToken);
 
+    // 0080: Especialista do caso
+    /// <summary>
+    /// Pede uma resposta do especialista no card: na máquina do primeiro candidato que tem executor (quem escreveu, depois o
+    /// dono do plano). Já há pedido na fila → ele lê a mensagem nova; rodando → roda de novo ao terminar.
+    /// </summary>
+    Task<ExecutionRequest?> EnqueueSpecialistAsync(string cardNumber, ExecutionActor requester, IReadOnlyList<(Guid UserId, string Name)> ownerCandidates,
+        bool deep, CancellationToken cancellationToken);
+    /// <summary>Pedido do especialista no card (o ativo, senão o último), com o motivo de espera.</summary>
+    Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>O token do caso ainda vale (o pedido do especialista deste card está ativo)?</summary>
+    Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
+
     // Configurações do usuário
     Task<ExecutionUserSettingsResponse> GetSettingsAsync(Guid userId, CancellationToken cancellationToken);
     Task<ExecutionUserSettingsResponse> UpdateSettingsAsync(Guid userId, UpdateExecutionUserSettingsRequest request, CancellationToken cancellationToken);
@@ -68,10 +80,10 @@ public interface IExecutionQueueSettings
 }
 
 /// <param name="CorrectionInNewSession">A correção abre uma sessão nova do Claude em vez de retomar a da análise.</param>
-/// <param name="NoteDelay">Espera depois de um comentário antes de retomar (comentários em sequência = uma retomada).</param>
-public record ExecutionQueueOptions(bool CorrectionInNewSession, TimeSpan NoteDelay)
+/// <remarks>0080: a espera depois de comentário (0049, <c>ExecutorNoteDelaySeconds</c>) saiu — o plano retoma na hora.</remarks>
+public record ExecutionQueueOptions(bool CorrectionInNewSession)
 {
-    public static readonly ExecutionQueueOptions Default = new(true, TimeSpan.FromSeconds(120));
+    public static readonly ExecutionQueueOptions Default = new(true);
 }
 
 /// <summary>Itens do Azure DevOps que casam com a regra automática do usuário (0039) — implementado no host (WIQL).</summary>

@@ -7,8 +7,12 @@ public interface IExecutionQueueRepository
 {
     void AddRequest(ExecutionRequest request);
     Task<ExecutionRequest?> GetRequestAsync(Guid id, CancellationToken cancellationToken);
-    /// <summary>Pedido ativo (na fila, pego ou rodando) do card, rastreado.</summary>
+    /// <summary>Pedido ativo (na fila, pego ou rodando) do card na pista principal, rastreado.</summary>
     Task<ExecutionRequest?> GetActiveRequestForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0080: pedido ativo do Especialista do caso no card, rastreado.</summary>
+    Task<ExecutionRequest?> GetActiveSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0080: último pedido do especialista no card (qualquer status), sem rastrear.</summary>
+    Task<ExecutionRequest?> GetLastSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
     /// <summary>Pedidos ativos dos cards informados, sem rastrear.</summary>
     Task<List<ExecutionRequest>> GetActiveRequestsForCardsAsync(IReadOnlyCollection<string> cardNumbers, CancellationToken cancellationToken);
     Task<List<ExecutionRequest>> GetRecentRequestsForCardAsync(string cardNumber, int limit, CancellationToken cancellationToken);
@@ -20,6 +24,8 @@ public interface IExecutionQueueRepository
     Task<List<ExecutionRequest>> GetActiveForWorkerAsync(Guid workerId, CancellationToken cancellationToken);
     /// <summary>Quantos pedidos pegos/rodando cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0080: quantos pedidos do especialista (pegos/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveSpecialistsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken);
     /// <summary>0044: maior acumulado da sessão informado por OUTRO pedido já terminado (base do custo deste).</summary>
     Task<decimal?> GetLastSessionCostAsync(string sessionId, Guid exceptRequestId, CancellationToken cancellationToken);

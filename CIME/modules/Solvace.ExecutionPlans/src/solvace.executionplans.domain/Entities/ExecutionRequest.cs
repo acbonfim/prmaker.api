@@ -25,7 +25,22 @@ public static class ExecutionRequestKind
     /// <summary>Continuar a sessão do card (<c>claude --resume</c>; sem a sessão na máquina, começa uma nova que retoma o plano).</summary>
     public const string Resume = "resume";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume };
+    /// <summary>
+    /// 0080: o Especialista do caso responde às mensagens da conversa do card — pista própria no executor (não conta no
+    /// "um pedido ativo por card" nem no limite de execuções da máquina) e nunca altera o plano.
+    /// </summary>
+    public const string Specialist = "specialist";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume, Specialist };
+}
+
+/// <summary>0080: pistas do executor — a principal (analisar/retomar) e a do especialista.</summary>
+public static class ExecutionLane
+{
+    public const string Main = "main";
+    public const string Specialist = "specialist";
+
+    public static string Of(string kind) => kind == ExecutionRequestKind.Specialist ? Specialist : Main;
 }
 
 /// <summary>De onde veio o pedido.</summary>
@@ -41,6 +56,10 @@ public static class ExecutionRequestSource
     public const string Checks = "checks";
     public const string Rule = "rule";
     public const string Api = "api";
+    /// <summary>0080: mensagem na conversa do caso (pista do especialista).</summary>
+    public const string Case = "case";
+    /// <summary>0080: proposta do especialista aceita (pista principal: monta a nova versão do plano).</summary>
+    public const string CaseProposal = "case-proposal";
 }
 
 /// <summary>
@@ -125,6 +144,15 @@ public class ExecutionRequest
     /// contexto inteiro, e o da análise não serve à correção (que lê só o resumo deixado no plano).
     /// </summary>
     public bool NewSession { get; private set; }
+    /// <summary>0080: especialista em "investigar a fundo" (modelo de investigação).</summary>
+    public bool Deep { get; private set; }
+
+    public void MarkDeep(DateTimeOffset now)
+    {
+        if (Deep || Status != ExecutionRequestStatus.Queued) return;
+        Deep = true;
+        UpdatedAt = now;
+    }
 
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }

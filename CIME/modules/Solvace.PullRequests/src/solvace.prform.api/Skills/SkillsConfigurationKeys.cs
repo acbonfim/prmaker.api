@@ -22,7 +22,7 @@ public static class SkillsConfigurationKeys
     public const string ExecutorCorrectionModel = "ExecutorCorrectionModel";
     /// <summary>0049: a correção abre uma sessão nova do Claude (só o resumo da análise) em vez de retomar a da análise.</summary>
     public const string ExecutorCorrectionNewSession = "ExecutorCorrectionNewSession";
-    /// <summary>0049: segundos de espera depois de um comentário antes de retomar o card (0 = na hora).</summary>
+    /// <summary>0049: segundos de espera depois de um comentário. 0080: não é mais lida (o plano retoma na hora).</summary>
     public const string ExecutorNoteDelaySeconds = "ExecutorNoteDelaySeconds";
     /// <summary>0052: papéis que aprovam e publicam a engenharia reversa ("admin,gestor").</summary>
     public const string ReverseEngineeringApproverRoles = "ReverseEngineeringApproverRoles";
@@ -76,4 +76,8 @@ public static class SkillsConfigurationKeys
     public const string AssistantHoursPerStep = "AssistantHoursPerStep";
     /// <summary>0078: média de horas do time por card (o assistente avisa quando passa).</summary>
     public const string AssistantAverageHours = "AssistantAverageHours";
+    /// <summary>0080: modelo do Especialista do caso nas respostas rápidas (apelido ou id; vazio = padrão da máquina).</summary>
+    public const string SpecialistModel = "SpecialistModel";
+    /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>
+    public const string SpecialistDeepModel = "SpecialistDeepModel";
 }

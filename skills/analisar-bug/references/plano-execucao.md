@@ -144,9 +144,9 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   retomadas seguintes da correcao continuam essa sessao nova. O prompt manda **ler esta SKILL.md** (`cat`) em vez de
   invocar a skill: o `model: opus` do cabecalho valeria para a execucao inteira e a correcao roda no modelo configurado
   (`ExecutorCorrectionModel`) — nao chame a ferramenta Skill nessa sessao. "Skills Configurations" → `ExecutorCorrectionNewSession`.
-- **Comentarios em sequencia = uma retomada (0049)**: um comentario espera `ExecutorNoteDelaySeconds` (padrao 120 s)
-  antes de retomar o card; outro comentario nesse meio empurra a espera (ate 3×). "Continuar" ou outra acao do usuario
-  comeca na hora. Leia **todos** os comentarios novos (`prmake_notes`) e atenda-os juntos.
+- **Comentario retoma na hora (0080)**: a conversa com as pessoas e do Especialista do caso; comentario no plano e
+  instrucao explicita (proposta aceita, "Levar para o plano") e o executor retoma o card na hora. Leia **todos** os
+  comentarios novos (`prmake_notes`) e atenda-os juntos.
 - **Sem prompt de permissao**: merge/aprovacao de PR, push forcado ou em branch protegida, escrita em banco/Cognito sao
   bloqueados pelo executor (o comando volta com "Bloqueado pelo executor do PRMake") — registre no plano o que precisa
   de uma pessoa e siga.

@@ -1,0 +1,73 @@
+/* 0080 — mocks da tela do card (tema escuro do PRMake: azure M3, superfícies #2a2a2a/#323232, Roboto). */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons+Round');
+
+:root {
+  --bg: #1b1c1f;
+  --s1: #2a2a2a;
+  --s2: #323232;
+  --s3: #3a3b3e;
+  --line: rgba(255,255,255,.07);
+  --line2: rgba(255,255,255,.12);
+  --fg: #e3e3e6;
+  --mut: #9a9ca3;
+  --mut2: #6f7178;
+  --pri: #abc7ff;
+  --pri-d: #2f5ea8;
+  --ok: #3fb950;
+  --warn: #e3b341;
+  --bad: #f47067;
+  --spec: #c4a7ff;        /* especialista */
+  --spec-d: #4b3a7a;
+  --you: #ffb86b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13.5px/1.45 Roboto, "Helvetica Neue", Arial, sans-serif; }
+.mi { font-family: 'Material Icons Round'; font-weight: normal; font-style: normal; font-size: 18px; line-height: 1; display: inline-block;
+  letter-spacing: normal; text-transform: none; white-space: nowrap; direction: ltr; -webkit-font-smoothing: antialiased; vertical-align: middle; }
+.mono { font-family: 'Roboto Mono', ui-monospace, Menlo, monospace; }
+.muted { color: var(--mut); }
+.row { display: flex; align-items: center; gap: 8px; }
+.sp { flex: 1; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 11.5px;
+  background: rgba(255,255,255,.06); color: var(--mut); white-space: nowrap; }
+.chip .mi { font-size: 14px; }
+.chip--ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.chip--run { color: var(--pri); background: color-mix(in srgb, var(--pri) 12%, transparent); }
+.chip--warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+.chip--bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.chip--spec { color: var(--spec); background: color-mix(in srgb, var(--spec) 14%, transparent); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--line2); color: var(--fg); background: transparent; white-space: nowrap; }
+.btn .mi { font-size: 17px; }
+.btn--pri { background: var(--pri); color: #0b2a57; border-color: transparent; }
+.btn--spec { background: linear-gradient(135deg, #8e6cf0, #6a4fd0); color: #fff; border-color: transparent; box-shadow: 0 2px 10px rgba(122,90,230,.35); }
+.btn--ghost { border-color: transparent; color: var(--pri); }
+.btn--warn { background: var(--bad); color: #2b0906; border-color: transparent; }
+.ib { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--mut); }
+.av { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+  flex: none; color: #fff; }
+.av--bf { background: linear-gradient(135deg, #2e7d6b, #1f5c4f); }
+.av--ds { background: linear-gradient(135deg, #b5643a, #8a4524); }
+.av--ac { background: linear-gradient(135deg, #3d6fb6, #284f87); }
+.av--spec { background: radial-gradient(circle at 30% 25%, #d9c6ff, #8e6cf0 55%, #5a3fb8); box-shadow: 0 0 0 2px rgba(196,167,255,.25); }
+.av--spec .mi { font-size: 18px; color: #fff; }
+.av--sm { width: 24px; height: 24px; font-size: 10px; }
+.av--sm .mi { font-size: 14px; }
+
+/* moldura do app (barra superior + card) */
+.app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+.top { display: flex; align-items: center; gap: 14px; padding: 0 18px; background: #222326; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
+.brand b { color: var(--pri); }
+.search { height: 34px; width: 280px; border-radius: 17px; background: var(--s2); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--mut); }
+
+/* marcadores de problema (mock "Antes") */
+.pin { position: absolute; width: 24px; height: 24px; border-radius: 50%; background: var(--bad); color: #fff; font-weight: 700; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(244,112,103,.3), 0 4px 10px rgba(0,0,0,.4); z-index: 5; }
+.hl { position: absolute; border: 2px dashed rgba(244,112,103,.75); border-radius: 10px; pointer-events: none; z-index: 4; }
+
+/* marcadores de novidade (mock "Depois") */
+.new { position: absolute; height: 22px; padding: 0 8px; border-radius: 11px; background: #8e6cf0; color: #fff; font-weight: 600; font-size: 11px;
+  display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.45); z-index: 5; white-space: nowrap; }
+.new .mi { font-size: 13px; }

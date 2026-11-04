@@ -24,6 +24,384 @@ namespace solvace.executionplans.infra.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTimeOffset?>("DoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Result")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber", "Number")
+                        .IsUnique();
+
+                    b.ToTable("CaseActions", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseChat", b =>
+                {
+                    b.Property<string>("CardNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("numeric(12,4)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("LastReadNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("PendingRun")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SessionCwd")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SessionHost")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("CardNumber");
+
+                    b.ToTable("CaseChats", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("FromSpecialist")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("CardNumber", "Number")
+                        .IsUnique();
+
+                    b.ToTable("CaseFiles", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFileContent", b =>
+                {
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("FileId");
+
+                    b.ToTable("CaseFileContents", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthorKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Deep")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<string>("Mentions")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("PeopleOnly")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("ProposalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ReplyToNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<string>("Steps")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Transcript")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId");
+
+                    b.HasIndex("CardNumber", "Number")
+                        .IsUnique();
+
+                    b.ToTable("CaseMessages", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CasePoint", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("FromSpecialist")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MessageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber");
+
+                    b.ToTable("CasePoints", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseProposal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("Execute")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("PlanNoteNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Summary")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber", "Number")
+                        .IsUnique();
+
+                    b.ToTable("CaseProposals", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>
                 {
                     b.Property<Guid>("Id")
@@ -427,6 +805,24 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<DateTimeOffset?>("DevTestInQaTriedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("DivergenceAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DivergenceConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DivergenceConfirmedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DivergenceStepKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("DivergenceText")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<DateTimeOffset?>("EvidenceCheckedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -655,6 +1051,9 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<bool>("Deep")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("ExitCode")
                         .HasColumnType("integer");
 
@@ -802,16 +1201,19 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CardNumber")
-                        .IsUnique()
-                        .HasDatabaseName("IX_ExecutionRequests_ActiveCard")
-                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running')");
-
                     b.HasIndex("CardNumber", "CreatedAt");
 
                     b.HasIndex("OwnerUserId", "Status");
 
                     b.HasIndex("WorkerId", "Status");
+
+                    b.HasIndex(new[] { "CardNumber" }, "IX_ExecutionRequests_ActiveCard")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" <> 'specialist'");
+
+                    b.HasIndex(new[] { "CardNumber" }, "IX_ExecutionRequests_ActiveCaseCard")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" = 'specialist'");
 
                     b.ToTable("ExecutionRequests", "execution");
                 });
@@ -1113,6 +1515,49 @@ namespace solvace.executionplans.infra.Migrations
                     b.HasIndex("OwnerUserId", "Host");
 
                     b.ToTable("ExecutionWorkers", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFileContent", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.CaseFile", null)
+                        .WithOne("Content")
+                        .HasForeignKey("solvace.executionplans.domain.Entities.CaseFileContent", "FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseProposal", b =>
+                {
+                    b.OwnsMany("solvace.executionplans.domain.Entities.CaseProposalChange", "Changes", b1 =>
+                        {
+                            b1.Property<Guid>("CaseProposalId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Detail");
+
+                            b1.Property<int?>("FromMessage");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired();
+
+                            b1.Property<string>("Title")
+                                .IsRequired();
+
+                            b1.HasKey("CaseProposalId", "__synthesizedOrdinal");
+
+                            b1.ToTable("CaseProposals", "execution");
+
+                            b1
+                                .ToJson("Changes")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CaseProposalId");
+                        });
+
+                    b.Navigation("Changes");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>
@@ -1539,6 +1984,11 @@ namespace solvace.executionplans.infra.Migrations
                         });
 
                     b.Navigation("Actions");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFile", b =>
+                {
+                    b.Navigation("Content");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>

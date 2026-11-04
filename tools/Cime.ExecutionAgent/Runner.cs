@@ -75,7 +75,10 @@ public sealed class Runner(AgentConfig config)
                 await Delay(TimeSpan.FromSeconds(30), stopping);
                 continue;
             }
-            if (_state.Status != "active" || _jobs.Count >= Math.Max(1, _state.MaxConcurrency))
+            // 0080: duas pistas — a principal (limite da máquina) e a do Especialista do caso (respostas curtas, até 2).
+            var specialists = _jobs.Values.Count(j => j.Job.IsSpecialist);
+            var mainFull = _jobs.Count - specialists >= Math.Max(1, _state.MaxConcurrency);
+            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots))
             {
                 await Delay(TimeSpan.FromSeconds(5), stopping);
                 continue;
@@ -119,6 +122,9 @@ public sealed class Runner(AgentConfig config)
         try { await background; } catch { /* encerrando */ }
         return 0;
     }
+
+    /// <summary>0080: respostas do especialista ao mesmo tempo (o PRMake confere a mesma regra).</summary>
+    private const int SpecialistSlots = 2;
 
     private void StartJob(PrmakeClient client, ClaimResponse claim, CancellationToken stopping)
     {

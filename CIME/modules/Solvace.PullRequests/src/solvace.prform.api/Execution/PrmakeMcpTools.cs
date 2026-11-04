@@ -127,7 +127,7 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_log")]
-    [Description("Registra andamento no plano (aparece ao vivo na tela). kind: info|progress|finding|decision|warning|error.")]
+    [Description("Registra andamento no plano (aparece ao vivo na tela). kind: info|progress|finding|decision|warning|error|divergence (0080: a base real difere da analise — vira alerta e trava a etapa de PR ate a pessoa confirmar).")]
     public Task<string> Log(string card, string message, string? kind = null, string? stepKey = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var count = await plans.AppendLogsAsync(await PlanIdAsync(card, phase, ct), new AppendExecutionLogsRequest
