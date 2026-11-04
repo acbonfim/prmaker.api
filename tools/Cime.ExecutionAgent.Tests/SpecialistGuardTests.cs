@@ -46,3 +46,22 @@ public class SpecialistGuardTests
         }
     }
 }
+
+/// <summary>0080 (1.2.1): o --mcp-config do especialista não pode depender de serialização por reflexão (executor trimmed).</summary>
+public class CaseMcpConfigTests
+{
+    [Fact]
+    public void Tests_run_like_the_published_executor() =>
+        Assert.False(System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault);
+
+    [Fact]
+    public void Mcp_config_is_written_without_reflection()
+    {
+        var json = JobRunner.CaseMcpJson("https://api.example.com/mcp", "tok\"en");
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var prmake = doc.RootElement.GetProperty("mcpServers").GetProperty("prmake");
+        Assert.Equal("http", prmake.GetProperty("type").GetString());
+        Assert.Equal("https://api.example.com/mcp", prmake.GetProperty("url").GetString());
+        Assert.Equal("tok\"en", prmake.GetProperty("headers").GetProperty("x-api-key").GetString());
+    }
+}
