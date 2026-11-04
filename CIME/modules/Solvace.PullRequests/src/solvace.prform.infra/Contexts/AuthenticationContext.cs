@@ -19,11 +19,17 @@ public class AuthenticationContext(DbContextOptions<AuthenticationContext> optio
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<User>().ToTable("AspNetUsers", Schema);
+        // As datas da auth são "timestamp without time zone" (DateTime.Now da auth); sem isto o Npgsql usaria timestamptz.
+        modelBuilder.Entity<User>(b =>
+        {
+            b.ToTable("AspNetUsers", Schema);
+            b.Property(x => x.LastLoginAt).HasColumnType("timestamp without time zone");
+        });
         modelBuilder.Entity<LoginEventRecord>(b =>
         {
             b.ToTable("LoginEvents", Schema);
             b.HasKey(x => x.Id);
+            b.Property(x => x.At).HasColumnType("timestamp without time zone");
         });
     }
 }

@@ -12,4 +12,8 @@ public class User
     
     [Column("Departamento")]
     public string? Department { get; set; }
+
+    /// <summary>Último login com senha (DataUltimoLogin da auth, sem fuso) — "visto há" da gestão (0079).</summary>
+    [Column("DataUltimoLogin")]
+    public DateTime? LastLoginAt { get; set; }
 }

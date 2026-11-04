@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using solvace.prform.domain.Entities.Usage;
+using solvace.executionplans.infra.Contexts;
 using solvace.prform.Infra.Contexts;
+using solvace.timeline.infra.Contexts;
 
 namespace solvace.prform.Controllers;
 
@@ -358,39 +360,92 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
         return Ok(new { items, total, page, size });
     }
 
-    /// <summary>Último acesso de cada usuário (para os cartões da gestão mostrarem "visto há…" de quem está offline).</summary>
+    /// <summary>
+    /// Último sinal de vida de cada usuário, para o "visto há…" dos cartões da gestão. Junta, sob demanda, tudo que o
+    /// banco já registra com o usuário e o horário: a aba do navegador (lotes de uso), logins, linha do tempo (inclusive
+    /// o que as skills gravam), planos de execução criados, comentários nos planos, pedidos ao executor e chamadas de IA.
+    /// O batimento do executor (ExecutionWorker) fica de fora: a máquina ligada não é o usuário ativo.
+    /// </summary>
     [HttpGet("last-seen")]
     [Authorize(Roles = "admin")]
-    public async Task<IActionResult> LastSeen(CancellationToken cancellationToken)
+    public async Task<IActionResult> LastSeen([FromServices] TimelineContext timeline, [FromServices] ExecutionPlanContext plans,
+        CancellationToken cancellationToken)
     {
-        var seen = await db.UsageSessions.AsNoTracking().Where(x => x.UserExternalId != null)
+        var since = DateTimeOffset.UtcNow.AddDays(-RetentionDays);
+        var activity = new List<ActivityRow>();
+        async Task Add(string source, Func<Task<List<ActivityRow>>> read)
+        {
+            try { activity.AddRange(await read()); }
+            catch (Exception e) when (e is not OperationCanceledException) { logger.LogWarning(e, "Visto por último: não li {Source}", source); }
+        }
+
+        var sessions = await db.UsageSessions.AsNoTracking().Where(x => x.UserExternalId != null)
             .GroupBy(x => x.UserExternalId)
             .Select(g => g.OrderByDescending(x => x.LastSeenAt)
                 .Select(x => new { x.UserExternalId, x.LastSeenAt, x.LastScreen, x.Ip }).First())
             .ToListAsync(cancellationToken);
+        activity.AddRange(sessions.Select(x => new ActivityRow(x.UserExternalId!.Value, x.LastSeenAt, "app", x.LastScreen)));
+
         var logins = new Dictionary<Guid, DateTime>();
-        try
+        await Add("logins", async () =>
         {
             logins = await auth.LoginEvents.AsNoTracking().Where(l => l.Success && l.UserExternalId != null)
                 .GroupBy(l => l.UserExternalId!.Value)
                 .Select(g => new { g.Key, At = g.Max(l => l.At) })
                 .ToDictionaryAsync(x => x.Key, x => x.At, cancellationToken);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
+            return logins.Select(l => new ActivityRow(l.Key, new DateTimeOffset(AsUtc(l.Value)), "login", null)).ToList();
+        });
+        // Último login com senha antes do registro de logins (DataUltimoLogin; DateTime.Now da auth = UTC no Cloud Run).
+        await Add("DataUltimoLogin", async () => (await auth.Users.AsNoTracking()
+                .Where(u => u.LastLoginAt != null && u.LastLoginAt > DateTime.MinValue.AddDays(1))
+                .Select(u => new { u.Id, At = u.LastLoginAt!.Value }).ToListAsync(cancellationToken))
+            .Select(u => new ActivityRow(u.Id, new DateTimeOffset(AsUtc(u.At)), "login", null)).ToList());
+        await Add("linha do tempo", async () => (await timeline.TimelineEntries.AsNoTracking()
+                .Where(t => t.UserId != null && t.CreatedAt >= since)
+                .GroupBy(t => t.UserId)
+                .Select(g => g.OrderByDescending(t => t.CreatedAt).Select(t => new { t.UserId, t.CreatedAt, t.CardNumber }).First())
+                .ToListAsync(cancellationToken))
+            .Select(t => new ActivityRow(t.UserId!.Value, t.CreatedAt, "timeline", t.CardNumber)).ToList());
+        await Add("planos", async () => (await plans.Plans.AsNoTracking()
+                .Where(p => p.CreatedByUserId != null && p.CreatedAt >= since)
+                .GroupBy(p => p.CreatedByUserId)
+                .Select(g => g.OrderByDescending(p => p.CreatedAt).Select(p => new { p.CreatedByUserId, p.CreatedAt, p.CardNumber }).First())
+                .ToListAsync(cancellationToken))
+            .Select(p => new ActivityRow(p.CreatedByUserId!.Value, p.CreatedAt, "plan", p.CardNumber)).ToList());
+        await Add("comentários", async () => (await plans.Notes.AsNoTracking()
+                .Where(n => n.AuthorUserId != null && !n.FromExecutor && n.CreatedAt >= since)
+                .GroupBy(n => n.AuthorUserId)
+                .Select(g => g.OrderByDescending(n => n.CreatedAt).Select(n => new { n.AuthorUserId, n.CreatedAt, n.CardNumber }).First())
+                .ToListAsync(cancellationToken))
+            .Select(n => new ActivityRow(n.AuthorUserId!.Value, n.CreatedAt, "note", n.CardNumber)).ToList());
+        await Add("pedidos ao executor", async () => (await plans.Requests.AsNoTracking()
+                .Where(r => r.CreatedAt >= since)
+                .GroupBy(r => r.OwnerUserId)
+                .Select(g => g.OrderByDescending(r => r.CreatedAt).Select(r => new { r.OwnerUserId, r.CreatedAt, r.CardNumber }).First())
+                .ToListAsync(cancellationToken))
+            .Select(r => new ActivityRow(r.OwnerUserId, r.CreatedAt, "request", r.CardNumber)).ToList());
+        await Add("IA", async () => (await db.AiUsageRecords.AsNoTracking()
+                .Where(a => a.UserExternalId != null && a.CreatedAt >= since)
+                .GroupBy(a => a.UserExternalId)
+                .Select(g => g.OrderByDescending(a => a.CreatedAt).Select(a => new { a.UserExternalId, a.CreatedAt, a.Action }).First())
+                .ToListAsync(cancellationToken))
+            .Select(a => new ActivityRow(a.UserExternalId!.Value, a.CreatedAt, "ai", a.Action)).ToList());
+
+        return Ok(activity.Where(a => a.User != Guid.Empty).GroupBy(a => a.User).Select(g =>
         {
-            logger.LogWarning(e, "Não li auth.LoginEvents");
-        }
-        var ids = seen.Select(x => x.UserExternalId!.Value).Union(logins.Keys);
-        return Ok(ids.Select(id =>
-        {
-            var s = seen.FirstOrDefault(x => x.UserExternalId == id);
+            var latest = g.MaxBy(a => a.At)!;
+            var s = sessions.FirstOrDefault(x => x.UserExternalId == g.Key);
             return new
             {
-                userExternalId = id,
+                userExternalId = g.Key,
                 lastSeenAt = s?.LastSeenAt,
                 lastScreen = s?.LastScreen,
                 lastIp = s?.Ip,
-                lastLoginAt = logins.TryGetValue(id, out var at) ? AsUtc(at) : (DateTime?)null
+                lastLoginAt = g.Where(a => a.Source == "login").Select(a => (DateTimeOffset?)a.At).Max(),
+                // O mais recente de todas as fontes: é o que vale para o "visto há".
+                lastActivityAt = latest.At,
+                lastActivitySource = latest.Source,
+                lastActivityDetail = latest.Detail
             };
         }));
     }
@@ -417,7 +472,7 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
         int loginCount = 0, failedLoginCount = 0;
         try
         {
-            var sinceAuth = since.UtcDateTime;
+            var sinceAuth = AuthTime(since);
             var counts = await auth.LoginEvents.AsNoTracking().Where(l => l.UserExternalId == externalId && l.At >= sinceAuth)
                 .GroupBy(l => l.Success).Select(g => new { g.Key, n = g.Count() }).ToListAsync(cancellationToken);
             loginCount = counts.FirstOrDefault(c => c.Key)?.n ?? 0;
@@ -453,8 +508,8 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
     private IQueryable<LoginEventRecord> LoginsQuery(DateTimeOffset start, DateTimeOffset end, Guid? user)
     {
         // auth.LoginEvents guarda DateTime.Now do servidor da auth — UTC no Cloud Run — sem fuso.
-        var s = start.UtcDateTime;
-        var e = end.UtcDateTime;
+        var s = AuthTime(start);
+        var e = AuthTime(end);
         var query = auth.LoginEvents.AsNoTracking().Where(l => l.At >= s && l.At <= e);
         if (user is { } u) query = query.Where(l => l.UserExternalId == u);
         return query;
@@ -498,6 +553,9 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
     /// <summary>auth.LoginEvents não tem fuso (DateTime.Now do servidor da auth = UTC no Cloud Run).</summary>
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
+    /// <summary>Parâmetro para as colunas da auth ("timestamp without time zone"): o Npgsql recusa Kind=Utc nelas.</summary>
+    private static DateTime AuthTime(DateTimeOffset value) => DateTime.SpecifyKind(value.UtcDateTime, DateTimeKind.Unspecified);
+
     private static (int Page, int Size) Paging(int page, int size) => (Math.Max(0, page), Math.Clamp(size, 1, 200));
 
     /// <summary>timestamptz no Npgsql só aceita offset zero: tudo vira UTC, dentro do intervalo aceito.</summary>
@@ -528,6 +586,8 @@ public class UsageController(DefaultContext db, AuthenticationContext auth, ILog
     }
     private sealed record SessionRow(Guid? User, string UserName, DateTimeOffset StartedAt, DateTimeOffset LastSeenAt, long ForegroundMs,
         long BackgroundMs, long AwayMs, string? Browser, string? Os, string? Device);
+    /// <summary>Um sinal de vida do usuário. Source: app, login, timeline, plan, note, request, ai.</summary>
+    private sealed record ActivityRow(Guid User, DateTimeOffset At, string Source, string? Detail);
     private sealed record LoginRow(DateTime At, bool Success, Guid? UserExternalId, string UserName);
 
     private sealed class DayAcc
