@@ -11,7 +11,7 @@
 | F1 | Rastreador de uso + presença no front | front | ✅ | Claude (agente) | 2026-11-04 | 2026-11-04 | front 081985b, f655f1d |
 | F2 | Gestão de usuários com presença | front | ✅ | Claude (agente) | 2026-11-04 | 2026-11-04 | front 68b8675 |
 | F3 | Análise de uso | front | ✅ | Claude (agente) | 2026-11-04 | 2026-11-04 | front 7978fba, 481fc0b, bfb941c |
-| Q1 | Build, teste local, PRs, merge, deploy | ambos | 🟡 | Claude | 2026-11-04 | | |
+| Q1 | Build, teste local, PRs, merge, deploy | ambos | ✅ | Claude | 2026-11-04 | 2026-11-04 | #144 / front #75 |
 
 ## Log
 - 2026-11-04 — feature criada (worktrees `prform.api-0079` / `prform-app-0079`); o usuário pediu para planejar,
@@ -30,3 +30,8 @@
   com a API; 400 px ok. Ajustes do teste: totais do usuário com logins/erros, mapa de calor = usuários ativos, lote ao
   ocultar a aba no máximo 1/min. `NG0303` do top-menu (`*ngIf` do selo DEV) já existia.
   - Datas de `auth.LoginEvents` são `DateTime.Now` da auth: no Cloud Run (UTC) batem; no dev local aparecem 3 h antes.
+- 2026-11-04 — Q1: PRs #144 (back) e #75 (front) mesclados juntos com autorização prévia do usuário. Deploys ok:
+  `cime-auth` e `cime-pullrequest` com os jobs de migração (`AddLoginEvents`, `AddUsageTracking`), relay no MonsterASP
+  e front. Verificado em produção (só leituras): `Usage/sessions` já com a sessão real de um admin (Gestão de
+  usuários, Chrome/macOS); token de tempo real com `name`/`role`/`ip`; `WatchPresence` no relay devolve quem está
+  online com estado, tela e navegador; `Usage/summary` 200 (6 SQL, ~0,8 s a frio). `logins` vazio até o próximo login.
