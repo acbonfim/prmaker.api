@@ -44,3 +44,7 @@ executor **simulado com curl** (registro 1.2.0, next/start/heartbeat/finish). Ce
   hora (`ExecutorNoteDelaySeconds` não é mais lida; pedido antigo "juntando comentários" começa já); (2) o aviso "sem
   sinal do Claude" virou ícone no cabeçalho com menu (continuar / copiar o comando); (3) a jornada lê os dois planos do
   par (decisões da análise, QA e fechamento da correção) mesmo vendo o outro. Testado no harness local.
+- 2026-11-04 — em produção (#147/#78). 1º teste real: toda conversa do especialista falhava com
+  `JsonSerializerIsReflectionDisabled` — o executor publicado é trimmed e sem serialização por reflexão, e o
+  `--mcp-config` era montado com objeto anônimo (no `dotnet test` a reflexão estava ligada, por isso passou). Executor
+  1.2.1: JSON escrito com `Utf8JsonWriter`; o projeto de testes agora roda com a reflexão desligada, igual ao publicado.

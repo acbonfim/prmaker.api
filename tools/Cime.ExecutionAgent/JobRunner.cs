@@ -480,17 +480,35 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var cut = System.Text.RegularExpressions.Regex.Match(trimmed, "/api/v[^/]*$");
         var mcp = (cut.Success ? trimmed[..cut.Index] : trimmed) + "/mcp";
         var path = Path.Combine(Paths.Root, $"case-mcp-{requestId:N}.json");
-        var json = JsonSerializer.Serialize(new
-        {
-            mcpServers = new Dictionary<string, object>
-            {
-                ["prmake"] = new { type = "http", url = mcp, headers = new Dictionary<string, string> { ["x-api-key"] = token } }
-            }
-        });
-        File.WriteAllText(path, json);
+        File.WriteAllText(path, CaseMcpJson(mcp, token));
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return path;
+    }
+
+    /// <summary>
+    /// JSON do <c>--mcp-config</c> escrito à mão: o executor publicado é trimmed e sem serialização por reflexão
+    /// (<c>JsonSerializerIsReflectionEnabledByDefault=false</c>), então objeto anônimo quebra com
+    /// JsonSerializerIsReflectionDisabled.
+    /// </summary>
+    public static string CaseMcpJson(string mcpUrl, string token)
+    {
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer))
+        {
+            w.WriteStartObject();
+            w.WriteStartObject("mcpServers");
+            w.WriteStartObject("prmake");
+            w.WriteString("type", "http");
+            w.WriteString("url", mcpUrl);
+            w.WriteStartObject("headers");
+            w.WriteString("x-api-key", token);
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     private void DeleteCaseMcp()
