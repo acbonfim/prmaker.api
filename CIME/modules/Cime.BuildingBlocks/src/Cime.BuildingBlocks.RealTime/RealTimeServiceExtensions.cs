@@ -35,6 +35,7 @@ public static class RealTimeServiceExtensions
         }
 
         services.AddSignalR();
+        services.AddRealTimePresence();
         services.AddSingleton<IRealTimeNotifier, RealTimeNotifier>();
 
         // Policy dedicada: a policy global usa AllowAnyOrigin(), incompatível com AllowCredentials()
@@ -44,6 +45,14 @@ public static class RealTimeServiceExtensions
         services.AddCors();
         services.AddSingleton<ICorsPolicyProvider, RealTimeCorsPolicyProvider>();
 
+        return services;
+    }
+
+    /// <summary>Presença em memória do hub (0079). Registrada onde o hub roda: em processo ou no relay.</summary>
+    public static IServiceCollection AddRealTimePresence(this IServiceCollection services)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<PresenceTracker>();
         return services;
     }
 

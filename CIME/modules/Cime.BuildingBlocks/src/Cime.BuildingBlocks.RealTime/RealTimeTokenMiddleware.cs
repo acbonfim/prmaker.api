@@ -30,12 +30,16 @@ public class RealTimeTokenMiddleware
             return;
         }
 
-        if (!RealTimeTokens.IsValid(ExtractToken(context.Request), options.TokenSigningKey))
+        var principal = RealTimeTokens.Validate(ExtractToken(context.Request), options.TokenSigningKey);
+        if (principal is null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsync("Unauthorized: invalid real-time token");
             return;
         }
+
+        // Como no relay (JwtBearer): o hub lê sub/name/role do Context.User (presença, 0079).
+        context.User = principal;
 
         await _next(context);
     }
