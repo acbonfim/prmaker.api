@@ -224,6 +224,47 @@ public class ExecutionPlanController : ControllerBase
             return NoContent();
         });
 
+    // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────
+
+    /// <summary>Grava (ou substitui) a fotografia de um trecho de código — a skill, pelo <c>coderef</c>.</summary>
+    [HttpPut("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> SaveCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] SaveExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.SaveCodeRefAsync(id, reference, request.ToCapture(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Ajusta por quê, notas, proposta ou o diff feito, sem nova fotografia.</summary>
+    [HttpPatch("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> PatchCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] PatchExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.PatchCodeRefAsync(id, reference, request.ToPatch(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpDelete("{id:guid}/code-refs/{reference}")]
+    public Task<ActionResult> DeleteCodeRef([FromRoute] Guid id, [FromRoute] string reference, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteCodeRefAsync(id, reference, await GetActorAsync(ct, executor: IsExecutorRequest()), ct);
+            return NoContent();
+        });
+
+    /// <summary>Cabeças das fotografias do plano (sem o código).</summary>
+    [HttpGet("{id:guid}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCodeRefs([FromRoute] Guid id, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCodeRefHeadsAsync(id, ct)));
+
+    /// <summary>Cabeças das fotografias do card (uma por ref, a mais recente) — a tela liga as citações a elas.</summary>
+    [HttpGet("card/{cardNumber}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCardCodeRefs([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCardCodeRefHeadsAsync(cardNumber, ct)));
+
+    /// <summary>Uma fotografia completa (código, proposta, notas) — o popover.</summary>
+    [HttpGet("card/{cardNumber}/code-refs/{reference}")]
+    public Task<ActionResult<ExecutionCodeRefResponse>> GetCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () => Ok(await _application.GetCardCodeRefAsync(cardNumber, reference, ct)));
+
     // ── 0031: comentários com anexos ──────────────────────────────────────────────────────────────
 
     /// <summary>Comentários do card (análise e correção), com os anexos — a skill lê daqui.</summary>

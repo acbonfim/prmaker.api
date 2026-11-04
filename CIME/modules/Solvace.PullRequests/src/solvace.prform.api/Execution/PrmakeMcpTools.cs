@@ -60,6 +60,7 @@ public partial class PrmakeMcpTools(
     {
         var plan = await plans.GetAsync(await PlanIdAsync(card, phase, ct), ct);
         var request = (await queue.GetCardAsync(card, null, ct)).Active;
+        var codeRefs = await plans.GetCardCodeRefHeadsAsync(card, ct);
         return Serialize(new
         {
             plan.Id, plan.Phase, plan.Status, plan.StatusReason, plan.Title,
@@ -82,6 +83,8 @@ public partial class PrmakeMcpTools(
             userActions = plan.UserActions.Count,
             lastUserNote = plan.Notes.Where(n => !n.FromExecutor).Select(n => n.Number).DefaultIfEmpty(0).Max(),
             plan.NotesReadNumber,
+            // 0075: fotografias de codigo do card (cite com [texto](ref:<id>))
+            codeRefs = codeRefs.Count > 0 ? codeRefs.Select(r => $"{r.Ref} {r.Change} {r.Path}:{r.StartLine}-{r.EndLine}").ToList() : null,
             request = request is null ? null : new { request.Id, request.Kind, request.Status, request.Attempts, request.WaitReason }
         });
     });
@@ -468,6 +471,40 @@ public partial class PrmakeMcpTools(
             Encoding.UTF8.GetBytes(content));
         var artifact = await plans.UploadArtifactAsync(await PlanIdAsync(card, phase, ct), upload, await ActorAsync(ct), ct);
         return Serialize(new { artifact.Id, artifact.Number, artifact.Name, artifact.Kind, artifact.Size, artifact.StepKey });
+    });
+
+    [McpServerTool(Name = "prmake_code_ref")]
+    [Description("0075: fotografia de um trecho de codigo citado na analise/correcao (o popover do link ref:<id> e das citacoes caminho:linha). " +
+                 "A fotografia (codigo real) se grava pelo script: prmake-plan.sh coderef (le o arquivo local, nao cole codigo aqui). " +
+                 "Aqui: ajuste why/notas/proposta/change de uma ref existente (do plano ou de outro plano do card), ou crie uma 'create' (arquivo novo) " +
+                 "informando path + linhas + proposal. Notas: [{side: old|new, from, to, text}] — por que este codigo, por que faz sentido.")]
+    public Task<string> CodeRef(string card,
+        [Description("Id da ref (slug: sa3-init); o texto cita [texto](ref:sa3-init)")] string reference,
+        [Description("change | create | remove | suspect | read")] string? change = null,
+        string? title = null,
+        [Description("Por que o trecho importa / muda (1-3 frases)")] string? why = null,
+        [Description("Mudanca proposta em diff unificado")] string? proposal = null,
+        [Description("Notas por faixa de linhas: [{ side: old|new, from, to, text }]")] List<ExecutionCodeAnnotation>? annotations = null,
+        [Description("So para criar 'create' sem fotografia: caminho do arquivo novo no repositorio")] string? path = null,
+        string? repository = null, int? startLine = null, int? endLine = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var planId = await PlanIdAsync(card, phase, ct);
+        var actor = await ActorAsync(ct);
+        ExecutionCodeRefResponse saved;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            if (!string.Equals(change?.Trim(), ExecutionCodeChange.Create, StringComparison.OrdinalIgnoreCase))
+                throw new McpException("Fotografia de codigo existente so pelo script (prmake-plan.sh coderef); aqui, path so para change=create.");
+            saved = await plans.SaveCodeRefAsync(planId, reference, new ExecutionCodeCapture(repository, path, null, null, null,
+                startLine ?? 1, endLine, null, null, change, title, why, proposal, annotations), actor, ct);
+        }
+        else
+        {
+            saved = await plans.PatchCodeRefAsync(planId, reference,
+                new ExecutionCodeRefPatch(change, title, why, proposal, annotations), actor, ct);
+        }
+        return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
     });
 
     [McpServerTool(Name = "prmake_link")]

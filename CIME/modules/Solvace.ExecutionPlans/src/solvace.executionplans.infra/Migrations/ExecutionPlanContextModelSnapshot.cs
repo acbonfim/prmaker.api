@@ -104,6 +104,101 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("ExecutionArtifactContents", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionCodeRef", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Branch")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Change")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("EndLine")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FirstLine")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Implemented")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImplementedSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Proposal")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Ref")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Repository")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Snapshot")
+                        .HasColumnType("text");
+
+                    b.Property<int>("StartLine")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Why")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber", "Ref");
+
+                    b.HasIndex("PlanId", "Ref")
+                        .IsUnique();
+
+                    b.ToTable("ExecutionCodeRefs", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -897,6 +992,44 @@ namespace solvace.executionplans.infra.Migrations
                         .HasForeignKey("solvace.executionplans.domain.Entities.ExecutionArtifactContent", "ArtifactId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionCodeRef", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.ExecutionPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsMany("solvace.executionplans.domain.Entities.ExecutionCodeAnnotation", "Annotations", b1 =>
+                        {
+                            b1.Property<Guid>("ExecutionCodeRefId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<int>("From");
+
+                            b1.Property<string>("Side");
+
+                            b1.Property<string>("Text");
+
+                            b1.Property<int?>("To");
+
+                            b1.HasKey("ExecutionCodeRefId", "__synthesizedOrdinal");
+
+                            b1.ToTable("ExecutionCodeRefs", "execution");
+
+                            b1
+                                .ToJson("Annotations")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ExecutionCodeRefId");
+                        });
+
+                    b.Navigation("Annotations");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionLink", b =>

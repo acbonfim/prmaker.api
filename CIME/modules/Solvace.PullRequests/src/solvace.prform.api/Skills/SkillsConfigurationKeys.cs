@@ -56,4 +56,6 @@ public static class SkillsConfigurationKeys
     public const string PromotionProfiles = "PromotionProfiles";
     /// <summary>0074: padrão do nome da branch do cherry-pick ({card}, {target}).</summary>
     public const string PromotionBranchPattern = "PromotionBranchPattern";
+    /// <summary>0075: linhas de contexto antes e depois do foco na fotografia do código citado (prmake-plan.sh coderef).</summary>
+    public const string CodeRefContextLines = "CodeRefContextLines";
 }

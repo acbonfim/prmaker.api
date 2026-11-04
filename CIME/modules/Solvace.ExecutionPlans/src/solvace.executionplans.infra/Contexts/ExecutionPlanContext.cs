@@ -21,6 +21,7 @@ public class ExecutionPlanContext : DbContext
     public DbSet<ExecutionRequest> Requests { get; set; }
     public DbSet<ExecutionWorker> Workers { get; set; }
     public DbSet<ExecutionUserSettings> UserSettings { get; set; }
+    public DbSet<ExecutionCodeRef> CodeRefs { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -203,6 +204,34 @@ public class ExecutionPlanContext : DbContext
             entity.ToTable("ExecutionArtifactContents");
             entity.HasKey(e => e.ArtifactId);
             entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
+        });
+
+        // 0075: fotografias do código citado (a lista sai por projeção, sem Snapshot/Proposal/Implemented).
+        modelBuilder.Entity<ExecutionCodeRef>(entity =>
+        {
+            entity.ToTable("ExecutionCodeRefs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Ref).IsRequired().HasMaxLength(ExecutionCodeRef.MaxRefLength);
+            entity.Property(e => e.Repository).HasMaxLength(ExecutionCodeRef.MaxRepositoryLength);
+            entity.Property(e => e.Path).IsRequired().HasMaxLength(ExecutionCodeRef.MaxPathLength);
+            entity.Property(e => e.CommitSha).HasMaxLength(64);
+            entity.Property(e => e.Branch).HasMaxLength(ExecutionCodeRef.MaxBranchLength);
+            entity.Property(e => e.Language).HasMaxLength(ExecutionCodeRef.MaxLanguageLength);
+            entity.Property(e => e.Change).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Title).HasMaxLength(ExecutionCodeRef.MaxTitleLength);
+            entity.Property(e => e.Why).HasMaxLength(ExecutionCodeRef.MaxWhyLength);
+            entity.Property(e => e.Snapshot).HasColumnType("text");
+            entity.Property(e => e.Proposal).HasColumnType("text");
+            entity.Property(e => e.Implemented).HasColumnType("text");
+            entity.Property(e => e.ImplementedSha).HasMaxLength(64);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+            entity.OwnsMany(e => e.Annotations, a => a.ToJson());
+
+            entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.PlanId, e.Ref }).IsUnique();
+            entity.HasIndex(e => new { e.CardNumber, e.Ref });
         });
 
         // 0039: fila de execução, executores e configurações do usuário.
