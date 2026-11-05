@@ -189,6 +189,25 @@ public class WorkItemTemplateRendererTests
     }
 
     [Fact]
+    public void Card_brief_template_renders_for_bug_and_user_story_without_answers()
+    {
+        var template = JsonNode.Parse(SeedCardBrief0089.NewTemplate)!.AsObject();
+        foreach (var type in new[] { "bug", "user-story" })
+        {
+            var item = WorkItemTemplateRenderer.Render((JsonObject)template.DeepClone(), Ctx(type: type), null);
+            Assert.Equal("text", item.Type);
+            var task = Assert.Single(item.Tasks);
+            Assert.Equal("card-brief", task.Kind);
+            Assert.Equal("não", task.Params["timeline"]);
+            Assert.Equal("", task.Params["focus"]);
+        }
+        var focused = WorkItemTemplateRenderer.Render(template, Ctx(),
+            new Dictionary<string, string> { ["timeline"] = "sim", ["focus"] = "o que o cliente quer no relatório" });
+        Assert.Equal("sim", focused.Tasks[0].Params["timeline"]);
+        Assert.Equal("o que o cliente quer no relatório", focused.Tasks[0].Params["focus"]);
+    }
+
+    [Fact]
     public void Render_requires_the_required_answers()
     {
         var e = Assert.Throws<WorkItemTemplateException>(() => WorkItemTemplateRenderer.Render(Template("pr-para-branch"), Ctx(), null));

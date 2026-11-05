@@ -11,7 +11,8 @@ namespace solvace.executionplans.application;
 /// <c>source:"plan"</c>, sub-tarefa pela etapa); gravar no item segue as regras dos arquivos do plano: limite por arquivo e
 /// por item, mesmo tipo + nome substitui e, no item da análise, as recusas de <see cref="ExecutionPhaseFiles.Reject"/>.
 /// </summary>
-public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNotifier realTime) : IWorkItemFileApplication
+public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNotifier realTime,
+    IExecutionCardEvidenceSource? evidence = null) : IWorkItemFileApplication
 {
     private const int Retries = 5;
 
@@ -104,6 +105,91 @@ public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNot
                 await Task.Delay(Random.Shared.Next(10, 50) * attempt, ct);
             }
         }
+    }
+
+    public async Task<WorkItemEvidenceResponse> ImportEvidenceAsync(long number, ExecutionActor actor, CancellationToken ct)
+    {
+        var item = await files.GetItemAsync(number, ct) ?? throw NotFound(number);
+        if (evidence is null)
+            throw new DomainException("Leitura das evidências do DevOps indisponível nesta instalação.");
+        var response = new WorkItemEvidenceResponse { CardNumber = item.CardNumber, Number = item.Number };
+
+        IReadOnlyList<CardEvidence> found;
+        try
+        {
+            found = await evidence.ListAsync(item.CardNumber, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not DomainException)
+        {
+            response.Error = $"Não deu para ler o card no DevOps: {e.Message}";
+            return response;
+        }
+
+        var stored = (await files.ListAsync(item.Id, ct))
+            .Where(f => f.Kind == WorkItemFileKind.Attachment)
+            .GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in found)
+        {
+            var name = ExecutionArtifact.NormalizeName(EvidenceFileName(e));
+            var entry = new WorkItemEvidenceItem
+            {
+                Name = name, Source = e.Source, Description = ExecutionPlanApplication.EvidenceDescription(e), At = e.At, Size = e.Size,
+                Readable = EvidenceFormats.IsReadable(e.FileName, null)
+            };
+            response.Items.Add(entry);
+            if (stored.TryGetValue(name, out var existing))
+            {
+                (entry.File, entry.ContentType, entry.Size, entry.Status) = (existing.Number, existing.ContentType, existing.Size, "stored");
+                entry.Readable = EvidenceFormats.IsReadable(existing.Name, existing.ContentType);
+                continue;
+            }
+
+            CardEvidenceFile file;
+            try
+            {
+                file = await evidence.DownloadAsync(e, WorkItemFile.MaxFileBytes, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                (entry.Status, entry.Error) = ("error", ex.Message);
+                continue;
+            }
+            if (file.TooLarge)
+            {
+                (entry.Status, entry.Error) = ("too-large", $"maior que {WorkItemFile.MaxFileBytes / (1024 * 1024)} MB — abra no DevOps");
+                continue;
+            }
+            if (file.Data.Length == 0)
+            {
+                (entry.Status, entry.Error) = ("error", "arquivo vazio");
+                continue;
+            }
+
+            try
+            {
+                var saved = await UploadAsync(number, new WorkItemFileUpload(name, WorkItemFileKind.Attachment, null,
+                    ExecutionPlanApplication.ContentTypeFor(name, file.ContentType), file.Data), actor, ct);
+                (entry.File, entry.ContentType, entry.Size, entry.Status) = (saved.Number, saved.ContentType, saved.Size, "imported");
+                entry.Readable = EvidenceFormats.IsReadable(saved.Name, saved.ContentType);
+            }
+            catch (DomainException ex)
+            {
+                (entry.Status, entry.Error) = (ex.Message.Contains("limite") ? "item-limit" : "error", ex.Message);
+            }
+        }
+        return response;
+    }
+
+    /// <summary>
+    /// Nome do anexo do item para a evidência: <c>ev-&lt;6 hex da chave&gt;-&lt;origem&gt;-&lt;arquivo&gt;</c> — a chave do DevOps
+    /// fixa o nome, então importar de novo acha o mesmo arquivo (e duas imagens <c>image.png</c> não se substituem).
+    /// </summary>
+    public static string EvidenceFileName(CardEvidence e)
+    {
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(e.Key)))[..6];
+        return $"ev-{hash}-{ExecutionPlanApplication.EvidenceOrigin(e)}-{ExecutionPlanApplication.EvidenceFile(e)}";
     }
 
     /// <summary>Etapa do plano → sub-tarefa do item (mesmo StepKey).</summary>

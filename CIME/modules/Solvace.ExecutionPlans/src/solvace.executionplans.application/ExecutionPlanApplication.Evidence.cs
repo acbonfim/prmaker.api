@@ -180,24 +180,24 @@ public partial class ExecutionPlanApplication
                "ou `evidence-text.py`) e diga na análise o que cada uma mostrou.";
     }
 
-    private static string EvidenceName(int number, CardEvidence e)
+    private static string EvidenceName(int number, CardEvidence e) => $"ev{number:00}-{EvidenceOrigin(e)}-{EvidenceFile(e)}";
+
+    /// <summary>De onde a evidência veio, no nome do arquivo: descricao, &lt;campo&gt;, discussion ou anexo.</summary>
+    internal static string EvidenceOrigin(CardEvidence e) => e.Source switch
     {
-        var origin = e.Source switch
-        {
-            "campo" => Slug(e.SourceDetail) is "repro-steps" or "descricao" or "" ? "descricao" : Slug(e.SourceDetail),
-            "discussion" => "discussion",
-            _ => "anexo"
-        };
-        var file = e.FileName.Length > 80 ? e.FileName[^80..] : e.FileName;
-        return $"ev{number:00}-{origin}-{file}";
-    }
+        "campo" => Slug(e.SourceDetail) is "repro-steps" or "descricao" or "" ? "descricao" : Slug(e.SourceDetail),
+        "discussion" => "discussion",
+        _ => "anexo"
+    };
+
+    internal static string EvidenceFile(CardEvidence e) => e.FileName.Length > 80 ? e.FileName[^80..] : e.FileName;
 
     private static string SourceOf(string name) =>
         name.Contains("-discussion-", StringComparison.Ordinal) ? "discussion"
         : name.Contains("-anexo-", StringComparison.Ordinal) ? "anexo"
         : "campo";
 
-    private static string EvidenceDescription(CardEvidence e)
+    internal static string EvidenceDescription(CardEvidence e)
     {
         string When(DateTimeOffset? at) => at is { } d ? TimeZoneInfo.ConvertTime(d, EvidenceZone).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) : "";
         var text = e.Source switch
@@ -209,7 +209,7 @@ public partial class ExecutionPlanApplication
         return string.IsNullOrWhiteSpace(e.Comment) ? text : $"{text}: {e.Comment.Trim()}";
     }
 
-    private static string ContentTypeFor(string name, string declared) =>
+    internal static string ContentTypeFor(string name, string declared) =>
         Path.GetExtension(name).ToLowerInvariant() switch
         {
             ".png" => "image/png",

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
@@ -53,11 +54,35 @@ public class WorkItemFileMcpTools(
         return Serialize(new { saved.Id, saved.Number, saved.Name, saved.Kind, saved.Size, saved.TaskNumber, saved.ContentUrl });
     });
 
+    [McpServerTool(Name = "prmake_work_item_evidence")]
+    [Description("0089: EVIDENCIAS do card no DevOps para o ITEM de trabalho — importa (idempotente) para os arquivos do item os anexos do " +
+                 "card e as imagens/arquivos colados na descricao, nos repro steps, nos campos e na discussion (vale com o card sem plano) e " +
+                 "lista cada uma com o arquivo do item (#n), a origem e se da para ler. Abra cada legivel com " +
+                 "prmake_work_item_files(card, number, file: \"#n\") — imagem volta como imagem.")]
+    public Task<string> Evidence(string card,
+        [Description("Numero do item de trabalho (#n)")] long number,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        await EnsureCardAsync(card, number, ct);
+        var result = await files.ImportEvidenceAsync(number, await ActorAsync(ct), ct);
+        return Serialize(new
+        {
+            card = result.CardNumber,
+            item = result.Number,
+            error = result.Error,
+            total = result.Items.Count,
+            evidences = result.Items.Select(i => new { file = i.File, i.Name, i.Source, i.Description, i.At, i.ContentType, i.Size, i.Status, i.Error, i.Readable }),
+            next = result.Items.Any(i => i.File is not null && i.Readable)
+                ? "Abra cada evidencia legivel com prmake_work_item_files(card, number, file: \"#n\") e diga no resumo o que ela mostra."
+                : null
+        });
+    });
+
     [McpServerTool(Name = "prmake_work_item_files", ReadOnly = true)]
     [Description("Arquivos do item de trabalho: os do item (source item, 'arquivo #n') e os do plano ligado (source plan, 'anexo #n', com a " +
                  "sub-tarefa da mesma etapa). Sem 'file' devolve a lista; com 'file' (numero do arquivo do item ou o nome) devolve o texto " +
-                 "desse arquivo do item. Arquivo do plano se le com prmake_attachment (#n ou nome).")]
-    public Task<string> ListFiles(string card,
+                 "desse arquivo do item (imagem volta como imagem). Arquivo do plano se le com prmake_attachment (#n ou nome).")]
+    public Task<CallToolResult> ListFiles(string card,
         [Description("Numero do item de trabalho (#n)")] long number,
         [Description("Opcional: numero (#n) ou nome de um arquivo DO ITEM para ler o conteudo")] string? file = null,
         CancellationToken ct = default) => Safe(async () =>
@@ -65,12 +90,12 @@ public class WorkItemFileMcpTools(
         var c = await EnsureCardAsync(card, number, ct);
         var list = await files.ListAsync(number, ct);
         if (string.IsNullOrWhiteSpace(file))
-            return Serialize(new
+            return Text(Serialize(new
             {
                 card = c,
                 item = number,
                 files = list.Select(f => new { f.Source, f.Number, f.Name, f.Kind, f.Size, f.TaskNumber, f.StepKey, f.CreatedBy, f.CreatedAt })
-            });
+            }));
 
         var reference = file.Trim().TrimStart('#');
         var own = list.Where(f => f.Source == "item").ToList();
@@ -86,17 +111,23 @@ public class WorkItemFileMcpTools(
                   (own.Count == 0 ? "nenhum" : string.Join(", ", own.Select(f => $"#{f.Number} {f.Name}"))));
         }
         var data = await files.GetContentAsync(number, found.Id, ct);
+        if (IsImage(found.ContentType))
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = $"arquivo #{found.Number} {found.Name} ({found.ContentType}, {found.Size} bytes)" },
+                    ImageContentBlock.FromBytes(data.Data, found.ContentType)]
+            };
         if (!IsText(found.ContentType))
-            return Serialize(new { found.Number, found.Name, found.Kind, found.Size, found.ContentType, found.ContentUrl, text = (string?)null,
-                note = "Arquivo binario — baixe pela contentUrl." });
+            return Text(Serialize(new { found.Number, found.Name, found.Kind, found.Size, found.ContentType, found.ContentUrl, text = (string?)null,
+                note = "Arquivo binario — baixe pela contentUrl." }));
         var text = Encoding.UTF8.GetString(data.Data);
         var cut = text.Length > MaxReadChars;
-        return Serialize(new
+        return Text(Serialize(new
         {
             found.Number, found.Name, found.Kind, found.Size, found.TaskNumber,
             text = cut ? text[..MaxReadChars] : text,
             truncated = cut ? true : (bool?)null
-        });
+        }));
     });
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────
@@ -125,6 +156,11 @@ public class WorkItemFileMcpTools(
         name ??= User.FindFirst(ClaimTypes.Name)?.Value;
         return new ExecutionActor(userId, string.IsNullOrWhiteSpace(name) ? "Claude" : name.Trim(), true);
     }
+
+    private static bool IsImage(string contentType) =>
+        contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !contentType.Contains("svg", StringComparison.OrdinalIgnoreCase);
+
+    private static CallToolResult Text(string json) => new() { Content = [new TextContentBlock { Text = json }] };
 
     private static bool IsText(string contentType) =>
         contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)

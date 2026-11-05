@@ -26,6 +26,11 @@ public interface IWorkItemFileApplication
     Task<WorkItemFileData> GetContentAsync(long number, Guid fileId, CancellationToken ct);
     /// <summary>Grava (mesmo tipo + nome substitui). Avisa a tela (<c>workItemsUpdated</c> action <c>file</c>).</summary>
     Task<WorkItemFileResponse> UploadAsync(long number, WorkItemFileUpload upload, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// 0089: importa (idempotente) para os arquivos do item as evidências do card no DevOps — anexos e imagens coladas na
+    /// descrição, nos campos e na discussion —, mesmo com o card sem plano. Cada uma vira um anexo <c>ev-*</c> do item.
+    /// </summary>
+    Task<WorkItemEvidenceResponse> ImportEvidenceAsync(long number, ExecutionActor actor, CancellationToken ct);
     /// <summary>Card do item (para conferir o card no MCP e no especialista). Item inexistente → 404.</summary>
     Task<string> CardOfAsync(long number, CancellationToken ct);
 }

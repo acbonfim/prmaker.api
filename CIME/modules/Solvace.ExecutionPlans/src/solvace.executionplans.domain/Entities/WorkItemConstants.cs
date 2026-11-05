@@ -165,10 +165,12 @@ public static class WorkTaskKind
     public const string SqlQuery = "sql-query";
     /// <summary>r4: revisar um PR (nunca aprova nem mescla).</summary>
     public const string PrReview = "pr-review";
+    /// <summary>0089: resumo do que o card pede (US) ou reclama (Bug), lendo campos, discussion e evidências.</summary>
+    public const string CardBrief = "card-brief";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
-          DevOpsAction, PrText, SqlQuery, PrReview };
+          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief };
 
     /// <summary>Tipo da sub-tarefa que espelha uma etapa do plano (task/code/pr/ticket/question/validation).</summary>
     public static string FromStep(string stepKind, string executor) => stepKind switch
