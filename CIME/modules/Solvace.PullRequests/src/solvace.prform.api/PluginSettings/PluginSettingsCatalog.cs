@@ -79,7 +79,7 @@ public static class PluginSettingsCatalog
         ]),
         new("itens", "Itens de trabalho", "checklist", "Tipos de sub-tarefa e modelos prontos dos itens de trabalho (Bancada do card).",
         [
-            new("tipos", "Tipos de sub-tarefa", "O que cada sub-tarefa faz e quem executa."),
+            new("tipos", "Tipos de item e de sub-tarefa", "Os tipos de item, o que cada sub-tarefa faz e quem executa."),
             new("modelos", "Modelos de item", "Itens prontos para criar com um clique.")
         ]),
         new("assistente", "Assistente e horas", "schedule", "Sugestões do assistente do card (estimativa inicial, lançar horas, publicar resumos) e as médias de horas do time.",
@@ -362,6 +362,12 @@ public static class PluginSettingsCatalog
             Label = "Espera depois de um comentário (obsoleta)", Help = "Não é mais lida (0080): o plano retoma na hora. Pode remover.", Unit = "s" },
 
         // ============================================================== Itens de trabalho
+        new() { Section = "itens", Group = "tipos", Plugin = Skills, Key = SkillsConfigurationKeys.WorkItemTypes, Type = SettingTypes.Table, ReadBy = Api,
+            Label = "Tipos de item de trabalho",
+            Help = "Tipos que um item pode ter na Bancada (0085 r4). A chave é o que as skills e o MCP usam — não renomeie uma chave em uso.",
+            Columns = [new("key", "Chave", SettingTypes.Text, Required: true, Width: "sm"), new("label", "Nome", SettingTypes.Text, Required: true, Width: "md"),
+                new("icon", "Ícone (Material)", SettingTypes.Text, Width: "sm"), new("color", "Cor", SettingTypes.Text, Width: "sm"),
+                new("description", "Descrição", SettingTypes.Textarea)] },
         new() { Section = "itens", Group = "tipos", Plugin = Skills, Key = SkillsConfigurationKeys.WorkItemTaskKinds, Type = SettingTypes.Json, JsonRoot = "array", ReadBy = Api,
             Label = "Tipos de sub-tarefa",
             Help = "[{kind, label, icon, executor, description, params: [{key, label, required?}], undo?}] — o que cada sub-tarefa faz, quem executa (claude/user) e os parâmetros que pede.",

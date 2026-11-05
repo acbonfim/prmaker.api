@@ -157,6 +157,7 @@ public class PluginSettingsCatalogTests
     {
         // ~130 chaves no inventário (features/0086/inventario.md).
         Assert.True(Fields.Count >= 125, $"só {Fields.Count} chaves no catálogo");
-        Assert.Equal(46, Fields.Count(f => f.Plugin == PluginSettingsCatalog.Skills));
+        // 46 do inventário + WorkItemTypes (0085 r4).
+        Assert.Equal(47, Fields.Count(f => f.Plugin == PluginSettingsCatalog.Skills));
     }
 }

@@ -21,3 +21,4 @@
   conflito; sem chave nova. Merge autorizado pelo usuário para esta feature.
 - Pendências fora do escopo: semear em banco novo os plugins criados à mão (AI, DevOps, GitHub, Teams, provedores, 9 e
   11); editores estruturados de WorkItemTaskKinds/WorkItemTemplates (hoje JSON com ajuda); unificar o diff do FA e do FB.
+- 2026-11-05 — mesclados back #159 e front #90 (deploys ok). O #158 (0085 r4a) entrou na master antes e criou `WorkItemTypes` (o teste de cobertura do catálogo passou a falhar na master) → catalogada como tabela em Itens de trabalho (PR de correção).
