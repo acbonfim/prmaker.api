@@ -98,6 +98,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
 | contexto da passagem ao entrar em espera (0075) · situacao atual | `prmake_handoff(card, text)` | `handoff` · `situation` |
 | arquivo nos arquivos do plano (script `.sql`, analise `.md`, texto do chamado) | `prmake_file(card, name, content, kind?, key?)` | `upload` · `sync` |
+| **itens/etapas ricos (0087)** — codigo, linha, fotografia, regras da Base, arquivos e imagens no item | ver *Itens de trabalho ricos* em `references/correcao.md` | — |
 | **fotografia do codigo citado** (0075: popover com codigo real, diff e notas) · ajustar why/notas | `prmake_code_ref(card, reference, ...)` (so ajuste) | **`coderef`** (le o arquivo local — sempre por ele) |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |

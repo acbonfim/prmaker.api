@@ -17,6 +17,11 @@ public interface IWorkItemFileApplication
 {
     /// <summary>Arquivos do item + os do plano ligado (sem conteúdo).</summary>
     Task<IReadOnlyList<WorkItemFileResponse>> ListAsync(long number, CancellationToken ct);
+    /// <summary>
+    /// 0087: todos os arquivos do card — os dos itens, os dos planos ligados a eles e os de planos sem item (versões antigas,
+    /// <c>workItemNumber = 0</c>). Sem conteúdo; cada um traz <c>contentUrl</c>.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemFileResponse>> ListByCardAsync(string cardNumber, CancellationToken ct);
     /// <summary>Conteúdo de um arquivo do próprio item (os do plano saem pela rota do plano — <c>contentUrl</c>).</summary>
     Task<WorkItemFileData> GetContentAsync(long number, Guid fileId, CancellationToken ct);
     /// <summary>Grava (mesmo tipo + nome substitui). Avisa a tela (<c>workItemsUpdated</c> action <c>file</c>).</summary>
@@ -41,6 +46,12 @@ public interface IWorkItemFileRepository
     Task<long> GetSizeAsync(Guid workItemId, Guid? excludingFileId, CancellationToken ct);
     /// <summary>Arquivos do plano (artefatos sem conteúdo).</summary>
     Task<List<ExecutionArtifact>> GetPlanArtifactsAsync(Guid planId, CancellationToken ct);
+    /// <summary>0087: itens do card com sub-tarefas (sem rastrear), em ordem de número.</summary>
+    Task<List<WorkItem>> GetItemsByCardAsync(string cardNumber, CancellationToken ct);
+    /// <summary>0087: arquivos dos itens informados, sem conteúdo (uma leitura só).</summary>
+    Task<List<WorkItemFile>> ListByItemsAsync(IReadOnlyCollection<Guid> workItemIds, CancellationToken ct);
+    /// <summary>0087: arquivos de todos os planos do card (sem anexo de comentário nem evidência), sem conteúdo.</summary>
+    Task<List<ExecutionArtifact>> GetCardPlanArtifactsAsync(string cardNumber, CancellationToken ct);
     /// <summary>Fase do plano (analysis|correction); null = não existe.</summary>
     Task<string?> GetPlanPhaseAsync(Guid planId, CancellationToken ct);
     void Add(WorkItemFile file);

@@ -43,8 +43,18 @@ public class ExecutionPlanController : ControllerBase
 
     /// <summary>Cria o plano de um card (a skill chama no início da análise).</summary>
     [HttpPost]
-    public Task<ActionResult<ExecutionPlanResponse>> Create([FromBody] CreateExecutionPlanRequest request, CancellationToken ct) =>
-        Run<ExecutionPlanResponse>(async () => Ok(await _application.CreateAsync(request, await GetActorAsync(ct, executor: true), ct)));
+    public Task<ActionResult<ExecutionPlanResponse>> Create([FromBody] CreateExecutionPlanRequest request,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () =>
+        {
+            // 0087: plano de correção/implementação (vira item de trabalho): etapas ricas, com o código citado e fotografado.
+            if (IsExecutorRequest() && string.Equals(request.Phase, ExecutionPhase.Correction, StringComparison.OrdinalIgnoreCase)
+                && request.Steps is { Count: > 0 } steps
+                && await citations.CheckWorkAsync(request.CardNumber?.Trim() ?? string.Empty, steps.SelectMany(s => new[] { s.Title, s.Description }),
+                    steps.Select(s => (s.Title, s.Kind, s.Description)), ct) is { } incomplete)
+                return BadRequest(new { error = incomplete });
+            return Ok(await _application.CreateAsync(request, await GetActorAsync(ct, executor: true), ct));
+        });
 
     /// <summary>Planos do card, do mais recente para o mais antigo (histórico).</summary>
     [HttpGet("card/{cardNumber}")]

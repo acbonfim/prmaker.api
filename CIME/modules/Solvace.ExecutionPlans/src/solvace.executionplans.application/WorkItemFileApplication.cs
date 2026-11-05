@@ -23,6 +23,15 @@ public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNot
         return WorkItemFileListing.Build(item.Number, own, plan, TaskByStep(item));
     }
 
+    public async Task<IReadOnlyList<WorkItemFileResponse>> ListByCardAsync(string cardNumber, CancellationToken ct)
+    {
+        var card = cardNumber?.Trim() ?? string.Empty;
+        var items = await files.GetItemsByCardAsync(card, ct);
+        var own = await files.ListByItemsAsync(items.Select(i => i.Id).ToList(), ct);
+        var plan = await files.GetCardPlanArtifactsAsync(card, ct);
+        return WorkItemFileListing.BuildForCard(items, own, plan);
+    }
+
     public async Task<WorkItemFileData> GetContentAsync(long number, Guid fileId, CancellationToken ct)
     {
         var item = await files.GetItemAsync(number, ct) ?? throw NotFound(number);
@@ -98,10 +107,7 @@ public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNot
     }
 
     /// <summary>Etapa do plano → sub-tarefa do item (mesmo StepKey).</summary>
-    public static IReadOnlyDictionary<string, long> TaskByStep(WorkItem item) =>
-        item.Tasks.Where(t => t.StepKey is not null)
-            .GroupBy(t => t.StepKey!)
-            .ToDictionary(g => g.Key, g => g.OrderBy(t => t.Order).First().Number);
+    public static IReadOnlyDictionary<string, long> TaskByStep(WorkItem item) => WorkItemFileListing.TaskByStep(item);
 
     private async Task<string?> PhaseOfAsync(WorkItem item, CancellationToken ct)
     {

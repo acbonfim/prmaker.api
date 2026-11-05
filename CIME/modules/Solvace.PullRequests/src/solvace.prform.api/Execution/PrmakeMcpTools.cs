@@ -608,6 +608,10 @@ public partial class PrmakeMcpTools(
     {
         var analysis = (await plans.GetByCardAsync(card.Trim(), ct)).FirstOrDefault(p => p.Phase == ExecutionPhase.Analysis)
                        ?? throw new McpException($"O card {card} nao tem plano de analise.");
+        // 0087: etapas ricas — código citado com fotografia (popover) e toda etapa de código dizendo onde muda.
+        if (await citations.CheckWorkAsync(card.Trim(), steps.SelectMany(s => new[] { s.Title, s.Description }),
+                steps.Select(s => (s.Title, s.Kind, s.Description)), ct) is { } incomplete)
+            throw new McpException(incomplete);
         var plan = await plans.CreateAsync(new CreateExecutionPlanRequest
         {
             // 0085: a correção herda a skill da análise (analisar-us numa User Story).
