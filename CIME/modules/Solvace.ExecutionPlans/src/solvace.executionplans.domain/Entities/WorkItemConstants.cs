@@ -114,9 +114,13 @@ public static class WorkTaskKind
     public const string Validation = "validation";
     public const string Comment = "comment";
     public const string Manual = "manual";
+    /// <summary>r3: abrir chamado (fluxo de chamado do PRMake).</summary>
+    public const string Ticket = "ticket";
+    /// <summary>r3: avisar na Timeline/Teams.</summary>
+    public const string Notify = "notify";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
-        { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual };
+        { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify };
 
     /// <summary>Tipo da sub-tarefa que espelha uma etapa do plano (task/code/pr/ticket/question/validation).</summary>
     public static string FromStep(string stepKind, string executor) => stepKind switch

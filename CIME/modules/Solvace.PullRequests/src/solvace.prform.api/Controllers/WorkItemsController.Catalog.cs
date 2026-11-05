@@ -13,6 +13,8 @@ public partial class WorkItemsController
     /// <c>{branch}</c> = branch principal (BranchNamePattern), <c>{suffix:destino}</c> = sufixo do BranchSuffixByTarget
     /// (<c>{branch}{suffix:release-version}</c> → <c>hotfix/77434-rv</c>), <c>{card}</c>, <c>{repository}</c> (repositório
     /// padrão) e <c>{flowTargets}</c> (destinos dos PRs do fluxo do card). Sem card, os modelos voltam como estão.
+    /// Cada param dos tipos traz <c>input</c> (repository|branch|target-branch|state|commits|text|textarea|select) e
+    /// <c>options?</c> — config antiga sem <c>input</c> recebe o padrão pela chave (<see cref="WorkItemParamInputs"/>).
     /// </summary>
     [HttpGet("catalog")]
     public Task<ActionResult<object>> Catalog([FromQuery] string? card, [FromServices] SkillsRulesService rules, CancellationToken ct) =>
@@ -24,6 +26,7 @@ public partial class WorkItemsController
             string V(string key) => settings.TryGetValue(key, out var v) ? v : string.Empty;
 
             var kinds = ParseArray(V(SkillsConfigurationKeys.WorkItemTaskKinds));
+            WorkItemParamInputs.Apply(kinds, V(SkillsConfigurationKeys.TicketSystem)); // r3: input/options do editor
             var templates = ParseArray(V(SkillsConfigurationKeys.WorkItemTemplates));
             if (r is not null)
             {
