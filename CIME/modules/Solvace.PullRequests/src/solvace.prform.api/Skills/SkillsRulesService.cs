@@ -39,7 +39,8 @@ public record CardRules(
     string PrTitlePattern,
     string PromotionBranchPattern,
     IReadOnlyDictionary<string, string> Settings,
-    string? CardError)
+    string? CardError,
+    string? State = null)
 {
     /// <summary>Destinos dos PRs do fluxo para o repositório padrão (ex.: "development, qa"; release: "release-version/hotfix-version").</summary>
     public string FlowTargets()
@@ -121,7 +122,7 @@ public class SkillsRulesService(
         var settings = await SettingsAsync(cancellationToken);
         string V(string k, string fallback = "") => settings.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : fallback;
 
-        string? type = null, title = null, area = null, cardError = null;
+        string? type = null, title = null, area = null, state = null, cardError = null;
         try
         {
             var wi = await azure.GetCardAsync(card, cancellationToken);
@@ -132,6 +133,7 @@ public class SkillsRulesService(
                 type = wi.Fields.WorkItemType;
                 title = wi.Fields.Title;
                 area = wi.Fields.AreaPath;
+                state = wi.Fields.State;
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -153,7 +155,7 @@ public class SkillsRulesService(
             V(SkillsConfigurationKeys.CommitMessagePattern, "AB#{card} {summary}"),
             V(SkillsConfigurationKeys.PrTitlePattern, "AB#{card} {TARGET}"),
             V(SkillsConfigurationKeys.PromotionBranchPattern, "{branch}-{target}"),
-            settings, cardError);
+            settings, cardError, state);
     }
 
     public static bool IsUserStory(string? workItemType) =>
@@ -309,9 +311,10 @@ public class SkillsRulesService(
     private static void AppendTypeChanges(StringBuilder sb, CardRules r)
     {
         if (r.IsUserStory)
-            sb.AppendLine("- **User Story**: análise pela skill `analisar-us` (plano com Kind `analisar-us`), texto do card = critérios de aceite, itens nascem `user-story`, **sem Root Cause** no DevOps.");
+            sb.AppendLine("- **User Story**: análise pela skill `analisar-us` (plano com Kind `analisar-us`), texto do card = critérios de aceite, item da análise `analysis` e da implementação `implementation`, **sem Root Cause** no DevOps.");
         else
-            sb.AppendLine("- **Bug**: análise pela skill `analisar-bug`, texto do card = Repro Steps, itens nascem `bug`, Root Cause no DevOps ao gerar o PR.");
+            sb.AppendLine("- **Bug**: análise pela skill `analisar-bug`, texto do card = Repro Steps, item da análise `analysis` e da correção `fix`, Root Cause no DevOps ao gerar o PR.");
+        sb.AppendLine("- Tipo do card (Bug/US, do DevOps) não é o tipo do item de trabalho: itens têm tipos próprios (`WorkItemTypes`: task, pull-request, review, adjustment, closing, data, ticket, text...). Nunca crie item como `bug`/`user-story` (US é uma história do DevOps).");
     }
 
     private static void AppendBranchesByTarget(StringBuilder sb, CardRules r)

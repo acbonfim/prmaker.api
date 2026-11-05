@@ -48,7 +48,11 @@ public partial class WorkItemsController : ExecutionControllerBase
     public Task<ActionResult<WorkItemLiveResponse>> Live([FromRoute] long number, CancellationToken ct) =>
         RunItem<WorkItemLiveResponse>(async () => Ok(await _items.LiveAsync(number, CurrentUserId, ct)));
 
-    /// <summary>Cria um item (201). Igual a outro do card → 409 <c>{code:"duplicate", existing}</c>.</summary>
+    /// <summary>
+    /// Cria um item (201). Igual a outro do card → 409 <c>{code:"duplicate", existing}</c>. r4: <c>type</c> do
+    /// <c>WorkItemTypes</c> (padrão: o do modelo ou <c>task</c>; bug/user-story → fix/implementation); fora da lista → 400
+    /// <c>{code:"invalidType", options}</c>.
+    /// </summary>
     [HttpPost("card/{card}")]
     public Task<ActionResult<WorkItemResponse>> Create([FromRoute] string card, [FromBody] CreateWorkItemRequest request, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () =>
@@ -171,6 +175,10 @@ public partial class WorkItemsController : ExecutionControllerBase
             catch (WorkItemNotEditableException e)
             {
                 return Conflict(new { code = "notEditable", error = e.Message, number = e.Number });
+            }
+            catch (WorkItemTypeInvalidException e)
+            {
+                return BadRequest(new { code = "invalidType", error = e.Message, type = e.Type, options = e.Options });
             }
         });
 }

@@ -4,7 +4,7 @@ namespace solvace.prform.Skills;
 
 /// <summary>
 /// 0085 r3: tipo do campo de cada param dos tipos de sub-tarefa no editor do item de trabalho (<c>input</c>:
-/// repository|branch|target-branch|state|commits|text|textarea|select, com <c>options</c> no select). Config antiga sem
+/// repository|branch|target-branch|state|commits|text|textarea|select|pull-request, com <c>options</c> no select). Config antiga sem
 /// <c>input</c> ganha o padrão pela chave do param — o mesmo mapeamento da migração <c>SeedWorkItemKinds0085b</c> (mude os dois).
 /// Param que já tem <c>input</c> fica como o admin deixou.
 /// </summary>
@@ -18,9 +18,11 @@ public static class WorkItemParamInputs
     public const string Text = "text";
     public const string Textarea = "textarea";
     public const string Select = "select";
+    /// <summary>r4: PR do card / aberto no repositório (kind pr-review).</summary>
+    public const string PullRequest = "pull-request";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { Repository, Branch, TargetBranch, State, Commits, Text, Textarea, Select };
+        { Repository, Branch, TargetBranch, State, Commits, Text, Textarea, Select, PullRequest };
 
     /// <summary>Input padrão (e opções, quando é select) do param <paramref name="key"/> do tipo <paramref name="kind"/>.</summary>
     public static (string Input, string[]? Options) Default(string? kind, string? key) =>
@@ -32,6 +34,8 @@ public static class WorkItemParamInputs
             ("target", _) => (TargetBranch, null),
             ("state", _) => (State, null),
             ("commits", _) => (Commits, null),
+            ("pullrequest" or "pull-request" or "pr", _) => (PullRequest, null),
+            ("focus", _) => (Textarea, null),
             ("draft", _) => (Select, ["false", "true"]),
             ("priority", _) => (Select, ["Baixa", "Média", "Alta"]),
             ("description" or "instructions" or "message" or "text" or "how", _) => (Textarea, null),

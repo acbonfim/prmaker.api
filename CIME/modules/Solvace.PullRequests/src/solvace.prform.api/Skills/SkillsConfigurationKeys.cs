@@ -94,4 +94,7 @@ public static class SkillsConfigurationKeys
     public const string WorkItemTemplates = "WorkItemTemplates";
     /// <summary>0085: itens de trabalho rodando ao mesmo tempo por máquina (fora do limite de execuções da pista principal).</summary>
     public const string WorkItemSlots = "WorkItemSlots";
+
+    /// <summary>0085 r4: tipos de item de trabalho (JSON: [{key, label, icon, color, description}]).</summary>
+    public const string WorkItemTypes = "WorkItemTypes";
 }

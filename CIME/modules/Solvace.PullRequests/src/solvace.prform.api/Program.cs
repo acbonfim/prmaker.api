@@ -52,6 +52,9 @@ builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
 // 0085: regras do PRMake calculadas para o card (GET Skills/rules, prmake_rules, contexto do especialista).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
+// 0085 r4: ferramentas (modelos) do card — catálogo, from-template, prmake_tools/prmake_tool_run — e os tipos de item.
+builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();

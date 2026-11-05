@@ -1094,7 +1094,7 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         // 0085: User Story → analisar-us (cria o plano com Kind analisar-us); o resto, analisar-bug.
         var prompt = $"/{skill} {r.CardNumber}";
         if (skill == UserStorySkill)
-            prompt += "\n\nO card e uma User Story: siga a skill analisar-us (plano com Kind analisar-us, criterios de aceite, itens user-story, sem Root Cause).";
+            prompt += "\n\nO card e uma User Story: siga a skill analisar-us (plano com Kind analisar-us, criterios de aceite, item da implementacao tipo implementation — nunca item user-story —, sem Root Cause).";
         if (r.Kind == ExecutionRequestKind.Resume)
             prompt += "\n\nEste card ja tem plano no PRMake: retome de onde parou (o contexto do plano mostra o que ja foi feito).";
         return prompt + ExecutorSuffix(r);

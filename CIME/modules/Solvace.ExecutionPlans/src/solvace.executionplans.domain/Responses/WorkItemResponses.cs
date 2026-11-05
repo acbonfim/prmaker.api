@@ -9,7 +9,7 @@ public class WorkItemResponse
     public Guid Id { get; set; }
     public long Number { get; set; }
     public string CardNumber { get; set; } = string.Empty;
-    public string Type { get; set; } = WorkItemType.Bug;
+    public string Type { get; set; } = WorkItemType.Task;
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string Status { get; set; } = WorkItemStatus.Pending;

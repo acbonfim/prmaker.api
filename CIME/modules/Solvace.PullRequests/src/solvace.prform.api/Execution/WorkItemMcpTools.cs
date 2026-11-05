@@ -22,6 +22,7 @@ public class WorkItemMcpTools(
     IWorkItemApplication items,
     IExecutionPlanApplication plans,
     SkillsRulesService rules,
+    WorkItemToolsService tools,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users)
 {
@@ -69,13 +70,14 @@ public class WorkItemMcpTools(
     [McpServerTool(Name = "prmake_work_item_create")]
     [Description("Cria um item de trabalho no card com sub-tarefas ordenadas. Antes, liste (prmake_work_items) e use as regras " +
                  "(prmake_rules) para nomes de branch/destinos. Mesmo objetivo de item existente (fingerprint) e recusado: use o existente " +
-                 "ou mande allowDuplicate=true com duplicateReason. tasks = lista [{ title, kind (branch|cherry-pick|code|pr|devops-state|" +
-                 "sql-script|validation|comment|manual), description?, executor? (claude|user), params? {repository, branch, source, target, " +
+                 "ou mande allowDuplicate=true com duplicateReason. Se uma ferramenta (prmake_tools) serve, prefira prmake_tool_run. tasks = lista " +
+                 "[{ title, kind (branch|cherry-pick|code|pr|pr-review|devops-state|devops-action|pr-text|sql-query|sql-script|validation|comment|" +
+                 "manual|ticket|notify), description?, executor? (claude|user), params? {repository, branch, source, target, " +
                  "from, commits, state, ...} }] (lista ou o JSON dela em texto). Origem: especialista (token do caso) ou a fase do plano aberto.")]
     public Task<string> Create(string card, string title,
         [Description("Sub-tarefas em ordem: [{title, kind, description?, executor?, params?}] (lista ou JSON em texto)")] JsonElement tasks,
         string? description = null,
-        [Description("bug | user-story (padrao: o tipo do card)")] string? type = null,
+        [Description("Tipo do item (WorkItemTypes: task, pull-request, review, adjustment, closing, data, ticket, text, fix, implementation, analysis; padrao: o do modelo ou task). Nunca bug/user-story (sao do card no DevOps).")] string? type = null,
         [Description("Modelo de origem (catalogo GET WorkItems/catalog), se veio de um")] string? templateKey = null,
         [Description("analysis | correction — fase do plano que criou (padrao: a do plano aberto)")] string? planPhase = null,
         [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
@@ -97,6 +99,92 @@ public class WorkItemMcpTools(
             {
                 created.Number, created.Title, created.Status, created.Origin, created.Fingerprint,
                 tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title })
+            });
+        }
+        catch (WorkItemDuplicateException d)
+        {
+            throw new McpException(
+                $"Ja existe o item #{d.ExistingNumber} \"{d.ExistingTitle}\" ({d.ExistingStatus}) com o mesmo objetivo neste card — nao criei outro. " +
+                $"Use o existente (prmake_work_item card {c} number {d.ExistingNumber}); se for de fato outro trabalho, chame de novo com " +
+                "allowDuplicate=true e duplicateReason explicando a diferenca.", d);
+        }
+    });
+
+    [McpServerTool(Name = "prmake_tools", ReadOnly = true)]
+    [Description("Ferramentas (modelos de item de trabalho) para o card: key, titulo, descricao, tipo do item, se se aplica ao card " +
+                 "(applicable + reason), as perguntas (ask: key, label, input, options, default, required) e as sub-tarefas. Use antes de " +
+                 "criar item: se o pedido bate com uma ferramenta, rode-a com prmake_tool_run (o PRMake monta branch/destino/sufixo certos).")]
+    public Task<string> Tools(string card, CancellationToken ct = default) => Safe(async () =>
+    {
+        var catalog = await tools.CatalogAsync(RequireCard(card), ct);
+        var list = (catalog["templates"] as System.Text.Json.Nodes.JsonArray ?? []).OfType<System.Text.Json.Nodes.JsonObject>()
+            .Select(t => new System.Text.Json.Nodes.JsonObject
+            {
+                ["key"] = t["key"]?.DeepClone(),
+                ["title"] = t["title"]?.DeepClone(),
+                ["description"] = t["description"]?.DeepClone(),
+                ["type"] = t["type"]?.DeepClone(),
+                ["group"] = t["group"]?.DeepClone(),
+                ["applicable"] = t["applicable"]?.DeepClone(),
+                ["reason"] = t["reason"]?.DeepClone(),
+                ["ask"] = t["ask"]?.DeepClone(),
+                ["tasks"] = new System.Text.Json.Nodes.JsonArray((t["tasks"] as System.Text.Json.Nodes.JsonArray ?? []).OfType<System.Text.Json.Nodes.JsonObject>()
+                    .Select(x => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject { ["kind"] = x["kind"]?.DeepClone(), ["title"] = x["title"]?.DeepClone() })
+                    .ToArray())
+            });
+        var result = new System.Text.Json.Nodes.JsonObject
+        {
+            ["card"] = catalog["card"]?.DeepClone(),
+            ["cardType"] = catalog["type"]?.DeepClone(),
+            ["mainBranch"] = catalog["mainBranch"]?.DeepClone(),
+            ["repository"] = catalog["repository"]?.DeepClone(),
+            ["repositories"] = catalog["repositories"]?.DeepClone(),
+            ["repoKind"] = catalog["repoKind"]?.DeepClone(),
+            ["flow"] = catalog["flow"]?.DeepClone(),
+            ["tools"] = new System.Text.Json.Nodes.JsonArray(list.Select(x => (System.Text.Json.Nodes.JsonNode?)x).ToArray())
+        };
+        return result.ToJsonString(Json);
+    });
+
+    [McpServerTool(Name = "prmake_tool_run")]
+    [Description("Cria o item de trabalho a partir de uma ferramenta (prmake_tools) com as respostas das perguntas (ask). O PRMake renderiza " +
+                 "branch, sufixo do destino, repositorio e destinos; confere obrigatorias, destino invalido para o tipo de repositorio e se a " +
+                 "ferramenta se aplica ao card. Antes, liste os itens (prmake_work_items): mesmo objetivo de item existente e recusado — use o " +
+                 "existente ou mande allowDuplicate=true com duplicateReason. Quem executa o item e a pessoa (Bancada).")]
+    public Task<string> ToolRun(string card,
+        [Description("key da ferramenta (prmake_tools)")] string key,
+        [Description("Respostas {key: valor} das perguntas (objeto ou o JSON em texto); vazio = os padroes")] JsonElement? answers = null,
+        [Description("Titulo do item (opcional; padrao: o da ferramenta)")] string? title = null,
+        [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
+        string? duplicateReason = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var map = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        if (AsObject(answers) is { } obj)
+            foreach (var p in obj.EnumerateObject())
+                map[p.Name] = p.Value.Clone();
+        CreateWorkItemRequest request;
+        try
+        {
+            request = await tools.BuildCreateRequestAsync(c, new CreateFromTemplateRequest
+            {
+                TemplateKey = key, Answers = map, Title = title, AllowDuplicate = allowDuplicate, DuplicateReason = duplicateReason
+            }, ct);
+        }
+        catch (WorkItemTemplateException e)
+        {
+            throw new McpException(e.Missing.Count > 0 ? $"{e.Message} Faltando: {string.Join(", ", e.Missing)}." : e.Message, e);
+        }
+        var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
+        try
+        {
+            var created = await items.CreateAsync(c, request, origin, await ActorAsync(ct), ct);
+            return Serialize(new
+            {
+                created.Number, created.Type, created.Title, created.Status, created.Origin, created.TemplateKey, created.Fingerprint,
+                tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
             });
         }
         catch (WorkItemDuplicateException d)
