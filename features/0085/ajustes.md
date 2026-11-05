@@ -78,3 +78,24 @@ Contrato:
   (PRs e promoção, Fechamento, QA, Dados/Chamado, Textos), cada ferramenta com descrição; clicar → formulário curto com
   os `ask` (pickers do FD) → "Criar item" (from-template) ou "Pedir ao especialista" (mensagem com a ferramenta e as
   respostas). Também no menu do "+ Novo item".
+
+### Rodada 4 — Tipos de item de trabalho (pedido do usuário)
+"Um item de trabalho não precisa ser US ou BUG; pode ser uma tarefa simples (abrir PR, revisar PR). US é uma história de
+fato, criada no DevOps — não usar US para tarefas simples. Se já temos uma US, não criar itens como US."
+
+Contrato:
+- Tipo do card (Bug/US, do DevOps) ≠ tipo do item. Itens ganham tipos próprios, configuráveis em Skills Configurations
+  `WorkItemTypes` = `[{key,label,icon,color,description}]`, semeado: `task` Tarefa (task_alt), `pull-request` Pull request
+  (merge), `review` Revisão de PR (rate_review), `analysis` Análise (manage_search), `fix` Correção (build), `implementation`
+  Implementação (construction), `adjustment` Ajuste (tune), `closing` Fechamento (flag), `data` Dados/Script (storage),
+  `ticket` Chamado (confirmation_number), `text` Textos/Resumo (description). `bug`/`user-story` ficam só para itens antigos
+  (exibição), **não** são oferecidos ao criar.
+- Padrões: item criado sem tipo → do modelo (`type` do template) ou `task`. Plano de análise → `analysis`; plano de
+  correção → `fix` (card Bug) / `implementation` (card US). Especialista e skills usam os tipos novos.
+- Validação: tipo precisa existir em `WorkItemTypes` (ou ser legado bug/user-story); senão 400 com as opções.
+- Fingerprint passa a usar o tipo novo (itens antigos mantêm o que têm).
+- Kind de sub-tarefa novo `pr-review` (Revisar PR: params `repository`, `pullRequest` input `pull-request` = PRs do card/abertos
+  no repo, `focus` textarea) + modelo `revisar-pr` (type `review`). Todos os modelos semeados ganham `type` coerente
+  (`pr-*`/promoção → `pull-request`, fechamento → `closing`, script/diagnóstico → `data`, resumo/termo → `text`, ajuste → `adjustment`).
+- Catálogo devolve `itemTypes`. Front: editor escolhe o tipo entre `itemTypes` (chips com ícone), padrão `task`/do modelo;
+  lista, modais e sessão mostram o ícone/cor do tipo do item; o ícone do card (joaninha/livrinho) continua só no cabeçalho.
