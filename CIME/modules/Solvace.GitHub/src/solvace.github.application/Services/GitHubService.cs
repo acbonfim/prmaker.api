@@ -835,6 +835,35 @@ public class GitHubService : IGitHubService
         return names;
     }
 
+    private const int BranchInfosCacheMinutes = 1;
+
+    public async Task<IReadOnlyList<BranchInfoResponse>> ListBranchInfosAsync(string repository, CancellationToken cancellationToken = default)
+    {
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        var key = $"github:branch-infos:{_tokenScope}:{owner}/{repo}".ToLowerInvariant();
+        if (_cacheService.TryGetValue<List<BranchInfoResponse>>(key, out var cached) && cached is not null)
+            return cached;
+
+        var repositoryTask = Client.Repository.Get(owner, repo);
+        var branchesTask = Client.Repository.Branch.GetAll(owner, repo, new ApiOptions { PageSize = 100 });
+        await Task.WhenAll(repositoryTask, branchesTask);
+        var defaultBranch = repositoryTask.Result.DefaultBranch;
+        var infos = branchesTask.Result
+            .Select(b => new BranchInfoResponse
+            {
+                Name = b.Name,
+                Protected = b.Protected,
+                IsDefault = string.Equals(b.Name, defaultBranch, StringComparison.Ordinal)
+            })
+            .OrderBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _cacheService.Set(key, infos, BranchInfosCacheMinutes);
+        LogRateLimit();
+        return infos;
+    }
+
     public async Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(branch))

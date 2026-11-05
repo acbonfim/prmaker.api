@@ -245,6 +245,56 @@ public class SkillsRulesService(
     private static string? Str(JsonElement e, string name) =>
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()?.Trim() : null;
 
+    /// <summary>
+    /// 0085 r3: bases e destinos do fluxo (para ordenar o autocomplete de branches) — master/main, as bases, opções de base e
+    /// destinos dos PRs de todos os fluxos do BranchStrategy e os destinos do BranchSuffixByTarget, sem repetir, nessa ordem.
+    /// Destino com marcador (<c>{base}</c>) fica de fora.
+    /// </summary>
+    public static List<string> FlowBaseBranches(string? strategyJson, IReadOnlyDictionary<string, string> suffixes)
+    {
+        var result = new List<string>();
+        void Add(string? name)
+        {
+            var v = name?.Trim();
+            if (string.IsNullOrEmpty(v) || v.Contains('{') || result.Contains(v, StringComparer.OrdinalIgnoreCase)) return;
+            result.Add(v);
+        }
+
+        Add("master");
+        Add("main");
+        if (!string.IsNullOrWhiteSpace(strategyJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(strategyJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("flows", out var flows) && flows.ValueKind == JsonValueKind.Object)
+                    foreach (var flow in flows.EnumerateObject())
+                    {
+                        if (flow.Value.ValueKind != JsonValueKind.Object) continue;
+                        foreach (var kind in flow.Value.EnumerateObject())
+                        {
+                            var v = kind.Value;
+                            if (v.ValueKind != JsonValueKind.Object) continue;
+                            Add(Str(v, "base"));
+                            if (v.TryGetProperty("baseOptions", out var bo) && bo.ValueKind == JsonValueKind.Array)
+                                foreach (var o in bo.EnumerateArray())
+                                    if (o.ValueKind == JsonValueKind.String) Add(o.GetString());
+                            if (v.TryGetProperty("prs", out var prs) && prs.ValueKind == JsonValueKind.Array)
+                                foreach (var pr in prs.EnumerateArray())
+                                    Add(Str(pr, "target"));
+                        }
+                    }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+        foreach (var target in suffixes.Keys)
+            Add(target);
+        return result;
+    }
+
     public static string NormalizeCard(string? card)
     {
         var v = (card ?? string.Empty).Trim();

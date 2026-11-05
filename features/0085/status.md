@@ -44,3 +44,12 @@
 - 2026-11-05 — 0085 em produção (back #155, front #85, mesclados juntos com o ok do usuário; deploys ok).
 - 2026-11-05 — ajustes pedidos ao ver as capturas (`ajustes.md`): BA/FA/FB em paralelo na `feature/0085-ajustes`; builds
   dev/prod ok, testes 81/151/22; capturas `fa-*.png` no harness (card simulado no puppeteer — sem DevOps local).
+- 2026-11-05 — ajustes (#156/#86) em produção: aba Card + horas ao lado das abas (FC), horas da US liberadas no
+  backend (`LoadCardAsync` em effort/log-hours).
+- 2026-11-05 — rodada 3 (`feature/0085-r3`): BB (`GET Azure/card/{id}/states`, `GET GitHub/branches`, kinds
+  ticket/notify + `input/options` no catálogo, migração `SeedWorkItemKinds0085b`), FD (editor com autocomplete de
+  repositório/branch/destino, estados sugeridos, commits), FE (aba "Execução" por item — sem "v1/v2" na Bancada; inputs
+  aditivos `planId`/`hideVersions`/`itemNumber` no app-execution-plan; robô do cabeçalho com popover próprio; horas do
+  assistente escondidas em toda a Bancada). Testes 81/164/22; builds ok; tela de PR igual (captura antes/depois).
+- 2026-11-05 — análise somente leitura das ações recorrentes (30 cards) em `ferramentas-analise.md` → base das
+  ferramentas do especialista (rodada 4).
