@@ -80,7 +80,7 @@ public class WorkItemFileMcpTools(
 
     [McpServerTool(Name = "prmake_work_item_files", ReadOnly = true)]
     [Description("Arquivos do item de trabalho: os do item (source item, 'arquivo #n') e os do plano ligado (source plan, 'anexo #n', com a " +
-                 "sub-tarefa da mesma etapa). Sem 'file' devolve a lista; com 'file' (numero do arquivo do item ou o nome) devolve o texto " +
+                 "sub-tarefa da mesma etapa; origin evidence = evidencia do DevOps, comment = anexo de comentario). Sem 'file' devolve a lista; com 'file' (numero do arquivo do item ou o nome) devolve o texto " +
                  "desse arquivo do item (imagem volta como imagem). Arquivo do plano se le com prmake_attachment (#n ou nome).")]
     public Task<CallToolResult> ListFiles(string card,
         [Description("Numero do item de trabalho (#n)")] long number,
@@ -94,7 +94,7 @@ public class WorkItemFileMcpTools(
             {
                 card = c,
                 item = number,
-                files = list.Select(f => new { f.Source, f.Number, f.Name, f.Kind, f.Size, f.TaskNumber, f.StepKey, f.CreatedBy, f.CreatedAt })
+                files = list.Select(f => new { f.Source, f.Origin, f.Number, f.Name, f.Kind, f.Size, f.TaskNumber, f.StepKey, f.CreatedBy, f.CreatedAt })
             }));
 
         var reference = file.Trim().TrimStart('#');

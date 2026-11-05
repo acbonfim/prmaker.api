@@ -40,15 +40,17 @@ public class WorkItemFileTests
         {
             PlanFile(planId, 7, "analise-inicial.md"),
             PlanFile(planId, 5, "02_script.sql", stepKey: "script"),
-            PlanFile(planId, 6, "print.png", noteId: Guid.NewGuid()),          // anexo de comentário: fica no comentário
-            PlanFile(planId, 4, "evidencia.png", external: "devops:123"),       // evidência do card: não é da entrega
+            PlanFile(planId, 6, "print.png", noteId: Guid.NewGuid()),          // anexo de comentário: entra, marcado
+            PlanFile(planId, 4, "evidencia.png", external: "devops:123"),       // evidência do card: entra, marcada
         };
         var taskByStep = new Dictionary<string, long> { ["script"] = 777 };
 
         var list = WorkItemFileListing.Build(42, own, plan, taskByStep);
 
-        Assert.Equal(["01_corrigir.sql", "chamado-ajuste.md", "02_script.sql", "analise-inicial.md"], list.Select(f => f.Name).ToArray());
-        Assert.Equal(["item", "item", "plan", "plan"], list.Select(f => f.Source).ToArray());
+        Assert.Equal(["01_corrigir.sql", "chamado-ajuste.md", "evidencia.png", "02_script.sql", "print.png", "analise-inicial.md"],
+            list.Select(f => f.Name).ToArray());
+        Assert.Equal(["item", "item", "plan", "plan", "plan", "plan"], list.Select(f => f.Source).ToArray());
+        Assert.Equal([null, null, "evidence", null, "comment", null], list.Select(f => f.Origin).ToArray());
 
         var ticket = list[1];
         Assert.Equal(WorkItemFileKind.Ticket, ticket.Kind);
@@ -56,14 +58,14 @@ public class WorkItemFileTests
         Assert.Equal($"WorkItems/42/files/{ticket.Id}/content", ticket.ContentUrl);
         Assert.Null(ticket.PlanId);
 
-        var script = list[2];
+        var script = list[3];
         Assert.Equal(777, script.TaskNumber);
         Assert.Equal(planId, script.PlanId);
         Assert.Equal("script", script.StepKey);
         Assert.Equal(5, script.Number);
         Assert.Equal($"ExecutionPlan/{planId}/artifacts/{script.Id}/content", script.ContentUrl);
 
-        Assert.Null(list[3].TaskNumber); // sem etapa → do item todo
+        Assert.Null(list[5].TaskNumber); // sem etapa → do item todo
         Assert.All(list, f => Assert.Equal(42, f.WorkItemNumber));
     }
 
@@ -96,18 +98,44 @@ public class WorkItemFileTests
         {
             PlanFile(planA, 1, "analise.md"),
             PlanFile(legacy, 2, "versao-antiga.md"),               // plano sem item (versão anterior à 0085)
-            PlanFile(planA, 3, "print.png", noteId: Guid.NewGuid()) // anexo de comentário: fora
+            PlanFile(planA, 3, "print.png", noteId: Guid.NewGuid()), // anexo de comentário
+            PlanFile(planA, 4, "ev01-descricao-image.png", external: "devops:9") // evidência do DevOps
         };
 
         var list = WorkItemFileListing.BuildForCard(items, own, plans);
 
-        Assert.Equal(4, list.Count);                              // script, chamado, análise e o do plano sem item
+        Assert.Equal(6, list.Count);                              // script, chamado, análise, anexos e o do plano sem item
         var byName = list.ToDictionary(f => f.Name);
+        Assert.Equal(first.Number, byName["print.png"].WorkItemNumber);
+        Assert.Equal("comment", byName["print.png"].Origin);
+        Assert.Equal(first.Number, byName["ev01-descricao-image.png"].WorkItemNumber);
+        Assert.Equal("evidence", byName["ev01-descricao-image.png"].Origin);
         Assert.Equal(first.Number, byName["analise.md"].WorkItemNumber);
         Assert.Equal(second.Number, byName["chamado.md"].WorkItemNumber);
         Assert.Equal(avulso.Number, byName["script.sql"].WorkItemNumber);
         Assert.Equal(0, byName["versao-antiga.md"].WorkItemNumber);
         Assert.Equal("plan", byName["versao-antiga.md"].Source);
+    }
+
+    [Fact]
+    public void Card_listing_includes_specialist_conversation_files_without_person_audio()
+    {
+        var conversation = new[]
+        {
+            Case("print.png", "image/png", fromSpecialist: false, 1),
+            Case("voz-120000.webm", "audio/webm", fromSpecialist: false, 2),   // áudio de quem fala: fica de fora
+            Case("consulta.sql", "application/octet-stream", fromSpecialist: true, 3),
+        };
+
+        var list = WorkItemFileListing.BuildForCard([], [], [], conversation);
+
+        Assert.Equal(["consulta.sql", "print.png"], list.Select(f => f.Name).OrderBy(n => n).ToArray());
+        Assert.All(list, f => Assert.Equal("case", f.Source));
+        Assert.All(list, f => Assert.Equal(0, f.WorkItemNumber));
+        var byName = list.ToDictionary(f => f.Name);
+        Assert.Equal(WorkItemFileKind.Script, byName["consulta.sql"].Kind);
+        Assert.Equal(WorkItemFileKind.Attachment, byName["print.png"].Kind);
+        Assert.Equal($"CaseChat/77988/files/{byName["print.png"].Id}/content", byName["print.png"].ContentUrl);
     }
 
     [Fact]

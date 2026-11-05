@@ -41,7 +41,7 @@ public class WorkItemFileRepository(ExecutionPlanContext context) : IWorkItemFil
 
     public Task<List<ExecutionArtifact>> GetPlanArtifactsAsync(Guid planId, CancellationToken ct) =>
         context.Artifacts.AsNoTracking()
-            .Where(a => a.PlanId == planId && a.NoteId == null && a.ExternalKey == null)
+            .Where(a => a.PlanId == planId)
             .OrderBy(a => a.Number).ThenBy(a => a.Name)
             .ToListAsync(ct);
 
@@ -56,9 +56,15 @@ public class WorkItemFileRepository(ExecutionPlanContext context) : IWorkItemFil
     public Task<List<ExecutionArtifact>> GetCardPlanArtifactsAsync(string cardNumber, CancellationToken ct) =>
         (from a in context.Artifacts.AsNoTracking()
          join p in context.Plans.AsNoTracking() on a.PlanId equals p.Id
-         where p.CardNumber == cardNumber && a.NoteId == null && a.ExternalKey == null
+         where p.CardNumber == cardNumber
          orderby a.Number, a.Name
          select a).ToListAsync(ct);
+
+    public Task<List<CaseFile>> GetCaseFilesAsync(string cardNumber, CancellationToken ct)
+    {
+        var card = CaseChat.NormalizeCard(cardNumber);
+        return context.CaseFiles.AsNoTracking().Where(f => f.CardNumber == card).OrderBy(f => f.Number).ToListAsync(ct);
+    }
 
     public Task<string?> GetPlanPhaseAsync(Guid planId, CancellationToken ct) =>
         context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => (string?)p.Phase).FirstOrDefaultAsync(ct);
