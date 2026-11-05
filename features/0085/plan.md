@@ -143,4 +143,5 @@ Grupo `execplan:{card}`, evento **`workItemsUpdated`**, payload `{cardNumber, nu
 | F2 | Itens: modelo/serviço/tempo real, `app-work-item-list`, modais item/sub-tarefa/editor/cancelar, pedir ao especialista | agente F2 | contrato |
 | S1 | `especialista-do-caso`: regras pré-carregadas (cache no card), itens sem duplicar, criar itens, nunca inventar branch | agente S1 | contrato |
 | S2 | Skills novas `executar-item-de-trabalho`, `desfazer-item-de-trabalho`, `analisar-us`; `analisar-bug` gera/executa itens; `prmake-plan.sh` (`rules`, `work-items`) | agente S2 | contrato |
+| F3 | (pedido 2) `app-workbench-prs` (botão "PRs (n)" + modal: PRs do card, abrir PR manual, ações GitHub/DevOps) e `app-card-hours-insight` (Bug: Completed × média de bugs, acima/abaixo; US: planejado × realizado + projeção); médias `AssistantAverageHoursBug`/`AssistantAverageHoursUserStory` (seed do B2) | agente F3 | contrato |
 | Q1 | Build back+front, e2e local (harness `.t0085`), revisão cruzada do contrato | Claude | todas |
