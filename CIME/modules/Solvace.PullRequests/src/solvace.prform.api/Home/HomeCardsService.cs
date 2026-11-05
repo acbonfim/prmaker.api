@@ -38,6 +38,20 @@ public sealed partial class HomeCardsService(
             .FirstOrDefaultAsync(ct);
 
         List<string> cards;
+        if (string.Equals(scope, HomeCardsScope.Workbench, StringComparison.OrdinalIgnoreCase))
+        {
+            // 0088: todos os cards em que o usuário atuou (dele ou não), pela última atualização no card — de qualquer
+            // pessoa, inclusive o executor —, não pela última vez que ele mexeu.
+            var touched = await CollectParticipationAsync(userId, myName, ct);
+            var updates = await LastUpdatesAsync(touched.Keys.ToList(), ct);
+            cards = touched.Keys
+                .OrderByDescending(card => updates.TryGetValue(card, out var at) ? at : touched[card])
+                .Take(take)
+                .ToList();
+            if (cards.Count == 0) return [];
+            var built = await BuildAsync(cards, userId, myName, ct);
+            return built.OrderByDescending(c => c.UpdatedAt).ToList();
+        }
         if (string.Equals(scope, HomeCardsScope.Participated, StringComparison.OrdinalIgnoreCase))
         {
             var touched = await CollectParticipationAsync(userId, myName, ct);
@@ -91,8 +105,8 @@ public sealed partial class HomeCardsService(
     }
 
     /// <summary>
-    /// Cards em que o usuário mexeu → a última vez que mexeu: salvou o card, abriu PR, escreveu na Timeline, comentou
-    /// no plano, criou/respondeu/pausou-continuou o plano ou salvou o handover. Colunas de auditoria guardam o
+    /// Cards em que o usuário mexeu → a última vez que mexeu: registrou/salvou o card, abriu PR, escreveu na Timeline,
+    /// comentou no plano, criou/respondeu/pausou-continuou o plano, criou item de trabalho ou salvou o handover. Colunas de auditoria guardam o
     /// externalId como texto; ações do plano feitas pela tela guardam só o nome (o mesmo nome completo da auth).
     /// </summary>
     private async Task<Dictionary<string, DateTimeOffset>> CollectParticipationAsync(Guid userId, string? myName, CancellationToken ct)
@@ -109,7 +123,8 @@ public sealed partial class HomeCardsService(
         }
 
         var registers = await db.PullRequests.AsNoTracking()
-            .Where(x => (x.UpdatedBy != null && x.UpdatedBy.ToLower() == me)
+            .Where(x => x.UserId == userId
+                        || (x.UpdatedBy != null && x.UpdatedBy.ToLower() == me)
                         || (x.CreatedBy != null && x.CreatedBy.ToLower() == me))
             .OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt)
             .Take(SourceLimit)
@@ -165,6 +180,16 @@ public sealed partial class HomeCardsService(
             .ToListAsync(ct);
         createdPlans.ForEach(x => Add(x.Card, x.At));
 
+        // 0088: itens de trabalho criados na Bancada.
+        var createdItems = await plans.WorkItems.AsNoTracking()
+            .Where(x => x.CreatedBy == userId)
+            .GroupBy(x => x.CardNumber)
+            .Select(g => new { Card = g.Key, At = g.Max(x => x.CreatedAt) })
+            .OrderByDescending(x => x.At)
+            .Take(SourceLimit)
+            .ToListAsync(ct);
+        createdItems.ForEach(x => Add(x.Card, x.At));
+
         if (name is not null)
         {
             var answered = await (
@@ -196,6 +221,60 @@ public sealed partial class HomeCardsService(
                 .ToListAsync(ct);
             statusChanged.ForEach(x => Add(x.Card, x.At));
         }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 0088: última atualização de cada card, de qualquer pessoa (inclusive o executor): registro, PRs, handover,
+    /// Timeline, comentários, plano e itens de trabalho — as mesmas fontes de <see cref="HomeCardResponse.UpdatedAt"/>.
+    /// Uma consulta por banco (UNION ALL + GROUP BY), só com as datas.
+    /// </summary>
+    private async Task<Dictionary<string, DateTimeOffset>> LastUpdatesAsync(List<string> cards, CancellationToken ct)
+    {
+        var result = new Dictionary<string, DateTimeOffset>();
+        if (cards.Count == 0) return result;
+
+        void Add(string card, DateTimeOffset at)
+        {
+            if (!result.TryGetValue(card, out var current) || at > current)
+                result[card] = at;
+        }
+
+        var prform = await db.PullRequests.AsNoTracking()
+            .Where(x => cards.Contains(x.CardNumber))
+            .Select(x => new { Card = x.CardNumber, At = x.UpdatedAt ?? x.CreatedAt })
+            .Concat(db.PullRequestsGithub.AsNoTracking()
+                .Where(x => cards.Contains(x.CardNumber) && x.Status != PullRequestGithubStatus.Legacy)
+                .Select(x => new { Card = x.CardNumber, At = x.CreatedAt }))
+            .Concat(db.Handovers.AsNoTracking()
+                .Where(x => cards.Contains(x.CardNumber))
+                .Select(x => new { Card = x.CardNumber, At = x.UpdatedAt ?? x.CreatedAt }))
+            .GroupBy(x => x.Card)
+            .Select(g => new { Card = g.Key, At = g.Max(x => x.At) })
+            .ToListAsync(ct);
+        prform.ForEach(x => Add(x.Card, x.At));
+
+        var entries = await timeline.TimelineEntries.AsNoTracking()
+            .Where(x => cards.Contains(x.CardNumber))
+            .GroupBy(x => x.CardNumber)
+            .Select(g => new { Card = g.Key, At = g.Max(x => x.CreatedAt) })
+            .ToListAsync(ct);
+        entries.ForEach(x => Add(x.Card, x.At));
+
+        var execution = await plans.Plans.AsNoTracking()
+            .Where(x => cards.Contains(x.CardNumber))
+            .Select(x => new { Card = x.CardNumber, At = x.UpdatedAt })
+            .Concat(plans.WorkItems.AsNoTracking()
+                .Where(x => cards.Contains(x.CardNumber))
+                .Select(x => new { Card = x.CardNumber, At = x.UpdatedAt }))
+            .Concat(plans.Notes.AsNoTracking()
+                .Where(x => cards.Contains(x.CardNumber) && x.DeletedAt == null)
+                .Select(x => new { Card = x.CardNumber, At = x.CreatedAt }))
+            .GroupBy(x => x.Card)
+            .Select(g => new { Card = g.Key, At = g.Max(x => x.At) })
+            .ToListAsync(ct);
+        execution.ForEach(x => Add(x.Card, x.At));
 
         return result;
     }
@@ -319,6 +398,21 @@ public sealed partial class HomeCardsService(
             events.Add(new(n.CardNumber, HomeCardActivityKind.Note, HomeCardRole.Plan, $"Comentou no plano (#{n.Number})",
                 n.AuthorUserId, n.AuthorName, n.CreatedAt));
 
+        // --- Itens de trabalho da Bancada (0088) ---
+        var items = await plans.WorkItems.AsNoTracking()
+            .Where(x => cards.Contains(x.CardNumber))
+            .Select(x => new { x.CardNumber, x.Number, x.Title, x.Type, x.Status, x.CreatedBy, x.CreatedByName, x.CreatedAt, x.UpdatedAt })
+            .ToListAsync(ct);
+        foreach (var i in items)
+        {
+            events.Add(new(i.CardNumber, HomeCardActivityKind.WorkItem, HomeCardRole.WorkItem, $"Criou o item #{i.Number}",
+                i.CreatedBy, i.CreatedByName, i.CreatedAt));
+            if (i.UpdatedAt > i.CreatedAt.AddMinutes(1))
+                events.Add(new(i.CardNumber, HomeCardActivityKind.WorkItem, HomeCardRole.WorkItem,
+                    $"Item #{i.Number}: {WorkItemStatusLabel(i.Status)}", null, null, i.UpdatedAt));
+        }
+        var itemsByCard = items.GroupBy(i => i.CardNumber).ToDictionary(g => g.Key, g => g.ToList());
+
         // --- Pessoas: nome pelo externalId; ações gravadas só com o nome viram a mesma pessoa quando o nome bate ---
         var people = await ResolvePeopleAsync(events, ct);
         var myKey = userId.ToString();
@@ -409,6 +503,16 @@ public sealed partial class HomeCardsService(
             var handover = handovers.FirstOrDefault(h => h.CardNumber == card);
             var cardPrs = prs.Where(p => p.CardNumber == card).ToList();
 
+            // Item em destaque: o em andamento mais recente; sem nenhum, o último mexido.
+            var cardItems = itemsByCard.GetValueOrDefault(card) ?? [];
+            var currentItem = cardItems.Where(i => ActiveWorkItem.Contains(i.Status)).MaxBy(i => i.UpdatedAt)
+                              ?? cardItems.MaxBy(i => i.UpdatedAt);
+
+            // Última atualização: atividades + andamento do plano e dos itens (o executor também atualiza o card).
+            DateTimeOffset? updatedAt = last?.At;
+            foreach (var at in cardPlans.Where(p => p.CardNumber == card).Select(p => p.UpdatedAt).Concat(cardItems.Select(i => i.UpdatedAt)))
+                if (updatedAt is null || at > updatedAt) updatedAt = at;
+
             result.Add(new HomeCardResponse
             {
                 CardNumber = card,
@@ -438,6 +542,14 @@ public sealed partial class HomeCardsService(
                         : new HomeCardEntry(IdFor(lastNote.AuthorUserId, lastNote.AuthorName), NameFor(lastNote.AuthorUserId, lastNote.AuthorName), Excerpt(lastNote.Text), lastNote.CreatedAt, lastNote.Number)
                 },
                 Handover = handover is null ? null : new HomeCardHandover(ParseGuid(handover.UpdatedBy) ?? ParseGuid(handover.CreatedBy), handover.At),
+                UpdatedAt = updatedAt,
+                WorkItems = new HomeCardWorkItems
+                {
+                    Count = cardItems.Count,
+                    Open = cardItems.Count(i => !ClosedWorkItem.Contains(i.Status)),
+                    Current = currentItem is null ? null
+                        : new HomeCardWorkItem(currentItem.Number, currentItem.Title, currentItem.Type, currentItem.Status, currentItem.UpdatedAt),
+                },
             });
         }
 
@@ -477,6 +589,28 @@ public sealed partial class HomeCardsService(
     }
 
     private static Guid? ParseGuid(string? value) => Guid.TryParse(value, out var id) ? id : null;
+
+    /// <summary>Item com execução em andamento (fila, rodando, esperando, desfazendo).</summary>
+    private static readonly HashSet<string> ActiveWorkItem =
+        [WorkItemStatus.Queued, WorkItemStatus.Running, WorkItemStatus.Waiting, WorkItemStatus.Reverting];
+
+    /// <summary>Item fechado: concluído, cancelado ou desfeito (não conta como aberto).</summary>
+    private static readonly HashSet<string> ClosedWorkItem =
+        [WorkItemStatus.Completed, WorkItemStatus.Cancelled, WorkItemStatus.Reverted];
+
+    private static string WorkItemStatusLabel(string status) => status switch
+    {
+        WorkItemStatus.Pending => "pendente",
+        WorkItemStatus.Queued => "na fila",
+        WorkItemStatus.Running => "em andamento",
+        WorkItemStatus.Waiting => "aguardando",
+        WorkItemStatus.Completed => "concluído",
+        WorkItemStatus.Failed => "falhou",
+        WorkItemStatus.Cancelled => "cancelado",
+        WorkItemStatus.Reverting => "desfazendo",
+        WorkItemStatus.Reverted => "desfeito",
+        _ => status
+    };
 
     private static string PlanStatusLabel(string status) => status switch
     {

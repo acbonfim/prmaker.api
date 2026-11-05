@@ -13,8 +13,9 @@ public class HomeController(HomeCardsService cards) : ControllerBase
 {
     /// <summary>
     /// <c>scope=mine</c>: cards registrados pelo usuário; <c>scope=participated</c>: cards em que ele salvou, abriu PR,
-    /// escreveu na Timeline, mexeu no plano ou salvou o handover (sem os dele). Cada card vem com envolvidos, PRs,
-    /// plano, Timeline, comentários e a última atividade.
+    /// escreveu na Timeline, mexeu no plano, criou item de trabalho ou salvou o handover (sem os dele);
+    /// <c>scope=workbench</c> (0088): todos os cards em que ele atuou, da última atualização no card (de qualquer pessoa)
+    /// para a mais antiga. Cada card vem com envolvidos, PRs, plano, itens de trabalho, Timeline, comentários e a última atividade.
     /// </summary>
     [HttpGet("cards")]
     public async Task<ActionResult<IReadOnlyList<HomeCardResponse>>> GetCards(
