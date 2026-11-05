@@ -409,7 +409,7 @@ public class WorkItemApplication : IWorkItemApplication
             throw;
         }
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Created, null, ct);
-        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado do plano de {(plan.Phase == ExecutionPhase.Correction ? "correção" : "análise")}: {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
+        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado do plano de {(plan.Phase == ExecutionPhase.Correction ? PlanTerms.Delivery(plan.Kind) : "análise")}: {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 

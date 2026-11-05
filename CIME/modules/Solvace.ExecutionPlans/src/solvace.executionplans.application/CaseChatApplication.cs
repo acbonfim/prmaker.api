@@ -278,7 +278,7 @@ public class CaseChatApplication(
             throw new DomainException("O card ainda não tem plano — peça a análise antes de aceitar a proposta.");
         proposal.Accept(request.Execute, actor.Name, now);
         await cases.SaveChangesAsync(cancellationToken);
-        var instruction = proposal.InstructionText(actor.Name);
+        var instruction = proposal.InstructionText(actor.Name, plan.Kind);
         var note = await planApp.AddNoteAsync(plan.Id, instruction, null, [], actor.AsExecutionActor(), cancellationToken);
         cases.ClearTracking();
         var saved = await cases.GetProposalAsync(card, proposalId, cancellationToken) ?? proposal;
@@ -506,7 +506,7 @@ public class CaseChatApplication(
         {
             var versions = summaries.Where(s => s.Phase == phase).OrderBy(s => s.VersionNumber).ToList();
             if (versions.Count == 0) continue;
-            sb.AppendLine().AppendLine(phase == ExecutionPhase.Analysis ? "## Análise" : "## Correção");
+            sb.AppendLine().AppendLine(phase == ExecutionPhase.Analysis ? "## Análise" : $"## {PlanTerms.DeliveryTitle(versions[0].Kind)}");
             foreach (var v in versions)
             {
                 var reason = string.IsNullOrWhiteSpace(v.StatusReason) ? string.Empty : $" — motivo: \"{v.StatusReason}\"";
@@ -735,7 +735,7 @@ public class CaseChatApplication(
         if (summaries.Where(s => s.Phase == ExecutionPhase.Analysis).MaxBy(s => s.VersionNumber) is { } a)
             knows.Add($"Análise v{a.VersionNumber}");
         if (summaries.Where(s => s.Phase == ExecutionPhase.Correction).MaxBy(s => s.VersionNumber) is { } c)
-            knows.Add($"Correção v{c.VersionNumber} · {StatusLabel(c.Status)}");
+            knows.Add($"{PlanTerms.DeliveryTitle(c.Kind)} v{c.VersionNumber} · {StatusLabel(c.Status)}");
         knows.AddRange(["Base Solvace", "Banco (só leitura)", "Código"]);
         return knows;
     }

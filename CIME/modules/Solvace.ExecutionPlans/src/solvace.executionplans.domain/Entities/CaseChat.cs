@@ -528,15 +528,16 @@ public class CaseProposal
         };
     }
 
-    /// <summary>Texto da instrução que vai para o plano quando a proposta é aceita (lido pela analisar-bug).</summary>
-    public string InstructionText(string acceptedBy)
+    /// <summary>Texto da instrução que vai para o plano quando a proposta é aceita (lido pela analisar-bug/analisar-us).</summary>
+    /// <param name="planKind">r5: Kind do plano (analisar-us → "plano de implementação").</param>
+    public string InstructionText(string acceptedBy, string? planKind = null)
     {
         var lines = new List<string>
         {
             $"**Proposta do Especialista aceita** (#{Number}, por {acceptedBy}): {Title}",
             string.Empty,
             Phase == ExecutionPhase.Correction
-                ? "Gere uma NOVA VERSÃO do plano de correção (prmake_correction) com estas mudanças:"
+                ? $"Gere uma NOVA VERSÃO do {PlanTerms.DeliveryPlan(planKind)} (prmake_correction) com estas mudanças:"
                 : "Refaça a análise (nova versão do plano de análise) com estas mudanças:"
         };
         foreach (var c in Changes)
@@ -560,7 +561,7 @@ public class CaseProposal
         lines.Add(string.Empty);
         lines.Add(Execute
             ? "Pode executar a nova versão em seguida (sem merge)."
-            : "Só monte a nova versão e pare: NÃO execute a correção até a pessoa pedir.");
+            : $"Só monte a nova versão e pare: NÃO execute a {PlanTerms.Delivery(planKind)} até a pessoa pedir.");
         return string.Join("\n", lines);
     }
 }

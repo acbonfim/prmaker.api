@@ -219,10 +219,10 @@ public partial class ExecutionPlanApplication
                 case ExecutionStatus.Completed:
                     await WriteTimelineAsync(plan, await CorrectionCompletedTextAsync(plan, lines, cancellationToken), actor, cancellationToken);
                     return;
-                case ExecutionStatus.Paused: lines.Add($"⏸️ Plano de correção **pausado** por {actor.Name}"); break;
-                case ExecutionStatus.Running when before.Status == ExecutionStatus.Paused: lines.Add($"▶️ Plano de correção **retomado** por {actor.Name}"); break;
-                case ExecutionStatus.Cancelled: lines.Add($"⛔ Plano de correção **cancelado** por {actor.Name}{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
-                case ExecutionStatus.Failed: lines.Add($"❌ Plano de correção **falhou**{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
+                case ExecutionStatus.Paused: lines.Add($"⏸️ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **pausado** por {actor.Name}"); break;
+                case ExecutionStatus.Running when before.Status == ExecutionStatus.Paused: lines.Add($"▶️ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **retomado** por {actor.Name}"); break;
+                case ExecutionStatus.Cancelled: lines.Add($"⛔ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **cancelado** por {actor.Name}{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
+                case ExecutionStatus.Failed: lines.Add($"❌ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **falhou**{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
             }
         }
 
@@ -251,7 +251,7 @@ public partial class ExecutionPlanApplication
     private static string CorrectionPlanCreatedText(ExecutionPlan plan)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"🛠️ **Plano de correção criado** — {plan.Title}");
+        sb.AppendLine($"🛠️ **{PlanTerms.DeliveryPlanTitle(plan.Kind)} criado** — {plan.Title}");
         sb.AppendLine();
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
             sb.AppendLine($"- {ExecutorLabel(step)} {step.Title}{(step.Repository is null ? "" : $" · {step.Repository}")}");
@@ -308,7 +308,7 @@ public partial class ExecutionPlanApplication
     {
         var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
         var sb = new StringBuilder();
-        sb.AppendLine($"🏁 **Plano de correção concluído** — {plan.Title}");
+        sb.AppendLine($"🏁 **{PlanTerms.DeliveryPlanTitle(plan.Kind)} concluído** — {plan.Title}");
         foreach (var line in stepLines) sb.AppendLine(line);
         sb.AppendLine();
         sb.AppendLine("**Etapas**");
