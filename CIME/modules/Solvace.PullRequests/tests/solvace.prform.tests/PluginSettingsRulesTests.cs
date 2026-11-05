@@ -257,6 +257,7 @@ public class PluginSettingsRulesTests(ITestOutputHelper output)
 
         Assert.Equal("4711", settings.Plugins.Single(p => p.Id == 8).Version);
         Assert.Contains(SkillsConfigurationKeys.PluginName, settings.MissingPlugins);
+        Assert.All(settings.Plugins, p => Assert.True(p.Exists && p.Id is not null && p.Version is not null));
         var missing = fields.Single(f => f.Id == $"{SkillsConfigurationKeys.PluginName}:{SkillsConfigurationKeys.WorkItemSlots}");
         Assert.Null(missing.PluginId);
         Assert.False(missing.Exists);

@@ -43,9 +43,8 @@ public static class PluginSettingsResolver
             AdminOnly = p.AdminOnly, Version = p.Configurations?.Version.ToString()
         }).ToList();
 
-        var missing = PluginSettingsCatalog.PluginRefs.Where(r => !plugins.Any(r.Matches)).ToList();
-        response.MissingPlugins = missing.Select(r => r.Name).ToList();
-        response.Plugins.AddRange(missing.Select(r => new SettingPluginResponse { Id = r.Id, Name = r.Name, Exists = false }));
+        // Plugin do catálogo que não existe: só em missingPlugins (plugins[] traz os cadastrados, com id e versão).
+        response.MissingPlugins = PluginSettingsCatalog.PluginRefs.Where(r => !plugins.Any(r.Matches)).Select(r => r.Name).ToList();
 
         foreach (var plugin in plugins)
         foreach (var (key, value) in values[plugin.Id])
