@@ -9,6 +9,14 @@ using solvace.timeline.domain.Requests;
 
 namespace solvace.prform.Controllers;
 
+/// <summary>0085: <c>POST Azure/card/{id}/actions/set-state</c>.</summary>
+public class SetCardStateRequest
+{
+    public string State { get; set; } = string.Empty;
+    /// <summary>Comentário na Discussion do card (opcional).</summary>
+    public string? Reason { get; set; }
+}
+
 /// <summary>0078: horas a lançar no card.</summary>
 public class LogHoursRequest
 {
@@ -145,6 +153,15 @@ public class AzureController : ControllerBase
     [HttpPost("card/{id}/actions/log-hours")]
     public Task<ActionResult<DevOpsActionResponse>> LogHours(string id, [FromBody] LogHoursRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.LogHoursAsync(id, request.Hours, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// 0085: muda o estado do card para um estado válido do tipo dele (Bug/User Story) — a skill desfazer-item-de-trabalho
+    /// usa para voltar o estado anterior de uma sub-tarefa devops-state. Registra na Timeline.
+    /// </summary>
+    [HttpPost("card/{id}/actions/set-state")]
+    public Task<ActionResult<DevOpsActionResponse>> SetState(string id, [FromBody] SetCardStateRequest request, [FromServices] ITimelineApplication timeline,
+        CancellationToken cancellationToken) =>
+        RunActionAsync(id, timeline, () => _actionsService.SetStateAsync(id, request.State, request.Reason, cancellationToken), cancellationToken);
 
     /// <summary>Zera o Remaining Work do card.</summary>
     [HttpPost("card/{id}/actions/zero-remaining")]

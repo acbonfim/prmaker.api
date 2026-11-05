@@ -18,6 +18,9 @@ public interface IAzureService
     /// </summary>
     Task<long> PatchFieldsAsync(string id, IReadOnlyDictionary<string, object> fields, CancellationToken cancellationToken = default);
 
+    /// <summary>0085: estados válidos de um tipo de work item (Bug, User Story...) no projeto, na ordem do DevOps.</summary>
+    Task<IReadOnlyList<string>> GetWorkItemTypeStatesAsync(string workItemType, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Cria (commentId null) ou atualiza um comentário HTML na discussion do card e devolve o id.
     /// Comentário apagado no DevOps (404 ao atualizar) = cria outro.

@@ -19,6 +19,12 @@ public interface IDevOpsActionsService
     Task<DevOpsActionResponse> SetInitialEstimateAsync(string cardNumber, CancellationToken cancellationToken = default);
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 0085: muda o estado do card para um estado válido do tipo dele (Bug ou User Story) — usado para desfazer a sub-tarefa
+    /// <c>devops-state</c> de um item de trabalho (voltar ao estado anterior). Mesmo estado → 409.
+    /// </summary>
+    Task<DevOpsActionResponse> SetStateAsync(string cardNumber, string state, string? reason, CancellationToken cancellationToken = default);
+
     /// <summary>0078: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
     Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default);
 
