@@ -45,6 +45,21 @@ public class WorkItemFileRepository(ExecutionPlanContext context) : IWorkItemFil
             .OrderBy(a => a.Number).ThenBy(a => a.Name)
             .ToListAsync(ct);
 
+    public Task<List<WorkItem>> GetItemsByCardAsync(string cardNumber, CancellationToken ct) =>
+        context.WorkItems.AsNoTracking().Include(i => i.Tasks).Where(i => i.CardNumber == cardNumber).OrderBy(i => i.Number).ToListAsync(ct);
+
+    public Task<List<WorkItemFile>> ListByItemsAsync(IReadOnlyCollection<Guid> workItemIds, CancellationToken ct) =>
+        workItemIds.Count == 0
+            ? Task.FromResult(new List<WorkItemFile>())
+            : context.WorkItemFiles.AsNoTracking().Where(f => workItemIds.Contains(f.WorkItemId)).OrderBy(f => f.Number).ToListAsync(ct);
+
+    public Task<List<ExecutionArtifact>> GetCardPlanArtifactsAsync(string cardNumber, CancellationToken ct) =>
+        (from a in context.Artifacts.AsNoTracking()
+         join p in context.Plans.AsNoTracking() on a.PlanId equals p.Id
+         where p.CardNumber == cardNumber && a.NoteId == null && a.ExternalKey == null
+         orderby a.Number, a.Name
+         select a).ToListAsync(ct);
+
     public Task<string?> GetPlanPhaseAsync(Guid planId, CancellationToken ct) =>
         context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => (string?)p.Phase).FirstOrDefaultAsync(ct);
 

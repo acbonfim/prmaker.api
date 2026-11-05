@@ -39,8 +39,38 @@ public class CodeCitationGate(IExecutionPlanApplication plans, IPluginConfigurat
         return Missing(text.ToString(), heads, plan.CardNumber);
     }
 
+    /// <summary>
+    /// 0087: itens de trabalho e plano de correção criados por skill/especialista. Toda citação de código do texto precisa da
+    /// fotografia (como na análise) e toda sub-tarefa/etapa de código (<c>kind = code</c>) precisa citar ao menos um trecho
+    /// (<c>[caminho:linhas](ref:id)</c>) — o item diz exatamente o que muda e onde, com o popover do código.
+    /// </summary>
+    public async Task<string?> CheckWorkAsync(string card, IEnumerable<string?> texts, IEnumerable<(string? Title, string? Kind, string? Description)> parts,
+        CancellationToken ct)
+    {
+        var text = string.Join('\n', texts.Where(t => !string.IsNullOrWhiteSpace(t)));
+        var heads = await plans.GetCardCodeRefHeadsAsync(card, ct);
+        if (Missing(text, heads, card, "crie de novo") is { } missing)
+            return missing;
+        return WithoutCodeCitation(parts, card);
+    }
+
+    /// <summary>Sub-tarefas/etapas de código sem nenhuma citação (null = tudo certo). Público para teste.</summary>
+    public static string? WithoutCodeCitation(IEnumerable<(string? Title, string? Kind, string? Description)> parts, string card)
+    {
+        var bare = parts
+            .Where(p => string.Equals(p.Kind?.Trim(), ExecutionStepKind.Code, StringComparison.OrdinalIgnoreCase)
+                        && CodeCitations.RefLinks(p.Description).Count == 0 && CodeCitations.Extract(p.Description).Count == 0)
+            .Select(p => $"\"{p.Title?.Trim()}\"")
+            .ToList();
+        if (bare.Count == 0)
+            return null;
+        return "0087: etapa/sub-tarefa de código precisa dizer exatamente o que muda e onde — cite o trecho com [caminho:linhas](ref:<ref>) " +
+               $"(fotografia gravada antes com `prmake-plan.sh coderef {card} <ref> --repo <repositorio> --file <caminho> --lines A-B`; arquivo novo: `--change create --path <caminho>`), " +
+               "explique o porquê em 1–2 frases e cite as regras da Base Solvace (`modulo#RN-012`). Sem citação: " + List(bare) + '.';
+    }
+
     /// <summary>Texto das citações sem fotografia (null = tudo certo). Público para teste.</summary>
-    public static string? Missing(string text, IReadOnlyList<ExecutionCodeRefHeadResponse> heads, string card)
+    public static string? Missing(string text, IReadOnlyList<ExecutionCodeRefHeadResponse> heads, string card, string retry = "conclua a etapa de novo")
     {
         var missing = CodeCitations.Extract(text)
             .Where(c => !heads.Any(h => ExecutionCodeRef.Matches(h.Path, h.Repository, h.StartLine, h.EndLine, c.Path, c.Start, c.End)))
@@ -57,7 +87,7 @@ public class CodeCitationGate(IExecutionPlanApplication plans, IPluginConfigurat
         if (unknownRefs.Count > 0)
             sb.Append(" Links ref: sem fotografia: ").Append(List(unknownRefs)).Append('.');
         sb.Append($" Grave cada trecho com `prmake-plan.sh coderef {card} <ref> --repo <repositorio> --file <caminho> --lines A-B` ")
-          .Append("(+ --change/--why/--after quando muda) e cite com [caminho:linha](ref:<ref>); depois conclua a etapa de novo.");
+          .Append($"(+ --change/--why/--after quando muda) e cite com [caminho:linha](ref:<ref>); depois {retry}.");
         return sb.ToString();
     }
 

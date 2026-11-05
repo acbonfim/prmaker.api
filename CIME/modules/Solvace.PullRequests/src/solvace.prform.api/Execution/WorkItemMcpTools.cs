@@ -25,7 +25,8 @@ public class WorkItemMcpTools(
     WorkItemToolsService tools,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
-    SpecialistActions specialist)
+    SpecialistActions specialist,
+    CodeCitationGate citations)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -96,6 +97,10 @@ public class WorkItemMcpTools(
             Title = title, Description = description, Type = type, TemplateKey = templateKey, Tasks = ParseTasks(tasks),
             AllowDuplicate = allowDuplicate, DuplicateReason = duplicateReason, PlanPhase = phase
         };
+        // 0087: item rico — código citado com fotografia (popover) e sub-tarefas de código dizendo onde e por quê.
+        if (await citations.CheckWorkAsync(c, new[] { request.Description }.Concat(request.Tasks.Select(t => t.Description)),
+                request.Tasks.Select(t => (t.Title, t.Kind, t.Description)), ct) is { } incomplete)
+            throw new ModelContextProtocol.McpException(incomplete);
         try
         {
             return await specialist.RunAsync(c, $"Criar o item de trabalho: {title}", description, async () =>

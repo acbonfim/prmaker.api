@@ -97,4 +97,36 @@ public static class WorkItemFileListing
                 a.StepKey is { } key && taskByStep.TryGetValue(key, out var task) ? task : null)));
         return list;
     }
+
+    /// <summary>Etapa do plano → sub-tarefa do item (mesmo StepKey).</summary>
+    public static IReadOnlyDictionary<string, long> TaskByStep(WorkItem item) =>
+        item.Tasks.Where(t => t.StepKey is not null)
+            .GroupBy(t => t.StepKey!)
+            .ToDictionary(g => g.Key, g => g.OrderBy(t => t.Order).First().Number);
+
+    /// <summary>
+    /// 0087: junta os arquivos do card. Cada arquivo de plano entra no primeiro item (menor número) ligado ao plano — nunca
+    /// em dois; o de plano sem item fica com <c>workItemNumber = 0</c>. Mais novos primeiro.
+    /// </summary>
+    public static List<WorkItemFileResponse> BuildForCard(IReadOnlyList<WorkItem> items, IEnumerable<WorkItemFile> own,
+        IEnumerable<ExecutionArtifact> planArtifacts)
+    {
+        var ownByItem = own.ToLookup(f => f.WorkItemId);
+        var plans = planArtifacts.Where(WorkItemFileListing.IsPlanFile).ToList();
+        var ownerOfPlan = new Dictionary<Guid, WorkItem>();
+        foreach (var item in items.OrderBy(i => i.Number))
+            if (item.PlanId is { } planId)
+                ownerOfPlan.TryAdd(planId, item);
+
+        var list = new List<WorkItemFileResponse>();
+        foreach (var item in items.OrderBy(i => i.Number))
+        {
+            var mine = ownerOfPlan.Where(kv => kv.Value.Id == item.Id).Select(kv => kv.Key).ToHashSet();
+            list.AddRange(WorkItemFileListing.Build(item.Number, ownByItem[item.Id],
+                plans.Where(a => mine.Contains(a.PlanId)), TaskByStep(item)));
+        }
+        list.AddRange(plans.Where(a => !ownerOfPlan.ContainsKey(a.PlanId))
+            .Select(a => WorkItemFileResponse.FromPlan(a, 0, null)));
+        return list.OrderByDescending(f => f.CreatedAt).ThenBy(f => f.Name, StringComparer.Ordinal).ToList();
+    }
 }

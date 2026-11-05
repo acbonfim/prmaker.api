@@ -143,3 +143,22 @@ learning|divergence --card <card>`. Reporte: card, solucao, itens de trabalho (n
 | perguntas, espera nas duas pontas | `$REF correcao 6` |
 | fluxo de branches, PRs, execucao, nova rodada | `$REF correcao 7` (parte de branches) · `8` · `8b` |
 | plano (retomar, control, block, watch) | `$REF plano <secao>` |
+
+### Itens de trabalho ricos (0087) — a pessoa entende tudo sem abrir o codigo
+
+Quem abre o item (ou a sub-tarefa) na Bancada deve entender, **de forma clara e objetiva, o que sera feito, cada passo e
+cada alteracao**. Por isso, ao montar o plano de implementacao e os itens, **antes** de chamar `prmake_correction` /
+`prmake_work_item_create` / `prmake_tool_run`:
+1. **Fotografe todo codigo que muda ou que explica a mudanca** (`prmake_code_ref`/`$PLAN coderef <card> <ref> --repo <repo> --file <caminho> --lines A-B`,
+   com `--change alterar|criar|remover`, `--why` e `--after` quando muda). O link `[caminho:linhas](ref:<ref>)` abre o popover com o codigo
+   atual e o diff — o mesmo da analise. Reaproveite as fotografias da analise (mesmo id).
+2. **Descricao do item** (markdown): *O que sera feito* (2–4 frases), *Por que* (causa/criterio), *Onde* (lista `[caminho:linhas](ref:id)` — **Alterar/Criar/Remover**),
+   *Regras da Base Solvace* (`modulo#RN-012`, `UC-003`: viram link para o item da engenharia reversa), *Como validar*.
+3. **Cada sub-tarefa/etapa de codigo (`kind=code`)**: descricao com o arquivo e a linha (`[caminho:linhas](ref:id)`), o que muda **nessa** linha, o porque e a regra da
+   Base que ela cumpre. O PRMake **recusa** etapa/sub-tarefa `code` sem nenhuma citacao e citacao sem fotografia — corrija e crie de novo.
+   Sub-tarefa nao-codigo (PR, chamado, script, validacao): diga exatamente o que entregar (branch/destino, titulo, arquivo, criterio).
+4. **Arquivos, imagens e textos entram no item**: o que ajuda a entender ou executar — analise (`.md`), mock Antes x Depois, script `.sql`, chamado, dados.
+   Texto: `prmake_work_item_file(card, number, name, content, kind, taskNumber?)` (vincule a sub-tarefa com `taskNumber`). Imagem/binario: grave no
+   **plano** (`bash $PLAN upload <card> <arquivo> ...` ou `prmake_file`) — o item ligado ao plano mostra os arquivos do plano na aba Arquivos; item avulso,
+   so texto. **Cite cada arquivo na descricao** (nome do arquivo) para a pessoa saber o que abrir.
+5. Nada de "ver analise": a descricao se basta. Texto curto, em pt-BR, sem jargao desnecessario.

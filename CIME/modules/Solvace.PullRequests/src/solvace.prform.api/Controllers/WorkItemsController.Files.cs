@@ -42,6 +42,19 @@ public partial class WorkItemsController
             return Ok(await files.ListAsync(number, ct));
         });
 
+    /// <summary>
+    /// 0087: todos os arquivos do card (itens, planos ligados e planos sem item — <c>workItemNumber = 0</c>), sem conteúdo.
+    /// O conteúdo sai por <c>contentUrl</c>.
+    /// </summary>
+    [HttpGet("card/{card}/files")]
+    public Task<ActionResult<IReadOnlyList<WorkItemFileResponse>>> ListCardFiles([FromRoute] string card,
+        [FromServices] IWorkItemFileApplication files, CancellationToken ct) =>
+        RunItem<IReadOnlyList<WorkItemFileResponse>>(async () =>
+        {
+            EnsureSpecialistCard(card);
+            return Ok(await files.ListByCardAsync(card, ct));
+        });
+
     /// <summary>Conteúdo de um arquivo do item; <c>download=true</c> baixa com o nome original.</summary>
     [HttpGet("{number:long}/files/{fileId:guid}/content")]
     public Task<ActionResult> GetFileContent([FromRoute] long number, [FromRoute] Guid fileId,

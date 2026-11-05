@@ -77,6 +77,45 @@ public class WorkItemFileTests
         Assert.Equal(WorkItemFileKind.Text, only.Kind);
     }
 
+    // ---------------------------------------------------------------- 0087: arquivos do card inteiro
+
+    private static WorkItem Item(string title, Guid? planId) =>
+        new("77988", WorkItemType.Implementation, title, null, WorkItemOrigin.User, null, planId, [], null, "Ana", Now);
+
+    [Fact]
+    public void Card_listing_joins_items_plans_and_orphan_plans_without_repeating_a_shared_plan()
+    {
+        var planA = Guid.NewGuid();
+        var legacy = Guid.NewGuid();
+        var first = Item("Análise", planA);
+        var second = Item("Correção", planA);                    // mesmo plano: os arquivos do plano ficam só no primeiro
+        var avulso = Item("Script avulso", null);
+        var items = new[] { first, second, avulso };
+        var own = new[] { ItemFile(avulso.Id, 1, "script.sql", WorkItemFileKind.Script), ItemFile(second.Id, 1, "chamado.md", WorkItemFileKind.Ticket) };
+        var plans = new[]
+        {
+            PlanFile(planA, 1, "analise.md"),
+            PlanFile(legacy, 2, "versao-antiga.md"),               // plano sem item (versão anterior à 0085)
+            PlanFile(planA, 3, "print.png", noteId: Guid.NewGuid()) // anexo de comentário: fora
+        };
+
+        var list = WorkItemFileListing.BuildForCard(items, own, plans);
+
+        Assert.Equal(4, list.Count);                              // script, chamado, análise e o do plano sem item
+        var byName = list.ToDictionary(f => f.Name);
+        Assert.Equal(first.Number, byName["analise.md"].WorkItemNumber);
+        Assert.Equal(second.Number, byName["chamado.md"].WorkItemNumber);
+        Assert.Equal(avulso.Number, byName["script.sql"].WorkItemNumber);
+        Assert.Equal(0, byName["versao-antiga.md"].WorkItemNumber);
+        Assert.Equal("plan", byName["versao-antiga.md"].Source);
+    }
+
+    [Fact]
+    public void Card_listing_without_items_or_files_is_empty()
+    {
+        Assert.Empty(WorkItemFileListing.BuildForCard([], [], []));
+    }
+
     [Theory]
     [InlineData(null, "01_x.sql", WorkItemFileKind.Script)]
     [InlineData(null, "chamado-y.md", WorkItemFileKind.Ticket)]

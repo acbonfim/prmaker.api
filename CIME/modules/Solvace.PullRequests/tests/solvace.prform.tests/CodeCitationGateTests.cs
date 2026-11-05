@@ -98,4 +98,36 @@ public class QaBranchTests
     [Fact]
     public void Star_is_a_prefix() =>
         Assert.True(new solvace.executionplans.application.Contracts.ExecutionQaSettings(true, ["qa*", "homolog"]).IsQaBranch("qa-legacy"));
+
+    // ---------------------------------------------------------------- 0087: itens e plano de correção ricos
+
+    [Fact]
+    public void Code_task_without_any_citation_is_refused_and_names_it()
+    {
+        var msg = CodeCitationGate.WithoutCodeCitation([
+            ("Corrigir a ordem da inicialização", "code", "Muda o init para antes do picker."),
+            ("Abrir PR", "pr", "Abre o PR para a release.")], "77988");
+        Assert.NotNull(msg);
+        Assert.Contains("Corrigir a ordem da inicialização", msg);
+        Assert.DoesNotContain("Abrir PR", msg);
+        Assert.Contains("coderef 77988", msg);
+    }
+
+    [Fact]
+    public void Code_task_with_ref_link_or_citation_passes()
+    {
+        Assert.Null(CodeCitationGate.WithoutCodeCitation([
+            ("A", "code", "Troca a ordem em [sa3_busca_a3.asp:239-289](ref:sa3-init) porque o picker lê antes da data."),
+            ("B", "CODE", "Ajusta Foo.cs:12 conforme a regra mod#RN-012."),
+            ("C", "sql-script", null)], "1"));
+    }
+
+    [Fact]
+    public void Retry_text_changes_for_work_items()
+    {
+        var heads = new List<ExecutionCodeRefHeadResponse>();
+        var msg = CodeCitationGate.Missing("veja Foo.cs:12", heads, "5", "crie de novo");
+        Assert.Contains("depois crie de novo.", msg);
+        Assert.Contains("depois conclua a etapa de novo.", CodeCitationGate.Missing("veja Foo.cs:12", heads, "5"));
+    }
 }

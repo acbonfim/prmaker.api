@@ -54,11 +54,18 @@ public partial class WorkItemsController : ExecutionControllerBase
     /// <c>{code:"invalidType", options}</c>.
     /// </summary>
     [HttpPost("card/{card}")]
-    public Task<ActionResult<WorkItemResponse>> Create([FromRoute] string card, [FromBody] CreateWorkItemRequest request, CancellationToken ct) =>
+    public Task<ActionResult<WorkItemResponse>> Create([FromRoute] string card, [FromBody] CreateWorkItemRequest request,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () =>
         {
             EnsureSpecialistCard(card);
-            var created = await _items.CreateAsync(card, request, OriginOf(request), await ActorAsync(ct), ct);
+            var origin = OriginOf(request);
+            // 0087: item criado pela skill/especialista é rico — código citado com fotografia e sub-tarefas de código com o "onde".
+            if (origin is not (WorkItemOrigin.User or WorkItemOrigin.Template)
+                && await citations.CheckWorkAsync(card.Trim(), new[] { request.Description }.Concat(request.Tasks.Select(t => t.Description)),
+                    request.Tasks.Select(t => (t.Title, t.Kind, t.Description)), ct) is { } incomplete)
+                return BadRequest(new { error = incomplete });
+            var created = await _items.CreateAsync(card, request, origin, await ActorAsync(ct), ct);
             return StatusCode(StatusCodes.Status201Created, created);
         });
 
