@@ -497,8 +497,8 @@ public partial class PrmakeMcpTools(
                  "direto pelo PRMake, sem depender da pasta local do card. Mesmo nome + tipo substitui a versao anterior. " +
                  "Use para todo script/analise/chamado que o usuario precisa ver no plano. " +
                  "Analise (phase analysis): so consultas somente leitura (00_consulta-<assunto>.sql), analise .md e dados. " +
-                 "Correcao (phase correction): script que altera dados (com rollback), validacao e o texto do chamado " +
-                 "(chamado-<nome>.md, kind ticket), com key = a etapa do chamado.")]
+                 "Correcao/implementacao (phase correction — na User Story e o plano de implementacao): script que altera dados (com rollback), " +
+                 "validacao e o chamado completo (chamado-<nome>.md, kind ticket), com key = a etapa do chamado — todo script vai com chamado.")]
     public Task<string> SaveFile(string card,
         [Description("Nome do arquivo com extensao, ex.: 01_mover_usuario.sql, analise-inicial.md, chamado.md")] string name,
         [Description("Conteudo completo do arquivo (texto UTF-8)")] string content,
@@ -601,7 +601,7 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_correction")]
-    [Description("Cria o plano de correcao do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. Depois, o 'phase' padrao das ferramentas passa a ser a correcao; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
+    [Description("Cria o plano de correcao (Bug) ou de implementacao (User Story, Kind analisar-us — titulo 'Implementacao <card>: ...'; nunca 'correcao' na US) do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. Depois, o 'phase' padrao das ferramentas passa a ser 'correction'; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
     public Task<string> Correction(string card, string title,
         [Description("Etapas: [{ key, title, description?, executor?, kind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         CancellationToken ct = default) => Safe(async () =>

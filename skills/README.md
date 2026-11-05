@@ -6,7 +6,7 @@ Fonte única das skills (feature 0024). Cada deploy da API publica o conteúdo d
 | Pasta | O que é |
 |---|---|
 | `analisar-bug/`, `gerar-prmake/`, `gerar-handover/`, `prmake-timeline/` | as skills (`SKILL.md`, `scripts/`, `skill.json` com requisitos e setup) |
-| `analisar-us/` | 0085: analise de User Story no mesmo ciclo da `analisar-bug` (plano Kind `analisar-us`, sem causa raiz/RCA): criterios de aceite, Base Solvace, solucao, itens de trabalho `user-story`. Usa os scripts da `analisar-bug` |
+| `analisar-us/` | 0085: analise de User Story no mesmo ciclo da `analisar-bug` (plano Kind `analisar-us`, sem causa raiz/RCA): criterios de aceite, Base Solvace, solucao, itens de trabalho `implementation` (plano de implementacao — nunca "correcao" na US). Usa os scripts da `analisar-bug` |
 | `executar-item-de-trabalho/` | 0085: executa um item de trabalho (pedido `work-item` do executor ou `/executar-item-de-trabalho <card> <n>`): sub-tarefas na ordem, com resultado, saidas e "como desfazer" |
 | `desfazer-item-de-trabalho/` | 0085: desfaz um item cancelado (pedido `work-item-undo`): sub-tarefas feitas em ordem reversa — fecha PR, apaga branch criada, reverte commit, volta o card — sempre pelo PRMake |
 | `especialista-do-caso/`, `base-solvace/`, `engenharia-reversa/` | especialista do caso (0080), Base Solvace e engenharia reversa |
@@ -37,7 +37,7 @@ Arquivo alterado à mão numa skill instalada não é sobrescrito — `prmake-sk
 Quando o update pula uma skill por isso, o hook imprime um `ATENCAO: skills do PRMake NAO atualizadas — ...` no stdout (o stderr do hook
 SessionStart não chega ao Claude), e o Claude avisa o usuário na sessão em vez de seguir com a versão velha.
 
-**Itens de trabalho (0085)**: o plano de correcao da `analisar-bug`/`analisar-us` vira **item de trabalho** no PRMake
+**Itens de trabalho (0085)**: o plano de correcao da `analisar-bug` (Bug) / de implementacao da `analisar-us` (US) vira **item de trabalho** no PRMake
 (uma sub-tarefa por etapa, sincronizada pelo servidor); entregas independentes viram itens proprios
 (`prmake_work_item_create`, sempre conferindo `prmake_work_items` antes). Itens avulsos (criados na tela ou pelo
 especialista) rodam pela `executar-item-de-trabalho` e, cancelados com "desfazer", pela `desfazer-item-de-trabalho`.
@@ -46,6 +46,9 @@ Nomes de branch/titulo/commit vem das regras do PRMake para o card (`prmake_rule
 `work-items`, `work-task`, `close-pr`, `delete-branch`, `open-pr ... --item <n>`, `worktree ... --item <n>`; o
 `branches` acrescenta `por-destino:`/`branches-por-destino:`; o `contexto` detecta User Story (plano `analisar-us`,
 criterios de aceite em `dados/criterios-aceite.txt`).
+Rodada 5: o `especialista-do-caso` **executa** as acoes que a pessoa pede (Timeline, horas, card no DevOps, `prmake_pr_open`,
+criar/cancelar/executar item) com a integracao de quem pediu — nunca o plano; item com `sql-script` ganha sozinho as
+sub-tarefas do chamado (o `executar-item-de-trabalho` grava o chamado completo com `prmake_work_item_file`, kind `ticket`).
 
 **Mudar uma skill** = mudar aqui e fazer o deploy da API. A versão de cada skill é o hash do conteúdo (muda sozinha).
 `skill.json`: `requires` (comandos necessários) e `setup` (`check`/`run`, ex.: o `.venv` do `python-tds` da `analisar-bug`).

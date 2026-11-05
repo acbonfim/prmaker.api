@@ -408,6 +408,9 @@ plan_kind() {
   printf 'analisar-bug'
 }
 
+# r5 (0085): como chamar a fase de entrega nas mensagens — US = implementacao, Bug = correcao (a fase no PRMake e "correction").
+delivery_name() { [[ "$(plan_kind)" == analisar-us ]] && printf 'implementacao' || printf 'correcao'; }
+
 default_steps() {
   # 0063: as etapas padrao vem do PRMake (Skills Configurations -> AnalysisDefaultSteps); o texto abaixo e so a reserva
   # para quando a configuracao nao responde. Titulos/descricoes aparecem na tela do card (por isso com acentuacao).
@@ -547,8 +550,8 @@ case "$CMD" in
           echo "Continue pelo passo 6 (propor solucoes e perguntar) usando a analise ja publicada: $CARD_DIR/analises/analise-inicial.md"
           echo "(pasta do card vazia? rode: prmake-plan.sh pull $CARD). Para refazer a analise do zero: start $CARD --new"
         else
-          echo "ANALISE CONCLUIDA — ainda sem plano de correcao. Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
-          echo "(montar o plano de correcao com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
+          echo "ANALISE CONCLUIDA — ainda sem plano de $(delivery_name). Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
+          echo "(montar o plano de $(delivery_name) com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
         fi
         register_session
         api GET "/$PLAN"
@@ -867,10 +870,11 @@ case "$CMD" in
     # a analise deixou no checkpoint de propor-solucoes, as respostas, os comentarios e os arquivos dos planos.
     SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
     CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
-    echo "=== CARD $CARD (pasta: $CARD_DIR) — FASE DE CORRECAO"
     MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
+    FASE="$(delivery_name | tr '[:lower:]' '[:upper:]')"
+    echo "=== CARD $CARD (pasta: $CARD_DIR) — FASE DE $FASE"
     grep -E "^(workItemType|fluxo|state|area|title)=" <<<"$MANIFEST_OUT"
-    echo "(campos e repro steps inteiros em $CARD_DIR/dados/ — abra so se a correcao precisar)"
+    echo "(campos e textos inteiros do card em $CARD_DIR/dados/ — abra so se a $(delivery_name) precisar)"
     echo; echo "=== PLANO"
     bash "$SELF" start "$CARD" 2>&1
     # 0076: evidencia nova no card depois da analise (print na discussion) entra no plano.
@@ -881,7 +885,7 @@ case "$CMD" in
       pull_plan "$ANALYSIS" >/dev/null 2>&1 || true
       api GET "/$ANALYSIS"
       if [[ "$CODE" == "200" ]]; then
-        echo; echo "=== RESUMO PARA A CORRECAO (deixado pela analise — base desta sessao; nao refaca a investigacao)"
+        echo; echo "=== RESUMO PARA A $FASE (deixado pela analise — base desta sessao; nao refaca a investigacao)"
         jq -r '[.steps[] | select(.key == "propor-solucoes")][0].checkpoint // empty' "$TMP/resp" > "$TMP/handoff"
         if [[ -s "$TMP/handoff" ]]; then cat "$TMP/handoff"
         else
@@ -1016,7 +1020,7 @@ case "$CMD" in
   correction)
     require_plan
     ANALYSIS="$(state_get analysisPlanId)"; [[ -n "$ANALYSIS" ]] || ANALYSIS="$PLAN"
-    TITLE="${1:?titulo do plano de correcao}"; read_steps_arg "${2:--}"
+    TITLE="${1:?titulo do plano de correcao/implementacao}"; read_steps_arg "${2:--}"
     api GET "/$ANALYSIS"
     [[ "$CODE" == "200" ]] || die "HTTP $CODE ao ler o plano de analise: $(resp_error)"
     jq -e '.phase == "analysis"' "$TMP/resp" >/dev/null || die "o plano ativo nao e de analise (use: prmake-plan.sh use $CARD analysis)"
@@ -1025,11 +1029,11 @@ case "$CMD" in
     jq -n --arg card "$CARD" --arg title "$TITLE" --arg parent "$ANALYSIS" --arg kind "$PKIND" --slurpfile steps "$TMP/steps" \
       '{cardNumber:$card, kind:$kind, title:$title, phase:"correction", parentPlanId:$parent, steps:$steps[0]}' > "$TMP/body"
     api POST "" "$TMP/body"
-    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao criar o plano de correcao: $(resp_error)"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao criar o plano de $( [[ "$PKIND" == analisar-us ]] && echo implementacao || echo correcao): $(resp_error)"
     CORR=$(jq -r '.id' "$TMP/resp")
     save_state "$CORR" "$ANALYSIS" "$CORR"
     PLAN="$CORR"; register_session
-    echo "PLANO DE CORRECAO criado (agora e o plano ativo):"
+    echo "PLANO DE $( [[ "$PKIND" == analisar-us ]] && echo IMPLEMENTACAO || echo CORRECAO) criado (agora e o plano ativo; titulo: $(jq -r '.title // empty' "$TMP/resp")):"
     print_plan
     ;;
 
