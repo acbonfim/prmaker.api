@@ -263,7 +263,7 @@ public class DevOpsActionsService : IDevOpsActionsService
 
     public async Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
-        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
         var names = await _azureService.GetFieldNamesAsync(cancellationToken);
         return new DevOpsEffortResponse
         {
@@ -277,7 +277,7 @@ public class DevOpsActionsService : IDevOpsActionsService
     {
         if (hours is <= 0 or > 24)
             throw DevOpsActionException.Conflict("Informe de 0,5 a 24 horas.");
-        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
         var names = await _azureService.GetFieldNamesAsync(cancellationToken);
         var completed = GetNumber(card, names.CompletedWork) ?? 0m;
         var remaining = GetNumber(card, names.RemainingWork) ?? 0m;
@@ -362,12 +362,22 @@ public class DevOpsActionsService : IDevOpsActionsService
         return await _pullRequestApplication.SaveSummary(register.CardNumber, request.Summary, commentId, cancellationToken);
     }
 
-    /// <summary>Relê o card no DevOps; só cards do tipo Bug (User Story terá outras ações).</summary>
-    private async Task<AzureCardFullResponse> LoadBugAsync(string cardNumber, CancellationToken cancellationToken)
+    /// <summary>
+    /// Relê o card no DevOps, de qualquer tipo — horas (Original/Completed/Remaining) e lançamento valem para Bug e
+    /// User Story (0085: a Bancada mostra as horas da US).
+    /// </summary>
+    private async Task<AzureCardFullResponse> LoadCardAsync(string cardNumber, CancellationToken cancellationToken)
     {
         var card = await _azureService.GetCardFullAsync(cardNumber, cancellationToken);
         if (card is null || !string.IsNullOrEmpty(card.Error) || card.Id == 0)
             throw DevOpsActionException.NotFound($"Card {cardNumber} não encontrado no DevOps");
+        return card;
+    }
+
+    /// <summary>Relê o card no DevOps; só cards do tipo Bug (User Story terá outras ações).</summary>
+    private async Task<AzureCardFullResponse> LoadBugAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
 
         // Mesma regra do front: User Story é US, o resto é tratado como Bug.
         if (string.Equals(GetString(card, FieldWorkItemType), "User Story", StringComparison.OrdinalIgnoreCase))
