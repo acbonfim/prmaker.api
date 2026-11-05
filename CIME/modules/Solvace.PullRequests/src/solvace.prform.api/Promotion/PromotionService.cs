@@ -42,7 +42,8 @@ public class PromotionService(
 
     // ── Configuração ─────────────────────────────────────────────────────────────────────────────
 
-    private record Settings(PromotionProfileSet Profiles, string BranchStrategy, string BranchNamePattern, string PrTitlePattern, string PromotionBranchPattern);
+    private record Settings(PromotionProfileSet Profiles, string BranchStrategy, string BranchNamePattern, string PrTitlePattern, string PromotionBranchPattern,
+        IReadOnlyDictionary<string, string> Suffixes);
 
     private async Task<Settings> LoadSettingsAsync(CancellationToken ct)
     {
@@ -55,12 +56,14 @@ public class PromotionService(
                 V(SkillsConfigurationKeys.BranchStrategy),
                 V(SkillsConfigurationKeys.BranchNamePattern, "hotfix/{card}"),
                 V(SkillsConfigurationKeys.PrTitlePattern, "AB#{card} {TARGET}"),
-                V(SkillsConfigurationKeys.PromotionBranchPattern, "{branch}-{target}"));
+                V(SkillsConfigurationKeys.PromotionBranchPattern, "{branch}-{target}"),
+                BranchRules.ParseSuffixes(V(SkillsConfigurationKeys.BranchSuffixByTarget)));
         }
         catch (InvalidOperationException)
         {
             // "Skills Configurations" ainda não existe: padrões, sem perfis (a tela avisa).
-            return new Settings(PromotionProfileSet.Empty, string.Empty, "hotfix/{card}", "AB#{card} {TARGET}", "{branch}-{target}");
+            return new Settings(PromotionProfileSet.Empty, string.Empty, "hotfix/{card}", "AB#{card} {TARGET}", "{branch}-{target}",
+                BranchRules.ParseSuffixes(null));
         }
     }
 
@@ -584,7 +587,7 @@ public class PromotionService(
             SourceBase = next.SourceBase,
             Target = next.TargetBranch,
             Mode = next.Mode,
-            NewBranch = BuildNewBranchName(settings.PromotionBranchPattern, next.SourceBranch, next.TargetBranch)
+            NewBranch = BuildNewBranchName(settings.PromotionBranchPattern, next.SourceBranch, next.TargetBranch, settings.Suffixes)
         };
     }
 
@@ -824,12 +827,17 @@ public class PromotionService(
             .Select(g => g.First())
             .ToList();
 
-    /// <summary>Nome da branch do cherry-pick a partir do padrão ({branch}, {target}); "/" do destino vira "-" para não criar pasta de ref.</summary>
-    public static string BuildNewBranchName(string pattern, string sourceBranch, string target)
+    /// <summary>
+    /// Nome da branch do cherry-pick a partir do padrão ({branch}, {target}, 0085: {suffix} = sufixo do destino no
+    /// BranchSuffixByTarget — release-version → -rv —, ou -&lt;destino&gt; sem sufixo configurado); "/" do destino vira "-"
+    /// para não criar pasta de ref.
+    /// </summary>
+    public static string BuildNewBranchName(string pattern, string sourceBranch, string target, IReadOnlyDictionary<string, string>? suffixes = null)
     {
         var safeTarget = Regex.Replace(target.Trim(), @"[^A-Za-z0-9._-]+", "-").Trim('-');
         var name = (string.IsNullOrWhiteSpace(pattern) ? "{branch}-{target}" : pattern)
             .Replace("{branch}", sourceBranch, StringComparison.OrdinalIgnoreCase)
+            .Replace("{suffix}", BranchRules.SuffixFor(target, suffixes ?? BranchRules.ParseSuffixes(null)), StringComparison.OrdinalIgnoreCase)
             .Replace("{target}", safeTarget, StringComparison.OrdinalIgnoreCase);
         return name.Length <= PromotionItem.MaxBranchLength ? name : name[..PromotionItem.MaxBranchLength];
     }
