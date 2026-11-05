@@ -136,6 +136,8 @@ public class ExecutionClaimResponse
     /// enquanto o pedido estiver ativo.
     /// </summary>
     public string? CaseToken { get; set; }
+    /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — o executor limpa os worktrees do item no fim.</summary>
+    public long? WorkItemNumber { get; set; }
 }
 
 public class ExecutionHeartbeatResponse
@@ -158,6 +160,8 @@ public class ExecutionWorkerStateResponse
     public List<Guid> ActiveRequestIds { get; set; } = [];
     /// <summary>0068: há pedido que este executor pode pegar agora — ele chama o next (cobre o que fica pronto com o tempo).</summary>
     public bool QueueReady { get; set; }
+    /// <summary>0085: itens de trabalho rodando ao mesmo tempo nesta máquina (fora do <see cref="MaxConcurrency"/>).</summary>
+    public int WorkItemSlots { get; set; } = 2;
 }
 
 /// <summary>0068: conexão do executor ao relay de tempo real.</summary>

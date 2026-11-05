@@ -24,6 +24,9 @@ namespace solvace.executionplans.infra.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("work_item_number_seq", "execution")
+                .HasMax(9999999L);
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseAction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1192,6 +1195,9 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<Guid?>("WorkItemId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("WorkerId")
                         .HasColumnType("uuid");
 
@@ -1209,11 +1215,15 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.HasIndex(new[] { "CardNumber" }, "IX_ExecutionRequests_ActiveCard")
                         .IsUnique()
-                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" <> 'specialist'");
+                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" NOT IN ('specialist', 'work-item', 'work-item-undo')");
 
                     b.HasIndex(new[] { "CardNumber" }, "IX_ExecutionRequests_ActiveCaseCard")
                         .IsUnique()
                         .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" = 'specialist'");
+
+                    b.HasIndex(new[] { "WorkItemId" }, "IX_ExecutionRequests_ActiveWorkItem")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" IN ('work-item', 'work-item-undo')");
 
                     b.ToTable("ExecutionRequests", "execution");
                 });
@@ -1515,6 +1525,232 @@ namespace solvace.executionplans.infra.Migrations
                     b.HasIndex("OwnerUserId", "Host");
 
                     b.ToTable("ExecutionWorkers", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActiveRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LinksJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Links")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('execution.work_item_number_seq')");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("CardNumber", "Fingerprint");
+
+                    b.ToTable("WorkItems", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<long?>("TaskNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkItemId", "Id");
+
+                    b.ToTable("WorkItemLogs", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Executor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('execution.work_item_number_seq')");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OutputJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Output")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("ParamsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Params")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("StepKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("UndoJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Undo");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("WorkItemId", "Order");
+
+                    b.ToTable("WorkItemTasks", "execution");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFileContent", b =>
@@ -1986,6 +2222,24 @@ namespace solvace.executionplans.infra.Migrations
                     b.Navigation("Actions");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemLog", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
+                        .WithMany("Logs")
+                        .HasForeignKey("WorkItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemTask", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
+                        .WithMany("Tasks")
+                        .HasForeignKey("WorkItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseFile", b =>
                 {
                     b.Navigation("Content");
@@ -1999,6 +2253,13 @@ namespace solvace.executionplans.infra.Migrations
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionPlan", b =>
                 {
                     b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItem", b =>
+                {
+                    b.Navigation("Logs");
+
+                    b.Navigation("Tasks");
                 });
 #pragma warning restore 612, 618
         }

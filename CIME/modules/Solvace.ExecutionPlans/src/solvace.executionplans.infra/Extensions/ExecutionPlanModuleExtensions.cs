@@ -29,6 +29,12 @@ public static class ExecutionPlanModuleExtensions
         services.AddScoped<ExecutionQueueApplication>();
         services.AddScoped<IExecutionQueueApplication>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
         services.AddScoped<IExecutionResumeTrigger>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+        // 0085: pista dos itens de trabalho (a fila resolve IWorkItemApplication sob demanda — sem ciclo na DI).
+        services.AddScoped<IWorkItemQueue>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+
+        // 0085: itens de trabalho do card (a fila dos itens, IWorkItemQueue, é registrada junto da fila).
+        services.AddScoped<IWorkItemRepository, WorkItemRepository>();
+        services.AddScoped<IWorkItemApplication, WorkItemApplication>();
 
         return services;
     }

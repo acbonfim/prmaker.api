@@ -7,7 +7,7 @@ public interface IExecutionQueueRepository
 {
     void AddRequest(ExecutionRequest request);
     Task<ExecutionRequest?> GetRequestAsync(Guid id, CancellationToken cancellationToken);
-    /// <summary>Pedido ativo (na fila, pego ou rodando) do card na pista principal, rastreado.</summary>
+    /// <summary>Pedido ativo (na fila, pego ou rodando) do card na pista principal (sem especialista e itens de trabalho), rastreado.</summary>
     Task<ExecutionRequest?> GetActiveRequestForCardAsync(string cardNumber, CancellationToken cancellationToken);
     /// <summary>0080: pedido ativo do Especialista do caso no card, rastreado.</summary>
     Task<ExecutionRequest?> GetActiveSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
@@ -26,6 +26,10 @@ public interface IExecutionQueueRepository
     Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>0080: quantos pedidos do especialista (pegos/rodando) cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveSpecialistsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0085: quantos pedidos de itens de trabalho (pegos/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0085: pedido ativo (executar ou desfazer) do item de trabalho, rastreado.</summary>
+    Task<ExecutionRequest?> GetActiveForWorkItemAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken);
     /// <summary>0044: maior acumulado da sessão informado por OUTRO pedido já terminado (base do custo deste).</summary>
     Task<decimal?> GetLastSessionCostAsync(string sessionId, Guid exceptRequestId, CancellationToken cancellationToken);
@@ -54,6 +58,10 @@ public interface IExecutionQueueRepository
     /// <summary>Salva. Conflito de concorrência → <see cref="ExecutionPlanConcurrencyException"/>; pedido ativo duplicado no card → <see cref="ExecutionRequestDuplicateException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
     void ClearTracking();
+    /// <summary>0085: relê só este pedido (conflito de concorrência sem soltar o resto do contexto — o item de trabalho é do mesmo contexto).</summary>
+    Task ReloadAsync(ExecutionRequest request, CancellationToken cancellationToken);
+    /// <summary>0085: solta só este pedido do rastreamento.</summary>
+    void Detach(ExecutionRequest request);
 }
 
 /// <summary>Já existe um pedido ativo para o card (índice único parcial).</summary>

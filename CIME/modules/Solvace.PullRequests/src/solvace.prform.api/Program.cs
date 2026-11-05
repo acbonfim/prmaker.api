@@ -49,6 +49,9 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionQueueSettings, solvace.prform.Execution.ExecutionQueueSettings>();
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
+// 0085: regras do PRMake calculadas para o card (GET Skills/rules, prmake_rules, contexto do especialista).
+builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
@@ -78,7 +81,9 @@ builder.Services.AddMcpServer(o =>
     // 0052: Base Solvace (engenharia reversa por item, seções, KC) pelo MCP — a análise consulta antes do código.
     .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>()
     // 0080: Especialista do caso (conversa do card).
-    .WithTools<solvace.prform.Execution.CaseChatMcpTools>();
+    .WithTools<solvace.prform.Execution.CaseChatMcpTools>()
+    // 0085: regras do card e itens de trabalho.
+    .WithTools<solvace.prform.Execution.WorkItemMcpTools>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".

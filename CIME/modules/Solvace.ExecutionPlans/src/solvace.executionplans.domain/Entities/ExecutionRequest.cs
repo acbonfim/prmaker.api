@@ -31,16 +31,28 @@ public static class ExecutionRequestKind
     /// </summary>
     public const string Specialist = "specialist";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume, Specialist };
+    /// <summary>0085: executar um item de trabalho (sub-tarefas em ordem) — pista própria por item, em paralelo aos outros.</summary>
+    public const string WorkItem = "work-item";
+
+    /// <summary>0085: desfazer um item de trabalho (sub-tarefas concluídas em ordem reversa).</summary>
+    public const string WorkItemUndo = "work-item-undo";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume, Specialist, WorkItem, WorkItemUndo };
+
+    /// <summary>0085: pedido de item de trabalho (executar ou desfazer).</summary>
+    public static bool IsWorkItem(string? kind) => kind is WorkItem or WorkItemUndo;
 }
 
-/// <summary>0080: pistas do executor — a principal (analisar/retomar) e a do especialista.</summary>
+/// <summary>0080: pistas do executor — a principal (analisar/retomar), a do especialista e (0085) a dos itens de trabalho.</summary>
 public static class ExecutionLane
 {
     public const string Main = "main";
     public const string Specialist = "specialist";
+    /// <summary>0085: itens de trabalho (executar/desfazer) — vagas próprias por máquina, um pedido ativo por item.</summary>
+    public const string WorkItem = "work-item";
 
-    public static string Of(string kind) => kind == ExecutionRequestKind.Specialist ? Specialist : Main;
+    public static string Of(string kind) =>
+        kind == ExecutionRequestKind.Specialist ? Specialist : ExecutionRequestKind.IsWorkItem(kind) ? WorkItem : Main;
 }
 
 /// <summary>De onde veio o pedido.</summary>
@@ -90,6 +102,8 @@ public class ExecutionRequest
     public string Status { get; private set; } = ExecutionRequestStatus.Queued;
 
     public Guid? PlanId { get; private set; }
+    /// <summary>0085: item de trabalho do pedido (kinds work-item/work-item-undo) — no máximo um pedido ativo por item.</summary>
+    public Guid? WorkItemId { get; private set; }
     public string? SessionId { get; private set; }
     /// <summary>Máquina onde a sessão a retomar vive (vem do plano).</summary>
     public string? SessionHost { get; private set; }
@@ -175,7 +189,7 @@ public class ExecutionRequest
 
     public ExecutionRequest(string cardNumber, string kind, string source, Guid ownerUserId, string ownerName,
         Guid? requestedByUserId, string requestedBy, Guid? planId, ExecutionSession? session, Guid? targetWorkerId,
-        string? note, bool force, DateTimeOffset now)
+        string? note, bool force, DateTimeOffset now, Guid? workItemId = null)
     {
         var card = (cardNumber ?? string.Empty).Trim();
         if (card.Length == 0 || card.Length > 100)
@@ -183,6 +197,8 @@ public class ExecutionRequest
         var k = (kind ?? string.Empty).Trim().ToLowerInvariant();
         if (!ExecutionRequestKind.All.Contains(k))
             throw new DomainException($"Tipo de pedido inválido: '{kind}'.");
+        if (ExecutionRequestKind.IsWorkItem(k) && workItemId is null)
+            throw new DomainException("Pedido de item de trabalho sem o item.");
 
         Id = Guid.NewGuid();
         CardNumber = card;
@@ -193,6 +209,7 @@ public class ExecutionRequest
         RequestedByUserId = requestedByUserId;
         RequestedBy = Clean(requestedBy, 200) ?? "Usuário";
         PlanId = planId;
+        WorkItemId = ExecutionRequestKind.IsWorkItem(k) ? workItemId : null;
         SessionId = session?.SessionId;
         SessionHost = session?.Host;
         SessionCwd = session?.Cwd;
@@ -202,6 +219,15 @@ public class ExecutionRequest
         CreatedAt = now;
         UpdatedAt = now;
     }
+
+    /// <summary>
+    /// 0085: pedido para executar (<see cref="ExecutionRequestKind.WorkItem"/>) ou desfazer
+    /// (<see cref="ExecutionRequestKind.WorkItemUndo"/>) um item de trabalho — sessão nova sempre.
+    /// </summary>
+    public static ExecutionRequest ForWorkItem(WorkItem item, bool undo, string source, Guid ownerUserId, string ownerName,
+        Guid? requestedByUserId, string requestedBy, Guid? targetWorkerId, string? note, DateTimeOffset now) =>
+        new(item.CardNumber, undo ? ExecutionRequestKind.WorkItemUndo : ExecutionRequestKind.WorkItem, source, ownerUserId, ownerName,
+            requestedByUserId, requestedBy, item.PlanId, null, targetWorkerId, note, false, now, item.Id);
 
     public bool IsActive => ExecutionRequestStatus.IsActive(Status);
     public bool IsFinished => !IsActive;

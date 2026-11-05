@@ -49,7 +49,10 @@ public partial class PrmakeMcpTools(
         "0076: evidencias do card (anexos, prints da descricao e da discussion) com prmake_evidence — abra todas antes da causa raiz. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
-        "Codigo so para confirmar o 'Onde:' que o item cita.";
+        "Codigo so para confirmar o 'Onde:' que o item cita. " +
+        "0085: regras do card (nome de branch por destino, fluxo, padroes) com prmake_rules — nunca invente branch; itens de trabalho " +
+        "com prmake_work_items/prmake_work_item (confira antes de criar: nao duplique), prmake_work_item_create/_update (so pending) e " +
+        "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -265,13 +268,15 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
-    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify. ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
+    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
     public Task<string> DevOps(string card, string action,
         [Description("Autorizacao explicita do usuario para ready-for-qa")] string? authorization = null,
         [Description("classify: chave da classificacao pronta")] string? preset = null,
         [Description("classify: Resolution Type")] string? resolutionType = null,
         [Description("classify: General Classification")] string? generalClassification = null,
         [Description("classify: Classification")] string? classification = null,
+        [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
+        [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
@@ -286,6 +291,7 @@ public partial class PrmakeMcpTools(
             {
                 Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification
             }, ct),
+            "set-state" => a => a.SetStateAsync(id, state ?? throw new McpException("set-state: informe 'state'."), reason, ct),
             _ => throw new McpException($"Acao desconhecida: {action}")
         };
         if (action.Trim().Equals("ready-for-qa", StringComparison.OrdinalIgnoreCase)
@@ -580,7 +586,8 @@ public partial class PrmakeMcpTools(
                        ?? throw new McpException($"O card {card} nao tem plano de analise.");
         var plan = await plans.CreateAsync(new CreateExecutionPlanRequest
         {
-            CardNumber = card.Trim(), Kind = "analisar-bug", Title = title, Phase = ExecutionPhase.Correction,
+            // 0085: a correção herda a skill da análise (analisar-us numa User Story).
+            CardNumber = card.Trim(), Kind = string.IsNullOrWhiteSpace(analysis.Kind) ? "analisar-bug" : analysis.Kind, Title = title, Phase = ExecutionPhase.Correction,
             ParentPlanId = analysis.Id, Steps = steps
         }, await ActorAsync(ct), ct);
         return Serialize(new

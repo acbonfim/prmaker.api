@@ -181,7 +181,8 @@ public static class Doctor
 /// </summary>
 public static class Worktrees
 {
-    public static async Task CleanAsync(AgentConfig config, PrmakeClient client, CancellationToken ct)
+    /// <summary>Pastas <c>.prmake-wt</c> do workspace e ao lado dos repositórios do mapa.</summary>
+    private static List<string> Roots(AgentConfig config)
     {
         var workspace = ConfigStore.ResolveWorkspace(config);
         var roots = new List<string>();
@@ -197,9 +198,80 @@ public static class Worktrees
         foreach (var repo in RepoMap.Folders(RepoMap.Load()))
             if (Path.GetDirectoryName(repo) is { } parent && Path.Combine(parent, ".prmake-wt") is var wtRoot && Directory.Exists(wtRoot))
                 roots.Add(wtRoot);
-        roots = roots.Select(Path.GetFullPath).Distinct(Paths.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToList();
+        return roots.Select(Path.GetFullPath).Distinct(Paths.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Worktrees de uma pasta do card: as diretas e (0085) as dos itens de trabalho (<c>item-&lt;n&gt;/&lt;repo&gt;</c>).
+    /// </summary>
+    private static IEnumerable<string> WorktreesUnder(string cardDir)
+    {
+        foreach (var dir in Directory.EnumerateDirectories(cardDir))
+        {
+            if (Path.GetFileName(dir).StartsWith("item-", StringComparison.Ordinal) && !File.Exists(Path.Combine(dir, ".git")) && !Directory.Exists(Path.Combine(dir, ".git")))
+            {
+                foreach (var nested in Directory.EnumerateDirectories(dir)) yield return nested;
+                continue;
+            }
+            yield return dir;
+        }
+    }
+
+    private static async Task RemoveAsync(string wt, CancellationToken ct)
+    {
+        var (code, common) = await Shell.RunAsync("git", ["-C", wt, "rev-parse", "--path-format=absolute", "--git-common-dir"], ct: ct);
+        if (code == 0)
+            await Shell.RunAsync("git", ["--git-dir", common.Trim(), "worktree", "remove", "--force", wt], ct: ct);
+        if (Directory.Exists(wt))
+        {
+            try { Directory.Delete(wt, recursive: true); } catch { /* fica para a próxima */ }
+        }
+        if (code == 0)
+            await Shell.RunAsync("git", ["--git-dir", common.Trim(), "worktree", "prune"], ct: ct);
+    }
+
+    private static void DeleteIfEmpty(string dir)
+    {
+        try
+        {
+            if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
+        }
+        catch
+        {
+            // fica para a próxima
+        }
+    }
+
+    /// <summary>
+    /// 0085: fim de um pedido de item de trabalho (executar/desfazer) que terminou bem — remove os worktrees do item
+    /// (<c>.prmake-wt/&lt;card&gt;/item-&lt;n&gt;/</c>). O que a skill subiu já está no remoto; falha fica para a limpeza de 12 h.
+    /// </summary>
+    public static async Task CleanItemAsync(AgentConfig config, string card, long itemNumber, CancellationToken ct)
+    {
+        foreach (var root in Roots(config))
+        {
+            var cardDir = Path.Combine(root, card);
+            var itemDir = Path.Combine(cardDir, $"item-{itemNumber}");
+            if (!Directory.Exists(itemDir)) continue;
+            try
+            {
+                foreach (var wt in Directory.EnumerateDirectories(itemDir).ToList())
+                    await RemoveAsync(wt, ct);
+                DeleteIfEmpty(itemDir);
+                DeleteIfEmpty(cardDir);
+                Log.Info($"card {card}: worktrees do item #{itemNumber} removidos");
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                Log.Warn($"card {card}: não consegui limpar os worktrees do item #{itemNumber} ({e.Message})");
+            }
+        }
+    }
+
+    public static async Task CleanAsync(AgentConfig config, PrmakeClient client, CancellationToken ct)
+    {
         var retention = TimeSpan.FromDays(Math.Max(1, config.WorktreeRetentionDays));
-        foreach (var root in roots)
+        foreach (var root in Roots(config))
         {
             foreach (var cardDir in Directory.EnumerateDirectories(root))
             {
@@ -217,18 +289,10 @@ public static class Worktrees
                 }
                 if (status is not (null or "completed" or "cancelled")) continue;
 
-                foreach (var wt in Directory.EnumerateDirectories(cardDir))
-                {
-                    var (code, common) = await Shell.RunAsync("git", ["-C", wt, "rev-parse", "--path-format=absolute", "--git-common-dir"], ct: ct);
-                    if (code == 0)
-                        await Shell.RunAsync("git", ["--git-dir", common.Trim(), "worktree", "remove", "--force", wt], ct: ct);
-                    if (Directory.Exists(wt))
-                    {
-                        try { Directory.Delete(wt, recursive: true); } catch { /* fica para a próxima */ }
-                    }
-                    if (code == 0)
-                        await Shell.RunAsync("git", ["--git-dir", common.Trim(), "worktree", "prune"], ct: ct);
-                }
+                foreach (var wt in WorktreesUnder(cardDir).ToList())
+                    await RemoveAsync(wt, ct);
+                foreach (var itemDir in Directory.EnumerateDirectories(cardDir, "item-*").ToList())
+                    DeleteIfEmpty(itemDir);
                 try
                 {
                     if (!Directory.EnumerateFileSystemEntries(cardDir).Any()) Directory.Delete(cardDir);

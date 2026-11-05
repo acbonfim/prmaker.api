@@ -112,6 +112,29 @@ dados → so a etapa de chamado). O plano pode ter apenas, por exemplo:
 
 User education puro (nada a configurar) = **so o `fechar-card`**.
 
+**Plano de correcao → item(s) de trabalho (0085)** — o plano de correcao agora gera **itens de trabalho** no PRMake
+(tela *Bancada do card*):
+- **Automatico**: ao criar o plano (`prmake_correction`/`correction`), o PRMake cria **um item** (`origin=correction`,
+  tipo do card: `bug` ou `user-story`) ligado ao plano, com **uma sub-tarefa por etapa** (`stepKey` = key da etapa). Ao
+  executar as etapas (`advance`/`step`/`block`), o servidor **sincroniza** as sub-tarefas (inicio, conclusao,
+  espera, cancelamento) — **nao** chame `prmake_work_task` para esse item. Etapas novas (nova rodada, 8b) entram como
+  sub-tarefas novas. Plano concluido (tudo terminado) → item **concluido**. Item do plano roda pelo plano, nunca pelo
+  `executar-item-de-trabalho`.
+- **Entregas independentes = itens separados**: quando a solucao tem partes que andam sozinhas — ex.: o PR para
+  producao (master) e outro para `release-version` levado depois, um script de dados que vai por chamado em outro
+  momento, um ajuste pos-QA —, deixe no plano so o que e desta rodada e crie as outras entregas com
+  `prmake_work_item_create(card, title, description, tasks, type?, planPhase: "correction")`:
+  1. **Antes**, `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`): ja existe item com o mesmo objetivo
+     (mesmo destino/repositorio/sub-tarefas, status nao cancelado)? Nao crie — cite o existente. A API recusa duplicata
+     (`duplicate` com o item existente); `allowDuplicate` + motivo so quando for outro trabalho de fato.
+  2. Sub-tarefas na ordem, com `kind` do catalogo (`branch, cherry-pick, code, pr, devops-state, sql-script,
+     validation, comment, manual`), `executor` (`claude`/`user`) e `params` **reais**: `repository`, `branch` (nome do
+     `branches`/`prmake_rules` — nunca inventado), `from`, `target`, `commits`. Ex.: "PR master → release-version" =
+     `branch {branch: hotfix/<card>-rv, from: release-version}` → `cherry-pick {source: hotfix/<card>}` →
+     `pr {branch: hotfix/<card>-rv, target: release-version}`.
+  3. Diga no checkpoint/resumo quais itens criou (`#numero`). A pessoa executa cada item pela tela ("Executar", roda
+     em paralelo pelo `executar-item-de-trabalho`); cancelar com "desfazer" usa o `desfazer-item-de-trabalho`.
+
 **Orientacao ao cliente = resumo PT/EN do fechamento** (card 74669): o resumo nao tecnico que o `fechar-card`
 publica na discussion e o que o cliente le — entao ele **e** a orientacao. Redija a orientacao (o que aconteceu, o
 que foi feito ou o que o cliente faz, o passo a passo, por que nao e bug) em `analises/orientacao-cliente.md`, use
@@ -131,7 +154,10 @@ bash $PLAN branches <card> <repo> --flow <f> --base <b> # quando ele pedir (exit
 ```
 Ele imprime o tipo do repositorio, o fluxo, a base, **a pasta do repositorio nesta maquina** (`pasta=`, pelo mapa
 da 0048), a branch de correcao, a mensagem de commit, os PRs (branch derivada, de onde sai + cherry-pick, destino,
-titulo) e os **comandos prontos** (`git checkout`/`worktree` ja com a pasta, `cherry-pick`, `push` e as linhas de
+titulo), **o nome por destino** (0085: linha `por-destino:` nos PRs sem sufixo cujo destino tem sufixo proprio e
+`branches-por-destino:` com todos — `BranchSuffixByTarget` no PRMake, ex.:
+`{"development":"-dev","qa":"-qa","release-version":"-rv","hotfix-version":"-hv","edge":"-edge"}`; release-version →
+`hotfix/<card>-rv`, **nunca** `-release`) e os **comandos prontos** (`git checkout`/`worktree` ja com a pasta, `cherry-pick`, `push` e as linhas de
 `open-pr`). Exit 4 = a pasta do repositorio e desconhecida (fora do mapa ou mais de um clone): pergunte ao usuario,
 fixe com `bash ~/.claude/skills/.prmake/prmake-skills.sh repos set <repo> <pasta>` e rode o `branches` de novo. Siga exatamente o que ele imprimir; o nome da branch nunca leva o prefixo do
 commit/titulo. Antes de criar branches, confira com `git fetch origin && git ls-remote --heads origin <base>` que
@@ -153,7 +179,8 @@ empurra com o cherry-pick concluido.
 
 ### 8. Executar o plano de correcao
 Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` → faca (com `log`/`sync`/`checkpoint`)
-→ `step completed`. Regras:
+→ `step completed`. Cada etapa e uma sub-tarefa do item de trabalho do plano — o PRMake sincroniza sozinho (0085).
+Regras:
 - **Mudar codigo so depois da resposta do usuario** (passo 6) e so no escopo do card.
 - **Nao adicione comentarios no codigo.** A correcao deve ser so a mudanca de codigo — sem comentarios
   explicando o bug, a correcao, o card (`// AB#...`, `// fix: ...`, `// antes era...`), sem blocos comentados
@@ -218,7 +245,7 @@ Repita: `control` → pegue a proxima etapa **pronta** do `executor: claude` →
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
-  quando todas as etapas terminam (PRs mesclados, chamados resolvidos) — ai o vigia termina com exit 11 e voce
+  quando todas as etapas terminam (PRs mesclados, chamados resolvidos) — e o item de trabalho do plano junto — ai o vigia termina com exit 11 e voce
   faz o relatorio final.
 
 ### 8b. A correcao nao resolveu — nova rodada no mesmo plano

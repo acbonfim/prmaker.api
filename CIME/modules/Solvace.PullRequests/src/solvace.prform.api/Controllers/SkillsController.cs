@@ -71,6 +71,39 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
         });
     }
 
+    /// <summary>
+    /// 0085: "Regras do PRMake" calculadas para o card — fluxo pela área, branch principal, nome de branch por destino
+    /// (BranchSuffixByTarget: release-version → hotfix/77434-rv), PRs do fluxo por tipo de repositório, padrões e regras
+    /// fixas. <c>Accept: text/markdown</c> (ou <c>?format=md</c>) devolve só o markdown; senão JSON com o markdown e os
+    /// dados calculados.
+    /// </summary>
+    [HttpGet("rules")]
+    public async Task<ActionResult> Rules([FromQuery] string? card, [FromQuery] string? format, [FromServices] SkillsRulesService rules,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(SkillsRulesService.NormalizeCard(card)))
+            return BadRequest(new { error = "Informe o card (?card=)." });
+        var r = await rules.GetAsync(card!, cancellationToken);
+        var markdown = SkillsRulesService.Markdown(r);
+        var wantsText = string.Equals(format, "md", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
+                        || Request.Headers.Accept.Any(a => a?.Contains("text/markdown", StringComparison.OrdinalIgnoreCase) == true);
+        if (wantsText)
+            return Content(markdown, "text/markdown; charset=utf-8");
+        return Ok(new
+        {
+            card = r.Card,
+            markdown,
+            workItemType = r.WorkItemType,
+            isUserStory = r.IsUserStory,
+            areaPath = r.AreaPath,
+            flow = r.Flow,
+            mainBranch = r.MainBranch,
+            branchesByTarget = r.Suffixes.ToDictionary(s => s.Key, s => BranchRules.BranchFor(r.MainBranch, s.Key, r.Suffixes)),
+            flowTargets = r.FlowTargets(),
+            cardError = r.CardError
+        });
+    }
+
     /// <summary>URL pública da API para os scripts (Skills:ApiBase; senão o host da requisição, https fora do localhost).</summary>
     private string ApiBase()
     {

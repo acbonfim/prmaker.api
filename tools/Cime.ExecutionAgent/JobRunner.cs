@@ -39,6 +39,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     public Guid RequestId => claim.Request.Id;
     /// <summary>0080: resposta do Especialista do caso (pista própria, token do caso, MCP só do caso).</summary>
     public bool IsSpecialist => claim.Request.Kind == "specialist";
+    /// <summary>0085: item de trabalho (executar/desfazer) — job comum (MCP normal do executor, sem o guard do especialista), em vagas próprias.</summary>
+    public bool IsWorkItem => claim.Request.Kind is "work-item" or "work-item-undo";
     /// <summary>0080: uma resposta do especialista não deveria passar disso.</summary>
     private static readonly TimeSpan SpecialistTimeout = TimeSpan.FromMinutes(20);
     public string Card => claim.Request.CardNumber;
@@ -227,8 +229,12 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
         await exit;
         await Task.WhenAll(stdout, stderr);
-        await FinishAsync(Outcome(process));
+        var outcome = Outcome(process);
+        await FinishAsync(outcome);
         Log.Info($"card {r.CardNumber}: terminou (código {SafeExitCode(process)})");
+        // 0085: item de trabalho que terminou bem — os worktrees dele (.prmake-wt/<card>/item-<n>/) saem na hora.
+        if (IsWorkItem && outcome.Outcome == "done" && claim.WorkItemNumber is { } itemNumber)
+            await Worktrees.CleanItemAsync(config, r.CardNumber, itemNumber, CancellationToken.None);
         await NotifyIfNeededAsync();
     }
 

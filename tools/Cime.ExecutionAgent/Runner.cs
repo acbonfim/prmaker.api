@@ -75,10 +75,13 @@ public sealed class Runner(AgentConfig config)
                 await Delay(TimeSpan.FromSeconds(30), stopping);
                 continue;
             }
-            // 0080: duas pistas — a principal (limite da máquina) e a do Especialista do caso (respostas curtas, até 2).
+            // 0080: pistas — a principal (limite da máquina), a do Especialista do caso (respostas curtas, até 2) e (0085) a
+            // dos itens de trabalho (vagas próprias, padrão 2). O PRMake só entrega o que cabe em alguma pista livre.
             var specialists = _jobs.Values.Count(j => j.Job.IsSpecialist);
-            var mainFull = _jobs.Count - specialists >= Math.Max(1, _state.MaxConcurrency);
-            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots))
+            var workItems = _jobs.Values.Count(j => j.Job.IsWorkItem);
+            var mainFull = _jobs.Count - specialists - workItems >= Math.Max(1, _state.MaxConcurrency);
+            var workItemsFull = workItems >= Math.Max(1, _state.WorkItemSlots);
+            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots && workItemsFull))
             {
                 await Delay(TimeSpan.FromSeconds(5), stopping);
                 continue;

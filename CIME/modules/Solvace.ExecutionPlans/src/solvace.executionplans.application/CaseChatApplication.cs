@@ -25,7 +25,9 @@ public class CaseChatApplication(
     IExecutionPlanRepository plans,
     IExecutionPlanApplication planApp,
     IExecutionQueueApplication queue,
-    IRealTimeNotifier realTime)
+    IRealTimeNotifier realTime,
+    IPrmakeRulesProvider? rules = null,
+    IWorkItemApplication? workItems = null)
 {
     public const string SpecialistName = "Especialista do caso";
     private const int DefaultPageSize = 200;
@@ -502,6 +504,31 @@ public class CaseChatApplication(
             var files = latest.Artifacts.Where(a => a.NoteId is null).Select(a => $"{a.Name} ({a.Kind})").Take(30).ToList();
             if (files.Count > 0)
                 sb.AppendLine($"Arquivos do plano: {string.Join(", ", files)} — leia com prmake_attachment se precisar.");
+        }
+
+        // 0085: regras do card (o especialista não inventa nome de branch) e itens de trabalho (não repete item).
+        if (rules is not null && await rules.RulesMarkdownAsync(card, summary: true, cancellationToken) is { Length: > 0 } rulesText)
+        {
+            sb.AppendLine().AppendLine("## Regras do PRMake (resumo)");
+            sb.Append(rulesText);
+            sb.AppendLine("Nunca invente nome de branch, base ou destino: use estas regras (completas em prmake_rules).");
+        }
+        if (workItems is not null)
+        {
+            sb.AppendLine().AppendLine("## Itens de trabalho");
+            string? itemsText = null;
+            try
+            {
+                itemsText = await workItems.SummaryMarkdownAsync(card, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                itemsText = $"(não consegui listar os itens: {e.Message} — use prmake_work_items)";
+            }
+            sb.AppendLine(string.IsNullOrWhiteSpace(itemsText) ? "Nenhum item de trabalho no card." : itemsText.TrimEnd());
+            sb.AppendLine("Antes de propor ou criar um item, confira se já existe item com o mesmo objetivo (fingerprint/status) — " +
+                          "pendente igual: ajuste com prmake_work_item_update; iniciado/concluído: não repita. Duplicata só com " +
+                          "allowDuplicate + motivo, quando for de fato outro trabalho.");
         }
 
         var points = await cases.GetPointsAsync(card, cancellationToken);

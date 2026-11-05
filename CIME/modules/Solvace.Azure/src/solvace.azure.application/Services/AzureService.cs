@@ -249,6 +249,31 @@ public class AzureService : IAzureService
         return doc.RootElement.TryGetProperty("rev", out var rev) && rev.TryGetInt64(out var value) ? value : 0;
     }
 
+    public async Task<IReadOnlyList<string>> GetWorkItemTypeStatesAsync(string workItemType, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var configured = Config.GetConfigurationValue("ApiVersion");
+        var client = CreateClient();
+        // A API de estados saiu do preview na 7.1: tenta a versão configurada e, recusada, a 7.1-preview.1.
+        foreach (var version in new[] { string.IsNullOrWhiteSpace(configured) ? "7.1" : configured, "7.1-preview.1" }.Distinct())
+        {
+            var url = $"{GetAzureBaseUrl()}/wit/workitemtypes/{Uri.EscapeDataString(workItemType)}/states?api-version={version}";
+            var response = await client.GetAsync(url, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest) continue;
+            if (!response.IsSuccessStatusCode)
+                throw DevOpsActionException.Upstream($"O DevOps não listou os estados de {workItemType}: {ExtractDevOpsError(body)}");
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray()
+                    .Select(v => v.TryGetProperty("name", out var n) ? n.GetString() : null)
+                    .OfType<string>()
+                    .ToList()
+                : [];
+        }
+        throw DevOpsActionException.Upstream($"O DevOps não listou os estados de {workItemType}.");
+    }
+
     public async Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);

@@ -80,9 +80,11 @@ public interface IExecutionQueueSettings
 }
 
 /// <param name="CorrectionInNewSession">A correção abre uma sessão nova do Claude em vez de retomar a da análise.</param>
+/// <param name="WorkItemSlots">0085: itens de trabalho rodando ao mesmo tempo por máquina (fora do limite da pista principal).</param>
 /// <remarks>0080: a espera depois de comentário (0049, <c>ExecutorNoteDelaySeconds</c>) saiu — o plano retoma na hora.</remarks>
-public record ExecutionQueueOptions(bool CorrectionInNewSession)
+public record ExecutionQueueOptions(bool CorrectionInNewSession, int WorkItemSlots = ExecutionQueueOptions.DefaultWorkItemSlots)
 {
+    public const int DefaultWorkItemSlots = 2;
     public static readonly ExecutionQueueOptions Default = new(true);
 }
 

@@ -67,6 +67,8 @@ public sealed class WorkerState
     public List<Guid> ActiveRequestIds { get; set; } = [];
     /// <summary>0068: há pedido que esta máquina pode pegar agora.</summary>
     public bool QueueReady { get; set; }
+    /// <summary>0085: itens de trabalho ao mesmo tempo (pista própria, fora do MaxConcurrency); o PRMake confere a mesma regra.</summary>
+    public int WorkItemSlots { get; set; } = 2;
 }
 
 /// <summary>0068: conexão ao relay de tempo real (GET ExecutionWorker/realtime).</summary>
@@ -118,6 +120,8 @@ public sealed class ClaimResponse
     public string? Model { get; set; }
     /// <summary>0080: pedido do Especialista do caso — token restrito ao caso (MCP e scripts; nunca altera o plano).</summary>
     public string? CaseToken { get; set; }
+    /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — limpa os worktrees do item no fim.</summary>
+    public long? WorkItemNumber { get; set; }
 }
 
 public sealed class StartRequest

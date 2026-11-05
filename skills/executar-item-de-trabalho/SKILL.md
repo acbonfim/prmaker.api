@@ -1,0 +1,110 @@
+---
+name: executar-item-de-trabalho
+description: Executa um item de trabalho de um card no PRMake (feature 0085) — as sub-tarefas na ordem, uma por vez (criar branch, cherry-pick, codigo, abrir PR, mover o card no DevOps, script SQL, validacao, comentario, tarefa manual), registrando inicio, resultado, saidas (PR, branch, commit) e como desfazer cada uma. Usa as regras do PRMake para o card (nome de branch por destino, padroes de commit/titulo) — nunca inventa nomes —, so abre PRs (nunca mescla) e grava tudo pelo PRMake. Roda pelo executor do PRMake (pedido "work-item") ou manualmente com /executar-item-de-trabalho <card> <numero>. Use quando o prompt pedir para executar o item de trabalho #n de um card.
+---
+
+# executar-item-de-trabalho
+
+Executa **um** item de trabalho (`#<numero>`) de um card: as sub-tarefas **na ordem**, uma por vez, cada uma com
+`start` → fazer → `complete` (resultado + saidas + desfazer) ou `fail`/`wait`. Itens rodam em paralelo entre si (cada
+um na sua pista); dentro do item, a ordem manda.
+
+Instalada e atualizada pelo PRMake (fonte: `skills/executar-item-de-trabalho`). Depende da `analisar-bug` (scripts de
+branches, PR, DevOps, testes). Token: env `PRMAKE_TOKEN` ou `~/.claude/prmake-token.txt`.
+
+```bash
+PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh   # rules · work-items · branches · worktree · open-pr --item · devops · test
+REPOS=~/.claude/skills/analisar-bug/scripts/revamp-repos.sh # where <repo> · master <repo>
+CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dados/regras.md, dados/card-resumo.txt)
+```
+
+## Regras que nao mudam
+1. **Toda gravacao pelo PRMake** (MCP ou `prmake-plan.sh`): PR, card no DevOps, Timeline, status das sub-tarefas.
+   Nada de PAT nem API direta do GitHub/DevOps. `git` local (worktree, commit, push da branch de trabalho) e permitido.
+2. **Nunca mescle nem aprove PR.** A sub-tarefa de PR conclui quando o PR esta **aberto**; o merge e humano.
+3. **Nunca invente branch, titulo nem mensagem de commit**: venham dos `params` da sub-tarefa, conferidos com as regras
+   (`prmake_rules` / `bash $PLAN rules <card>`) e o `bash $PLAN branches <card> <repo>` (linhas `por-destino:` e
+   `branches-por-destino:` = `BranchSuffixByTarget`, ex.: release-version → `hotfix/77434-rv`, nunca `-release`).
+   Param vazio ou divergente da regra → use a regra e diga no `result`; regra ausente → `wait` com a pergunta.
+4. **Item ligado a plano (`planId`) nao roda aqui**: ele e executado pelo plano de correcao (pista do plano; o servidor
+   sincroniza as sub-tarefas). Se cair aqui, nao toque em nada: diga no fim "item #n e do plano — use Continuar no
+   plano" e encerre.
+5. **Cancelado para tudo**: antes de **cada** sub-tarefa, `prmake_work_item(card, number)`; status `cancelled`,
+   `reverting` ou `reverted` → pare na hora (nao comece a proxima, nao marque nada).
+6. **Nunca force-push** nem reescrever historico de branch ja publicada. **Banco e somente leitura** (sub-tarefa `sql-script` so escreve o script); sem comentarios novos no codigo.
+7. Modo executor (`PRMAKE_EXECUTOR=1`): ninguem le o chat. O que depende de alguem vira `wait` na sub-tarefa (com o
+   que a pessoa precisa fazer/decidir) e voce **encerra a vez** — o PRMake retoma quando ela agir.
+
+## MCP primeiro
+Carregue uma vez, no inicio:
+`ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_items,mcp__prmake__prmake_work_task,mcp__prmake__prmake_rules,mcp__prmake__prmake_card,mcp__prmake__prmake_devops")`
+(`prmake_timeline`, `prmake_devops_config`, `prmake_base_impact` so quando precisar).
+
+| O que | MCP | Script (reserva) |
+|---|---|---|
+| detalhe do item (sub-tarefas, params, output, undo, status) | `prmake_work_item(card, number)` | `bash $PLAN work-items <card> <n>` |
+| regras do card (branch por destino, padroes) | `prmake_rules(card)` | `bash $PLAN rules <card>` (cache 10 min em `dados/regras.md`) |
+| iniciar / concluir / falhar / esperar / pular sub-tarefa | `prmake_work_task(card, taskNumber, action, result?, output?, undo?)` — `start\|complete\|fail\|wait\|skip` | `bash $PLAN work-task <card> <n> start\|complete\|fail\|skip "resultado" --output '{..}' --undo '{..}'` (wait so MCP) |
+| card (estado, area, tipo) | `prmake_card(card)` | `dados/card-resumo.txt` |
+| mover o card | `prmake_devops(card, action)` | `bash $PLAN devops <card> <acao>` |
+
+## Fluxo
+**0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet executar-item-de-trabalho analisar-bug 2>/dev/null || true`.
+
+**1. Carregar (uma vez)** — `prmake_work_item(card, number)` + `prmake_rules(card)` (ou `bash $PLAN rules <card>`:
+usa o cache do card). Contexto minimo do card: `$CARD_DIR/dados/card-resumo.txt` se existir; senao `prmake_card(card)`.
+Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o arquivo que a sub-tarefa citar.
+- `planId` presente → regra 4. Status `completed`/`cancelled`/`reverted` → nada a fazer, encerre.
+- Sub-tarefas: siga `order`; pule as `completed`/`skipped`; retome a `running`/`waiting` (o executor te chamou de novo
+  porque a pessoa agiu — confira o que mudou antes de seguir).
+
+**2. Para cada sub-tarefa, na ordem** (uma por vez):
+1. Checagem do item (regra 5).
+2. `executor: user` → `prmake_work_task(action: wait, result: "<o que a pessoa faz, com os arquivos/links>")` e
+   **pare** (encerre a vez). A pessoa conclui pela tela; o executor retoma o item.
+3. `prmake_work_task(action: start)`.
+4. Faca, pelo guia do `kind` abaixo.
+5. `prmake_work_task(action: complete, result, output, undo)`:
+   - `result`: markdown curto (2–6 linhas) — o que foi feito, nomes reais (branch, PR, commit), avisos.
+   - `output`: so fatos para a tela e para o desfazer — `{"pr": url, "number": "n", "repository", "branch", "target",
+     "commit": sha, "commits": [...], "created": "true|false", "from": "<estado anterior>"}` (o que se aplicar).
+   - `undo`: `{"action": "...", "params": {...}}` do catalogo abaixo — **sempre** que a sub-tarefa mudou algo fora;
+     `{"action":"none","params":{"reason":"..."}}` quando nada precisa ser desfeito.
+   - Nao deu: `fail` com o motivo e o que tentar (e pare o item). Depende de decisao/acao de alguem: `wait` e pare.
+6. Proxima sub-tarefa. No fim, `prmake_work_item` para conferir: todas concluidas → o PRMake conclui o item sozinho.
+
+**3. Relatorio** — 3–6 linhas no chat (item, sub-tarefas feitas, PRs/branches, o que ficou esperando quem). Os marcos
+ja ficam no historico do item; nao duplique na Timeline (so a sub-tarefa `comment` escreve la).
+
+## Guia por kind
+Use os `params` da sub-tarefa (`repository`, `branch`, `source`, `target`, `from`, `commits`, `action`, `text`...).
+Pasta do repositorio: `bash $REPOS where <repo>` (ou a linha `pasta=` do `branches`); fora do mapa → `wait` pedindo a
+pasta (`prmake-skills.sh repos set <repo> <pasta>`). Trabalhe **sempre num worktree do card**:
+`WT="$(bash $PLAN worktree <card> <pasta|repo> <branch> <base> --item <n>)"` (worktree proprio do item, em
+`.prmake-wt/<card>/item-<n>/<repo>`; outra branch do mesmo item troca nele) — nunca no clone de trabalho da pessoa.
+Push sempre explicito: `git -C "$WT" push -u origin <branch>` (o worktree nasce rastreando a base).
+
+| kind | O que fazer | output | undo |
+|---|---|---|---|
+| `branch` | Nome pela regra (param conferido com `branches`/`rules`). `git -C <pasta> fetch origin`; ja existe no origin (`git ls-remote --heads origin <branch>`)? → so siga se foi criada **por este item** (retomada: `output` desta sub-tarefa); senao **nao reaproveite** (regra do PRMake): `wait` dizendo de onde ela veio (PR/item do card) e o que a pessoa decide. Nao existe → `WT=$(bash $PLAN worktree <card> <repo> <branch> <from> --item <n>)` e `git -C "$WT" push -u origin <branch>` | `{branch, from, created}` | criada pelo item: `delete-branch {repo, branch}`; ja existia: `none` |
+| `cherry-pick` | No worktree da branch: `git cherry-pick -x <shas>` (shas dos params, ou os commits da branch de origem: `git log --format=%H --reverse origin/<base>..origin/<source>`). Conflito: resolva mantendo a intencao, `--continue`, avise no `result`; nao conseguiu → `git cherry-pick --abort` e `fail`. **Push so com o cherry-pick concluido** (`! git -C "$WT" rev-parse -q --verify CHERRY_PICK_HEAD && git -C "$WT" push -u origin <branch>`) | `{branch, commits:[novos shas]}` | `revert-commit {repo, branch, sha:"<sha1 sha2>", createdByItem:"true\|false"}` |
+| `code` | Mudanca descrita na sub-tarefa, so no escopo dela, **sem comentarios no codigo**; testes so do que mudou (`bash $PLAN test <card> "$WT"`; .NET: um `dotnet build` + `dotnet test --no-build --filter`); commit no `CommitMessagePattern` (linha `commit=` do `branches`); `git -C "$WT" push -u origin <branch>` | `{branch, commit}` | `revert-commit {repo, branch, sha, createdByItem}` |
+| `pr` | Descricao: reaproveite a do card se servir; senao `bash $PLAN pr-text <card> <repo> <branch>` e gere `desc.md` como a `gerar-prmake` (sem RCA para US). Abrir: `bash $PLAN open-pr <card> <repo> <branch> <target> ["titulo"] <desc.md> --item <n>` (sem titulo = `PrTitlePattern`). Ele imprime o JSON `{output, undo}` pronto — use-o. **Nunca mescle** | `{pr, number, repository, branch, target}` | `close-pr {repo, number}` (PR que ja existia: `none`) |
+| `devops-state` | `prmake_card` → anote o estado atual (`from`). Mova so pelas acoes do PRMake: `prmake_devops(card, action)` / `bash $PLAN devops <card> dev-test-in-qa\|test-in-production\|ready-for-qa`. `ready-for-qa` so se a sub-tarefa foi pedida pela pessoa (item criado/executado por ela) — senao `wait` pedindo a autorizacao. Estado sem acao no PRMake → `fail` ("falta endpoint") | `{from, to, action}` | `devops-state {from, action:"<acao que volta, se houver>"}` |
+| `sql-script` | **Nunca executa escrita.** Consulte so leitura se precisar (`sql-query.sh`), escreva o script com rollback e a consulta de validacao em `$CARD_DIR/scripts/<nome>.sql` e cole no `result` (bloco ```sql). Quem roda e a pessoa/chamado (proxima sub-tarefa `manual`/`user`) | `{file, rollback:"true"}` | `none` (nada executado) |
+| `validation` | `executor: user` → `wait` com o roteiro (o que testar, onde, criterio). `claude`: build/testes do que mudou (`$PLAN test`), consulta somente leitura, conferir PR/CI (`gh pr checks <url>`) | `{checks}` | `none` |
+| `comment` | Texto da sub-tarefa (curto, pt-BR; no card do DevOps em PT/EN se for para o cliente). Timeline: `prmake_timeline(card, markdown)`. Discussion do DevOps: `bash $PLAN devops <card> summary <arquivo.md>` | `{where}` | `none` (comentario nao se apaga) |
+| `manual` | `executor: user` (padrao) → `wait` com o passo a passo e pare. `claude` → faca o que a descricao pede, dentro destas regras | — | conforme o que fez |
+
+Catalogo do `undo` (o `desfazer-item-de-trabalho` le exatamente isto): `close-pr {repo, number}` ·
+`delete-branch {repo, branch}` · `revert-commit {repo, branch, sha, createdByItem}` · `devops-state {from, action?}` ·
+`none {reason}`. Valores sempre texto.
+
+## Exemplo — "PR master → release-version" (card 77434, item #12)
+1. `#13 branch` `{repository: edv-solvace, branch: hotfix/77434-rv, from: release-version}` → regra confere
+   (`release-version=hotfix/77434-rv`) → worktree + push → `complete` `output {branch, from, created:"true"}`,
+   `undo delete-branch`.
+2. `#14 cherry-pick` dos commits de `hotfix/77434` (ja mesclados na master) → push → `undo revert-commit
+   {createdByItem:"true"}`.
+3. `#15 pr` → `open-pr 77434 edv-solvace hotfix/77434-rv release-version "" desc.md --item 12` → `complete` com o JSON
+   impresso. Item concluido; o merge fica com o revisor.

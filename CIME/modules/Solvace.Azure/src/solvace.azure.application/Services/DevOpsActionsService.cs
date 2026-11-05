@@ -237,6 +237,30 @@ public class DevOpsActionsService : IDevOpsActionsService
         return new DevOpsActionResponse { Rev = rev, Message = $"Remaining Work zerado (era {Format(remaining)})" };
     }
 
+    public async Task<DevOpsActionResponse> SetStateAsync(string cardNumber, string state, string? reason, CancellationToken cancellationToken = default)
+    {
+        var target = state?.Trim();
+        if (string.IsNullOrEmpty(target))
+            throw DevOpsActionException.Conflict("Informe o estado de destino.");
+        // Vale para Bug e User Story (o desfazer de um item de trabalho volta o estado de qualquer card).
+        var card = await _azureService.GetCardFullAsync(cardNumber, cancellationToken);
+        if (card is null || !string.IsNullOrEmpty(card.Error) || card.Id == 0)
+            throw DevOpsActionException.NotFound($"Card {cardNumber} não encontrado no DevOps");
+        var type = GetString(card, FieldWorkItemType) ?? "Bug";
+        var states = await _azureService.GetWorkItemTypeStatesAsync(type, cancellationToken);
+        var valid = states.FirstOrDefault(s => string.Equals(s, target, StringComparison.OrdinalIgnoreCase))
+                    ?? throw DevOpsActionException.Conflict($"\"{target}\" não é um estado de {type}. Estados válidos: {string.Join(", ", states)}");
+        var current = GetString(card, FieldState);
+        if (string.Equals(current, valid, StringComparison.OrdinalIgnoreCase))
+            throw DevOpsActionException.Conflict($"O card já está em {valid}");
+
+        var fields = new Dictionary<string, object> { [FieldState] = valid };
+        if (!string.IsNullOrWhiteSpace(reason))
+            fields[FieldHistory] = WebUtility.HtmlEncode(reason.Trim()); // comentário na Discussion, na mesma revisão
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
+        return new DevOpsActionResponse { Rev = rev, Message = $"Card movido de {current ?? "—"} para {valid}" };
+    }
+
     public async Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
         var card = await LoadBugAsync(cardNumber, cancellationToken);

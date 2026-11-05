@@ -74,6 +74,12 @@ else
   jq -r '.fields["System.Description"] // ""' "$OUTDIR/card.json" \
     | sed -e 's/<img[^>]*>/ [imagem colada aqui: ver as evidencias do card] /g' -e 's/<[^>]*>/ /g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/  */ /g' > "$OUTDIR/description.txt"
   IS_BUG=0
+  # 0085: User Story — criterios de aceite em arquivo proprio (a analisar-us numera CA-1, CA-2...).
+  jq -r '(.fields["Microsoft.VSTS.Common.AcceptanceCriteria"] // "")
+    | gsub("<img[^>]*>"; " [imagem colada aqui: ver as evidencias do card] ") | gsub("<li[^>]*>"; "- ")
+    | gsub("<br ?/?>|</p>|</li>|</div>"; "\n") | gsub("<[^>]*>"; "") | gsub("&nbsp;"; " ") | gsub("&amp;"; "&")
+    | gsub("&lt;"; "<") | gsub("&gt;"; ">") | gsub("[ \t]+"; " ") | gsub("\n\\s*\n+"; "\n")' "$OUTDIR/card.json" > "$OUTDIR/criterios-aceite.txt" 2>/dev/null \
+    || : > "$OUTDIR/criterios-aceite.txt"
 fi
 
 # 0076: discussion do card (autor, data, texto sem HTML; onde havia imagem, a marca) — entrada da analise, como os
@@ -115,5 +121,6 @@ outdir=$OUTDIR
 arquivos:
   card.json       ($(wc -c < "$OUTDIR/card.json") bytes)
   description.txt ($(wc -c < "$OUTDIR/description.txt") bytes)
+$( [[ -s "$OUTDIR/criterios-aceite.txt" && "$IS_BUG" == 0 ]] && echo "  criterios-aceite.txt ($(wc -c < "$OUTDIR/criterios-aceite.txt") bytes)")
   card-resumo.txt ($(wc -c < "$OUTDIR/card-resumo.txt") bytes)
 EOF

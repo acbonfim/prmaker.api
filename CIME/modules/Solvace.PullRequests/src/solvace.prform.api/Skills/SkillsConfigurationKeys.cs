@@ -54,7 +54,7 @@ public static class SkillsConfigurationKeys
     public const string CorrectionTestMaxSeconds = "CorrectionTestMaxSeconds";
     /// <summary>0074: perfis de destino da promoção em lote por tipo de repositório (JSON: {profiles: {kind: {label, targets: [{branch, draft?, mode?}]}}}); {version} = a versão do lote.</summary>
     public const string PromotionProfiles = "PromotionProfiles";
-    /// <summary>0074: padrão do nome da branch do cherry-pick ({card}, {target}).</summary>
+    /// <summary>0074: padrão do nome da branch do cherry-pick ({branch}, {target}; 0085: {suffix} = sufixo do destino no BranchSuffixByTarget).</summary>
     public const string PromotionBranchPattern = "PromotionBranchPattern";
     /// <summary>0075: linhas de contexto antes e depois do foco na fotografia do código citado (prmake-plan.sh coderef).</summary>
     public const string CodeRefContextLines = "CodeRefContextLines";
@@ -76,8 +76,22 @@ public static class SkillsConfigurationKeys
     public const string AssistantHoursPerStep = "AssistantHoursPerStep";
     /// <summary>0078: média de horas do time por card (o assistente avisa quando passa).</summary>
     public const string AssistantAverageHours = "AssistantAverageHours";
+    /// <summary>0085: média de horas do time por bug (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursBug = "AssistantAverageHoursBug";
+    /// <summary>0085: média de horas do time por User Story (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursUserStory = "AssistantAverageHoursUserStory";
     /// <summary>0080: modelo do Especialista do caso nas respostas rápidas (apelido ou id; vazio = padrão da máquina).</summary>
     public const string SpecialistModel = "SpecialistModel";
     /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>
     public const string SpecialistDeepModel = "SpecialistDeepModel";
+    /// <summary>0085: etapas padrão do plano de análise de User Story (analisar-us; mesmo formato de AnalysisDefaultSteps).</summary>
+    public const string UsAnalysisDefaultSteps = "UsAnalysisDefaultSteps";
+    /// <summary>0085: sufixo da branch de trabalho por destino (JSON: {"release-version": "-rv", ...}) — hotfix/77434-rv.</summary>
+    public const string BranchSuffixByTarget = "BranchSuffixByTarget";
+    /// <summary>0085: tipos de sub-tarefa dos itens de trabalho (JSON: [{kind, label, icon, executor, params[{key,label}], undo}]).</summary>
+    public const string WorkItemTaskKinds = "WorkItemTaskKinds";
+    /// <summary>0085: modelos prontos de itens de trabalho (JSON: [{key, title, description, type?, tasks[{title, kind, executor?, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets}).</summary>
+    public const string WorkItemTemplates = "WorkItemTemplates";
+    /// <summary>0085: itens de trabalho rodando ao mesmo tempo por máquina (fora do limite de execuções da pista principal).</summary>
+    public const string WorkItemSlots = "WorkItemSlots";
 }
