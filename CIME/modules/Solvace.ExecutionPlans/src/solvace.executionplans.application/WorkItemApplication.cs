@@ -42,6 +42,8 @@ public class WorkItemApplication : IWorkItemApplication
     private IExecutionPlanApplication PlanApp => (IExecutionPlanApplication)_services.GetService(typeof(IExecutionPlanApplication))!;
     private IExecutionResumeTrigger? ResumeTrigger => (IExecutionResumeTrigger?)_services.GetService(typeof(IExecutionResumeTrigger));
     private IExecutionQueueRepository? QueueRepository => (IExecutionQueueRepository?)_services.GetService(typeof(IExecutionQueueRepository));
+    private IWorkItemTypeSource? TypeSource => (IWorkItemTypeSource?)_services.GetService(typeof(IWorkItemTypeSource));
+    private IPrmakeRulesProvider? Rules => (IPrmakeRulesProvider?)_services.GetService(typeof(IPrmakeRulesProvider));
 
     // ================================================================ leitura
 
@@ -123,7 +125,7 @@ public class WorkItemApplication : IWorkItemApplication
             planId = pid;
         }
 
-        var type = string.IsNullOrWhiteSpace(req.Type) ? await DefaultTypeAsync(cardNumber, ct) : req.Type;
+        var type = await ResolveTypeAsync(req.Type, req.TemplateKey, ct);
         var now = DateTimeOffset.UtcNow;
         var item = new WorkItem(cardNumber, type, req.Title, req.Description, o, req.TemplateKey, planId, req.Tasks ?? [],
             actor.UserId, actor.Name, now);
@@ -383,10 +385,8 @@ public class WorkItemApplication : IWorkItemApplication
         var now = DateTimeOffset.UtcNow;
         var tasks = StepInputs(plan.Steps).ToList();
         var analysis = plan.Phase != ExecutionPhase.Correction;
-        // Análise: o tipo é o do Kind do plano (analisar-us → user-story); correção: o do plano ou o do card.
-        var type = WorkItem.IsUserStoryPlan(plan.Kind) ? WorkItemType.UserStory
-            : analysis ? WorkItemType.Bug
-            : await DefaultTypeAsync(cardNumber, ct);
+        // r4: análise → analysis; correção → implementation (card User Story) ou fix.
+        var type = analysis ? WorkItemType.Analysis : WorkItemType.CorrectionFor(await IsUserStoryCardAsync(cardNumber, plan.Kind, ct));
         var origin = analysis ? WorkItemOrigin.Analysis : WorkItemOrigin.Correction;
         var title = WorkItem.PlanItemTitle(analysis ? ExecutionPhase.Analysis : ExecutionPhase.Correction, plan.Kind, cardNumber, plan.Title);
         var description = plan.Summary is { Length: > WorkItem.MaxDescriptionLength } s ? s[..WorkItem.MaxDescriptionLength] : plan.Summary;
@@ -584,14 +584,37 @@ public class WorkItemApplication : IWorkItemApplication
         }
     }
 
-    /// <summary>Tipo padrão: o do plano do card (analisar-us = User Story), senão o dos itens do card, senão bug.</summary>
-    private async Task<string> DefaultTypeAsync(string cardNumber, CancellationToken ct)
+    /// <summary>
+    /// r4: tipo do item novo — o pedido (bug/user-story legados → fix/implementation), senão o do modelo, senão task; precisa
+    /// existir no <c>WorkItemTypes</c> (400 com as opções).
+    /// </summary>
+    private async Task<string> ResolveTypeAsync(string? requested, string? templateKey, CancellationToken ct) =>
+        ResolveType(requested, templateKey, TypeSource is { } source ? await source.GetAsync(ct) : null);
+
+    /// <summary>Regra do tipo do item novo (testável): pedido → modelo → task; legado mapeado; conferido contra os tipos.</summary>
+    public static string ResolveType(string? requested, string? templateKey, WorkItemTypeSettings? settings)
     {
+        var type = WorkItemType.MapLegacy(requested);
+        if (type is null && !string.IsNullOrWhiteSpace(templateKey) && settings is not null
+            && settings.TemplateTypes.TryGetValue(templateKey.Trim(), out var fromTemplate))
+            type = WorkItemType.MapLegacy(fromTemplate);
+        type = WorkItemType.Normalize(type ?? WorkItemType.Task);
+        if (settings is not null)
+        {
+            var keys = settings.Keys.Count > 0 ? settings.Keys : WorkItemType.Defaults;
+            if (!keys.Contains(type, StringComparer.OrdinalIgnoreCase))
+                throw new WorkItemTypeInvalidException(type, keys);
+        }
+        return type;
+    }
+
+    /// <summary>Card User Story? Pelo Kind do plano (analisar-us), senão pelo card no DevOps (regras do PRMake).</summary>
+    private async Task<bool> IsUserStoryCardAsync(string cardNumber, string? planKind, CancellationToken ct)
+    {
+        if (WorkItem.IsUserStoryPlan(planKind)) return true;
         var plans = await _plans.GetSummariesByCardAsync(cardNumber, ct);
-        if (plans.OrderByDescending(p => p.CreatedAt).FirstOrDefault() is { } last)
-            return string.Equals(last.Kind, UserStoryPlanKind, StringComparison.OrdinalIgnoreCase) ? WorkItemType.UserStory : WorkItemType.Bug;
-        var items = await _items.ListByCardAsync(cardNumber, ct);
-        return items.LastOrDefault()?.Type ?? WorkItemType.Bug;
+        if (plans.Any(p => WorkItem.IsUserStoryPlan(p.Kind))) return true;
+        return Rules is { } rules && await rules.IsUserStoryAsync(cardNumber, ct) == true;
     }
 
     private async Task<List<WorkItemResponse>> ToResponsesAsync(IReadOnlyList<WorkItem> items, CancellationToken ct)

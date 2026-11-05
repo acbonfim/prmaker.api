@@ -52,7 +52,11 @@ public partial class PrmakeMcpTools(
         "Codigo so para confirmar o 'Onde:' que o item cita. " +
         "0085: regras do card (nome de branch por destino, fluxo, padroes) com prmake_rules — nunca invente branch; itens de trabalho " +
         "com prmake_work_items/prmake_work_item (confira antes de criar: nao duplique), prmake_work_item_create/_update (so pending) e " +
-        "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem).";
+        "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem). " +
+        "0085 r4: ferramentas do card (modelos prontos: PR para uma branch, PRs do fluxo, promocao, fechamento, QA, script, resumo...) com " +
+        "prmake_tools (applicable + perguntas ask) e prmake_tool_run (cria o item com as respostas) — prefira a ferramenta ao item livre. " +
+        "Tipo do item = WorkItemTypes (task, pull-request, review, fix, implementation, adjustment, closing, data, ticket, text, analysis); " +
+        "nunca bug/user-story (tipo do card no DevOps).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

@@ -1,88 +1,57 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
+using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Responses;
+using solvace.prform.Execution;
 using solvace.prform.Skills;
 
 namespace solvace.prform.Controllers;
 
-/// <summary>0085: catálogo dos itens de trabalho — tipos de sub-tarefa e modelos prontos (Skills Configurations).</summary>
+/// <summary>0085: catálogo dos itens de trabalho — tipos de sub-tarefa, tipos de item e modelos prontos (Skills Configurations).</summary>
 public partial class WorkItemsController
 {
     /// <summary>
-    /// Tipos de sub-tarefa (<c>WorkItemTaskKinds</c>) e modelos (<c>WorkItemTemplates</c>) já preenchidos para o card:
-    /// <c>{branch}</c> = branch principal (BranchNamePattern), <c>{suffix:destino}</c> = sufixo do BranchSuffixByTarget
-    /// (<c>{branch}{suffix:release-version}</c> → <c>hotfix/77434-rv</c>), <c>{card}</c>, <c>{repository}</c> (repositório
-    /// padrão) e <c>{flowTargets}</c> (destinos dos PRs do fluxo do card). Sem card, os modelos voltam como estão.
-    /// Cada param dos tipos traz <c>input</c> (repository|branch|target-branch|state|commits|text|textarea|select) e
-    /// <c>options?</c> — config antiga sem <c>input</c> recebe o padrão pela chave (<see cref="WorkItemParamInputs"/>).
+    /// Tipos de sub-tarefa (<c>WorkItemTaskKinds</c>, cada param com <c>input</c>/<c>options?</c>), tipos de item
+    /// (<c>itemTypes</c> = <c>WorkItemTypes</c>) e modelos (<c>WorkItemTemplates</c>) preenchidos para o card. r4: cada modelo
+    /// volta com <c>applicable</c> (+ <c>reason</c> quando o <c>when</c> não bate), <c>ask[]</c> com <c>options</c> resolvidas
+    /// (<c>{promotionTargets}</c> → destinos do perfil do repositório; <c>optionsByRepository</c> por repositório do card),
+    /// <c>default</c> renderizado e <c>suggestions</c> (repositórios do card) no ask de repositório. Título/descrição vêm com as
+    /// respostas padrão (sem resposta: <c>&lt;rótulo&gt;</c>); as sub-tarefas mantêm <c>{ask:..}</c>/<c>{suffix:@..}</c> sem
+    /// resposta padrão para a tela pré-visualizar. <c>{repository}</c> = repositório do PR principal do card
+    /// (<c>repository</c>/<c>repositories</c> na resposta). Sem card, os modelos voltam como estão.
+    /// Marcadores: <see cref="WorkItemTemplateRenderer"/>.
     /// </summary>
     [HttpGet("catalog")]
-    public Task<ActionResult<object>> Catalog([FromQuery] string? card, [FromServices] SkillsRulesService rules, CancellationToken ct) =>
-        Run<object>(async () =>
+    public Task<ActionResult<object>> Catalog([FromQuery] string? card, [FromServices] WorkItemToolsService tools, CancellationToken ct) =>
+        Run<object>(async () => Ok(await tools.CatalogAsync(card, ct)));
+
+    /// <summary>
+    /// r4: cria o item a partir de um modelo (ferramenta) — renderiza no servidor com as respostas do <c>ask</c>
+    /// (<c>required</c> sem resposta nem padrão → 400 <c>{code:"invalidAnswers", missing}</c>; destino de outro tipo de
+    /// repositório → 400; modelo que não se aplica ao card → 400 <c>{code:"notApplicable"}</c>; modelo inexistente → 404
+    /// <c>{code:"templateNotFound"}</c>). Origem <c>template</c> (<c>specialist</c> com o token do caso). Igual a outro item
+    /// do card → 409 <c>{code:"duplicate", existing}</c>, como no create.
+    /// </summary>
+    [HttpPost("card/{card}/from-template")]
+    public Task<ActionResult<WorkItemResponse>> FromTemplate([FromRoute] string card, [FromBody] CreateFromTemplateRequest request,
+        [FromServices] WorkItemToolsService tools, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () =>
         {
+            EnsureSpecialistCard(card);
             var c = SkillsRulesService.NormalizeCard(card);
-            CardRules? r = c.Length > 0 ? await rules.GetAsync(c, ct) : null;
-            var settings = r?.Settings ?? await rules.SettingsOnlyAsync(ct);
-            string V(string key) => settings.TryGetValue(key, out var v) ? v : string.Empty;
-
-            var kinds = ParseArray(V(SkillsConfigurationKeys.WorkItemTaskKinds));
-            WorkItemParamInputs.Apply(kinds, V(SkillsConfigurationKeys.TicketSystem)); // r3: input/options do editor
-            var templates = ParseArray(V(SkillsConfigurationKeys.WorkItemTemplates));
-            if (r is not null)
+            try
             {
-                var extras = r.TemplateExtras();
-                foreach (var t in templates.OfType<JsonObject>())
-                    ExpandStrings(t, s => BranchRules.Expand(s, r.Card, r.MainBranch, r.Suffixes, extras));
+                var create = await tools.BuildCreateRequestAsync(c, request, ct);
+                var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
+                var created = await _items.CreateAsync(c, create, origin, await ActorAsync(ct), ct);
+                return StatusCode(StatusCodes.Status201Created, created);
             }
-
-            return Ok(new
+            catch (WorkItemTemplateException e) when (e.Code == WorkItemTemplateException.NotFound)
             {
-                card = r?.Card,
-                type = r is null ? null : r.IsUserStory ? "user-story" : "bug",
-                mainBranch = r?.MainBranch,
-                branchesByTarget = r?.Suffixes.ToDictionary(s => s.Key, s => BranchRules.BranchFor(r.MainBranch, s.Key, r.Suffixes)),
-                taskKinds = kinds,
-                templates
-            });
+                return NotFound(new { code = e.Code, error = e.Message });
+            }
+            catch (WorkItemTemplateException e)
+            {
+                return BadRequest(new { code = e.Code, error = e.Message, missing = e.Missing });
+            }
         });
-
-    private static JsonArray ParseArray(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return [];
-        try
-        {
-            return JsonNode.Parse(json) as JsonArray ?? [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
-
-    /// <summary>Troca os marcadores em todos os textos do modelo (título, descrição, sub-tarefas e params).</summary>
-    private static void ExpandStrings(JsonNode node, Func<string, string> expand)
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-                foreach (var key in obj.Select(p => p.Key).ToList())
-                {
-                    if (key == "key") continue; // a chave do modelo não muda
-                    if (obj[key] is JsonValue v && v.TryGetValue<string>(out var s))
-                        obj[key] = expand(s);
-                    else if (obj[key] is { } child)
-                        ExpandStrings(child, expand);
-                }
-                break;
-            case JsonArray arr:
-                for (var i = 0; i < arr.Count; i++)
-                {
-                    if (arr[i] is JsonValue v && v.TryGetValue<string>(out var s))
-                        arr[i] = expand(s);
-                    else if (arr[i] is { } child)
-                        ExpandStrings(child, expand);
-                }
-                break;
-        }
-    }
 }

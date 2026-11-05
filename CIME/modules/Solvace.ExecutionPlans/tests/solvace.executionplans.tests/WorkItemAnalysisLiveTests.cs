@@ -14,7 +14,7 @@ public class WorkItemAnalysisLiveTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-05T12:00:00Z");
 
     private static WorkItem AnalysisItem(IReadOnlyList<WorkTaskInput>? tasks = null, string origin = WorkItemOrigin.Analysis, Guid? planId = null) =>
-        new("77434", WorkItemType.Bug, WorkItem.PlanItemTitle(ExecutionPhase.Analysis, "analisar-bug", "77434", "Análise"), null,
+        new("77434", WorkItemType.Analysis, WorkItem.PlanItemTitle(ExecutionPhase.Analysis, "analisar-bug", "77434", "Análise"), null,
             origin, null, planId ?? Guid.NewGuid(), tasks ?? [], Guid.NewGuid(), "Bruno", Now);
 
     private static WorkTaskInput Step(string key, string title) => new() { Title = title, Kind = WorkTaskKind.Manual, StepKey = key };

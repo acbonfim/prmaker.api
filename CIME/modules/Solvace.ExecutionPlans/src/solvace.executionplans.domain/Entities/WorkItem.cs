@@ -26,7 +26,7 @@ public class WorkItem
     /// <summary>Número da sequência global (gerado pelo banco no insert).</summary>
     public long Number { get; private set; }
     public string CardNumber { get; private set; } = string.Empty;
-    public string Type { get; private set; } = WorkItemType.Bug;
+    public string Type { get; private set; } = WorkItemType.Task;
     public string Title { get; private set; } = string.Empty;
     public string? Description { get; private set; }
     public string Status { get; private set; } = WorkItemStatus.Pending;
@@ -126,7 +126,7 @@ public class WorkItem
             Executor = t.Executor,
             Params = new Dictionary<string, string>(t.Params),
         }).ToList();
-        var copy = new WorkItem(CardNumber, Type, Title, Description, WorkItemOrigin.User, TemplateKey, null, tasks,
+        var copy = new WorkItem(CardNumber, WorkItemType.MapLegacy(Type), Title, Description, WorkItemOrigin.User, TemplateKey, null, tasks,
             createdBy, createdByName, now);
         copy.AddLog(null, createdByName, WorkItemLogKind.Info, $"Criado a partir do item #{Number}.", now);
         return copy;
@@ -176,7 +176,7 @@ public class WorkItem
 
     // ---------------------------------------------------------------- plano → item
 
-    /// <summary>Kind do plano de análise de User Story (a fila escolhe a skill analisar-us; os itens nascem user-story).</summary>
+    /// <summary>Kind do plano de análise de User Story (a fila escolhe a skill analisar-us; o item da correção nasce implementation).</summary>
     public const string UserStoryPlanKind = "analisar-us";
 
     /// <summary>

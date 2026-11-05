@@ -84,7 +84,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_case_context", "prmake_case_messages", "prmake_case_reply", "prmake_case_point", "prmake_case_propose",
         "prmake_case_action", "prmake_case_action_done", "prmake_case_file",
         // 0085: regras do card e itens de trabalho (criar/editar itens pending; executar sub-tarefa não).
-        "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update"
+        "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update",
+        // 0085 r4: ferramentas (modelos) do card — listar e criar o item a partir de uma.
+        "prmake_tools", "prmake_tool_run"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]

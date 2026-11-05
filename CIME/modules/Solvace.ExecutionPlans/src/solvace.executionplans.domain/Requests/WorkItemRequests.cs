@@ -22,7 +22,7 @@ public class CreateWorkItemRequest
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
-    /// <summary>bug | user-story (padrão: o tipo do card).</summary>
+    /// <summary>Tipo do item (WorkItemTypes: task, pull-request, review, fix...; padrão: o do modelo ou task). bug/user-story → fix/implementation.</summary>
     public string? Type { get; set; }
     public string? TemplateKey { get; set; }
     public List<WorkTaskInput> Tasks { get; set; } = [];

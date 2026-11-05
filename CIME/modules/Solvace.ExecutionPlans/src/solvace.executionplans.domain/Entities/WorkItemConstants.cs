@@ -74,29 +74,68 @@ public static class WorkItemOrigin
     public static readonly IReadOnlySet<string> All = new HashSet<string> { User, Specialist, Analysis, Correction, Template };
 }
 
-/// <summary>0085: tipo do item (segue o tipo do card no DevOps).</summary>
-public static class WorkItemType
+/// <summary>
+/// 0085: tipo do item de trabalho. Rodada 4: tipos próprios (configuráveis em <c>WorkItemTypes</c> do "Skills Configurations";
+/// semeados: task, pull-request, review, analysis, fix, implementation, adjustment, closing, data, ticket, text) — o tipo do
+/// card no DevOps (Bug/User Story) não é o tipo do item. <c>bug</c>/<c>user-story</c> ficam só nos itens antigos (exibição);
+/// criação nova mapeia <c>bug</c> → <c>fix</c> e <c>user-story</c> → <c>implementation</c> (<see cref="MapLegacy"/>).
+/// </summary>
+public static partial class WorkItemType
 {
+    public const string Task = "task";
+    public const string PullRequest = "pull-request";
+    public const string Review = "review";
+    public const string Analysis = "analysis";
+    public const string Fix = "fix";
+    public const string Implementation = "implementation";
+    public const string Adjustment = "adjustment";
+    public const string Closing = "closing";
+    public const string Data = "data";
+    public const string Ticket = "ticket";
+    public const string Text = "text";
+
+    /// <summary>Legado (itens antigos): seguiam o tipo do card.</summary>
     public const string Bug = "bug";
     public const string UserStory = "user-story";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Bug, UserStory };
+    public const int MaxLength = 20;
 
-    /// <summary>Tipo do item pelo <c>System.WorkItemType</c> do card ("User Story" → user-story; o resto → bug).</summary>
-    public static string FromCardType(string? workItemType) =>
-        string.Equals(workItemType?.Trim(), "User Story", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(workItemType?.Trim(), UserStory, StringComparison.OrdinalIgnoreCase)
-            ? UserStory : Bug;
+    /// <summary>Tipos semeados (padrão quando <c>WorkItemTypes</c> não está configurado).</summary>
+    public static readonly IReadOnlyList<string> Defaults =
+        [Task, PullRequest, Review, Analysis, Fix, Implementation, Adjustment, Closing, Data, Ticket, Text];
 
+    public static readonly IReadOnlySet<string> Legacy = new HashSet<string> { Bug, UserStory };
+
+    /// <summary>Tipo do item da correção pelo tipo do card: User Story → implementation; o resto → fix.</summary>
+    public static string CorrectionFor(bool userStory) => userStory ? Implementation : Fix;
+
+    /// <summary>Criação nova: <c>bug</c> → <c>fix</c>, <c>user-story</c> (e apelidos) → <c>implementation</c>; o resto como veio.</summary>
+    public static string? MapLegacy(string? type)
+    {
+        var t = type?.Trim().ToLowerInvariant().Replace(' ', '-');
+        if (string.IsNullOrEmpty(t)) return null;
+        return t switch
+        {
+            Bug => Fix,
+            UserStory or "us" or "userstory" or "story" => Implementation,
+            _ => t
+        };
+    }
+
+    /// <summary>Normaliza (vazio → task; apelidos de US → user-story) e confere o formato (slug até 20). O que existe é
+    /// conferido na aplicação contra o <c>WorkItemTypes</c>.</summary>
     public static string Normalize(string? type)
     {
         var t = (type ?? string.Empty).Trim().ToLowerInvariant().Replace(' ', '-');
-        if (t.Length == 0) return Bug;
+        if (t.Length == 0) return Task;
         if (t is "us" or "userstory" or "story") t = UserStory;
-        if (!All.Contains(t))
-            throw new DomainException($"Tipo de item inválido: '{type}' (use bug ou user-story).");
+        if (t.Length > MaxLength || !Slug().IsMatch(t))
+            throw new DomainException($"Tipo de item inválido: '{type}' (letras minúsculas, números e '-', até {MaxLength}).");
         return t;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z0-9][a-z0-9-]*$")]
+    private static partial System.Text.RegularExpressions.Regex Slug();
 }
 
 /// <summary>
@@ -118,9 +157,18 @@ public static class WorkTaskKind
     public const string Ticket = "ticket";
     /// <summary>r3: avisar na Timeline/Teams.</summary>
     public const string Notify = "notify";
+    /// <summary>r4: ação do PRMake no card (root cause, resumo, classificação, Remaining, estados).</summary>
+    public const string DevOpsAction = "devops-action";
+    /// <summary>r4: descrição + RCA pelo caminho da gerar-prmake, sem abrir PR.</summary>
+    public const string PrText = "pr-text";
+    /// <summary>r4: consulta somente leitura (resultado nos arquivos do plano).</summary>
+    public const string SqlQuery = "sql-query";
+    /// <summary>r4: revisar um PR (nunca aprova nem mescla).</summary>
+    public const string PrReview = "pr-review";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
-        { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify };
+        { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
+          DevOpsAction, PrText, SqlQuery, PrReview };
 
     /// <summary>Tipo da sub-tarefa que espelha uma etapa do plano (task/code/pr/ticket/question/validation).</summary>
     public static string FromStep(string stepKind, string executor) => stepKind switch
