@@ -30,7 +30,8 @@ public class WorkItemFileApplication(IWorkItemFileRepository files, IRealTimeNot
         var items = await files.GetItemsByCardAsync(card, ct);
         var own = await files.ListByItemsAsync(items.Select(i => i.Id).ToList(), ct);
         var plan = await files.GetCardPlanArtifactsAsync(card, ct);
-        return WorkItemFileListing.BuildForCard(items, own, plan);
+        var conversation = await files.GetCaseFilesAsync(card, ct);
+        return WorkItemFileListing.BuildForCard(items, own, plan, conversation);
     }
 
     public async Task<WorkItemFileData> GetContentAsync(long number, Guid fileId, CancellationToken ct)

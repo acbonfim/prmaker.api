@@ -55,8 +55,10 @@ public interface IWorkItemFileRepository
     Task<List<WorkItem>> GetItemsByCardAsync(string cardNumber, CancellationToken ct);
     /// <summary>0087: arquivos dos itens informados, sem conteúdo (uma leitura só).</summary>
     Task<List<WorkItemFile>> ListByItemsAsync(IReadOnlyCollection<Guid> workItemIds, CancellationToken ct);
-    /// <summary>0087: arquivos de todos os planos do card (sem anexo de comentário nem evidência), sem conteúdo.</summary>
+    /// <summary>0087: arquivos de todos os planos do card (também evidências e anexos de comentário), sem conteúdo.</summary>
     Task<List<ExecutionArtifact>> GetCardPlanArtifactsAsync(string cardNumber, CancellationToken ct);
+    /// <summary>Arquivos da conversa do especialista do card (também os ocultos — quem lista filtra), sem conteúdo.</summary>
+    Task<List<CaseFile>> GetCaseFilesAsync(string cardNumber, CancellationToken ct);
     /// <summary>Fase do plano (analysis|correction); null = não existe.</summary>
     Task<string?> GetPlanPhaseAsync(Guid planId, CancellationToken ct);
     void Add(WorkItemFile file);
