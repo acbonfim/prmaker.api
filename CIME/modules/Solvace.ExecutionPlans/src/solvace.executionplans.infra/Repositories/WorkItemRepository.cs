@@ -52,6 +52,29 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
         return logs;
     }
 
+    private static readonly string[] ActiveStatuses = [ExecutionRequestStatus.Queued, ExecutionRequestStatus.Claimed, ExecutionRequestStatus.Running];
+    private static readonly string[] MainKinds = [ExecutionRequestKind.Analyze, ExecutionRequestKind.Resume];
+
+    public async Task<(Dictionary<Guid, (Guid RequestId, string? Activity)> ByItem, Dictionary<Guid, (Guid RequestId, string? Activity)> ByPlan)>
+        GetLiveRequestsAsync(IReadOnlyCollection<Guid> workItemIds, IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken)
+    {
+        var byItem = new Dictionary<Guid, (Guid, string?)>();
+        var byPlan = new Dictionary<Guid, (Guid, string?)>();
+        if (workItemIds.Count == 0 && planIds.Count == 0) return (byItem, byPlan);
+        var rows = await context.Requests.AsNoTracking()
+            .Where(r => ActiveStatuses.Contains(r.Status)
+                        && ((r.WorkItemId != null && workItemIds.Contains(r.WorkItemId.Value))
+                            || (r.WorkItemId == null && r.PlanId != null && planIds.Contains(r.PlanId.Value) && MainKinds.Contains(r.Kind))))
+            .Select(r => new { r.Id, r.WorkItemId, r.PlanId, r.CurrentActivity, r.CreatedAt })
+            .ToListAsync(cancellationToken);
+        foreach (var r in rows.OrderBy(r => r.CreatedAt))
+        {
+            if (r.WorkItemId is { } w) byItem[w] = (r.Id, r.CurrentActivity);
+            else if (r.PlanId is { } p) byPlan[p] = (r.Id, r.CurrentActivity);
+        }
+        return (byItem, byPlan);
+    }
+
     public async Task<Dictionary<Guid, string>> GetActivitiesAsync(IReadOnlyCollection<Guid> requestIds, CancellationToken cancellationToken)
     {
         if (requestIds.Count == 0) return [];

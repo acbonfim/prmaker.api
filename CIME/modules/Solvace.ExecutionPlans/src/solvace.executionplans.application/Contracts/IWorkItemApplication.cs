@@ -40,6 +40,8 @@ public interface IWorkItemApplication
     Task<WorkItemResponse?> GetByIdAsync(Guid workItemId, CancellationToken ct);
     /// <summary>O executor relatou atividade no pedido do item — só repassa o sinal de tempo real.</summary>
     Task NotifyActivityAsync(Guid workItemId, CancellationToken ct);
+    /// <summary>Atividade nova no pedido do plano — avisa os itens ligados a ele (workItemsUpdated, action activity).</summary>
+    Task NotifyPlanActivityAsync(Guid planId, CancellationToken ct);
 }
 
 /// <summary>
@@ -70,6 +72,12 @@ public interface IWorkItemRepository
     /// <summary>Item não cancelado/desfeito do card com o mesmo fingerprint (sem rastrear).</summary>
     Task<WorkItem?> FindDuplicateAsync(string cardNumber, string fingerprint, Guid? exceptId, CancellationToken cancellationToken);
     Task<List<WorkItemLog>> GetLogsAsync(Guid workItemId, int limit, CancellationToken cancellationToken);
+    /// <summary>
+    /// Pedidos ativos em lote: do próprio item (por WorkItemId) e, para itens de plano, o pedido ativo da pista principal do
+    /// plano (por PlanId) — id e atividade atual (sem N+1).
+    /// </summary>
+    Task<(Dictionary<Guid, (Guid RequestId, string? Activity)> ByItem, Dictionary<Guid, (Guid RequestId, string? Activity)> ByPlan)>
+        GetLiveRequestsAsync(IReadOnlyCollection<Guid> workItemIds, IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     /// <summary>Atividade atual dos pedidos informados (id → rótulo).</summary>
     Task<Dictionary<Guid, string>> GetActivitiesAsync(IReadOnlyCollection<Guid> requestIds, CancellationToken cancellationToken);
     /// <summary>Fase dos planos informados (id → analysis|correction).</summary>

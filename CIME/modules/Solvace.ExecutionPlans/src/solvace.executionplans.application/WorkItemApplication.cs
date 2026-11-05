@@ -522,6 +522,13 @@ public class WorkItemApplication : IWorkItemApplication
         await NotifyAsync(item!, ExecutionPlanRealTimeEvents.WorkItemActions.Request, null, ct);
     }
 
+    public async Task NotifyPlanActivityAsync(Guid planId, CancellationToken ct)
+    {
+        foreach (var item in await _items.GetByPlanAsync(planId, ct))
+            if (item.Status is not (WorkItemStatus.Completed or WorkItemStatus.Cancelled or WorkItemStatus.Reverted))
+                await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Activity, null, ct);
+    }
+
     public async Task NotifyActivityAsync(Guid workItemId, CancellationToken ct)
     {
         var item = await _items.GetByIdAsync(workItemId, ct);
@@ -562,12 +569,19 @@ public class WorkItemApplication : IWorkItemApplication
     private async Task<List<WorkItemResponse>> ToResponsesAsync(IReadOnlyList<WorkItem> items, CancellationToken ct)
     {
         var planIds = items.Where(i => i.PlanId is not null).Select(i => i.PlanId!.Value).Distinct().ToList();
-        var requestIds = items.Where(i => i.ActiveRequestId is not null).Select(i => i.ActiveRequestId!.Value).Distinct().ToList();
         var phases = await _items.GetPlanPhasesAsync(planIds, ct);
-        var activities = await _items.GetActivitiesAsync(requestIds, ct);
-        return items.Select(i => WorkItemResponse.From(i,
-            i.PlanId is { } p && phases.TryGetValue(p, out var phase) ? phase : null,
-            i.ActiveRequestId is { } r && activities.TryGetValue(r, out var act) ? act : null)).ToList();
+        // Pedido ativo e atividade em lote: o do próprio item (pista work-item) ou, no item de plano, o do plano.
+        var openItems = items.Where(i => i.Status is not (WorkItemStatus.Completed or WorkItemStatus.Cancelled or WorkItemStatus.Reverted)).ToList();
+        var (byItem, byPlan) = await _items.GetLiveRequestsAsync(openItems.Select(i => i.Id).ToList(),
+            openItems.Where(i => i.PlanId is not null).Select(i => i.PlanId!.Value).Distinct().ToList(), ct);
+        return items.Select(i =>
+        {
+            (Guid RequestId, string? Activity)? live = byItem.TryGetValue(i.Id, out var own) ? own
+                : i.PlanId is { } pid && byPlan.TryGetValue(pid, out var plan) ? plan : null;
+            var response = WorkItemResponse.From(i, i.PlanId is { } p && phases.TryGetValue(p, out var phase) ? phase : null, live?.Activity);
+            if (live is { } l) response.RequestId = l.RequestId;
+            return response;
+        }).ToList();
     }
 
     /// <summary>Timeline: criar, concluir, cancelar e desfazer.</summary>

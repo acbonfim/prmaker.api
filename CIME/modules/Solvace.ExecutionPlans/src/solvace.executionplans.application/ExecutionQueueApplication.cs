@@ -1206,6 +1206,18 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         {
             // best-effort: a tela pega no próximo GET
         }
+        // 0085: itens ligados ao plano mostram a atividade do pedido do plano.
+        if (request.PlanId is { } planId && WorkItemApp is { } items)
+        {
+            try
+            {
+                await items.NotifyPlanActivityAsync(planId, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // best-effort
+            }
+        }
     }
 
     private static ExecutionActivity? ToActivity(ExecutionActivityRequest? a, DateTimeOffset now) =>
