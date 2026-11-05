@@ -22,6 +22,8 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
     /// <summary>Dados de uso (0079): abas abertas e os passos do usuário.</summary>
     public DbSet<UsageSession> UsageSessions { get; set; }
     public DbSet<UsageEvent> UsageEvents { get; set; }
+    /// <summary>Histórico das alterações das chaves de plugin (0086).</summary>
+    public DbSet<PluginSettingChange> PluginSettingChanges { get; set; }
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0015).</summary>
     public const string Schema = "prform";
@@ -162,6 +164,24 @@ public class DefaultContext(DbContextOptions<DefaultContext> options) : DbContex
 
         // Plugins de uso pessoal: um registro por usuário x plugin. O plugin é soft delete,
         // então não há cascade físico — os dados do usuário ficam (e só deixam de ser lidos).
+        // 0086: xmin como token de concorrência do PATCH das configurações (coluna de sistema — a migração não cria nada).
+        modelBuilder.Entity<PluginConfiguration>()
+            .Property(x => x.Version)
+            .IsRowVersion();
+
+        // 0086: histórico das alterações por chave (quem, quando, antes → depois; segredo mascarado).
+        modelBuilder.Entity<PluginSettingChange>(b =>
+        {
+            b.ToTable("PluginSettingChanges");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Key).IsRequired().HasMaxLength(PluginSettingChange.MaxKeyLength);
+            b.Property(x => x.OldValue).HasColumnType("text");
+            b.Property(x => x.NewValue).HasColumnType("text");
+            b.Property(x => x.ChangedBy).HasMaxLength(PluginSettingChange.MaxChangedByLength);
+            b.HasIndex(x => new { x.PluginId, x.Key, x.ChangedAt });
+            b.HasIndex(x => x.ChangedAt);
+        });
+
         modelBuilder.Entity<Plugin>()
             .Property(x => x.IsPersonal)
             .HasDefaultValue(false);
