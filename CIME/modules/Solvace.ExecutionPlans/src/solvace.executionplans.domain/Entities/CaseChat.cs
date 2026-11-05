@@ -266,6 +266,11 @@ public class CaseFile
     public long Size { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public bool FromSpecialist { get; private set; }
+    /// <summary>
+    /// 0085 r5 (1.7): áudio enviado por uma pessoa (mensagem de voz/ditado) — serve para a transcrição e toca dentro da
+    /// mensagem, mas não é "arquivo da conversa": fica fora da lista de arquivos e do contexto do especialista.
+    /// </summary>
+    public bool Hidden { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public CaseFileContent? Content { get; private set; }
 
@@ -290,9 +295,16 @@ public class CaseFile
         Size = data.LongLength;
         CreatedBy = createdBy.Length <= 200 ? createdBy : createdBy[..200];
         FromSpecialist = fromSpecialist;
+        Hidden = IsPersonAudio(Kind, fromSpecialist);
         CreatedAt = now;
         Content = new CaseFileContent(Id, data);
     }
+
+    /// <summary>0085 r5 (1.7): áudio de quem conversa não vira arquivo da conversa (o do especialista, se houver, vira).</summary>
+    public static bool IsPersonAudio(string kind, bool fromSpecialist) => !fromSpecialist && kind == "audio";
+
+    /// <summary>0085 r5 (1.7): só os arquivos que aparecem como "arquivos da conversa" (lista, contexto, mensagens para o especialista).</summary>
+    public static IEnumerable<CaseFile> Listed(IEnumerable<CaseFile> files) => files.Where(f => !f.Hidden);
 
     /// <summary>Arquivo gerado pelo especialista antes da resposta: entra na mensagem dela.</summary>
     public void AttachTo(Guid messageId)

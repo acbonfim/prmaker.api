@@ -35,6 +35,8 @@ public class ExecutionPlanContext : DbContext
     public DbSet<WorkItem> WorkItems { get; set; }
     public DbSet<WorkItemTask> WorkItemTasks { get; set; }
     public DbSet<WorkItemLog> WorkItemLogs { get; set; }
+    public DbSet<WorkItemFile> WorkItemFiles { get; set; }
+    public DbSet<WorkItemFileContent> WorkItemFileContents { get; set; }
 
     /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
     public const string WorkItemNumberSequence = "work_item_number_seq";
@@ -512,6 +514,32 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Text).IsRequired().HasMaxLength(WorkItemLog.MaxTextLength);
 
             entity.HasIndex(e => new { e.WorkItemId, e.Id });
+        });
+
+        // 0085 r5: arquivos do item (número por item; mesmo tipo + nome substitui; conteúdo em tabela própria).
+        modelBuilder.Entity<WorkItemFile>(entity =>
+        {
+            entity.ToTable("WorkItemFiles");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(ExecutionArtifact.MaxNameLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(150);
+            entity.Property(e => e.Sha256).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+
+            entity.HasOne<WorkItem>().WithMany().HasForeignKey(e => e.WorkItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Content).WithOne().HasForeignKey<WorkItemFileContent>(c => c.FileId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.WorkItemId, e.Number }).IsUnique();
+            entity.HasIndex(e => new { e.WorkItemId, e.Kind, e.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkItemFileContent>(entity =>
+        {
+            entity.ToTable("WorkItemFileContents");
+            entity.HasKey(e => e.FileId);
+            entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
         });
 
         modelBuilder.Entity<ExecutionWorker>(entity =>

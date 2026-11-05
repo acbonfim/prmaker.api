@@ -62,7 +62,8 @@ public class CaseChatApplication(
             Points = (await cases.GetPointsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
             Proposals = (await cases.GetProposalsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
             Actions = (await cases.GetActionsAsync(card, cancellationToken)).Select(a => a.ToResponse()).ToList(),
-            Files = files.Select(f => f.ToResponse()).ToList(),
+            // 0085 r5 (1.7): o áudio da mensagem de voz toca na mensagem, mas não é arquivo da conversa.
+            Files = CaseFile.Listed(files).Select(f => f.ToResponse()).ToList(),
             Participants = (await cases.GetParticipantsAsync(card, cancellationToken))
                 .Select(p => new CaseParticipantResponse { UserId = p.UserId, Name = p.Name, Messages = p.Messages, LastAt = p.LastAt }).ToList(),
             PlanNotes = notes.Select(n => new CasePlanNoteResponse
@@ -381,7 +382,8 @@ public class CaseChatApplication(
         }
         // As dele mesmo (respostas, propostas, ações) não são "novas" para ele; marcar lido só no que ele leu evita pular
         // a mensagem que alguém mandou enquanto ele escrevia.
-        return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(files[m.Id])).ToList();
+        // 0085 r5 (1.7): o áudio de quem fala não vai para o especialista — ele lê a transcrição.
+        return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(CaseFile.Listed(files[m.Id]))).ToList();
     }
 
     /// <summary>Resposta do especialista (com os passos que ele fez e os arquivos que gerou).</summary>
@@ -585,7 +587,8 @@ public class CaseChatApplication(
             ? $"[mensagem de voz] {m.Transcript ?? "(sem transcrição — peça um resumo em texto)"}"
             : m.Text;
         var flags = (m.PeopleOnly ? " [só entre pessoas]" : string.Empty) + (m.Deep ? " [investigar a fundo]" : string.Empty);
-        var att = string.Join(", ", files.Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind})"));
+        // 0085 r5 (1.7): áudio de quem fala fica fora (a mensagem de voz já traz a transcrição).
+        var att = string.Join(", ", CaseFile.Listed(files).Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind})"));
         return $"- ({m.Number}) {who} {m.CreatedAt:dd/MM HH:mm}{flags}: {Cut(content, 1500)}{(att.Length > 0 ? " — " + att : string.Empty)}";
     }
 
