@@ -99,3 +99,21 @@ Contrato:
   (`pr-*`/promoção → `pull-request`, fechamento → `closing`, script/diagnóstico → `data`, resumo/termo → `text`, ajuste → `adjustment`).
 - Catálogo devolve `itemTypes`. Front: editor escolhe o tipo entre `itemTypes` (chips com ícone), padrão `task`/do modelo;
   lista, modais e sessão mostram o ícone/cor do tipo do item; o ícone do card (joaninha/livrinho) continua só no cabeçalho.
+
+## Rodada 5 (pedido do usuário no card 77988)
+1. Tags: avatar + nome de quem **iniciou no PRMake** (primeira análise) além de "Aberto no DevOps por".
+1.1/1.4. Item que executa script já nasce com sub-tarefas de **chamado**: Claude gera o chamado completo (arquivo `ticket`
+     nos arquivos) + pessoa abre no sistema de chamados e cola o link. Chamado completo também nos arquivos do plano.
+1.2. Seção **Arquivos** em cada item (só os arquivos dele). 1.3. Local fixo para os **arquivos do plano** + "Ver o plano
+     completo" sempre disponível (não só no "Em que pé está").
+1.5. Terminologia US × Bug (US: "Plano de implementação", nada de "correção"); revisar skills e configurações.
+1.6. Especialista com autonomia de ações no PRMake (lançar horas, abrir PR, publicar na Timeline, criar/cancelar/executar
+     item) — nunca alterar o plano.
+1.7. Áudios do usuário não viram arquivos da conversa.
+2. Pausar / Continuar com Claude dentro do menu ⋮ do plano (na Bancada). 3. Botão Card → modal com a mesma animação de
+   expandir/recolher da timeline. 4. Aba Card sem espaços vazios (layout novo). 5. Troca de versão (já sem na Bancada —
+   cache PWA).
+
+Divisão: B5a (agora) arquivos do item + áudios; F5a (agora) execution-plan aditivo (menu ⋮, terminologia por kind,
+arquivos do plano) + componentes novos (modal do card, aba Card); B5b/S5 (depois da rodada 4) autonomia do especialista,
+chamado em itens de script, skills US×Bug; F5b (depois do FT) ganchos na página, tags com quem iniciou, aba Arquivos no item.
