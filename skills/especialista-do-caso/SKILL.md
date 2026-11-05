@@ -87,7 +87,7 @@ O PRMake tem **ferramentas** (modelos de item de trabalho tirados dos cards ja t
 PRs do fluxo (os destinos do repositorio: `development` e, so onde o fluxo tem, `qa`), promover revamp (release-version + edge + master), promover legado (hotfix-version),
 resolver conflito de promocao, ajuste pos-QA, trocar mensagem por termo existente, corrigir Sonar, revisar PR,
 fechamento (code-fix / sem codigo), validar em QA, script com chamado, diagnostico do usuario, novo resumo, mover o
-card, abrir chamado. A pessoa tambem as ve no botao **Ferramentas** ao seu lado.
+card, abrir chamado, **resumo do pedido** (racional do que o card pede/reclama). A pessoa tambem as ve no botao **Ferramentas** ao seu lado.
 1. Pedido de acao bateu com uma ferramenta? `prmake_tools(card)` (ou `bash $CASE tools <card>`): cada uma traz
    `applicable` (+ `reason` quando nao se aplica ao card — tipo, fluxo, tipo do repositorio) e as perguntas `ask`
    (`key`, `label`, `input`, `options`, `default`, `required`). Ferramenta com `applicable: false` → nao use; diga o
@@ -138,6 +138,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Mover o card / acao configurada | `prmake_devops(card, acao)` — `dev-test-in-qa`, `test-in-production`, `zero-remaining`, `initial-estimate`, `classify` (preset), `set-state` (`state` = um dos estados de `GET Azure/card/<card>/states`, nunca inventado); `ready-for-qa` so com a validacao em QA concluida ou `authorization` = "pedido de <pessoa> na conversa em <data>" |
 | Abrir PR (branch que ja existe) | `prmake_pr_open(card, repository, source, target, title?, draft?)` — nomes das regras (`prmake_rules`); o PRMake recusa branch de outro card/sem prefixo. Branch que ainda nao existe → item (`pr-para-branch`) + `prmake_work_item_execute` |
 | Criar/editar item | `prmake_tool_run` / `prmake_work_item_create` / `prmake_work_item_update` (secoes acima) |
+| Resumir o card ("do que se trata?", "o que o cliente esta pedindo/reclamando?", "resume o card") | Ja existe item `resumo-do-pedido` concluido e o card nao mudou desde entao? → leia `resumo-do-pedido.md` (`prmake_work_item_files(card, n, file: "resumo-do-pedido.md")`) e responda com ele. Senao: `prmake_tool_run(card, "resumo-do-pedido", {"focus": "<o que a pessoa quer saber, se disse>", "timeline": "sim" so se ela pediu para publicar})` + `prmake_work_item_execute(card, numero)` e responda com o numero do item ("o racional, em portugues, fica no item #n da Bancada em alguns minutos — me pergunte depois que eu resumo aqui"). Nao monte o resumo voce mesmo lendo o card inteiro (cada leitura fica na conversa) |
 | Executar item | `prmake_work_item_execute(card, number)` |
 | Cancelar item | `prmake_work_item_cancel(card, number, undo?, reason)` — `undo: true` so se a pessoa pediu para desfazer o que ele fez; item espelho do plano o PRMake recusa (o plano se pausa/cancela na tela) |
 | Andamento de sub-tarefa de item avulso | `prmake_work_task(card, taskNumber, action)` — nunca de sub-tarefa que espelha etapa do plano (recusado) |
