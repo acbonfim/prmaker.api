@@ -42,6 +42,16 @@ public interface IWorkItemApplication
     Task NotifyActivityAsync(Guid workItemId, CancellationToken ct);
     /// <summary>Atividade nova no pedido do plano — avisa os itens ligados a ele (workItemsUpdated, action activity).</summary>
     Task NotifyPlanActivityAsync(Guid planId, CancellationToken ct);
+    /// <summary>
+    /// Ajustes 0085: o pedido da pista principal do plano mudou (pego/começou/terminou) — avisa os itens abertos ligados ao
+    /// plano (workItemsUpdated, action request).
+    /// </summary>
+    Task NotifyPlanRequestAsync(Guid planId, CancellationToken ct);
+    /// <summary>
+    /// Ajustes 0085: sessão de execução ao vivo do item (<c>GET WorkItems/{number}/live</c>) — pedido ativo do item (ou da
+    /// pista principal do plano), atividade, últimas atividades, últimos 50 registros e se o executor tem sinal.
+    /// </summary>
+    Task<WorkItemLiveResponse> LiveAsync(long number, Guid? viewerUserId, CancellationToken ct);
 }
 
 /// <summary>
@@ -54,6 +64,8 @@ public interface IWorkItemQueue
     Task<Guid> EnqueueAsync(WorkItem item, ExecutionActor actor, CancellationToken ct);
     Task<Guid> EnqueueUndoAsync(WorkItem item, ExecutionActor actor, CancellationToken ct);
     Task CancelActiveAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Ajustes 0085: motivo de espera (código) do pedido na fila — o mesmo da tela do plano; null fora da fila.</summary>
+    Task<string?> WaitCodeAsync(Guid requestId, CancellationToken ct);
 }
 
 /// <summary>0085: itens de trabalho — mesmo banco/contexto do plano.</summary>
@@ -69,7 +81,7 @@ public interface IWorkItemRepository
     Task<WorkItem?> GetByTaskNumberAsync(long taskNumber, CancellationToken cancellationToken);
     /// <summary>Itens ligados ao plano, rastreados.</summary>
     Task<List<WorkItem>> GetByPlanAsync(Guid planId, CancellationToken cancellationToken);
-    /// <summary>Item não cancelado/desfeito do card com o mesmo fingerprint (sem rastrear).</summary>
+    /// <summary>Item não cancelado/desfeito do card com o mesmo fingerprint (sem rastrear) — o item da análise não conta.</summary>
     Task<WorkItem?> FindDuplicateAsync(string cardNumber, string fingerprint, Guid? exceptId, CancellationToken cancellationToken);
     Task<List<WorkItemLog>> GetLogsAsync(Guid workItemId, int limit, CancellationToken cancellationToken);
     /// <summary>
@@ -80,6 +92,17 @@ public interface IWorkItemRepository
         GetLiveRequestsAsync(IReadOnlyCollection<Guid> workItemIds, IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     /// <summary>Atividade atual dos pedidos informados (id → rótulo).</summary>
     Task<Dictionary<Guid, string>> GetActivitiesAsync(IReadOnlyCollection<Guid> requestIds, CancellationToken cancellationToken);
+    /// <summary>Ajustes 0085: cabeçalho do item para o "ao vivo" (com status/dono/último sinal do plano), sem sub-tarefas.</summary>
+    Task<WorkItemLiveHead?> GetLiveHeadAsync(long number, CancellationToken cancellationToken);
+    /// <summary>
+    /// Ajustes 0085: pedido ativo do item (work-item/work-item-undo) ou, sem ele e com <paramref name="planId"/>, o da pista
+    /// principal do card ligado ao plano (ou ainda sem plano, quando o plano é o atual) — projetado, sem texto grande.
+    /// </summary>
+    Task<WorkItemLiveRequestRow?> GetLiveRequestAsync(Guid workItemId, string cardNumber, Guid? planId, CancellationToken cancellationToken);
+    /// <summary>Ajustes 0085: card, número e status dos itens do plano (sem rastrear, sem sub-tarefas) — só para o tempo real.</summary>
+    Task<List<(string CardNumber, long Number, string Status)>> GetPlanItemHeadsAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>Ajustes 0085: máquinas (não revogadas) do dono — id, status e último sinal.</summary>
+    Task<List<WorkItemLiveWorker>> GetLiveWorkersAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>Fase dos planos informados (id → analysis|correction).</summary>
     Task<Dictionary<Guid, string>> GetPlanPhasesAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     /// <summary>Salva. Conflito de concorrência → <see cref="ExecutionPlanConcurrencyException"/>.</summary>

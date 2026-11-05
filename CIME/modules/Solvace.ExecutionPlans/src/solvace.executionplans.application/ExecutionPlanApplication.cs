@@ -82,9 +82,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
         await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
-        // 0085: o plano de correção vira um item de trabalho (uma sub-tarefa por etapa), salvo se a skill já criou itens dele.
-        if (plan.Phase == ExecutionPhase.Correction)
-            await CreateWorkItemFromPlanAsync(plan, actor, cancellationToken);
+        // 0085: o plano vira um item de trabalho (uma sub-tarefa por etapa), salvo se a skill já criou itens dele — a correção
+        // (a entrega) e, nos ajustes, a análise ("Análise inicial do bug/da US #card"; cada versão da análise = item novo).
+        await CreateWorkItemFromPlanAsync(plan, actor, cancellationToken);
         // 0078: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
         await SuggestOnCreateAsync(plan, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
@@ -828,7 +828,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }
     }
 
-    /// <summary>0085: item de trabalho do plano de correção (idempotente). Best-effort: nunca quebra a criação do plano.</summary>
+    /// <summary>0085: item de trabalho do plano (análise ou correção; idempotente). Best-effort: nunca quebra a criação do plano.</summary>
     private async Task CreateWorkItemFromPlanAsync(ExecutionPlan plan, ExecutionActor actor, CancellationToken cancellationToken)
     {
         if (_workItems is null) return;

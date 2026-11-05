@@ -39,6 +39,15 @@ public partial class WorkItemsController : ExecutionControllerBase
     public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () => Ok(await _items.GetAsync(number, withLogs: true, ct)));
 
+    /// <summary>
+    /// Ajustes 0085: sessão de execução ao vivo do item — pedido ativo (do item ou, no item de plano, da pista principal do
+    /// plano), atividade agora, últimas atividades, últimos 50 registros (o mais novo por último) e sinal do executor.
+    /// A tela refaz este GET a cada <c>workItemsUpdated</c> do item (action request/activity/task/status).
+    /// </summary>
+    [HttpGet("{number:long}/live")]
+    public Task<ActionResult<WorkItemLiveResponse>> Live([FromRoute] long number, CancellationToken ct) =>
+        RunItem<WorkItemLiveResponse>(async () => Ok(await _items.LiveAsync(number, CurrentUserId, ct)));
+
     /// <summary>Cria um item (201). Igual a outro do card → 409 <c>{code:"duplicate", existing}</c>.</summary>
     [HttpPost("card/{card}")]
     public Task<ActionResult<WorkItemResponse>> Create([FromRoute] string card, [FromBody] CreateWorkItemRequest request, CancellationToken ct) =>

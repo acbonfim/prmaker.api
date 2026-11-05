@@ -54,6 +54,30 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
         }
     }
 
+    public async Task<string?> WaitCodeAsync(Guid requestId, CancellationToken ct)
+    {
+        var request = await _queue.GetRequestAsync(requestId, ct);
+        if (request is null || request.Status != ExecutionRequestStatus.Queued) return null;
+        var now = DateTimeOffset.UtcNow;
+        return Diagnose(request, await WaitContextAsync(request.OwnerUserId, now, ct), now).Code;
+    }
+
+    /// <summary>Ajustes 0085: o pedido da pista principal mudou — os itens do plano avisam a sessão ao vivo (best-effort).</summary>
+    private async Task NotifyPlanItemsRequestAsync(ExecutionRequest r, CancellationToken ct)
+    {
+        if (r.Kind == ExecutionRequestKind.Specialist || ExecutionRequestKind.IsWorkItem(r.Kind) || WorkItemApp is not { } items)
+            return;
+        try
+        {
+            if ((r.PlanId ?? await _plans.GetCurrentPlanIdAsync(r.CardNumber, ct)) is { } planId)
+                await items.NotifyPlanRequestAsync(planId, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // best-effort
+        }
+    }
+
     private async Task<Guid> EnqueueWorkItemAsync(WorkItem item, bool undo, ExecutionActor actor, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;

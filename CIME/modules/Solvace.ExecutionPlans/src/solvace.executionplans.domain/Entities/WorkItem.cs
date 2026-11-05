@@ -176,6 +176,30 @@ public class WorkItem
 
     // ---------------------------------------------------------------- plano → item
 
+    /// <summary>Kind do plano de análise de User Story (a fila escolhe a skill analisar-us; os itens nascem user-story).</summary>
+    public const string UserStoryPlanKind = "analisar-us";
+
+    /// <summary>
+    /// Item que espelha as etapas do plano (gerado do plano): origem análise/correção ligada ao plano — inclusive ainda
+    /// sem sub-tarefas (a análise nasce antes das etapas) — ou todas as sub-tarefas com etapa.
+    /// </summary>
+    public bool MirrorsPlan =>
+        PlanId is not null && Origin is WorkItemOrigin.Correction or WorkItemOrigin.Analysis
+                           && (Tasks.Count == 0 || Tasks.Any(t => t.StepKey is not null))
+        || Tasks.Count > 0 && Tasks.All(t => t.StepKey is not null);
+
+    /// <summary>
+    /// Título do item gerado do plano: a análise vira "Análise inicial do bug #card" / "Análise inicial da US #card"
+    /// (pelo Kind do plano); a correção fica com o título do plano.
+    /// </summary>
+    public static string PlanItemTitle(string phase, string? planKind, string cardNumber, string planTitle) =>
+        phase == ExecutionPhase.Analysis
+            ? IsUserStoryPlan(planKind) ? $"Análise inicial da US #{cardNumber}" : $"Análise inicial do bug #{cardNumber}"
+            : planTitle;
+
+    public static bool IsUserStoryPlan(string? planKind) =>
+        string.Equals(planKind?.Trim(), UserStoryPlanKind, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Acrescenta sub-tarefas para etapas novas do plano (por <c>StepKey</c>) enquanto o item não estiver fechado.
     /// Devolve as criadas.

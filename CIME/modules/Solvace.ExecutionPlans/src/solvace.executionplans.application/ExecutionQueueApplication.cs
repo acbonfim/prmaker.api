@@ -1169,6 +1169,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         {
             // Tempo real é best-effort; a tela também consulta enquanto há pedido ativo.
         }
+        // Ajustes 0085: itens ligados ao plano mostram o pedido da pista principal na sessão ao vivo.
+        await NotifyPlanItemsRequestAsync(request, cancellationToken);
     }
 
     /// <summary>0050: atividade nova — a tela atualiza a linha "agora" com o payload (sem refazer o GET).</summary>
@@ -1206,12 +1208,13 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         {
             // best-effort: a tela pega no próximo GET
         }
-        // 0085: itens ligados ao plano mostram a atividade do pedido do plano.
-        if (request.PlanId is { } planId && WorkItemApp is { } items)
+        // 0085: itens ligados ao plano mostram a atividade do pedido do plano (a análise ainda sem plano no pedido: o atual do card).
+        if (WorkItemApp is { } items)
         {
             try
             {
-                await items.NotifyPlanActivityAsync(planId, cancellationToken);
+                if ((request.PlanId ?? await _plans.GetCurrentPlanIdAsync(request.CardNumber, cancellationToken)) is { } planId)
+                    await items.NotifyPlanActivityAsync(planId, cancellationToken);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

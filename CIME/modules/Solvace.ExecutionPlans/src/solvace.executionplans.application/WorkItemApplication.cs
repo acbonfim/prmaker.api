@@ -19,7 +19,7 @@ public class WorkItemApplication : IWorkItemApplication
     private const int ConcurrencyRetries = 4;
     private const int MaxLogs = 500;
     /// <summary>Plano de análise de User Story (a fila escolhe a skill analisar-us).</summary>
-    public const string UserStoryPlanKind = "analisar-us";
+    public const string UserStoryPlanKind = WorkItem.UserStoryPlanKind;
 
     private readonly IWorkItemRepository _items;
     private readonly IExecutionPlanRepository _plans;
@@ -382,12 +382,15 @@ public class WorkItemApplication : IWorkItemApplication
 
         var now = DateTimeOffset.UtcNow;
         var tasks = StepInputs(plan.Steps).ToList();
-        var type = string.Equals(plan.Kind, UserStoryPlanKind, StringComparison.OrdinalIgnoreCase)
-            ? WorkItemType.UserStory
+        var analysis = plan.Phase != ExecutionPhase.Correction;
+        // Análise: o tipo é o do Kind do plano (analisar-us → user-story); correção: o do plano ou o do card.
+        var type = WorkItem.IsUserStoryPlan(plan.Kind) ? WorkItemType.UserStory
+            : analysis ? WorkItemType.Bug
             : await DefaultTypeAsync(cardNumber, ct);
-        var origin = plan.Phase == ExecutionPhase.Correction ? WorkItemOrigin.Correction : WorkItemOrigin.Analysis;
+        var origin = analysis ? WorkItemOrigin.Analysis : WorkItemOrigin.Correction;
+        var title = WorkItem.PlanItemTitle(analysis ? ExecutionPhase.Analysis : ExecutionPhase.Correction, plan.Kind, cardNumber, plan.Title);
         var description = plan.Summary is { Length: > WorkItem.MaxDescriptionLength } s ? s[..WorkItem.MaxDescriptionLength] : plan.Summary;
-        var item = new WorkItem(cardNumber, type, plan.Title, description, origin, null, plan.Id, tasks,
+        var item = new WorkItem(cardNumber, type, title, description, origin, null, plan.Id, tasks,
             actor.UserId ?? plan.CreatedByUserId, actor.UserId is null ? plan.CreatedBy : actor.Name, now);
         _items.Add(item);
         try
@@ -481,10 +484,8 @@ public class WorkItemApplication : IWorkItemApplication
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
     }
 
-    /// <summary>Item que espelha as etapas do plano (gerado do plano).</summary>
-    private static bool IsMirror(WorkItem item) =>
-        item.Origin is WorkItemOrigin.Correction or WorkItemOrigin.Analysis && item.Tasks.Any(t => t.StepKey is not null)
-        || item.Tasks.Count > 0 && item.Tasks.All(t => t.StepKey is not null);
+    /// <summary>Item que espelha as etapas do plano (gerado do plano; a análise pode nascer sem etapas).</summary>
+    private static bool IsMirror(WorkItem item) => item.MirrorsPlan;
 
     private static IEnumerable<WorkTaskInput> StepInputs(IEnumerable<ExecutionStep> steps) =>
         steps.OrderBy(s => s.Order).Select(s => new WorkTaskInput
@@ -502,15 +503,15 @@ public class WorkItemApplication : IWorkItemApplication
     public async Task AttachRequestAsync(Guid workItemId, Guid requestId, string status, CancellationToken ct)
     {
         WorkItem? item = null;
-        var changed = false;
         for (var attempt = 1; ; attempt++)
         {
             try
             {
                 item = await _items.GetByIdAsync(workItemId, ct);
                 if (item is null) return;
-                changed = item.AttachRequest(requestId, status, DateTimeOffset.UtcNow);
-                if (!changed) return;
+                // Ajustes 0085: o sinal vai mesmo sem mudança no item (pegou/começou/terminou o pedido) — a sessão ao vivo
+                // refaz o GET {number}/live.
+                if (!item.AttachRequest(requestId, status, DateTimeOffset.UtcNow)) break;
                 await _items.SaveChangesAsync(ct);
                 break;
             }
@@ -522,11 +523,38 @@ public class WorkItemApplication : IWorkItemApplication
         await NotifyAsync(item!, ExecutionPlanRealTimeEvents.WorkItemActions.Request, null, ct);
     }
 
-    public async Task NotifyPlanActivityAsync(Guid planId, CancellationToken ct)
+    public Task NotifyPlanActivityAsync(Guid planId, CancellationToken ct) =>
+        NotifyPlanItemsAsync(planId, ExecutionPlanRealTimeEvents.WorkItemActions.Activity, ct);
+
+    public Task NotifyPlanRequestAsync(Guid planId, CancellationToken ct) =>
+        NotifyPlanItemsAsync(planId, ExecutionPlanRealTimeEvents.WorkItemActions.Request, ct);
+
+    /// <summary>Só o sinal (sem rastrear os itens: quem chama pode estar no meio de outra gravação no mesmo contexto).</summary>
+    private async Task NotifyPlanItemsAsync(Guid planId, string action, CancellationToken ct)
     {
-        foreach (var item in await _items.GetByPlanAsync(planId, ct))
-            if (item.Status is not (WorkItemStatus.Completed or WorkItemStatus.Cancelled or WorkItemStatus.Reverted))
-                await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Activity, null, ct);
+        foreach (var (card, number, status) in await _items.GetPlanItemHeadsAsync(planId, ct))
+            if (!WorkItemStatus.IsClosed(status))
+                await NotifyAsync(card, number, status, action, null, ct);
+    }
+
+    // ================================================================ ao vivo
+
+    public async Task<WorkItemLiveResponse> LiveAsync(long number, Guid? viewerUserId, CancellationToken ct)
+    {
+        var head = await _items.GetLiveHeadAsync(number, ct) ?? throw NotFound(number);
+        // Item fechado não mostra o pedido do plano (que já é de outra rodada); o pedido do próprio item (desfazer) vale.
+        var planId = WorkItemStatus.IsClosed(head.Status) ? null : head.PlanId;
+        var request = await _items.GetLiveRequestAsync(head.Id, head.CardNumber, planId, ct);
+        string? waitCode = null;
+        if (request?.Status == ExecutionRequestStatus.Queued && _services.GetService(typeof(IWorkItemQueue)) is IWorkItemQueue queue)
+        {
+            try { waitCode = await queue.WaitCodeAsync(request.Id, ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { /* sem o motivo: a tela mostra "na fila" */ }
+        }
+        var logs = await _items.GetLogsAsync(head.Id, WorkItemLive.MaxLogs, ct);
+        var owner = WorkItemLive.OwnerOf(head, request, viewerUserId);
+        var workers = owner is { } o ? await _items.GetLiveWorkersAsync(o, ct) : [];
+        return WorkItemLive.Build(head, request, waitCode, logs, workers, DateTimeOffset.UtcNow);
     }
 
     public async Task NotifyActivityAsync(Guid workItemId, CancellationToken ct)
@@ -603,11 +631,14 @@ public class WorkItemApplication : IWorkItemApplication
     private async Task TimelineAsync(WorkItem item, string markdown, ExecutionActor actor, CancellationToken ct) =>
         await TryAsync(() => _timeline.WriteAsync(item.CardNumber, markdown, actor.UserId, actor.Name, ct));
 
-    private async Task NotifyAsync(WorkItem item, string action, long? taskNumber, CancellationToken ct) =>
+    private Task NotifyAsync(WorkItem item, string action, long? taskNumber, CancellationToken ct) =>
+        NotifyAsync(item.CardNumber, item.Number, item.Status, action, taskNumber, ct);
+
+    private async Task NotifyAsync(string cardNumber, long number, string status, string action, long? taskNumber, CancellationToken ct) =>
         await TryAsync(() => _realTime.NotifyGroupAsync(
-            ExecutionPlanRealTimeEvents.Group(item.CardNumber),
+            ExecutionPlanRealTimeEvents.Group(cardNumber),
             ExecutionPlanRealTimeEvents.EventWorkItemsUpdated,
-            new { cardNumber = item.CardNumber, number = item.Number, taskNumber, action, status = item.Status },
+            new { cardNumber, number, taskNumber, action, status },
             ct));
 
     /// <summary>Tempo real e timeline são best-effort: nunca quebram a operação.</summary>
