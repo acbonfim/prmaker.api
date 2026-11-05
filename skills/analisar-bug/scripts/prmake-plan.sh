@@ -1192,7 +1192,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate}"
+    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -1260,6 +1260,9 @@ case "$CMD" in
         exit 0 ;;
       zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate)
         prmake_post_retry "Azure/card/$CARD/actions/$ACTION" ;;
+      set-state) # 0085 (desfazer item): volta o card para um estado valido do tipo — devops <card> set-state <estado> [motivo]
+        jq -n --arg s "${2:?estado}" --arg r "${3:-}" '{state:$s, reason:(if $r == "" then null else $r end)}' > "$TMP/body"
+        prmake_post "Azure/card/$CARD/actions/set-state" "$TMP/body" ;;
       *) die "acao desconhecida: $ACTION" ;;
     esac
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em $ACTION: $(resp_error)"
@@ -1683,11 +1686,8 @@ case "$CMD" in
       echo "OK PR #$NUM ($REPO) fechado pelo PRMake  $URL"
       exit 0
     fi
-    # TODO(0085/B2): rota de fechar PR fora do registro do card — confirmar o caminho final com o backend.
-    prmake_req POST "GitHub/pull-request/$NUM/close?repository=$REPO&card=$CARD"
-    if [[ "$CODE" =~ ^2 ]]; then echo "OK PR #$NUM ($REPO) fechado pelo PRMake"; exit 0; fi
-    [[ "$CODE" =~ ^(404|405)$ ]] && die "PR #$NUM ($REPO) nao esta registrado no card e o PRMake nao tem a rota de fechar PR avulso (HTTP $CODE) — avise o usuario (feche pela tela do PR)"
-    die "HTTP $CODE ao fechar o PR #$NUM: $(resp_error)"
+    # So fecha PR registrado no card (os PRs do item sao abertos pelo open-pr e ficam registrados).
+    die "PR #$NUM ($REPO) nao esta registrado no card — o PRMake so fecha PRs do card; avise o usuario (feche pela tela do PR)"
     ;;
 
   delete-branch)
