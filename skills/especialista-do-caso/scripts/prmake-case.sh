@@ -4,9 +4,14 @@
 #   prmake-case.sh file   <card> <n>          baixa o arquivo #n da conversa (imagem, áudio, documento) e imprime o caminho
 #   prmake-case.sh upload <card> <arquivo>    sobe um arquivo gerado (imagem do mock, script, CSV) e imprime "arquivo #n"
 #   prmake-case.sh context <card>             contexto compacto do caso (o mesmo de prmake_case_context)
+#   prmake-case.sh rules   <card> [--refresh] regras do PRMake para o card (o mesmo de prmake_rules), cache 10 min
+#   prmake-case.sh items   <card> [--refresh] itens de trabalho do card (resumo + fingerprint), cache 10 min
+#   prmake-case.sh catalog <card>             tipos de sub-tarefa e modelos de item ja preenchidos para o card
 #
 # Token: PRMAKE_TOKEN (no executor é o token do caso — só lê e conversa) ou ~/.claude/prmake-token.txt.
-# Arquivos baixados ficam em ~/.prmake/cards/<card>/case/.
+# Arquivos baixados ficam em ~/.prmake/cards/<card>/case/; regras/itens/catalogo em ~/.prmake/cards/<card>/dados/
+# (regras.md, itens.json, catalogo.json). Cache: PRMAKE_CASE_TTL_MIN (padrao 10); --refresh ignora o cache; se o PRMake
+# falhar, usa o cache antigo (com AVISO). Saida: 0 ok, 1 erro (sem dados), 2 uso incorreto.
 set -uo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -20,9 +25,11 @@ case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
 esac
 
 die() { echo "ERRO: $*" >&2; exit 1; }
+usage() { echo "uso: $*" >&2; exit 2; }
+warn() { echo "AVISO: $*" >&2; }
 
 CMD="${1:-}"; CARD="${2:-}"
-[[ -n "$CMD" && -n "$CARD" ]] || die "uso: prmake-case.sh file|upload|context <card> [...]"
+[[ -n "$CMD" && -n "$CARD" ]] || usage "prmake-case.sh file|upload|context|rules|items|catalog <card> [...]"
 command -v jq >/dev/null || die "jq nao encontrado"
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 CARD="${CARD#\#}"
@@ -34,9 +41,47 @@ token() {
 }
 TOKEN="$(token)"
 DIR="${CARDS_DIR:-$HOME/.prmake/cards}/$CARD/case"
-mkdir -p "$DIR"
+DADOS="${CARDS_DIR:-$HOME/.prmake/cards}/$CARD/dados"
+mkdir -p "$DIR" "$DADOS"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/prmake-case.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
+TTL="${PRMAKE_CASE_TTL_MIN:-10}"; [[ "$TTL" =~ ^[0-9]+$ ]] || TTL=10
+REFRESH=0; [[ "${3:-}" == "--refresh" ]] && REFRESH=1
+
+# GET no PRMake: grava o corpo em $TMP/resp e devolve o HTTP (000 = sem rede/timeout).
+get() { curl -s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/$1" 2>/dev/null || true; }
+# Cache valido = existe, nao vazio e mais novo que TTL minutos (find -mmin: igual no macOS, Linux e Git Bash).
+fresh() { [[ -s "$1" ]] && [[ -n "$(find "$1" -mmin "-$TTL" 2>/dev/null)" ]]; }
+# Busca <path> e grava em <arquivo>; se falhar e houver cache antigo, usa o cache com AVISO.
+fetch_or_cache() { # <path> <arquivo> <nome> <filtro-jq-que-valida>
+  local path="$1" file="$2" name="$3" check="$4" code
+  code="$(get "$path")"
+  if [[ "$code" =~ ^2 ]] && jq -e "$check" "$TMP/resp" >/dev/null 2>&1; then
+    cp "$TMP/resp" "$file"; return 0
+  fi
+  if [[ -s "$file" ]]; then
+    warn "$name: PRMake indisponivel (HTTP ${code:-000}) — usando o cache de $(date -r "$file" '+%d/%m %H:%M' 2>/dev/null || echo 'antes') ($file)"
+    return 0
+  fi
+  die "$name: HTTP ${code:-000} $(head -c 300 "$TMP/resp" 2>/dev/null) — use a ferramenta MCP equivalente"
+}
+
+# Resumo legivel da lista de itens (WorkItemResponse[]).
+items_summary() { # <itens.json>
+  jq -r --arg card "$CARD" '
+    def params: ((.params // {}) | to_entries | map("\(.key)=\(.value)") | join(", ")) as $p | if $p == "" then "" else "  {\($p)}" end;
+    if (type != "array") or length == 0 then "Nenhum item de trabalho no card \($card)."
+    else
+      "Itens de trabalho do card \($card) (\(length)):",
+      (sort_by(.number)[] |
+        "#\(.number) [\(.type // "bug")] \(.status) \(.progress.done // 0)/\(.progress.total // (.tasks | length)) — \(.title)" +
+        "  (origem: \(.origin // "?")" + (if .planId then ", plano \(.planPhase // "")" else "" end) +
+        (if .editable then ", editavel" else "" end) + (if .cancelReason then ", cancelado: \(.cancelReason)" else "" end) +
+        ", fp: \((.fingerprint // "")[0:12]))",
+        ((.tasks // []) | sort_by(.order)[] |
+          "   \(.order). #\(.number) \(.kind) \(.status) — \(.title)\(params)"))
+    end' "$1"
+}
 
 case "$CMD" in
   file)
@@ -65,5 +110,48 @@ case "$CMD" in
     [[ "$code" == 200 ]] || die "contexto: HTTP $code $(head -c 300 "$TMP/resp" 2>/dev/null)"
     cat "$TMP/resp"
     ;;
-  *) die "comando desconhecido: $CMD (file|upload|context)" ;;
+  rules)
+    F="$DADOS/regras.md"
+    if (( REFRESH )) || ! fresh "$F"; then
+      code="$(get "Skills/rules?card=$CARD")"
+      if [[ "$code" =~ ^2 ]] && [[ -s "$TMP/resp" ]]; then
+        # Aceita markdown puro, string JSON ou objeto {markdown|content|text|rules}.
+        if jq -e 'type == "string"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.' "$TMP/resp" > "$TMP/md"
+        elif jq -e 'type == "object"' "$TMP/resp" >/dev/null 2>&1; then
+          jq -r '.markdown // .content // .text // .rules // empty | if type == "string" then . else tojson end' "$TMP/resp" > "$TMP/md"
+        else cp "$TMP/resp" "$TMP/md"; fi
+        [[ -s "$TMP/md" ]] || die "regras: resposta vazia do PRMake — use prmake_rules"
+        { echo "<!-- regras do PRMake para o card $CARD, obtidas em $(date '+%Y-%m-%d %H:%M') -->"; cat "$TMP/md"; } > "$F"
+      elif [[ -s "$F" ]]; then
+        warn "regras: PRMake indisponivel (HTTP ${code:-000}) — usando o cache antigo ($F)"
+      else
+        die "regras: HTTP ${code:-000} $(head -c 300 "$TMP/resp" 2>/dev/null) — use prmake_rules"
+      fi
+    fi
+    cat "$F"
+    ;;
+  items)
+    F="$DADOS/itens.json"
+    if (( REFRESH )) || ! fresh "$F"; then
+      fetch_or_cache "WorkItems/card/$CARD" "$F" "itens" 'type == "array"'
+    fi
+    items_summary "$F"
+    echo "(lista completa: $F)"
+    ;;
+  catalog)
+    F="$DADOS/catalogo.json"
+    fetch_or_cache "WorkItems/catalog?card=$CARD" "$F" "catalogo" 'type == "object"'
+    jq -r '
+      def params: ((.params // {}) | to_entries | map("\(.key)=\(.value)") | join(", ")) as $p | if $p == "" then "" else "  {\($p)}" end;
+      "Tipos de sub-tarefa:",
+      ((.taskKinds // [])[] | "  \(.kind) — \(.label // .kind)" +
+        (if ((.params // []) | length) > 0 then "  (parametros: \(.params | map(if type == "string" then . else (.key // .name // tostring) end) | join(", ")))" else "" end)),
+      "",
+      "Modelos (ja preenchidos para o card — use os valores como estao, nao invente nomes):",
+      ((.templates // [])[] |
+        "  \(.key) — \(.title)" + (if .type then " [\(.type)]" else "" end) + (if .description then ": \(.description)" else "" end),
+        ((.tasks // []) | to_entries[] | "     \(.key + 1). \(.value.kind) — \(.value.title)\(.value | params)"))' "$F"
+    echo "(catalogo completo: $F)"
+    ;;
+  *) usage "comando desconhecido: $CMD (file|upload|context|rules|items|catalog)" ;;
 esac
