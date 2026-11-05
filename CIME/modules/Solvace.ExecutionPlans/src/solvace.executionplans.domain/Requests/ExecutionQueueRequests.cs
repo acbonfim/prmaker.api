@@ -14,6 +14,15 @@ public class CreateExecutionRequestRequest
     public bool Force { get; set; }
 }
 
+/// <summary>Card 77988: "Criar itens da análise".</summary>
+public class AnalysisDeliveryRequest
+{
+    /// <summary>true = cria e já executa; false = cria e deixa o plano pausado (a pessoa inicia pelo Executar do item).</summary>
+    public bool Start { get; set; }
+    /// <summary>O que a pessoa quer acrescentar (entra no prompt).</summary>
+    public string? Note { get; set; }
+}
+
 public class CancelExecutionRequestRequest
 {
     public string? Reason { get; set; }

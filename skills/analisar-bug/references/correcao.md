@@ -36,7 +36,15 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - Se ha script de dados: vai **sempre** por **chamado** (o usuario abre no sistema de chamados configurado —
      `TicketSystem` do `settings`) — pergunte so o que decide o script (ambiente, janela, quem aprova), nao "se vai por
      chamado".
-   - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
+   - **Itens de trabalho — sempre a ultima pergunta, com estas tres opcoes** (card 77988: o sim/nao "posso seguir com a
+     correcao?" respondido com "so a analise" deixou o card sem plano, sem item e sem caminho para cria-los depois). Texto:
+     "Como seguir com os itens de trabalho da correcao?" — opcoes (`label` exatamente assim; na `description` o que vai
+     acontecer neste card: repositorios, PRs e destinos do `branches`, chamado):
+     · `Criar os itens e iniciar agora` — monto o plano de correcao (vira o item de trabalho na Bancada) e executo;
+     · `Criar os itens sem iniciar` — monto o plano e os itens e deixo o plano pausado; a pessoa inicia pelo Executar do item;
+     · `Nao criar itens agora` — a analise termina aqui; os itens saem depois pelo botao **Criar itens da analise** da
+       Bancada (ou pedindo ao Especialista do caso).
+     Nunca pergunte "posso seguir?" como sim/nao nem ofereca "so a analise" sem dizer como os itens sao criados depois.
    **Nova rodada de perguntas** (comentario/anexo/resposta mudou a analise e voce refez as solucoes — card 75648):
    antes do `ask`, veja as perguntas do plano (`prmake_answers`) e trate **cada uma ainda aberta**:
    - continua valendo como esta → deixe aberta (nao pergunte de novo);
@@ -72,7 +80,16 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
      seguir. Rode `prmake_notes` (sem MCP: `notes <card>`) ao receber as respostas: o usuario pode ter anexado algo junto.
    - Exit 10 (1 h sem todas as respostas): avise e pare — o `start` retoma depois.
    Com as respostas: `step propor-solucoes completed` e `status <card> completed "" .../solucoes.md`
-   (fim do plano de **analise**).
+   (fim do plano de **analise**). Depois, pela resposta dos itens de trabalho:
+   - **Criar e iniciar** → passo 7 e passo 8.
+   - **Criar sem iniciar** → passo 7 (plano + itens separados) e, sem executar nenhuma etapa,
+     `prmake_plan_status(card, "paused", reason: "Criado sem iniciar — use Executar no item da Bancada", phase: "correction")`
+     (script: `status <card> paused "Criado sem iniciar — use Executar no item da Bancada"`); encerre. O Executar do item
+     retoma o plano.
+   - **Nao criar** → sem plano de correcao; no resumo final diga que os itens saem pelo botao **Criar itens da analise**.
+   - **Pedido "Criar itens da analise"** (observacao do pedido do executor — botao da Bancada ou `prmake_analysis_items` do
+     especialista —, ou a pessoa pede no chat depois): vale por cima de "Nao criar itens agora"/"so a analise" — passo 7 e
+     inicie ou deixe pausado conforme o pedido.
 
 ### 7. Montar o plano de correcao
 Monte as etapas **a partir do(s) padrao(oes) confirmados e das especificidades deste card** — o catalogo da

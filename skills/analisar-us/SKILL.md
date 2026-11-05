@@ -88,10 +88,18 @@ criterio · como a solucao atende · como validar`), **Base Solvace** (itens usa
 **Duvidas**. Arquivo no plano (`prmake_file(..., "analysis", "montar-analise")` no executor; `sync` no terminal),
 publique na Timeline (`prmake_timeline`) e pergunte (`prmake_ask`, como em `$REF correcao 6`): qual solucao, as
 duvidas que decidem o escopo, criterios derivados (confirma?), fluxo/base de branches quando o `branches` pedir (exit 3),
-se ha script de dados (vai sempre por **chamado** — `TicketSystem` das regras), se pode seguir com a implementacao agora.
+se ha script de dados (vai sempre por **chamado** — `TicketSystem` das regras) e, **por ultimo, os itens de trabalho**
+(card 77988) — "Como seguir com os itens de trabalho da implementacao?" com exatamente estas opcoes (na `description`, o que
+acontece neste card: repositorios, PRs e destinos do `branches`, chamado): `Criar os itens e iniciar agora` · `Criar os
+itens sem iniciar` (plano e itens prontos, plano pausado; a pessoa inicia pelo Executar do item na Bancada) · `Nao criar
+itens agora` (os itens saem depois pelo botao **Criar itens da analise** da Bancada ou pedindo ao Especialista do caso).
+Nunca o sim/nao "posso seguir com a implementacao?" nem "so a analise" sem dizer como criar os itens depois
+(`$REF correcao 6` tem o que fazer com cada resposta e com o pedido "Criar itens da analise", que vale por cima do "nao").
 **Checkpoint obrigatorio** de `propor-solucoes` (ate ~3.000 caracteres,
 autossuficiente: objetivo, CAs, solucao por opcao com refs, entregas, branches levantadas, riscos) — a implementacao
-roda numa sessao nova que le so ele. Com as respostas, `status <card> completed "" .../analise-us.md`.
+roda numa sessao nova que le so ele. Com as respostas, `status <card> completed "" .../analise-us.md` e siga pela
+resposta dos itens: iniciar → passos 7 e 8; sem iniciar → passo 7 e `status <card> paused "Criado sem iniciar — use
+Executar no item da Bancada"` (fase `correction`; nenhuma etapa executada); nao criar → pare aqui.
 
 **7. Plano de implementacao → item de trabalho** — `prmake_correction(card, "Implementacao <card>: <resumo>", steps)`
 (script: `bash $PLAN correction <card> "Implementacao <card>: <resumo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por

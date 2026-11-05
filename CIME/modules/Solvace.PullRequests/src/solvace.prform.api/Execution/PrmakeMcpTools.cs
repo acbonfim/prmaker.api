@@ -60,7 +60,9 @@ public partial class PrmakeMcpTools(
         "nunca bug/user-story (tipo do card no DevOps). " +
         "0085 r5: abrir PR de branch existente com prmake_pr_open (nome pelas regras); cancelar/executar item com " +
         "prmake_work_item_cancel/prmake_work_item_execute; horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
-        "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados).";
+        "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados). " +
+        "Analise respondida sem plano de implementacao/correcao ('so a analise por enquanto'): a pessoa pede os itens depois com " +
+        "prmake_analysis_items(card, start) — o Claude do tratamento monta o plano (start=false: deixa pausado ate o Executar do item).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

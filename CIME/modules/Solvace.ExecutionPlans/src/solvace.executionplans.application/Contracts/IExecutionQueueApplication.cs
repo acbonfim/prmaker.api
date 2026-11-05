@@ -14,6 +14,11 @@ public interface IExecutionQueueApplication
     Task<ExecutionRequestResponse> RetryAsync(Guid requestId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionRequestResponse> AllowOverBudgetAsync(Guid requestId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<List<ExecutionRequestResponse>> GetHistoryAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Card 77988: itens de trabalho a partir da análise já respondida (sem plano de entrega) — pede à fila a fase de
+    /// implementação/correção; <paramref name="start"/> = false monta o plano e o deixa pausado até o Executar do item.
+    /// </summary>
+    Task<ExecutionRequestResponse> RequestDeliveryAsync(string cardNumber, bool start, string? note, ExecutionActor actor, CancellationToken cancellationToken);
 
     // Executor
     /// <summary>Pega um pedido para o executor, se houver — responde na hora (0068: sem long-poll).</summary>

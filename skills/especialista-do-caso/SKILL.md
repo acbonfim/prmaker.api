@@ -140,6 +140,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Criar/editar item | `prmake_tool_run` / `prmake_work_item_create` / `prmake_work_item_update` (secoes acima) |
 | Resumir o card ("do que se trata?", "o que o cliente esta pedindo/reclamando?", "resume o card") | Ja existe item `resumo-do-pedido` concluido e o card nao mudou desde entao? → leia `resumo-do-pedido.md` (`prmake_work_item_files(card, n, file: "resumo-do-pedido.md")`) e responda com ele. Senao: `prmake_tool_run(card, "resumo-do-pedido", {"focus": "<o que a pessoa quer saber, se disse>", "timeline": "sim" so se ela pediu para publicar})` + `prmake_work_item_execute(card, numero)` e responda com o numero do item ("o racional, em portugues, fica no item #n e nos Arquivos do card (`resumo-do-pedido.md`) em alguns minutos — me pergunte depois que eu resumo aqui"). Nao monte o resumo voce mesmo lendo o card inteiro (cada leitura fica na conversa) |
 | Executar item | `prmake_work_item_execute(card, number)` |
+| Criar os itens da analise ("cria o item da implementacao/correcao", "agora pode seguir") — analise respondida e **sem** plano de implementacao/correcao (ex.: respondeu "so a analise por enquanto") | `prmake_analysis_items(card, start, note?)` — `start: true` se a pessoa quer que ja comece, `false` para deixar pronto e pausado (na duvida, pergunte qual). Nao monte o plano nem crie o item `implementation`/`fix` a mao: o Claude do tratamento monta o plano (que vira o item) na maquina de quem pediu. O PRMake recusa se ja houver plano de entrega ou pergunta aberta — diga o motivo |
 | Cancelar item | `prmake_work_item_cancel(card, number, undo?, reason)` — `undo: true` so se a pessoa pediu para desfazer o que ele fez; item espelho do plano o PRMake recusa (o plano se pausa/cancela na tela) |
 | Andamento de sub-tarefa de item avulso | `prmake_work_task(card, taskNumber, action)` — nunca de sub-tarefa que espelha etapa do plano (recusado) |
 | Arquivo do item (chamado completo, script) | `prmake_work_item_file(card, number, name, content, kind)` |
@@ -196,6 +197,7 @@ confirmar e como.
 | Criar item a partir de uma ferramenta | `prmake_tool_run(card, key, answers, allowDuplicate?, duplicateReason?)` |
 | Criar item livre (nenhuma ferramenta serve) / ajustar item pendente | `prmake_work_item_create` / `prmake_work_item_update` |
 | Executar / cancelar item (a pedido) | `prmake_work_item_execute` / `prmake_work_item_cancel` |
+| Itens a partir da analise (a pedido) | `prmake_analysis_items` |
 | Timeline, horas, mover o card (a pedido) | `prmake_timeline` / `prmake_devops` (`log-hours`, `set-state`, acoes) |
 | Abrir PR de branch existente (a pedido) | `prmake_pr_open` |
 | Arquivos do item (gravar/ler) | `prmake_work_item_file` / `prmake_work_item_files` |
