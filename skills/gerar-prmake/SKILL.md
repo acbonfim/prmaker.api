@@ -1,6 +1,6 @@
 ---
 name: gerar-prmake
-description: Gera e publica um Pull Request no sistema PRMake a partir da branch atual (hotfix/<card> ou bugfix/<card>), montando a descrição e o RCA via IA com base nos dados do card no Azure DevOps, nos commits/diff da branch e no prompt configurado; ao final insere o Root Cause no card do DevOps e posta um resumo não-técnico (PT/EN) na discussion do card. Use quando o usuário pedir para gerar/criar um PR no PRMake, "gerar pr", "montar pull request" ou publicar o root cause de um card.
+description: Gera e publica um Pull Request no sistema PRMake a partir da branch atual (hotfix/<card> ou bugfix/<card> no Bug; feature/<card> na User Story), montando a descrição e o RCA via IA com base nos dados do card no Azure DevOps, nos commits/diff da branch e no prompt configurado; ao final insere o Root Cause no card do DevOps e posta um resumo não-técnico (PT/EN) na discussion do card. Use quando o usuário pedir para gerar/criar um PR no PRMake, "gerar pr", "montar pull request" ou publicar o root cause de um card.
 ---
 
 # gerar-prmake
@@ -37,8 +37,8 @@ EN-US) na **discussion** do card, a partir da branch atualmente em checkout.
 ## Fluxo
 
 ### 1. Identificar o card pela branch
-Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `bugfix/<numero>`:
-- `branchPrefix` = `hotfix/` ou `bugfix/` (com a barra); `card` = número após o prefixo.
+Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `bugfix/<numero>` (Bug) ou `feature/<numero>` (User Story — nunca `hotfix/`):
+- `branchPrefix` = `hotfix/`, `bugfix/` ou `feature/` (com a barra); `card` = número após o prefixo.
 - Se a branch não seguir o padrão (ex.: `master`), **pare** e peça ao usuário a branch correta ou o
   número do card + prefixo. Se o usuário passar um número em ``, use-o.
 

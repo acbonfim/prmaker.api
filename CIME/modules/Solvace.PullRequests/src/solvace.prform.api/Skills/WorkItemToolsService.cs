@@ -113,10 +113,11 @@ public class WorkItemToolsService(
 
         try
         {
-            var latest = (await plans.GetByCardAsync(card, ct))
-                .Where(p => p.Phase == ExecutionPhase.Correction && p.Status != ExecutionStatus.Cancelled)
-                .OrderByDescending(p => p.CreatedAt)
-                .FirstOrDefault();
+            // Plano de correção mais recente; sem ele, o de análise (o repositório que a análise apontou) — assim a primeira
+            // sugestão de branch já segue o repositório em tratamento, mesmo antes de existir PR ou correção.
+            var cardPlans = (await plans.GetByCardAsync(card, ct)).Where(p => p.Status != ExecutionStatus.Cancelled).ToList();
+            var latest = cardPlans.Where(p => p.Phase == ExecutionPhase.Correction).OrderByDescending(p => p.CreatedAt).FirstOrDefault()
+                         ?? cardPlans.OrderByDescending(p => p.CreatedAt).FirstOrDefault();
             if (latest is not null)
             {
                 var plan = await plans.GetAsync(latest.Id, ct);
@@ -132,6 +133,14 @@ public class WorkItemToolsService(
             logger.LogWarning(e, "Plano do card {Card} indisponível para o catálogo", card);
         }
         return result;
+    }
+
+    /// <summary>Branches/destinos do fluxo para cada repositório do card (ou o padrão, sem PR/plano) — só os destinos que o tipo dele tem.</summary>
+    public async Task<IReadOnlyList<RepositoryBranchPlan>> RepositoryPlansAsync(CardRules r, CancellationToken ct)
+    {
+        var repos = (await CardRepositoriesAsync(r.Card, ct)).ToList();
+        if (repos.Count == 0 && r.DefaultRepository is { Length: > 0 } fallback) repos.Add(fallback);
+        return repos.Select(repo => SkillsRulesService.PlanForRepository(r, repo)).ToList();
     }
 
     // ── Catálogo ─────────────────────────────────────────────────────────────────────────────────

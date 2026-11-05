@@ -1,6 +1,6 @@
 ---
 name: gerar-handover
-description: Gera e salva a Passagem de Conhecimento (handover) de um card no PRMake, preenchendo o formulário cadastrado nas configurações (plugin AI Configurations, TemplatePassagemConhecimento) com os dados do card no Azure DevOps (campos, comentários, histórico), o PR salvo e a linha do tempo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um número informado. Use quando o usuário pedir para "gerar handover", "passagem de conhecimento", "passar o card para o próximo turno" ou similar.
+description: Gera e salva a Passagem de Conhecimento (handover) de um card no PRMake, preenchendo o formulário cadastrado nas configurações (plugin AI Configurations, TemplatePassagemConhecimento) com os dados do card no Azure DevOps (campos, comentários, histórico), o PR salvo e a linha do tempo. Descobre o card pela branch atual (hotfix/<card>, bugfix/<card> ou feature/<card> da User Story) ou por um número informado. Use quando o usuário pedir para "gerar handover", "passagem de conhecimento", "passar o card para o próximo turno" ou similar.
 ---
 
 # gerar-handover
@@ -37,7 +37,7 @@ lê o layout do formulário configurado, cruza os dados do card e salva o formul
 ## Fluxo
 
 ### 1. Identificar o card
-`git rev-parse --abbrev-ref HEAD` → `hotfix/<numero>` ou `bugfix/<numero>` (ignore sufixos como `-qa`).
+`git rev-parse --abbrev-ref HEAD` → `hotfix/<numero>` ou `bugfix/<numero>` (Bug) ou `feature/<numero>` (User Story) — ignore sufixos como `-dev`, `-qa`, `-rv`.
 Se o usuário informou um número, use-o. Se não der para descobrir, **pergunte**.
 
 ### 2. Buscar os dados (somente leitura)

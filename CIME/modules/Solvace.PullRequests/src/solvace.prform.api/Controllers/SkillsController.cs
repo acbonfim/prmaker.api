@@ -75,20 +75,24 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     /// 0085: "Regras do PRMake" calculadas para o card — fluxo pela área, branch principal, nome de branch por destino
     /// (BranchSuffixByTarget: release-version → hotfix/77434-rv), PRs do fluxo por tipo de repositório, padrões e regras
     /// fixas. <c>Accept: text/markdown</c> (ou <c>?format=md</c>) devolve só o markdown; senão JSON com o markdown e os
-    /// dados calculados.
+    /// dados calculados. <c>?repository=</c> calcula as branches/destinos do fluxo para esse repositório (sem ele, o do card).
     /// </summary>
     [HttpGet("rules")]
-    public async Task<ActionResult> Rules([FromQuery] string? card, [FromQuery] string? format, [FromServices] SkillsRulesService rules,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult> Rules([FromQuery] string? card, [FromQuery] string? format, [FromQuery] string? repository,
+        [FromServices] SkillsRulesService rules, [FromServices] WorkItemToolsService tools, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(SkillsRulesService.NormalizeCard(card)))
             return BadRequest(new { error = "Informe o card (?card=)." });
         var r = await rules.GetAsync(card!, cancellationToken);
-        var markdown = SkillsRulesService.Markdown(r);
+        var cardRepositories = await tools.CardRepositoriesAsync(r.Card, cancellationToken);
+        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken));
         var wantsText = string.Equals(format, "md", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
                         || Request.Headers.Accept.Any(a => a?.Contains("text/markdown", StringComparison.OrdinalIgnoreCase) == true);
         if (wantsText)
             return Content(markdown, "text/markdown; charset=utf-8");
+        // Repositório em tratamento: o informado; senão o do card (PRs, plano) ou o padrão. As branches sugeridas seguem o tipo dele.
+        var repo = string.IsNullOrWhiteSpace(repository) ? cardRepositories.FirstOrDefault() ?? r.DefaultRepository : repository.Trim();
+        var plan = SkillsRulesService.PlanForRepository(r, repo);
         return Ok(new
         {
             card = r.Card,
@@ -100,6 +104,12 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
             mainBranch = r.MainBranch,
             branchesByTarget = r.Suffixes.ToDictionary(s => s.Key, s => BranchRules.BranchFor(r.MainBranch, s.Key, r.Suffixes)),
             flowTargets = r.FlowTargets(),
+            repository = plan.Repository,
+            repositories = cardRepositories,
+            repoKind = plan.Kind,
+            repoBase = plan.Base,
+            // Só os destinos do fluxo deste tipo de repositório (revamp-backend não tem QA); vazio = repositório fora do BranchStrategy.
+            repositoryTargets = plan.Targets.Select(t => new { target = t.Target, branch = t.Branch }),
             cardError = r.CardError
         });
     }

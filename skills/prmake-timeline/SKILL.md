@@ -1,6 +1,6 @@
 ---
 name: prmake-timeline
-description: Registra uma entrada na Timeline de um card no PRMake (POST /api/v1/Timeline), autenticando com a api-key do usuario configurada. Use para anotar contexto/progresso de uma analise, teste ou correcao no card. IMPORTANTE - use proativamente - sempre que comecar uma analise/investigacao/teste sobre um card (branch hotfix/<card> ou bugfix/<card>), registre uma entrada curta na timeline descrevendo o que esta sendo analisado/feito, e va adicionando novas entradas conforme avanca.
+description: Registra uma entrada na Timeline de um card no PRMake (POST /api/v1/Timeline), autenticando com a api-key do usuario configurada. Use para anotar contexto/progresso de uma analise, teste ou correcao no card. IMPORTANTE - use proativamente - sempre que comecar uma analise/investigacao/teste sobre um card (branch hotfix/<card>, bugfix/<card> ou feature/<card> da User Story), registre uma entrada curta na timeline descrevendo o que esta sendo analisado/feito, e va adicionando novas entradas conforme avanca.
 ---
 
 # prmake-timeline
@@ -35,7 +35,7 @@ na timeline o que esta sendo feito — e va adicionando novas entradas conforme 
 implementacao/criterios de aceite, nunca correcao/causa raiz). Isso vai
 enriquecendo o card com o contexto do que foi analisado/testado/feito.
 
-- Descubra o card pela branch atual: `hotfix/<card>` ou `bugfix/<card>` (o script deriva sozinho).
+- Descubra o card pela branch atual: `hotfix/<card>` ou `bugfix/<card>` (Bug) ou `feature/<card>` (User Story) — o script deriva sozinho.
 - Se nao houver branch nesse padrao, peca/receba o numero do card antes de registrar.
 - Escreva mensagens curtas e objetivas, em linguagem clara. Uma entrada por marco relevante.
 
@@ -45,7 +45,7 @@ enriquecendo o card com o contexto do que foi analisado/testado/feito.
 # card explicito + descricao
 bash ~/.claude/skills/prmake-timeline/scripts/prmake-timeline.sh 72517 "Iniciando analise do erro ao salvar o formulario; investigando a validacao do campo X."
 
-# card derivado da branch atual (hotfix/<card> ou bugfix/<card>)
+# card derivado da branch atual (hotfix/<card>, bugfix/<card> ou feature/<card>)
 bash ~/.claude/skills/prmake-timeline/scripts/prmake-timeline.sh "" "Reproduzido o bug localmente; parece vir do handler de submit."
 
 # descricao longa via STDIN (card explicito, 2o arg omitido)

@@ -129,7 +129,10 @@ public class GitHubController : ControllerBase
         var bases = SkillsRulesService.FlowBaseBranches(V(SkillsConfigurationKeys.BranchStrategy),
             BranchRules.ParseSuffixes(V(SkillsConfigurationKeys.BranchSuffixByTarget)));
         var number = SkillsRulesService.NormalizeCard(card);
-        var cardBranch = number.Length > 0 ? BranchRules.MainBranch(V(SkillsConfigurationKeys.BranchNamePattern), number) : null;
+        var isUs = number.Length > 0 && await rules.IsUserStoryAsync(number, cancellationToken) == true;
+        var cardBranch = number.Length > 0
+            ? BranchRules.MainBranch(BranchRules.PatternFor(isUs, V(SkillsConfigurationKeys.BranchNamePattern), V(SkillsConfigurationKeys.BranchNamePatternUserStory)), number)
+            : null;
 
         return Ok(BranchSearch.Rank(branches, search, limit, bases, cardBranch, number));
     }

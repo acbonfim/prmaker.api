@@ -12,6 +12,8 @@ public static class SkillsConfigurationKeys
     public const string BranchFlowByArea = "BranchFlowByArea";
     public const string BranchStrategy = "BranchStrategy";
     public const string BranchNamePattern = "BranchNamePattern";
+    /// <summary>Nome da branch principal de User Story (<c>feature/{card}</c>) — User Story não é hotfix; o <c>BranchNamePattern</c> vale para Bug.</summary>
+    public const string BranchNamePatternUserStory = "BranchNamePatternUserStory";
     public const string CommitMessagePattern = "CommitMessagePattern";
     public const string PrTitlePattern = "PrTitlePattern";
     public const string DefaultRepository = "DefaultRepository";

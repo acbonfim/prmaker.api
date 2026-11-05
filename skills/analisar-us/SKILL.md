@@ -56,8 +56,9 @@ referencias da `analisar-bug` (`$REF correcao ...`) dizem "correcao", leia "impl
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-us analisar-bug 2>/dev/null || true`;
 se atualizar, releia esta SKILL.md.
 
-**1. Card** — numero informado ou da branch (`feature/<n>`, `us/<n>`, `hotfix/<n>`). Card que **nao** e User Story →
-use a `analisar-bug`.
+**1. Card** — numero informado ou da branch (`feature/<n>`, `us/<n>`). Card que **nao** e User Story →
+use a `analisar-bug`. **Branch de User Story e `feature/<n>` (`BranchNamePatternUserStory`), nunca `hotfix/`** — o
+`bash $PLAN branches <card> <repo>` e o `prmake_rules` ja devolvem o nome certo pelo tipo do card; nao monte nome na mao.
 
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`: campos, **descricao** e **criterios de aceite**
 (`dados/criterios-aceite.txt`), plano `analisar-us` criado/retomado com as etapas da US, comentarios/anexos, evidencias,
@@ -105,7 +106,7 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | `pr-<repo>` | `pr` | claude | descricao pelo `pr-text` + prompt de **User Story** (sem `<RCA>`), `save-pr-text` sem rca, `open-pr` nas linhas do `branches`; conclui quando os PRs forem mesclados — nunca mescle |
 | `preparar-script-<nome>` (so com script de dados) | `task` | claude | escreve o `.sql` com rollback e a consulta de validacao e o **chamado completo**; **antes** de concluir, grava no plano com `key` = a etapa do chamado: `prmake_file(card, "01_<nome>.sql", ..., "script", "chamado-<nome>", phase: "correction")` e `prmake_file(card, "chamado-<nome>.md", ..., "ticket", "chamado-<nome>", phase: "correction")` (1a linha = titulo; corpo: link do card, cliente, ambiente, banco, o que o script faz e por que — pelo objetivo da US —, rollback, consulta de validacao). O PRMake recusa a etapa do chamado com o usuario sem os dois arquivos |
 | `chamado-<nome>` | `ticket` | **user** | `dependsOn: preparar-script-<nome>`; descricao cita os arquivos ("Abra o chamado no `TicketSystem` com o texto de `chamado-<nome>.md` e anexe `01_<nome>.sql`; cole o link aqui"); fica aguardando ate o chamado ser resolvido |
-| `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado) |
+| `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado). **So se algum PR do `branches` tem destino QA** — repositorio sem QA (ex.: revamp-backend, so `development`) nao tem essa etapa: nao crie `validar-qa`; a validacao fica na `validar`/no destino que o fluxo tem |
 | `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs; mover o card **so** com a acao configurada (`devops <card> config`) e autorizada nas respostas; sem acao aplicavel a US → nao mova e diga |
 
 Script de dados **sempre** vai com o par `preparar-script-*` + `chamado-*` (nunca script sem chamado, nem chamado sem o
