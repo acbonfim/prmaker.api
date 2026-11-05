@@ -99,12 +99,39 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
     {
         try
         {
+            await AssignNumbersAsync(cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException e)
         {
             throw new ExecutionPlanConcurrencyException(e);
         }
+    }
+
+    /// <summary>
+    /// Números novos em ordem de leitura: o item e logo depois as sub-tarefas dele na ordem (#1, #2, #3…). Deixar para o
+    /// default do banco numerava na ordem de insert do EF (sub-tarefas ao contrário).
+    /// </summary>
+    private async Task AssignNumbersAsync(CancellationToken cancellationToken)
+    {
+        bool Pending(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry e) =>
+            e.State == EntityState.Added && (long)(e.Property("Number").CurrentValue ?? 0L) <= 0;
+
+        var tasks = context.ChangeTracker.Entries<WorkItemTask>().Where(Pending).ToList();
+        var ordered = new List<Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry>();
+        foreach (var item in context.ChangeTracker.Entries<WorkItem>().Where(Pending))
+        {
+            ordered.Add(item);
+            ordered.AddRange(tasks.Where(t => t.Entity.WorkItemId == item.Entity.Id).OrderBy(t => t.Entity.Order));
+        }
+        ordered.AddRange(tasks.Where(t => !ordered.Contains(t)).OrderBy(t => t.Entity.WorkItemId).ThenBy(t => t.Entity.Order));
+        if (ordered.Count == 0) return;
+
+        var numbers = (await context.Database
+                .SqlQueryRaw<long>($"SELECT nextval('{ExecutionPlanContext.Schema}.{ExecutionPlanContext.WorkItemNumberSequence}') AS \"Value\" FROM generate_series(1, {ordered.Count})")
+                .ToListAsync(cancellationToken))
+            .Order().ToList();
+        for (var i = 0; i < ordered.Count; i++) ordered[i].Property("Number").CurrentValue = numbers[i];
     }
 
     public void DetachWorkItems()

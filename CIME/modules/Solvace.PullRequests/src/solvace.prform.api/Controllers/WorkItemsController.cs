@@ -85,11 +85,11 @@ public partial class WorkItemsController : ExecutionControllerBase
         RunItem<WorkItemResponse>(async () => Ok(await _items.UndoAsync(number, await ActorAsync(ct), ct)));
 
     /// <summary>Ação na sub-tarefa: start | complete | fail | wait | skip | revert | cancel (usuário ou executor).</summary>
-    [HttpPost("tasks/{taskNumber:long}/{action}")]
-    public Task<ActionResult<WorkItemResponse>> TaskAction([FromRoute] long taskNumber, [FromRoute] string action,
+    [HttpPost("tasks/{taskNumber:long}/{verb}")] // "action" é valor de rota reservado do MVC
+    public Task<ActionResult<WorkItemResponse>> TaskAction([FromRoute] long taskNumber, [FromRoute] string verb,
         [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] WorkTaskActionRequest? request, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () =>
-            Ok(await _items.TaskActionAsync(taskNumber, action, request ?? new WorkTaskActionRequest(), await ActorAsync(ct), ct)));
+            Ok(await _items.TaskActionAsync(taskNumber, verb, request ?? new WorkTaskActionRequest(), await ActorAsync(ct), ct)));
 
     /// <summary>Materializa o item do plano (cards antigos) — idempotente.</summary>
     [HttpPost("card/{card}/from-plan/{planId:guid}")]
