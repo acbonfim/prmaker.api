@@ -15,11 +15,20 @@ public static class CaseClaims
 {
     public const string Card = "caseCard";
     public const string Request = "caseRequest";
+    /// <summary>r5: quem pediu a resposta (posto pelo <see cref="CaseSpecialistMiddleware"/> a cada chamada).</summary>
+    public const string RequestedById = "caseRequestedById";
+    public const string RequestedByName = "caseRequestedBy";
+    /// <summary>r5: ExternalId do dono da máquina (o token nasce com ele) quando a chamada passa a agir como quem pediu.</summary>
+    public const string OwnerExternalId = "caseOwnerExternalId";
 
     public static string? CardOf(ClaimsPrincipal user) => user.FindFirst(Card)?.Value;
 
     public static Guid? RequestOf(ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirst(Request)?.Value, out var id) ? id : null;
+
+    /// <summary>r5: nome de quem pediu a resposta ao especialista (null fora do token do caso).</summary>
+    public static string? RequestedByOf(ClaimsPrincipal user) =>
+        user.FindFirst(RequestedByName)?.Value is { Length: > 0 } name ? name : null;
 
     /// <summary>Quem chama é o especialista (token do caso) — com o card e o pedido dele.</summary>
     public static CaseActor? SpecialistOf(ClaimsPrincipal user) =>
@@ -39,7 +48,7 @@ public class CaseTokenIssuer(IConfiguration configuration)
     {
         JwtRegisteredClaimNames.Jti, JwtRegisteredClaimNames.Exp, JwtRegisteredClaimNames.Nbf, JwtRegisteredClaimNames.Iat,
         JwtRegisteredClaimNames.Aud, JwtRegisteredClaimNames.Iss, ExecutorClaims.WorkerId, ExecutorClaims.CredentialId,
-        CaseClaims.Card, CaseClaims.Request
+        CaseClaims.Card, CaseClaims.Request, CaseClaims.RequestedById, CaseClaims.RequestedByName, CaseClaims.OwnerExternalId
     };
 
     public string Issue(ClaimsPrincipal worker, Guid requestId, string cardNumber)
@@ -67,10 +76,15 @@ public class CaseTokenIssuer(IConfiguration configuration)
 /// <item>só vale enquanto o pedido do especialista do card estiver ativo (cache de 15 s);</item>
 /// <item>REST: <c>GET</c> em qualquer lugar (sem o header da skill, que marca comentários como lidos) e qualquer método
 /// em <c>CaseChat/{card}</c> do próprio card;</item>
-/// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c> e (0085) criar/editar itens de trabalho (confere o corpo
-/// JSON-RPC <c>tools/call</c>);</item>
+/// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c>, (0085) criar/editar itens de trabalho e (r5) as AÇÕES que
+/// uma pessoa pede na conversa — Timeline, ações do card no DevOps (estado, horas...), abrir PR, andamento/cancelar/executar
+/// item de trabalho (confere o corpo JSON-RPC <c>tools/call</c>). Nada que mexa no plano (etapas, perguntas, correção,
+/// arquivos do plano): essas continuam recusadas;</item>
 /// <item>todo o resto: 403.</item>
 /// </list>
+/// r5: as ações (<see cref="ActingTools"/>) rodam com a identidade de quem pediu na conversa (claim <c>ExternalId</c> trocada
+/// pela de quem pediu — integrações pessoais dela), com <see cref="CaseClaims.RequestedByName"/> para o texto "via
+/// Especialista do caso, a pedido de ...".
 /// </summary>
 public partial class CaseSpecialistMiddleware(RequestDelegate next)
 {
@@ -86,7 +100,23 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         // 0085: regras do card e itens de trabalho (criar/editar itens pending; executar sub-tarefa não).
         "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update",
         // 0085 r4: ferramentas (modelos) do card — listar e criar o item a partir de uma.
-        "prmake_tools", "prmake_tool_run"
+        "prmake_tools", "prmake_tool_run",
+        // r5: ações pedidas na conversa (nunca o plano): Timeline, card no DevOps (estado, horas, ações), PR, itens.
+        "prmake_timeline", "prmake_devops", "prmake_pr_open",
+        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute",
+        // r5 (B5a): arquivos do item de trabalho (o chamado completo, script do item) — nunca os arquivos do plano (prmake_file).
+        "prmake_work_item_file", "prmake_work_item_files"
+    };
+
+    /// <summary>
+    /// r5: ferramentas que gravam fora da conversa a pedido de uma pessoa — rodam como quem pediu (integrações dela) e viram
+    /// cartão de ação concluída na conversa.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ActingTools = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "prmake_timeline", "prmake_devops", "prmake_pr_open",
+        "prmake_work_item_create", "prmake_work_item_update", "prmake_tool_run",
+        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]
@@ -102,16 +132,17 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         }
         var card = CaseClaims.CardOf(context.User) ?? string.Empty;
 
-        var active = await cache.GetOrCreateAsync($"casetoken:{requestId}", entry =>
+        var requester = await cache.GetOrCreateAsync($"casetoken:{requestId}", entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheFor;
-            return queue.IsSpecialistRequestActiveAsync(requestId.Value, card, context.RequestAborted);
+            return queue.GetActiveSpecialistRequesterAsync(requestId.Value, card, context.RequestAborted);
         });
-        if (!active)
+        if (requester is null)
         {
             await DenyAsync(context, StatusCodes.Status401Unauthorized, "O token do Especialista do caso venceu (a resposta terminou).");
             return;
         }
+        context.User = WithRequester(context.User, requester, actAsRequester: false);
 
         var path = context.Request.Path.Value ?? string.Empty;
         var method = context.Request.Method;
@@ -137,12 +168,16 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
 
         if (path.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method))
         {
-            if (await DeniedToolAsync(context) is { } tool)
+            var (denied, acting) = await InspectToolsAsync(context);
+            if (denied is { } tool)
             {
                 await DenyAsync(context, StatusCodes.Status403Forbidden,
-                    $"O Especialista do caso não altera o plano ({tool} recusada). Proponha a mudança com prmake_case_propose ou peça confirmação com prmake_case_action.");
+                    $"O Especialista do caso não altera o plano ({tool} recusada). Proponha a mudança com prmake_case_propose; " +
+                    "ações pedidas na conversa (Timeline, horas, card, PR, itens de trabalho) têm ferramentas próprias.");
                 return;
             }
+            if (acting)
+                context.User = WithRequester(context.User, requester, actAsRequester: true);
             await next(context);
             return;
         }
@@ -151,14 +186,18 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
             "O Especialista do caso só lê e conversa — o plano muda só quando uma pessoa aceita a proposta.");
     }
 
-    /// <summary>Nome da ferramenta MCP chamada fora da lista (null = todas permitidas ou não é chamada de ferramenta).</summary>
-    private static async Task<string?> DeniedToolAsync(HttpContext context)
+    /// <summary>
+    /// Ferramenta MCP chamada fora da lista (null = todas permitidas ou não é chamada de ferramenta) e se alguma chamada é
+    /// uma ação (<see cref="ActingTools"/>).
+    /// </summary>
+    private static async Task<(string? Denied, bool Acting)> InspectToolsAsync(HttpContext context)
     {
         context.Request.EnableBuffering();
         using var doc = await TryParseAsync(context.Request.Body, context.RequestAborted);
         context.Request.Body.Position = 0;
-        if (doc is null) return "(corpo inválido)";
+        if (doc is null) return ("(corpo inválido)", false);
         var calls = doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().ToList() : [doc.RootElement];
+        var acting = false;
         foreach (var call in calls)
         {
             if (call.ValueKind != JsonValueKind.Object || !call.TryGetProperty("method", out var method) || method.GetString() != "tools/call")
@@ -166,10 +205,41 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
             var name = call.TryGetProperty("params", out var p) && p.ValueKind == JsonValueKind.Object && p.TryGetProperty("name", out var n)
                 ? n.GetString() ?? string.Empty
                 : string.Empty;
-            if (!AllowedTools.Contains(name))
-                return name.Length == 0 ? "(sem nome)" : name;
+            if (!IsAllowed(name))
+                return (name.Length == 0 ? "(sem nome)" : name, false);
+            acting |= ActingTools.Contains(name);
         }
-        return null;
+        return (null, acting);
+    }
+
+    /// <summary>A ferramenta passa com o token do caso?</summary>
+    public static bool IsAllowed(string tool) => AllowedTools.Contains(tool);
+
+    /// <summary>
+    /// r5: claims de quem pediu (nome/id) e, com <paramref name="actAsRequester"/>, o <c>ExternalId</c> trocado pelo de quem
+    /// pediu — as integrações pessoais (DevOps, GitHub) e o autor na Timeline passam a ser dessa pessoa. Sem pessoa (pedido
+    /// do sistema), fica o dono da máquina.
+    /// </summary>
+    public static ClaimsPrincipal WithRequester(ClaimsPrincipal user, SpecialistRequester requester, bool actAsRequester)
+    {
+        var claims = user.Claims
+            .Where(c => c.Type is not (CaseClaims.RequestedById or CaseClaims.RequestedByName))
+            .Select(c => new Claim(c.Type, c.Value))
+            .ToList();
+        var name = string.IsNullOrWhiteSpace(requester.Name) ? requester.OwnerName : requester.Name.Trim();
+        var id = requester.UserId is { } u && u != Guid.Empty ? u : requester.OwnerUserId;
+        claims.Add(new Claim(CaseClaims.RequestedByName, name));
+        claims.Add(new Claim(CaseClaims.RequestedById, id.ToString()));
+        if (actAsRequester && claims.FirstOrDefault(c => c.Type == "ExternalId") is { } external && external.Value != id.ToString())
+        {
+            claims.Remove(external);
+            claims.RemoveAll(c => c.Type == CaseClaims.OwnerExternalId);
+            claims.Add(new Claim(CaseClaims.OwnerExternalId, external.Value));
+            claims.Add(new Claim("ExternalId", id.ToString()));
+        }
+        var identity = user.Identity as ClaimsIdentity;
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, identity?.AuthenticationType ?? "case", identity?.NameClaimType ?? ClaimTypes.Name,
+            identity?.RoleClaimType ?? ClaimTypes.Role));
     }
 
     private static async Task<JsonDocument?> TryParseAsync(Stream body, CancellationToken ct)

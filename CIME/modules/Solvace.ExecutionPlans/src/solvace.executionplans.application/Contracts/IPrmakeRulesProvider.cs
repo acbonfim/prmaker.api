@@ -25,7 +25,8 @@ public interface IWorkItemTypeSource
 
 /// <param name="Keys">Tipos aceitos ao criar (os configurados; vazio = os semeados).</param>
 /// <param name="TemplateTypes">Modelo (key) → tipo do item.</param>
-public record WorkItemTypeSettings(IReadOnlyList<string> Keys, IReadOnlyDictionary<string, string> TemplateTypes);
+/// <param name="TicketSystem">r5: <c>TicketSystem</c> (sistema de chamados) — params das sub-tarefas de chamado automáticas.</param>
+public record WorkItemTypeSettings(IReadOnlyList<string> Keys, IReadOnlyDictionary<string, string> TemplateTypes, string? TicketSystem = null);
 
 /// <summary>Tipo de item fora do <c>WorkItemTypes</c> → 400 com as opções.</summary>
 public class WorkItemTypeInvalidException(string type, IReadOnlyList<string> options)

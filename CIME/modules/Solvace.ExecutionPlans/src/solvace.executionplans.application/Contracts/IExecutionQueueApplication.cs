@@ -52,6 +52,11 @@ public interface IExecutionQueueApplication
     Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken);
     /// <summary>O token do caso ainda vale (o pedido do especialista deste card está ativo)?</summary>
     Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
+    /// <summary>
+    /// r5: o pedido do especialista deste card está ativo → quem pediu (a pessoa que escreveu na conversa) e o dono da máquina;
+    /// null = o token do caso venceu. As ações que o especialista executa usam a identidade/integrações de quem pediu.
+    /// </summary>
+    Task<SpecialistRequester?> GetActiveSpecialistRequesterAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
 
     // Configurações do usuário
     Task<ExecutionUserSettingsResponse> GetSettingsAsync(Guid userId, CancellationToken cancellationToken);
@@ -102,3 +107,6 @@ public interface IExecutionAgentInfo
 
 /// <summary>Ação de quem não é dono (ex.: pausar o executor de outra pessoa).</summary>
 public class ExecutionForbiddenException(string message) : Exception(message);
+
+/// <summary>r5: quem pediu a resposta do especialista (null = sem pessoa: vale o dono) e o dono da máquina que responde.</summary>
+public record SpecialistRequester(Guid? UserId, string Name, Guid OwnerUserId, string OwnerName);

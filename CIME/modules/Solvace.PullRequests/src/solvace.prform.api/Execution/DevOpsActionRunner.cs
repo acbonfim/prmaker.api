@@ -12,11 +12,15 @@ namespace solvace.prform.Execution;
 /// </summary>
 public class DevOpsActionRunner(IDevOpsActionsService actions, ITimelineApplication timeline, ILogger<DevOpsActionRunner> logger)
 {
+    /// <param name="via">r5: marca de quem fez (ex.: "via Especialista do caso, a pedido de Ana") no texto da Timeline.</param>
     public async Task<DevOpsActionResponse> RunAsync(string cardNumber, Func<IDevOpsActionsService, Task<DevOpsActionResponse>> action,
-        ClaimsPrincipal user, CancellationToken cancellationToken)
+        ClaimsPrincipal user, CancellationToken cancellationToken, string? via = null)
     {
         var result = await action(actions);
-        await AzureController.RegisterOnTimelineAsync(timeline, cardNumber, $"{result.Message} pelo CIME (Ações DevOps).", logger, user, cancellationToken);
+        var text = string.IsNullOrWhiteSpace(via)
+            ? $"{result.Message} pelo CIME (Ações DevOps)."
+            : $"{result.Message} pelo CIME (Ações DevOps) — {via}.";
+        await AzureController.RegisterOnTimelineAsync(timeline, cardNumber, text, logger, user, cancellationToken);
         return result;
     }
 

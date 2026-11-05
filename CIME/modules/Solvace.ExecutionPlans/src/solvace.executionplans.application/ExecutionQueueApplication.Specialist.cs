@@ -86,6 +86,13 @@ public partial class ExecutionQueueApplication
         && r.IsActive
         && string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal);
 
+    public async Task<SpecialistRequester?> GetActiveSpecialistRequesterAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken) =>
+        await _queue.GetRequestAsync(requestId, cancellationToken) is { Kind: ExecutionRequestKind.Specialist } r
+        && r.IsActive
+        && string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal)
+            ? new SpecialistRequester(r.RequestedByUserId, r.RequestedBy, r.OwnerUserId, r.OwnerName)
+            : null;
+
     private static string SpecialistPrompt(ExecutionRequest r, bool fresh)
     {
         var deep = r.Deep
@@ -99,8 +106,10 @@ public partial class ExecutionQueueApplication
               "e responda com prmake_case_reply, conforme a skill especialista-do-caso (se nao lembrar das regras, " +
               "`cat ~/.claude/skills/especialista-do-caso/SKILL.md`).";
         return start +
-               "\n\nVoce NAO altera o plano (o PRMake recusa): mudancas viram proposta (prmake_case_propose) que uma pessoa aceita; " +
-               "acoes com efeito fora da conversa pedem confirmacao (prmake_case_action)." + deep +
+               "\n\nVoce NAO altera o plano (o PRMake recusa): mudancas viram proposta (prmake_case_propose) que uma pessoa aceita. " +
+               "Acoes que a pessoa PEDE na conversa voce executa pelas ferramentas do PRMake (Timeline, horas e acoes do card, abrir PR, " +
+               "criar/cancelar/executar item de trabalho) — com a integracao de quem pediu; acao destrutiva com pedido ambiguo: confirme " +
+               "em uma linha antes." + deep +
                "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
     }
 

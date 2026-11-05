@@ -348,6 +348,43 @@ public class CaseChatApplication(
         return action.ToResponse();
     }
 
+    /// <summary>
+    /// r5: ação que o especialista executou a pedido de uma pessoa (Timeline, horas, PR, card, item...) — vira um cartão de
+    /// ação já decidido por quem pediu e concluído (ou falho) na conversa. Nunca derruba a ação: falha aqui só não registra.
+    /// </summary>
+    public async Task<CaseActionResponse?> RecordActionAsync(string cardNumber, string title, string? detail, bool ok, string? result,
+        string requestedBy, CaseActor actor, CancellationToken cancellationToken)
+    {
+        RequireSpecialist(actor);
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var now = DateTimeOffset.UtcNow;
+        var by = string.IsNullOrWhiteSpace(requestedBy) ? "Usuário" : requestedBy.Trim();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                cases.ClearTracking();
+                var action = new CaseAction(card, await cases.GetMaxActionNumberAsync(card, cancellationToken) + 1, title, detail, now);
+                action.Decide(true, by, now);
+                action.Finish(ok, result, now);
+                cases.AddAction(action);
+                var text = ok
+                    ? $"Feito a pedido de {by}: **{action.Title}**" + (action.Result is null ? string.Empty : $" — {action.Result}")
+                    : $"Não consegui (a pedido de {by}): **{action.Title}**" + (action.Result is null ? string.Empty : $" — {action.Result}");
+                var message = await NewSpecialistMessageAsync(card, CaseMessageKind.Action, text, actor, now, cancellationToken);
+                message.LinkAction(action.Id);
+                action.LinkMessage(message.Id);
+                await cases.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Action, number = message.Number }, cancellationToken);
+                return action.ToResponse();
+            }
+            catch (CaseNumberConflictException) when (attempt < Retries)
+            {
+                await Task.Delay(Random.Shared.Next(10, 50) * attempt, cancellationToken);
+            }
+        }
+    }
+
     /// <summary>Há ação confirmada e ainda não concluída (o especialista pode executá-la).</summary>
     public async Task<CaseAction?> ConfirmedActionAsync(string cardNumber, Guid actionId, CancellationToken cancellationToken) =>
         await cases.GetActionAsync(CaseChat.NormalizeCard(cardNumber), actionId, cancellationToken) is { Status: CaseActionStatus.Confirmed } a ? a : null;

@@ -34,7 +34,8 @@ public partial class PrmakeMcpTools(
     solvace.timeline.application.Contracts.IUserRepository users,
     solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
     CodeCitationGate citations,
-    EvidenceGate evidenceGate)
+    EvidenceGate evidenceGate,
+    SpecialistActions specialist)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -56,7 +57,10 @@ public partial class PrmakeMcpTools(
         "0085 r4: ferramentas do card (modelos prontos: PR para uma branch, PRs do fluxo, promocao, fechamento, QA, script, resumo...) com " +
         "prmake_tools (applicable + perguntas ask) e prmake_tool_run (cria o item com as respostas) — prefira a ferramenta ao item livre. " +
         "Tipo do item = WorkItemTypes (task, pull-request, review, fix, implementation, adjustment, closing, data, ticket, text, analysis); " +
-        "nunca bug/user-story (tipo do card no DevOps).";
+        "nunca bug/user-story (tipo do card no DevOps). " +
+        "0085 r5: abrir PR de branch existente com prmake_pr_open (nome pelas regras); cancelar/executar item com " +
+        "prmake_work_item_cancel/prmake_work_item_execute; horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
+        "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -263,16 +267,18 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_timeline")]
-    [Description("Escreve na Timeline do card (markdown). O PRMake ja escreve sozinho os marcos do plano — nao duplique.")]
-    public Task<string> Timeline(string card, string markdown, CancellationToken ct = default) => Safe(async () =>
-    {
-        var actor = await ActorAsync(ct);
-        await timeline.WriteAsync(card.Trim(), markdown, actor.UserId, actor.Name, ct);
-        return "ok";
-    });
+    [Description("Escreve na Timeline do card (markdown). O PRMake ja escreve sozinho os marcos do plano — nao duplique. " +
+                 "Especialista do caso: so quando a pessoa pede; o PRMake grava com o nome de quem pediu e a marca 'via Especialista do caso'.")]
+    public Task<string> Timeline(string card, string markdown, CancellationToken ct = default) => Safe(() =>
+        specialist.RunAsync(card.Trim(), "Publicar na Timeline", Trim(markdown, 600), async () =>
+        {
+            var actor = await ActorAsync(ct);
+            await timeline.WriteAsync(card.Trim(), specialist.Mark(markdown), actor.UserId, actor.Name, ct);
+            return ("ok", "publicado na Timeline do card");
+        }, ct));
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
-    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
+    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior) | log-hours (r5: 'hours' trabalhadas — soma no Completed Work e tira do Remaining). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores. Especialista do caso: so com pedido explicito da pessoa (usa a integracao de quem pediu).")]
     public Task<string> DevOps(string card, string action,
         [Description("Autorizacao explicita do usuario para ready-for-qa")] string? authorization = null,
         [Description("classify: chave da classificacao pronta")] string? preset = null,
@@ -281,11 +287,15 @@ public partial class PrmakeMcpTools(
         [Description("classify: Classification")] string? classification = null,
         [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
         [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
+        [Description("log-hours: horas trabalhadas (ex.: 1.5)")] decimal? hours = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
+        if (specialist.Via is { } via && !string.IsNullOrWhiteSpace(reason))
+            reason = $"{reason.Trim()} ({via})";
         Func<IDevOpsActionsService, Task<DevOpsActionResponse>> run = action.Trim().ToLowerInvariant() switch
         {
+            "log-hours" => a => a.LogHoursAsync(id, hours is > 0 ? hours.Value : throw new McpException("log-hours: informe 'hours' (> 0)."), ct),
             "dev-test-in-qa" => a => a.MoveToDevTestInQaAsync(id, ct),
             "test-in-production" => a => a.MoveToTestInProductionAsync(id, ct),
             "zero-remaining" => a => a.ZeroRemainingAsync(id, ct),
@@ -301,7 +311,17 @@ public partial class PrmakeMcpTools(
         if (action.Trim().Equals("ready-for-qa", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(authorization) && !await QaValidatedAsync(id, ct))
             throw new McpException("Ready for QA so com a etapa validar-qa concluida pelo usuario no plano ou com a autorizacao explicita dele (informe em 'authorization').");
-        return Serialize(await devops.RunAsync(id, run, http.HttpContext?.User ?? new ClaimsPrincipal(), ct));
+        var label = action.Trim().ToLowerInvariant() switch
+        {
+            "log-hours" => $"Lançar {hours}h no card",
+            "set-state" => $"Mover o card para {state}",
+            var other => $"Ação do card no DevOps: {other}"
+        };
+        return await specialist.RunAsync(id, label, null, async () =>
+        {
+            var result = await devops.RunAsync(id, run, http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
+            return (Serialize(result), result.Message);
+        }, ct);
     });
 
     [McpServerTool(Name = "prmake_devops_config", ReadOnly = true)]
