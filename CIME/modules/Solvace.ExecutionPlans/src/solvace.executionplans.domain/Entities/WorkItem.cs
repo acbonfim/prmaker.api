@@ -239,21 +239,33 @@ public class WorkItem
                 changed = true;
             }
         }
-        else if (ActiveRequestId == requestId)
+        string? unfinished = null;
+        if (!ExecutionRequestStatus.IsActive(requestStatus) && ActiveRequestId == requestId)
         {
             ActiveRequestId = null;
             changed = true;
-            // Pedido terminou sem o item fechar: volta para quem decide (falhou → falhou; senão recalcula).
-            if (requestStatus is ExecutionRequestStatus.Failed or ExecutionRequestStatus.Expired
-                && Status is WorkItemStatus.Queued or WorkItemStatus.Running)
+            // Pedido terminou (done/failed/expired/cancelled) sem o item fechar e sem sub-tarefa esperando alguém: falhou —
+            // a pessoa vê e decide (executar de novo, cancelar, desfazer). Desfazer que terminou ainda "reverting" idem.
+            var waiting = Tasks.Any(t => t.Status == WorkTaskStatus.Waiting);
+            if (Status is WorkItemStatus.Queued or WorkItemStatus.Running && !waiting)
+            {
                 Status = WorkItemStatus.Failed;
-            else if (Status == WorkItemStatus.Queued)
-                Status = Tasks.Any(t => t.Status != WorkTaskStatus.Pending) ? WorkItemStatus.Running : WorkItemStatus.Pending;
+                unfinished = $"A execução terminou ({requestStatus}) sem concluir as sub-tarefas.";
+            }
+            else if (Status == WorkItemStatus.Reverting)
+            {
+                Status = WorkItemStatus.Failed;
+                unfinished = $"O desfazer terminou ({requestStatus}) sem desfazer todas as sub-tarefas.";
+            }
+            else if (Status is WorkItemStatus.Queued or WorkItemStatus.Running && waiting)
+                Status = WorkItemStatus.Waiting;
         }
         if (changed)
         {
             UpdatedAt = now;
             AddLog(null, "Fila", WorkItemLogKind.Request, $"Pedido de execução {requestStatus}.", now);
+            if (unfinished is not null)
+                AddLog(null, "Fila", WorkItemLogKind.Status, unfinished, now);
         }
         return changed;
     }
