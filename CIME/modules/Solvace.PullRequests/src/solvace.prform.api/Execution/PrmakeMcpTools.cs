@@ -268,13 +268,15 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
-    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify. ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
+    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
     public Task<string> DevOps(string card, string action,
         [Description("Autorizacao explicita do usuario para ready-for-qa")] string? authorization = null,
         [Description("classify: chave da classificacao pronta")] string? preset = null,
         [Description("classify: Resolution Type")] string? resolutionType = null,
         [Description("classify: General Classification")] string? generalClassification = null,
         [Description("classify: Classification")] string? classification = null,
+        [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
+        [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
@@ -289,6 +291,7 @@ public partial class PrmakeMcpTools(
             {
                 Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification
             }, ct),
+            "set-state" => a => a.SetStateAsync(id, state ?? throw new McpException("set-state: informe 'state'."), reason, ct),
             _ => throw new McpException($"Acao desconhecida: {action}")
         };
         if (action.Trim().Equals("ready-for-qa", StringComparison.OrdinalIgnoreCase)
