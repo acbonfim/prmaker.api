@@ -6,7 +6,8 @@ namespace solvace.prform.infra.Migrations
 {
     /// <summary>
     /// 0085: itens de trabalho no "Skills Configurations" — sufixo da branch por destino (<c>release-version</c> → <c>-rv</c>),
-    /// tipos de sub-tarefa, modelos prontos e vagas por máquina. Só as chaves que faltam (o valor do admin fica). O padrão
+    /// tipos de sub-tarefa, modelos prontos, vagas por máquina e a média de horas por tipo de card (bug/US, partindo da
+    /// média geral AssistantAverageHours). Só as chaves que faltam (o valor do admin fica). O padrão
     /// do nome da branch da promoção passa a usar o sufixo (<c>{branch}{suffix}</c>) — só se ainda for exatamente o semeado.
     /// </summary>
     public partial class SeedWorkItems0085 : Migration
@@ -154,7 +155,7 @@ namespace solvace.prform.infra.Migrations
 """;
 
         private const string FieldSettings = """
-{"BranchSuffixByTarget": {"Label": "Itens de trabalho: sufixo da branch por destino (JSON: destino → sufixo; ex.: release-version → -rv = hotfix/77434-rv)"}, "WorkItemTaskKinds": {"Label": "Itens de trabalho: tipos de sub-tarefa (JSON: [{kind, label, icon, executor, params[{key, label}], undo}])"}, "WorkItemTemplates": {"Label": "Itens de trabalho: modelos prontos (JSON: [{key, title, description, tasks[{title, kind, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets})"}, "WorkItemSlots": {"Label": "Itens de trabalho: quantos rodam ao mesmo tempo por máquina (fora do limite de execuções)"}}
+{"BranchSuffixByTarget": {"Label": "Itens de trabalho: sufixo da branch por destino (JSON: destino → sufixo; ex.: release-version → -rv = hotfix/77434-rv)"}, "WorkItemTaskKinds": {"Label": "Itens de trabalho: tipos de sub-tarefa (JSON: [{kind, label, icon, executor, params[{key, label}], undo}])"}, "WorkItemTemplates": {"Label": "Itens de trabalho: modelos prontos (JSON: [{key, title, description, tasks[{title, kind, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets})"}, "WorkItemSlots": {"Label": "Itens de trabalho: quantos rodam ao mesmo tempo por máquina (fora do limite de execuções)"}, "AssistantAverageHoursBug": {"Label": "Média de horas por bug"}, "AssistantAverageHoursUserStory": {"Label": "Média de horas por US"}}
 """;
 
         private const string PromotionLabel =
@@ -177,7 +178,9 @@ namespace solvace.prform.infra.Migrations
                             'BranchSuffixByTarget', $suf${{Suffixes}}$suf$::text,
                             'WorkItemTaskKinds', $kinds${{TaskKinds}}$kinds$::text,
                             'WorkItemTemplates', $tpl${{Templates}}$tpl$::text,
-                            'WorkItemSlots', '2')
+                            'WorkItemSlots', '2',
+                            'AssistantAverageHoursBug', COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0 ->> 'AssistantAverageHours', ''),
+                            'AssistantAverageHoursUserStory', COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0 ->> 'AssistantAverageHours', ''))
                             || COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0, '{}'::jsonb),
                         true)::text
                 FROM prform."Plugins" p
@@ -212,14 +215,14 @@ namespace solvace.prform.infra.Migrations
 
                 UPDATE prform."PluginConfigurations" c
                 SET "Options" = jsonb_set(c."Options"::jsonb, '{0}',
-                        (c."Options"::jsonb -> 0) - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots'])::text
+                        (c."Options"::jsonb -> 0) - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory'])::text
                 FROM prform."Plugins" p
                 WHERE p."Id" = c."PluginId" AND p."Description" = '{{SkillsPlugin}}' AND NULLIF(c."Options", '') IS NOT NULL;
 
                 UPDATE prform."Plugins"
                 SET "FieldSettings" = jsonb_set(
                         COALESCE(NULLIF("FieldSettings", '')::jsonb, '{}'::jsonb)
-                            - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots'],
+                            - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory'],
                         '{PromotionBranchPattern}', jsonb_build_object('Label', $pl${{OldPromotionLabel}}$pl$::text), true)::text
                 WHERE "Description" = '{{SkillsPlugin}}';
                 """);

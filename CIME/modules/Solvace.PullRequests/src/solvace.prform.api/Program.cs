@@ -49,6 +49,9 @@ builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecuti
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionQueueSettings, solvace.prform.Execution.ExecutionQueueSettings>();
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
+// 0085: regras do PRMake calculadas para o card (GET Skills/rules, prmake_rules, contexto do especialista).
+builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();

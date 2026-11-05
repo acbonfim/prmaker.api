@@ -152,6 +152,8 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
             var key = phase switch
             {
                 ExecutionPhase.Correction => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel,
+                // 0085: item de trabalho roda no modelo da correção (é execução, não investigação).
+                ExecutionQueueApplication.WorkItemPhase => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel,
                 ExecutionQueueApplication.SpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistModel,
                 DeepSpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistDeepModel,
                 _ => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel
@@ -187,7 +189,9 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
             var response = await queue.FinishAsync(id, RequireWorkerId(), request, ct);
             // 0044: consumo FINAL da sessão (lido do transcript pelo executor) — a skill só manda fotos no meio da execução.
             // 0080: a sessão do especialista é do caso, não de um plano.
-            if (response.Kind != ExecutionRequestKind.Specialist && request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
+            // 0085: item de trabalho avulso (sem plano) fica com o consumo só no pedido.
+            if (response.Kind != ExecutionRequestKind.Specialist && !(ExecutionRequestKind.IsWorkItem(response.Kind) && response.PlanId is null)
+                && request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
             {
                 try
                 {

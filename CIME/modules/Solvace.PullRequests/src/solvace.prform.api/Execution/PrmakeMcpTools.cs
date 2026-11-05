@@ -580,7 +580,8 @@ public partial class PrmakeMcpTools(
                        ?? throw new McpException($"O card {card} nao tem plano de analise.");
         var plan = await plans.CreateAsync(new CreateExecutionPlanRequest
         {
-            CardNumber = card.Trim(), Kind = "analisar-bug", Title = title, Phase = ExecutionPhase.Correction,
+            // 0085: a correção herda a skill da análise (analisar-us numa User Story).
+            CardNumber = card.Trim(), Kind = string.IsNullOrWhiteSpace(analysis.Kind) ? "analisar-bug" : analysis.Kind, Title = title, Phase = ExecutionPhase.Correction,
             ParentPlanId = analysis.Id, Steps = steps
         }, await ActorAsync(ct), ct);
         return Serialize(new

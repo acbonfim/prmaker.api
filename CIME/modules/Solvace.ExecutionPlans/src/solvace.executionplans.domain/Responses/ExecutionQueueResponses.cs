@@ -158,6 +158,8 @@ public class ExecutionWorkerStateResponse
     public List<Guid> ActiveRequestIds { get; set; } = [];
     /// <summary>0068: há pedido que este executor pode pegar agora — ele chama o next (cobre o que fica pronto com o tempo).</summary>
     public bool QueueReady { get; set; }
+    /// <summary>0085: itens de trabalho rodando ao mesmo tempo nesta máquina (fora do <see cref="MaxConcurrency"/>).</summary>
+    public int WorkItemSlots { get; set; } = 2;
 }
 
 /// <summary>0068: conexão do executor ao relay de tempo real.</summary>

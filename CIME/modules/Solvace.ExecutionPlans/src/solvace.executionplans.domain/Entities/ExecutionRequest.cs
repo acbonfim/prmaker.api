@@ -43,13 +43,16 @@ public static class ExecutionRequestKind
     public static bool IsWorkItem(string? kind) => kind is WorkItem or WorkItemUndo;
 }
 
-/// <summary>0080: pistas do executor — a principal (analisar/retomar) e a do especialista.</summary>
+/// <summary>0080: pistas do executor — a principal (analisar/retomar), a do especialista e (0085) a dos itens de trabalho.</summary>
 public static class ExecutionLane
 {
     public const string Main = "main";
     public const string Specialist = "specialist";
+    /// <summary>0085: itens de trabalho (executar/desfazer) — vagas próprias por máquina, um pedido ativo por item.</summary>
+    public const string WorkItem = "work-item";
 
-    public static string Of(string kind) => kind == ExecutionRequestKind.Specialist ? Specialist : Main;
+    public static string Of(string kind) =>
+        kind == ExecutionRequestKind.Specialist ? Specialist : ExecutionRequestKind.IsWorkItem(kind) ? WorkItem : Main;
 }
 
 /// <summary>De onde veio o pedido.</summary>

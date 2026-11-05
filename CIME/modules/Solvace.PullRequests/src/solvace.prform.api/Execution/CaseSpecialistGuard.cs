@@ -67,7 +67,8 @@ public class CaseTokenIssuer(IConfiguration configuration)
 /// <item>só vale enquanto o pedido do especialista do card estiver ativo (cache de 15 s);</item>
 /// <item>REST: <c>GET</c> em qualquer lugar (sem o header da skill, que marca comentários como lidos) e qualquer método
 /// em <c>CaseChat/{card}</c> do próprio card;</item>
-/// <item>MCP: só as ferramentas de leitura e as <c>prmake_case_*</c> (confere o corpo JSON-RPC <c>tools/call</c>);</item>
+/// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c> e (0085) criar/editar itens de trabalho (confere o corpo
+/// JSON-RPC <c>tools/call</c>);</item>
 /// <item>todo o resto: 403.</item>
 /// </list>
 /// </summary>
@@ -75,13 +76,15 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(15);
 
-    /// <summary>Ferramentas MCP que o especialista pode chamar (leitura + conversa do caso).</summary>
+    /// <summary>Ferramentas MCP que o especialista pode chamar (leitura + conversa do caso + itens de trabalho pending).</summary>
     public static readonly IReadOnlySet<string> AllowedTools = new HashSet<string>(StringComparer.Ordinal)
     {
         "prmake_plan", "prmake_answers", "prmake_attachment", "prmake_devops_config", "prmake_config", "prmake_card", "prmake_queue",
         "prmake_base_search", "prmake_base_get", "prmake_base_module", "prmake_base_impact",
         "prmake_case_context", "prmake_case_messages", "prmake_case_reply", "prmake_case_point", "prmake_case_propose",
-        "prmake_case_action", "prmake_case_action_done", "prmake_case_file"
+        "prmake_case_action", "prmake_case_action_done", "prmake_case_file",
+        // 0085: regras do card e itens de trabalho (criar/editar itens pending; executar sub-tarefa não).
+        "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]

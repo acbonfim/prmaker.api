@@ -76,6 +76,10 @@ public static class SkillsConfigurationKeys
     public const string AssistantHoursPerStep = "AssistantHoursPerStep";
     /// <summary>0078: média de horas do time por card (o assistente avisa quando passa).</summary>
     public const string AssistantAverageHours = "AssistantAverageHours";
+    /// <summary>0085: média de horas do time por bug (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursBug = "AssistantAverageHoursBug";
+    /// <summary>0085: média de horas do time por User Story (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursUserStory = "AssistantAverageHoursUserStory";
     /// <summary>0080: modelo do Especialista do caso nas respostas rápidas (apelido ou id; vazio = padrão da máquina).</summary>
     public const string SpecialistModel = "SpecialistModel";
     /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>

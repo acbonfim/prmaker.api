@@ -25,9 +25,12 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
 
     // 0080: as consultas "do card" são da pista principal (análise/correção) — o especialista tem as dele.
     private const string Specialist = ExecutionRequestKind.Specialist;
+    /// <summary>0085: kinds fora da pista principal (especialista e itens de trabalho) — não contam no "um pedido ativo por card".</summary>
+    private static readonly string[] SideKinds = [ExecutionRequestKind.Specialist, ExecutionRequestKind.WorkItem, ExecutionRequestKind.WorkItemUndo];
+    private static readonly string[] WorkItemKinds = [ExecutionRequestKind.WorkItem, ExecutionRequestKind.WorkItemUndo];
 
     public Task<ExecutionRequest?> GetActiveRequestForCardAsync(string cardNumber, CancellationToken cancellationToken) =>
-        _context.Requests.FirstOrDefaultAsync(r => r.CardNumber == cardNumber && r.Kind != Specialist && Active.Contains(r.Status), cancellationToken);
+        _context.Requests.FirstOrDefaultAsync(r => r.CardNumber == cardNumber && !SideKinds.Contains(r.Kind) && Active.Contains(r.Status), cancellationToken);
 
     public Task<ExecutionRequest?> GetActiveSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken) =>
         _context.Requests.FirstOrDefaultAsync(r => r.CardNumber == cardNumber && r.Kind == Specialist && Active.Contains(r.Status), cancellationToken);
@@ -40,12 +43,12 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
 
     public Task<List<ExecutionRequest>> GetActiveRequestsForCardsAsync(IReadOnlyCollection<string> cardNumbers, CancellationToken cancellationToken) =>
         _context.Requests.AsNoTracking()
-            .Where(r => cardNumbers.Contains(r.CardNumber) && r.Kind != Specialist && Active.Contains(r.Status))
+            .Where(r => cardNumbers.Contains(r.CardNumber) && !SideKinds.Contains(r.Kind) && Active.Contains(r.Status))
             .ToListAsync(cancellationToken);
 
     public Task<List<ExecutionRequest>> GetRecentRequestsForCardAsync(string cardNumber, int limit, CancellationToken cancellationToken) =>
         _context.Requests.AsNoTracking()
-            .Where(r => r.CardNumber == cardNumber && r.Kind != Specialist)
+            .Where(r => r.CardNumber == cardNumber && !SideKinds.Contains(r.Kind))
             .OrderByDescending(r => r.CreatedAt)
             .Take(limit)
             .ToListAsync(cancellationToken);
@@ -70,7 +73,7 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
 
     public async Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         (await _context.Requests.AsNoTracking()
-            .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && r.Kind != Specialist && Busy.Contains(r.Status))
+            .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && !SideKinds.Contains(r.Kind) && Busy.Contains(r.Status))
             .GroupBy(r => r.WorkerId!.Value)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken))
@@ -83,6 +86,17 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken))
         .ToDictionary(x => x.Key, x => x.Count);
+
+    public async Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        (await _context.Requests.AsNoTracking()
+            .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && WorkItemKinds.Contains(r.Kind) && Busy.Contains(r.Status))
+            .GroupBy(r => r.WorkerId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken))
+        .ToDictionary(x => x.Key, x => x.Count);
+
+    public Task<ExecutionRequest?> GetActiveForWorkItemAsync(Guid workItemId, CancellationToken cancellationToken) =>
+        _context.Requests.FirstOrDefaultAsync(r => r.WorkItemId == workItemId && Active.Contains(r.Status), cancellationToken);
 
     public async Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken) =>
         await _context.Requests.AsNoTracking()
@@ -105,11 +119,11 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .CountAsync(r => r.OwnerUserId == ownerUserId && r.Source == source && r.CreatedAt >= since, cancellationToken);
 
     public Task<bool> HasRequestForCardSinceAsync(string cardNumber, DateTimeOffset since, CancellationToken cancellationToken) =>
-        _context.Requests.AsNoTracking().AnyAsync(r => r.CardNumber == cardNumber && r.Kind != Specialist && r.CreatedAt >= since, cancellationToken);
+        _context.Requests.AsNoTracking().AnyAsync(r => r.CardNumber == cardNumber && !SideKinds.Contains(r.Kind) && r.CreatedAt >= since, cancellationToken);
 
     public Task<DateTimeOffset?> GetLastFinishedAtAsync(string cardNumber, CancellationToken cancellationToken) =>
         _context.Requests.AsNoTracking()
-            .Where(r => r.CardNumber == cardNumber && r.Kind != Specialist && r.FinishedAt != null)
+            .Where(r => r.CardNumber == cardNumber && !SideKinds.Contains(r.Kind) && r.FinishedAt != null)
             .MaxAsync(r => r.FinishedAt, cancellationToken);
 
     public Task<List<ExecutionRequest>> GetHistoryForOwnerAsync(Guid ownerUserId, int limit, CancellationToken cancellationToken) =>
@@ -169,11 +183,17 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             throw new ExecutionPlanConcurrencyException(e);
         }
         catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
-                                          && pg.ConstraintName is "IX_ExecutionRequests_ActiveCard" or "IX_ExecutionRequests_ActiveCaseCard")
+                                          && pg.ConstraintName is "IX_ExecutionRequests_ActiveCard" or "IX_ExecutionRequests_ActiveCaseCard"
+                                              or "IX_ExecutionRequests_ActiveWorkItem")
         {
             throw new ExecutionRequestDuplicateException(e);
         }
     }
 
     public void ClearTracking() => _context.ChangeTracker.Clear();
+
+    public async Task ReloadAsync(ExecutionRequest request, CancellationToken cancellationToken) =>
+        await _context.Entry(request).ReloadAsync(cancellationToken);
+
+    public void Detach(ExecutionRequest request) => _context.Entry(request).State = EntityState.Detached;
 }
