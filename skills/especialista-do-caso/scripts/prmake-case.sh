@@ -6,7 +6,8 @@
 #   prmake-case.sh context <card>             contexto compacto do caso (o mesmo de prmake_case_context)
 #   prmake-case.sh rules   <card> [--refresh] regras do PRMake para o card (o mesmo de prmake_rules), cache 10 min
 #   prmake-case.sh items   <card> [--refresh] itens de trabalho do card (resumo + fingerprint), cache 10 min
-#   prmake-case.sh catalog <card>             tipos de sub-tarefa e modelos de item ja preenchidos para o card
+#   prmake-case.sh catalog <card>             tipos de sub-tarefa, tipos de item e ferramentas (modelos) para o card
+#   prmake-case.sh tools <card>               so as ferramentas: applicable/motivo, perguntas (ask) e sub-tarefas
 #
 # Token: PRMAKE_TOKEN (no executor é o token do caso — só lê e conversa) ou ~/.claude/prmake-token.txt.
 # Arquivos baixados ficam em ~/.prmake/cards/<card>/case/; regras/itens/catalogo em ~/.prmake/cards/<card>/dados/
@@ -29,7 +30,7 @@ usage() { echo "uso: $*" >&2; exit 2; }
 warn() { echo "AVISO: $*" >&2; }
 
 CMD="${1:-}"; CARD="${2:-}"
-[[ -n "$CMD" && -n "$CARD" ]] || usage "prmake-case.sh file|upload|context|rules|items|catalog <card> [...]"
+[[ -n "$CMD" && -n "$CARD" ]] || usage "prmake-case.sh file|upload|context|rules|items|catalog|tools <card> [...]"
 command -v jq >/dev/null || die "jq nao encontrado"
 BASE="${PRMAKE_API_BASE:-https://api.softhouse.app.br/api/v1}"
 CARD="${CARD#\#}"
@@ -138,20 +139,33 @@ case "$CMD" in
     items_summary "$F"
     echo "(lista completa: $F)"
     ;;
-  catalog)
+  catalog|tools)
+    # 0085 r4: modelos = ferramentas (applicable/reason pelo "when" do card; perguntas "ask" com options/default).
+    # tools = so as ferramentas; catalog = tipos de sub-tarefa + tipos de item + ferramentas.
     F="$DADOS/catalogo.json"
     fetch_or_cache "WorkItems/catalog?card=$CARD" "$F" "catalogo" 'type == "object"'
-    jq -r '
+    jq -r --arg cmd "$CMD" '
       def params: ((.params // {}) | to_entries | map("\(.key)=\(.value)") | join(", ")) as $p | if $p == "" then "" else "  {\($p)}" end;
-      "Tipos de sub-tarefa:",
-      ((.taskKinds // [])[] | "  \(.kind) — \(.label // .kind)" +
-        (if ((.params // []) | length) > 0 then "  (parametros: \(.params | map(if type == "string" then . else (.key // .name // tostring) end) | join(", ")))" else "" end)),
-      "",
-      "Modelos (ja preenchidos para o card — use os valores como estao, nao invente nomes):",
+      def opts: if (.options | type) == "array" and (.options | length) > 0 then " opcoes: \(.options | join(" | "))" else "" end;
+      def ask: "     ? \(.key) (\(.label // .key); \(.input // "text"))" + (if .required then " obrigatoria" else "" end)
+        + (if (.default // "") != "" then " padrao: \(.default)" else "" end) + opts;
+      (if $cmd == "catalog" then
+        "Tipos de sub-tarefa:",
+        ((.taskKinds // [])[] | "  \(.kind) — \(.label // .kind)" +
+          (if ((.params // []) | length) > 0 then "  (parametros: \(.params | map(if type == "string" then . else (.key // .name // tostring) end) | join(", ")))" else "" end)),
+        "",
+        "Tipos de item (type): \((.itemTypes // []) | map(.key) | join(", "))",
+        ""
+      else empty end),
+      "Card \(.card // "?") · repositorio do PR: \(.repository // "?") (\(.repoKind // "?")) · fluxo: \(.flow // "?")",
+      "Ferramentas (prmake_tool_run card key answers; o PRMake calcula branch/destino — nao invente nomes):",
       ((.templates // [])[] |
-        "  \(.key) — \(.title)" + (if .type then " [\(.type)]" else "" end) + (if .description then ": \(.description)" else "" end),
+        "  \(if .applicable == false then "[nao se aplica] " else "" end)\(.key) — \(.title)" + (if .type then " [\(.type)]" else "" end)
+          + (if .description then ": \(.description)" else "" end),
+        (if .applicable == false and .reason then "     motivo: \(.reason)" else empty end),
+        ((.ask // [])[] | ask),
         ((.tasks // []) | to_entries[] | "     \(.key + 1). \(.value.kind) — \(.value.title)\(.value | params)"))' "$F"
     echo "(catalogo completo: $F)"
     ;;
-  *) usage "comando desconhecido: $CMD (file|upload|context|rules|items|catalog)" ;;
+  *) usage "comando desconhecido: $CMD (file|upload|context|rules|items|catalog|tools)" ;;
 esac

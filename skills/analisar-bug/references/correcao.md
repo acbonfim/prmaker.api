@@ -115,7 +115,7 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
 **Plano de correcao → item(s) de trabalho (0085)** — o plano de correcao agora gera **itens de trabalho** no PRMake
 (tela *Bancada do card*):
 - **Automatico**: ao criar o plano (`prmake_correction`/`correction`), o PRMake cria **um item** (`origin=correction`,
-  tipo do card: `bug` ou `user-story`) ligado ao plano, com **uma sub-tarefa por etapa** (`stepKey` = key da etapa). Ao
+  tipo `fix` no card Bug / `implementation` no card US — o tipo do item nao e o tipo do card) ligado ao plano, com **uma sub-tarefa por etapa** (`stepKey` = key da etapa). Ao
   executar as etapas (`advance`/`step`/`block`), o servidor **sincroniza** as sub-tarefas (inicio, conclusao,
   espera, cancelamento) — **nao** chame `prmake_work_task` para esse item. Etapas novas (nova rodada, 8b) entram como
   sub-tarefas novas. Plano concluido (tudo terminado) → item **concluido**. Item do plano roda pelo plano, nunca pelo
@@ -126,7 +126,10 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
 - **Entregas independentes = itens separados**: quando a solucao tem partes que andam sozinhas — ex.: o PR para
   producao (master) e outro para `release-version` levado depois, um script de dados que vai por chamado em outro
   momento, um ajuste pos-QA —, deixe no plano so o que e desta rodada e crie as outras entregas com
-  `prmake_work_item_create(card, title, description, tasks, type?, planPhase: "correction")`:
+  de preferencia por uma **ferramenta** pronta (`prmake_tools(card)` → `prmake_tool_run(card, key, answers)`: PR para uma
+  branch, promocao revamp/hotfix-version, script com chamado, ajuste pos-QA...) ou com
+  `prmake_work_item_create(card, title, description, tasks, type, planPhase: "correction")` — `type` do item
+  (`WorkItemTypes`: `fix`, `pull-request`, `data`, `ticket`, `adjustment`, `closing`, `text`, `task`; nunca `bug`/`user-story`):
   1. **Antes**, `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`): ja existe item com o mesmo objetivo
      (mesmo destino/repositorio/sub-tarefas, status nao cancelado)? Nao crie — cite o existente. A API recusa duplicata
      (`duplicate` com o item existente); `allowDuplicate` + motivo so quando for outro trabalho de fato.

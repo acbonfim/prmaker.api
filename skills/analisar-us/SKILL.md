@@ -1,6 +1,6 @@
 ---
 name: analisar-us
-description: Faz a analise de uma User Story (US) a partir do card no PRMake/Azure DevOps e do codigo — entende a US (descricao + criterios de aceite), consulta a Base Solvace (engenharia reversa + Knowledge Center) antes do codigo, mapeia onde a US entra, propoe a solucao perguntando ao usuario (responde no PRMake ou no Claude) e no fim gera os itens de trabalho tipo user-story com as sub-tarefas (plano de implementacao → item automatico; entregas separadas → itens proprios). Mesmo ciclo da analisar-bug (plano de execucao em tempo real, executor, retomada), sem causa raiz nem RCA. So abre PRs, nunca faz merge. Use quando o card for User Story ou o usuario pedir "analisar US", "analisar a historia", "analise da user story", "levantar a solucao da US".
+description: Faz a analise de uma User Story (US) a partir do card no PRMake/Azure DevOps e do codigo — entende a US (descricao + criterios de aceite), consulta a Base Solvace (engenharia reversa + Knowledge Center) antes do codigo, mapeia onde a US entra, propoe a solucao perguntando ao usuario (responde no PRMake ou no Claude) e no fim gera os itens de trabalho (implementacao = tipo `implementation`; entregas com tipos proprios — nunca item `user-story`) com as sub-tarefas (plano de implementacao → item automatico; entregas separadas → itens proprios). Mesmo ciclo da analisar-bug (plano de execucao em tempo real, executor, retomada), sem causa raiz nem RCA. So abre PRs, nunca faz merge. Use quando o card for User Story ou o usuario pedir "analisar US", "analisar a historia", "analise da user story", "levantar a solucao da US".
 model: opus
 ---
 
@@ -11,7 +11,9 @@ Leva uma **User Story** da analise aos itens de trabalho, em duas fases, cada um
 1. **Analise** — descricao + criterios de aceite + discussion/anexos, Base Solvace, codigo, **solucao proposta como
    perguntas ao usuario**. Sem causa raiz, sem RCA, sem classificacao de bug.
 2. **Implementacao** — com as respostas, o **plano de implementacao** (fase `correction`) que o PRMake transforma em
-   **item de trabalho `user-story`** com uma sub-tarefa por etapa; entregas independentes viram itens proprios.
+   **item de trabalho `implementation`** com uma sub-tarefa por etapa; entregas independentes viram itens proprios.
+   A US e a historia do DevOps: **nunca crie item como `user-story`** (nem `bug`) — itens tem tipos proprios
+   (`WorkItemTypes`: `implementation`, `pull-request`, `review`, `adjustment`, `closing`, `data`, `ticket`, `text`, `task`).
 
 O servidor ja cria o item **"Analise inicial da US #<card>"** ao nascer o plano de analise (sub-tarefas = etapas,
 sincronizadas sozinhas) — nao crie outro item manualmente para a analise; ao fim, o plano de implementacao gera os
@@ -83,7 +85,7 @@ autossuficiente: objetivo, CAs, solucao por opcao com refs, entregas, branches l
 roda numa sessao nova que le so ele. Com as respostas, `status <card> completed "" .../analise-us.md`.
 
 **7. Plano de implementacao → item de trabalho** — `prmake_correction(card, title, steps)` (script: `bash $PLAN
-correction <card> "<titulo>" -`): o PRMake cria **um item `user-story`** ligado ao plano, com **uma sub-tarefa por
+correction <card> "<titulo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por
 etapa** (`stepKey`), e sincroniza as sub-tarefas conforme as etapas andam (voce **nao** chama `prmake_work_task` para
 esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 
@@ -102,9 +104,11 @@ do front): alem do plano, crie **itens proprios**:
    (titulo/sub-tarefas/fingerprint, status nao cancelado)? Nao crie outro; cite o existente.
 2. `prmake_rules(card)` (ou `dados/regras.md`) para os nomes: branch por destino (`release-version` → `<branch>-rv`),
    titulo, commit — nunca invente.
-3. `prmake_work_item_create(card, title, description, tasks, type: "user-story", planPhase: "correction")`, cada
-   sub-tarefa com `kind` do catalogo (`branch, cherry-pick, code, pr, devops-state, sql-script, validation, comment,
-   manual`), `executor` e `params` reais (`repository`, `branch`, `from`, `target`...). Resposta `duplicate` → nao
+3. Ferramenta pronta que serve (`prmake_tools(card)`: PR para uma branch, promocao, ajuste pos-QA...) →
+   `prmake_tool_run(card, key, answers)`. Senao `prmake_work_item_create(card, title, description, tasks, type,
+   planPhase: "correction")` com `type` do item (`implementation` para codigo da US, `pull-request` para so levar PRs,
+   `data`, `ticket`... — nunca `user-story`), cada sub-tarefa com `kind` do catalogo (`branch, cherry-pick, code, pr,
+   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify`), `executor` e `params` reais (`repository`, `branch`, `from`, `target`...). Resposta `duplicate` → nao
    insista; `allowDuplicate` + motivo so se for de fato outro trabalho. Esses itens rodam pelo
    `executar-item-de-trabalho` quando a pessoa clicar "Executar".
 

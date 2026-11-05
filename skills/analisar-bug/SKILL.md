@@ -231,7 +231,7 @@ se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 
 **1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte. **Card User Story**
 (o `contexto` mostra `workItemType=User Story` e cria o plano `analisar-us`) → siga a skill **`analisar-us`**
-(`~/.claude/skills/analisar-us/SKILL.md`): sem causa raiz/RCA, criterios de aceite, itens `user-story`.
+(`~/.claude/skills/analisar-us/SKILL.md`): sem causa raiz/RCA, criterios de aceite, item da implementacao `implementation` (nunca item `user-story`).
 
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`. Ele cria/retoma o plano (se ja existe plano aberto,
 **continue da primeira etapa pronta com o checkpoint**; analise concluida sem correcao → siga do passo 6, sem
