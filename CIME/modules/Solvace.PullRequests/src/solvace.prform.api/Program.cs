@@ -102,6 +102,9 @@ builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
 builder.Services.AddScoped<IPluginApplication, PluginApplication>();
+// 0086: configurações por seção — catálogo resolvido, PATCH só das chaves alteradas e histórico (também no PUT antigo).
+builder.Services.AddScoped<solvace.prform.application.Contracts.IPluginSettingHistory, solvace.prform.PluginSettings.PluginSettingHistory>();
+builder.Services.AddScoped<solvace.prform.PluginSettings.PluginSettingsService>();
 
 builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
 // Integrações pessoais (feature 0002): segredos dos usuários criptografados com a chave de UserIntegrations.
