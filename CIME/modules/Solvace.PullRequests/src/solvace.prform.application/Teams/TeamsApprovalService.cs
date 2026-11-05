@@ -45,10 +45,12 @@ public partial class TeamsApprovalService : ITeamsApprovalService
     private static readonly HashSet<string> TitleColors = new(StringComparer.OrdinalIgnoreCase)
         { "Default", "Dark", "Light", "Accent", "Good", "Warning", "Attention" };
 
-    private const string DefaultTitle = "Aprovação de PR — AB#{cardNumber}";
-    private const string DefaultBody = "**{author}** pede aprovação do PR **#{prNumber}**\n\n{repository}: {branch} → {targetBranch}\n\n{prTitle}";
-    private const string DefaultButton = "Abrir PR no GitHub";
-    private const int DefaultDescriptionMaxLength = 1200;
+    // Públicas (0086): o catálogo das configurações mostra estes valores como o padrão de cada chave.
+    public const string DefaultTitle = "Aprovação de PR — AB#{cardNumber}";
+    public const string DefaultBody = "**{author}** pede aprovação do PR **#{prNumber}**\n\n{repository}: {branch} → {targetBranch}\n\n{prTitle}";
+    public const string DefaultButton = "Abrir PR no GitHub";
+    public const string DefaultTitleColor = "Accent";
+    public const int DefaultDescriptionMaxLength = 1200;
 
     private readonly DefaultContext _context;
     private readonly IPluginConfigurationResolver _resolver;
@@ -168,7 +170,7 @@ public partial class TeamsApprovalService : ITeamsApprovalService
         var title = Render(ValueOr(config, "MessageTitle", DefaultTitle), values);
         var body = Render(ValueOr(config, "MessageBody", DefaultBody), values);
         var button = Render(ValueOr(config, "ButtonText", DefaultButton), values);
-        var color = ValueOr(config, "TitleColor", "Accent");
+        var color = ValueOr(config, "TitleColor", DefaultTitleColor);
         if (!TitleColors.Contains(color))
             color = "Default";
 

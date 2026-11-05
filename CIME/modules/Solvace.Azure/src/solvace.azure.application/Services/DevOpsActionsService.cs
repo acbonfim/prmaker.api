@@ -30,8 +30,9 @@ public class DevOpsActionsService : IDevOpsActionsService
     /// <summary>
     /// Opções padrão de classificação — as combinações usadas pelo time em 300 bugs resolvidos (estudo da 0027).
     /// Reserva: o valor efetivo é o do "AI Configurations" (BugClassificationPresets, semeado pela migração da 0030).
+    /// Pública (0086): o catálogo das configurações mostra esta lista como o padrão da chave.
     /// </summary>
-    private static readonly IReadOnlyList<DevOpsClassificationPreset> DefaultClassificationPresets =
+    public static readonly IReadOnlyList<DevOpsClassificationPreset> DefaultClassificationPresets =
     [
         Preset("code-fix", "Correção de código", "Code Fix", "Code", "Code Required - Code Defect", "A"),
         Preset("code-data-fix", "Código + correção de dados causada pelo defeito", "Code Fix", "Code", "Code Required - Data Fix / Request - Caused by Defect", "A+B"),
