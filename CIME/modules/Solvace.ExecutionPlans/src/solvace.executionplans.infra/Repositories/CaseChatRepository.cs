@@ -37,6 +37,11 @@ public class CaseChatRepository(ExecutionPlanContext context) : ICaseChatReposit
         return last;
     }
 
+    public Task<int> DeleteMessagesUpToAsync(string cardNumber, int lastNumber, DateTimeOffset now, CancellationToken cancellationToken) =>
+        context.CaseMessages
+            .Where(m => m.CardNumber == cardNumber && m.Number <= lastNumber && m.DeletedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.DeletedAt, (DateTimeOffset?)now), cancellationToken);
+
     public Task<List<CaseMessage>> GetMessagesByRequestAsync(Guid requestId, CancellationToken cancellationToken) =>
         context.CaseMessages.Where(m => m.RequestId == requestId && m.DeletedAt == null).OrderBy(m => m.Number).ToListAsync(cancellationToken);
 

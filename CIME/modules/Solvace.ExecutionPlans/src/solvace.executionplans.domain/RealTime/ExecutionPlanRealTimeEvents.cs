@@ -65,6 +65,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Message = "message";
         public const string Edited = "edited";
         public const string Deleted = "deleted";
+        /// <summary>0090: alguém limpou a conversa (<c>/clear</c>).</summary>
+        public const string Cleared = "cleared";
         public const string Typing = "typing";
         /// <summary>Pedido do especialista mudou (na fila, rodando, terminou).</summary>
         public const string Run = "run";

@@ -62,6 +62,22 @@ public class CaseChatController(CaseChatApplication chat, IExecutionQueueApplica
     public Task<ActionResult<ExecutionNoteResponse>> ToPlan([FromRoute] string card, [FromRoute] Guid id, [FromBody] EditCaseMessageRequest? request, CancellationToken ct) =>
         Run<ExecutionNoteResponse>(async () => Ok(await chat.ToPlanAsync(card, id, request?.Text, await ActorAsync(ct), ct)));
 
+    /// <summary>0090 (<c>/clear</c>): limpa a conversa para todos e o especialista recomeça do zero (nada sai do banco).</summary>
+    [HttpPost("{card}/clear")]
+    public Task<ActionResult> Clear([FromRoute] string card, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await chat.ClearAsync(card, await ActorAsync(ct), ct);
+            return NoContent();
+        });
+
+    /// <summary>0090 (<c>/cancelar-item-de-trabalho #n</c>): cancela (e, com <c>undo</c>, desfaz) um item deste card e avisa na conversa.</summary>
+    [HttpPost("{card}/work-items/{number:long}/cancel")]
+    public Task<ActionResult<WorkItemResponse>> CancelWorkItem([FromRoute] string card, [FromRoute] long number,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelWorkItemRequest? request, CancellationToken ct) =>
+        Run<WorkItemResponse>(async () =>
+            Ok(await chat.CancelWorkItemAsync(card, number, request?.Undo ?? false, request?.Reason, await ActorAsync(ct), ct)));
+
     [HttpPost("{card}/typing")]
     public Task<ActionResult> Typing([FromRoute] string card, CancellationToken ct) =>
         RunPlain(async () =>

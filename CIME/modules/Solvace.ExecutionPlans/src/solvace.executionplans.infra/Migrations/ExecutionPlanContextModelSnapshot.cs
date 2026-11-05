@@ -88,6 +88,12 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTimeOffset?>("ClearedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClearedBy")
+                        .HasColumnType("text");
+
                     b.Property<decimal>("CostUsd")
                         .HasPrecision(12, 4)
                         .HasColumnType("numeric(12,4)");
