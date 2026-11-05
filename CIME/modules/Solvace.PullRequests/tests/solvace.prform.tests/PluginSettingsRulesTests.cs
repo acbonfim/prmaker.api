@@ -222,7 +222,7 @@ public class PluginSettingsRulesTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ catálogo resolvido
 
     [Fact]
-    public void Resolved_catalog_never_exposes_secrets_and_uses_the_admin_label()
+    public void Resolved_catalog_never_exposes_secrets_and_uses_the_catalog_label()
     {
         var devops = Plugin(8, "AzureDevOps Configurations", new() { ["Organization"] = "solvace", ["PersonalAccessToken"] = "pat-123", ["MySecretKey"] = "k", ["Extra"] = "e" },
             personal: true, personalFields: ["PersonalAccessToken"],
@@ -235,8 +235,9 @@ public class PluginSettingsRulesTests(ITestOutputHelper output)
 
         var org = fields.Single(f => f.Id == "8:Organization");
         Assert.Equal("solvace", org.Value);
-        Assert.Equal("Org do admin", org.Label);
-        Assert.Equal("Ajuda do admin", org.Help);
+        // Rótulo semeado em FieldSettings é para "Minhas integrações"; na tela de configurações vale o catálogo.
+        Assert.NotEqual("Org do admin", org.Label);
+        Assert.False(string.IsNullOrWhiteSpace(org.Help));
         Assert.False(org.Personal!.UserFills);
 
         var pat = fields.Single(f => f.Id == "8:PersonalAccessToken");

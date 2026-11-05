@@ -105,8 +105,10 @@ public static class PluginSettingsResolver
             PluginId = plugin?.Id,
             PluginName = plugin?.Description ?? def.Plugin.Name,
             Key = def.Key,
-            Label = plugin?.GetFieldLabel(def.Key) ?? def.Label,
-            Help = plugin?.GetFieldHelp(def.Key) ?? def.Help,
+            // Na tela de configurações vale o catálogo: os rótulos semeados em FieldSettings são técnicos e
+            // continuam servindo a "Minhas integrações" (0086).
+            Label = def.Label,
+            Help = def.Help ?? plugin?.GetFieldHelp(def.Key),
             Type = def.Type,
             Value = secret || !exists ? null : value,
             HasValue = exists && !string.IsNullOrEmpty(value),
