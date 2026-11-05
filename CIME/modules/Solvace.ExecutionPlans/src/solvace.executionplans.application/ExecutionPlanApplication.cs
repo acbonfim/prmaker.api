@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using Cime.BuildingBlocks.RealTime;
 using solvace.executionplans.application.Contracts;
@@ -44,6 +44,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     {
         var now = DateTimeOffset.UtcNow;
         ExecutionSession? parentSession = null;
+        var parentPlanId = request.ParentPlanId;
+        ExecutionPlanSummaryResponse? emptyAnalysis = null;
         if (request.ParentPlanId is { } parentId)
         {
             // Plano de correção: nasce de um plano de análise do mesmo card.
@@ -54,10 +56,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             if (parent.Phase != ExecutionPhase.Analysis)
                 throw new DomainException("O plano de origem precisa ser um plano de análise.");
             parentSession = parent.CurrentSession;
+            (parentPlanId, emptyAnalysis) = await ResolveCorrectionParentAsync(parent, cancellationToken);
             _repository.ClearTracking();
         }
         var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
-            request.Phase, request.ParentPlanId);
+            request.Phase, parentPlanId);
         // 0041: a correção é a mesma conversa do Claude que fez a análise — herda a sessão (o executor retoma por ela;
         // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão). 0049: no executor a correção roda numa
         // sessão nova — o plano fica com a sessão que está rodando agora, não com a da análise.
@@ -79,7 +82,30 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         await SuggestOnCreateAsync(plan, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
             await WriteTimelineAsync(plan, CorrectionPlanCreatedText(plan), actor, cancellationToken);
+        if (emptyAnalysis is not null && request.ParentPlanId is { } shellId)
+            await ChangeStatusAsync(shellId, new ChangeExecutionPlanStatusRequest
+            {
+                Status = ExecutionStatus.Cancelled,
+                Reason = $"Versão sem análise: a correção partiu da análise v{emptyAnalysis.VersionNumber}"
+            }, actor, cancellationToken);
         return plan.ToResponse([], 0, now);
+    }
+
+    /// <summary>
+    /// 0082: correção pedida sobre uma análise sem etapa concluída nem arquivo (a proposta aceita era de correção e a análise anterior
+    /// estava cancelada — o início da skill abriu uma versão nova vazia; card 77900). A correção parte da última análise
+    /// feita e a vazia é cancelada; o retorno traz essa análise feita (null = a análise pedida vale).
+    /// </summary>
+    private async Task<(Guid ParentId, ExecutionPlanSummaryResponse? Done)> ResolveCorrectionParentAsync(ExecutionPlan parent,
+        CancellationToken cancellationToken)
+    {
+        if (parent.IsFinished || parent.Steps.Any(s => s.Status == ExecutionStatus.Completed)
+            || (await _repository.GetArtifactsAsync(parent.Id, cancellationToken)).Count > 0)
+            return (parent.Id, null);
+        var done = (await _repository.GetSummariesByCardAsync(parent.CardNumber, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Analysis && s.Id != parent.Id && s.StepsCompleted > 0 && s.CreatedAt < parent.CreatedAt)
+            .MaxBy(s => s.CreatedAt);
+        return done is null ? (parent.Id, null) : (done.Id, done);
     }
 
     /// <summary>0037: o card já fica salvo no PRMake (registro + "últimos cards") ao nascer o plano. Best-effort.</summary>
