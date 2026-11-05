@@ -505,8 +505,18 @@ public class WorkItemApplication : IWorkItemApplication
             }
         }
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
+        {
+            if (IsMirror(item))
+                item.SyncStepKind(step.Key, StepTaskKind(step), ServerKinds(step), now);
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
+        }
     }
+
+    private static string StepTaskKind(ExecutionStep s) => WorkTaskKind.FromStep(s.Kind, s.Executor, s.Key, s.Title, s.TaskKind);
+
+    /// <summary>Tipos que o servidor já deu a esta etapa (antes da dedução e sem o taskKind da skill).</summary>
+    private static string[] ServerKinds(ExecutionStep s) =>
+        [WorkTaskKind.LegacyFromStep(s.Kind, s.Executor), WorkTaskKind.FromStep(s.Kind, s.Executor, s.Key, s.Title)];
 
     /// <summary>Item que espelha as etapas do plano (gerado do plano; a análise pode nascer sem etapas).</summary>
     private static bool IsMirror(WorkItem item) => item.MirrorsPlan;
@@ -516,7 +526,7 @@ public class WorkItemApplication : IWorkItemApplication
         {
             Title = s.Title,
             Description = s.Description,
-            Kind = WorkTaskKind.FromStep(s.Kind, s.Executor),
+            Kind = StepTaskKind(s),
             Executor = s.Executor,
             Params = string.IsNullOrWhiteSpace(s.Repository) ? null : new Dictionary<string, string> { ["repository"] = s.Repository! },
             StepKey = s.Key,

@@ -130,6 +130,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Checkpoint).HasColumnType("text");
             entity.Property(e => e.Executor).IsRequired().HasMaxLength(20).HasDefaultValue(ExecutionExecutor.Claude);
             entity.Property(e => e.Kind).IsRequired().HasMaxLength(20).HasDefaultValue(ExecutionStepKind.Task);
+            entity.Property(e => e.TaskKind).HasMaxLength(WorkItemTask.MaxKindLength);
             entity.Property(e => e.Repository).HasMaxLength(200);
             entity.Property(e => e.DependsOn).HasColumnType("jsonb");
 

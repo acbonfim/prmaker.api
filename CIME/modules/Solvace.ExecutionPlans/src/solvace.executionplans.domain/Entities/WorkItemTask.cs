@@ -107,6 +107,16 @@ public partial class WorkItemTask
         ParamsJson = SerializeParams(input.Params);
     }
 
+    /// <summary>Tipo da sub-tarefa do plano acompanhando a etapa (só pendente; quem chama confere que não foi a pessoa que escolheu).</summary>
+    internal bool FollowStepKind(string kind, DateTimeOffset now)
+    {
+        var k = NormalizeKind(kind);
+        if (Status != WorkTaskStatus.Pending || Kind == k) return false;
+        Kind = k;
+        UpdatedAt = now;
+        return true;
+    }
+
     public static string NormalizeKind(string? kind)
     {
         var k = (kind ?? string.Empty).Trim().ToLowerInvariant();

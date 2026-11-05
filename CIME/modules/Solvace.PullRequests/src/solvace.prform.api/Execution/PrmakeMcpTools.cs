@@ -84,7 +84,7 @@ public partial class PrmakeMcpTools(
             plan.Id, plan.Phase, plan.Status, plan.StatusReason, plan.Title,
             steps = plan.Steps.OrderBy(s => s.Order).Select(s => new
             {
-                s.Key, s.Title, s.Status, s.Executor, s.Kind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
+                s.Key, s.Title, s.Status, s.Executor, s.Kind, s.TaskKind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
                 links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new
@@ -108,10 +108,10 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_steps")]
-    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation.")]
+    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation; taskKind = tipo da sub-tarefa na Bancada (research, sql-query, sql-script, devops-action, notify, decision, task... — catalogo WorkItemTaskKinds; sem ele o PRMake deduz).")]
     public Task<string> Steps(
         string card,
-        [Description("Etapas: [{ key, title, description?, executor?, kind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
+        [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         string? phase = null,
         CancellationToken ct = default) => Safe(async () =>
     {
@@ -605,7 +605,7 @@ public partial class PrmakeMcpTools(
     [McpServerTool(Name = "prmake_correction")]
     [Description("Cria o plano de correcao (Bug) ou de implementacao (User Story, Kind analisar-us — titulo 'Implementacao <card>: ...'; nunca 'correcao' na US) do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. Depois, o 'phase' padrao das ferramentas passa a ser 'correction'; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
     public Task<string> Correction(string card, string title,
-        [Description("Etapas: [{ key, title, description?, executor?, kind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
+        [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         CancellationToken ct = default) => Safe(async () =>
     {
         var analysis = (await plans.GetByCardAsync(card.Trim(), ct)).FirstOrDefault(p => p.Phase == ExecutionPhase.Analysis)

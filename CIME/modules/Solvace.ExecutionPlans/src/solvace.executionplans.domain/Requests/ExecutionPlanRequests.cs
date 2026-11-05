@@ -13,6 +13,12 @@ public class ExecutionStepDefinition
     /// <summary>task (padrão) | code | pr | ticket | question | validation (0024).</summary>
     public string? Kind { get; set; }
 
+    /// <summary>
+    /// Tipo da sub-tarefa na Bancada (catálogo <c>WorkItemTaskKinds</c>: research, sql-query, sql-script, devops-action,
+    /// notify, decision, task...). Opcional: sem ele o PRMake deduz pelo tipo, chave e título; "" volta a deduzir.
+    /// </summary>
+    public string? TaskKind { get; set; }
+
     /// <summary>Repositório da etapa (código/PR), ex.: "edv-solvace" (0024).</summary>
     public string? Repository { get; set; }
 

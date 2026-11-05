@@ -1298,6 +1298,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("TaskKind")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)

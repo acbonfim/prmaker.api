@@ -364,6 +364,20 @@ public class WorkItem
         return true;
     }
 
+    /// <summary>
+    /// Tipo da sub-tarefa pendente da etapa acompanhando o plano (taskKind novo da skill, dedução melhor do PRMake). Só
+    /// troca o tipo que o servidor deu (<paramref name="serverKinds"/>) — o escolhido pela pessoa na edição fica.
+    /// </summary>
+    public bool SyncStepKind(string stepKey, string kind, IReadOnlyCollection<string> serverKinds, DateTimeOffset now)
+    {
+        if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting) return false;
+        var task = Tasks.FirstOrDefault(t => t.StepKey == stepKey);
+        if (task is null || !serverKinds.Contains(task.Kind) || !task.FollowStepKind(kind, now)) return false;
+        Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        UpdatedAt = now;
+        return true;
+    }
+
     /// <summary>Plano concluído/cancelado: fecha o item.</summary>
     public bool ClosePlan(string planStatus, string? reason, string actor, DateTimeOffset now)
     {
