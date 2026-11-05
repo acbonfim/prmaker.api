@@ -50,3 +50,31 @@ Contrato:
   (Avisar no card/Teams — params: message) via migração idempotente que **acrescenta** kinds que faltam ao array (não
   sobrescreve o do admin) + modelo `abrir-chamado`.
 - Params com tipo para o editor: cada param do kind ganha `input` (`repository|branch|target-branch|state|commits|text|textarea|select`) e `options?`.
+
+## Rodada 4 — Ferramentas do especialista (branch `feature/0085-r4`)
+Pedido: o especialista tem uma lista de **ferramentas (skills rápidas)**, num botão "Ferramentas" ao lado dele, que criam
+coisas rápidas (ex.: abrir PR para a branch X listando as branches do repositório; destinos conhecidos release-version,
+hotfix-version, edge quando for o caso) + ferramentas de dia a dia tiradas dos cards já tratados
+(`ferramentas-analise.md`, 30 cards).
+
+Contrato:
+- Modelos (`WorkItemTemplates`) ganham campos opcionais: `when {type[], flow[], repoKinds[], states[]}`, `ask
+  [{key,label,input,options?,default?,required?}]`; marcadores `{ask:<key>}`, `{suffix:@<key>}` (sufixo do destino
+  escolhido), `{promotionTargets}` (destinos do `PromotionProfiles` do repo), `{base}`, `{qaBranch}`, `{repoKind}`;
+  `{repository}` = repositório do PR principal do card (PRs registrados / etapas `pr-<repo>`), reserva `DefaultRepository`.
+- `GET WorkItems/catalog?card=` filtra por `when` e devolve `templates[].ask` com `options` resolvidas e `default`;
+  `templates[].applicable` (bool) + `reason` quando não se aplica (mostrar desabilitado com o motivo).
+- `POST WorkItems/card/{card}/from-template {templateKey, answers:{key:value}, title?, allowDuplicate?, duplicateReason?}`
+  → renderiza no servidor e cria o item (origin `template`; `specialist` se token do caso); 409 duplicate igual ao create.
+- MCP: `prmake_tools(card)` (lista com ask/applicable) e `prmake_tool_run(card, key, answers)` (cria o item; liberado
+  ao especialista).
+- Kinds novos (acrescentados): `devops-action`, `pr-text`, `sql-query`.
+- Semear (por `key`, só se faltar; `ajuste-pos-qa` só troca se ainda for o semeado; `pr-release-version`/`pr-hotfix-version`
+  ganham `when`): F1 `pr-para-branch`, F2 `prs-fluxo-producao`, F3 `promover-revamp`, F6 `resolver-conflito-promocao`,
+  F7 `ajuste-pos-qa` (corrigido: cherry-pick para -dev/-qa), F8 `usar-termo-existente`, F9 `fechamento-code-fix`,
+  F10 `validar-em-qa`, F11 `fechamento-sem-codigo`, F12 `script-com-chamado`, F13 `diagnostico-usuario`,
+  F14 `novo-resumo`, F15 `corrigir-sonar` (JSON em `ferramentas-analise.md` §5).
+- Front: botão **Ferramentas** no topo da coluna do Especialista (Bancada) → painel lateral/pop-up com busca, grupos
+  (PRs e promoção, Fechamento, QA, Dados/Chamado, Textos), cada ferramenta com descrição; clicar → formulário curto com
+  os `ask` (pickers do FD) → "Criar item" (from-template) ou "Pedir ao especialista" (mensagem com a ferramenta e as
+  respostas). Também no menu do "+ Novo item".
