@@ -8,7 +8,7 @@
 | F2 | Itens de trabalho no front (lista, modais, serviço) | em andamento | agente F2 | | |
 | S1 | Skill especialista-do-caso (regras, itens, sem duplicar) | concluída | agente S1 | 5196d38 | `prmake-case.sh rules|items|catalog` (cache 10 min em dados/); testado com API falsa |
 | F3 | PRs/ações GitHub+DevOps e horas do card na Bancada | em andamento | agente F3 | | pedido 2 do usuário |
-| S2 | Skills executar/desfazer item, analisar-us, analisar-bug | em andamento | agente S2 | | |
+| S2 | Skills executar/desfazer item, analisar-us, analisar-bug | concluída | agente S2 | 983f029, 3a29d9b | `prmake-plan.sh rules|work-items|work-task|close-pr|delete-branch`, `open-pr/worktree --item`; Kind `analisar-us`; testado com API/git falsos |
 | Q1 | Build + e2e local + revisão do contrato | pendente | Claude | | |
 
 ## Log
