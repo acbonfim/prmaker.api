@@ -1,6 +1,6 @@
 ---
 name: analisar-bug
-description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Usa a Base Solvace (engenharia reversa + regras de negocio do Knowledge Center) antes de vasculhar codigo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card", "retomar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
+description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados), que o PRMake transforma em item de trabalho (entregas independentes viram itens proprios) — so abre PRs, nunca faz merge. Card User Story vai para a skill analisar-us. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Usa a Base Solvace (engenharia reversa + regras de negocio do Knowledge Center) antes de vasculhar codigo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card", "retomar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
 model: opus
 ---
 
@@ -101,6 +101,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | **fotografia do codigo citado** (0075: popover com codigo real, diff e notas) · ajustar why/notas | `prmake_code_ref(card, reference, ...)` (so ajuste) | **`coderef`** (le o arquivo local — sempre por ele) |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
+| **regras do card** (0085: fluxo, base, nome de branch por destino, padroes) · **itens de trabalho** (listar, criar entrega separada) | `prmake_rules(card)` · `prmake_work_items(card)` · `prmake_work_item(card, n)` · `prmake_work_item_create(card, ..., planPhase: "correction")` | `rules` (cache `dados/regras.md`) · `work-items [n]` |
 
 **Sempre pelo script** (arquivos locais, git, custo): `contexto` (inicio), `sync`/`upload`, `branches`, `worktree`,
 `pr-text`/`save-pr-text`/`open-pr`, `watch`/`wait` (fora do executor) e `status <card> completed|failed` ao concluir o
@@ -212,6 +213,12 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Foco no card**: solucoes/scripts so para o caso relatado; outros afetados → so um aviso curto.
 - **Analise e somente leitura**; codigo muda so depois da resposta do usuario, **sem comentarios novos no codigo**
   (o porque vai no commit/PR/plano). **Nunca merge nem aprovacao de PR.** Nunca escrita em banco/Cognito.
+- **Itens de trabalho (0085)**: o plano de correcao **gera o item** — o PRMake cria um item por plano de correcao,
+  com uma sub-tarefa por etapa, e sincroniza as sub-tarefas quando as etapas andam (nao chame `prmake_work_task` para
+  ele); plano concluido → item concluido. Entregas independentes (ex.: PR para producao e PR para release-version) →
+  itens separados com `prmake_work_item_create(..., planPhase: "correction")`, **depois** de conferir em
+  `prmake_work_items` que nao existe item com o mesmo objetivo. Nomes de branch/titulo so do `branches`/`prmake_rules`
+  (`BranchSuffixByTarget`: release-version → `-rv`). Detalhes: `$REF correcao 7`.
 - PII: o que vai para o plano/Timeline e visivel no PRMake — so o necessario.
 - `PLANO INDISPONIVEL` no `start`/`contexto`: siga normalmente (os comandos do plano viram no-op).
 
@@ -219,7 +226,9 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 **0. Atualizar a skill** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true`;
 se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 
-**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte.
+**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte. **Card User Story**
+(o `contexto` mostra `workItemType=User Story` e cria o plano `analisar-us`) → siga a skill **`analisar-us`**
+(`~/.claude/skills/analisar-us/SKILL.md`): sem causa raiz/RCA, criterios de aceite, itens `user-story`.
 
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`. Ele cria/retoma o plano (se ja existe plano aberto,
 **continue da primeira etapa pronta com o checkpoint**; analise concluida sem correcao → siga do passo 6, sem
@@ -259,8 +268,9 @@ com `prmake-timeline`. O plano de analise segue para `propor-solucoes`. **0075**
 Depois em imagem (`$REF analise 4c` — `mock-shot.sh`); o PRMake recusa concluir com citacao sem fotografia.
 
 **6–8b. Solucoes, plano de correcao e execucao** — uma secao por passo: `$REF correcao 6`, depois `7`, `8`, `8b`
-(perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo
-`branches`, PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
+(perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction` — que vira **item de
+trabalho** —, itens separados para entregas independentes, fluxo de branches pelo `branches` (com o nome por destino),
+PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
 **9. Aprender e reportar** — as lacunas do codigo "explorando" ja foram registradas (regra acima; obrigatorio). Alem disso, se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
 query util) ou mostrou um item da engenharia reversa errado/incompleto, proponha em poucas linhas:
