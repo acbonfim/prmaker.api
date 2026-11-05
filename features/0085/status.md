@@ -62,3 +62,20 @@
   plano/modal do card/aba Card nova/quem iniciou no PRMake (F5a), aba Arquivos (F5b). Integração local contra a API real:
   item de script ganha as 2 sub-tarefas de chamado; upload/lista/conteúdo; catálogo 11 tipos/19 ferramentas;
   `pr-para-branch` → `hotfix/77434-rv`. Testes 128/352/22.
+- 2026-11-05 — rodada 6 (`fix/0085-r6-bancada`, back + front): correções de uso real (card 77988, revamp + banco).
+  - **Ferramentas** saem da lista de itens e do especialista compacto (botão fora do padrão); passam a viver **dentro da
+    conversa expandida** (ícone de ferramentas no cabeçalho com a contagem; painel sobre a conversa; item criado fecha o
+    modal e a Bancada mostra o item). O especialista compacto recebe `[cardType]`/`(itemOpened)`; `openCaseChat(...,
+    cardType)`; `barExtra` e o painel lateral da Bancada foram removidos.
+  - **Ações DevOps** saem do modal de PRs e ficam na barra de ações do card (`app-workbench-prs` hospeda os dois botões,
+    mesmo estado; `app-devops-actions-menu appearance="bar"`).
+  - **User Story = `feature/`**: chave nova `BranchNamePatternUserStory` (`feature/{card}`; catálogo + migração
+    `QaOnlyWhereFlowHasIt0085e`); `CardRules.MainBranch` e `GitHub/branches` escolhem o padrão pelo tipo do card;
+    `prmake-plan.sh branches` idem; `gerar-prmake`/`gerar-handover`/`prmake-timeline` descobrem o card por `feature/<n>`.
+  - **Branches pelo repositório**: `GET Skills/rules?card=&repository=` devolve `repository`, `repoKind`, `repositoryTargets`
+    (só os destinos do fluxo do tipo — revamp-backend não tem QA); `prmake_rules` ganha "Branches por repositório do
+    card"; o repositório do card vem dos PRs, do plano de correção ou, na falta, do plano de análise. No modal de PRs os
+    chips e os destinos do "Abrir PR" seguem o repositório (também ao trocá-lo no modal).
+  - **QA só onde existe**: condição nova `when.flowTargets` nos modelos; `validar-em-qa` só vale se o fluxo do repositório
+    tem PR para `qa`. Skills: `validar-qa` só com destino QA; nenhuma sugere branch/PR para destino que o `branches` do
+    repositório não listou. Os roteiros `e2e/ft.mjs` (botões Ferramentas na Bancada) ficaram defasados.

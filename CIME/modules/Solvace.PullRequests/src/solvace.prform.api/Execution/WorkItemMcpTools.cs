@@ -35,10 +35,13 @@ public class WorkItemMcpTools(
     [McpServerTool(Name = "prmake_rules", ReadOnly = true)]
     [Description("Regras do PRMake calculadas para o card (markdown): tipo (Bug/US) e o que muda, fluxo pela area, branch principal, " +
                  "NOME DE BRANCH POR DESTINO (ex.: release-version -> hotfix/<card>-rv), PRs do fluxo por tipo de repositorio, padroes de " +
-                 "commit/titulo, promocao e regras fixas (nunca mesclar, toda gravacao pelo PRMake, itens sem duplicar). Use antes de propor " +
+                 "commit/titulo, branches/destinos POR REPOSITORIO DO CARD (revamp-backend nao tem QA), promocao e regras fixas (nunca mesclar, toda gravacao pelo PRMake, itens sem duplicar). Use antes de propor " +
                  "ou criar branch/PR/item — nunca invente nome de branch.")]
     public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
-        SkillsRulesService.Markdown(await rules.GetAsync(RequireCard(card), ct)));
+    {
+        var r = await rules.GetAsync(RequireCard(card), ct);
+        return SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct));
+    });
 
     [McpServerTool(Name = "prmake_work_items", ReadOnly = true)]
     [Description("Itens de trabalho do card (resumo): numero, tipo, titulo, status, origem, fingerprint, plano ligado, se ainda e editavel e " +

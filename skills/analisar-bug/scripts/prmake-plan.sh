@@ -1294,13 +1294,20 @@ case "$CMD" in
       esac
     done
     load_settings
-    NAME_PATTERN="$(setting BranchNamePattern)"; NAME_PATTERN="${NAME_PATTERN:-hotfix/{card\}}"
     COMMIT_PATTERN="$(setting CommitMessagePattern)"; TITLE_PATTERN="$(setting PrTitlePattern)"
     [[ -n "$(setting BranchStrategy)" ]] || die "BranchStrategy nao configurado no PRMake (Skills Configurations) — avise o usuario"
+    # Card no DevOps: tipo (Bug x User Story) e area (fluxo).
+    CODE="$(curl -s --max-time 60 -o "$TMP/card" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/card/$CARD" 2>/dev/null)"
+    AREA="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.AreaPath"] // ""' "$TMP/card" || true)"
+    WI_TYPE="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.WorkItemType"] // ""' "$TMP/card" || true)"
+    # Nome da branch pelo tipo: User Story = BranchNamePatternUserStory (feature/{card}, nunca hotfix/); Bug = BranchNamePattern (hotfix/{card}).
+    if [[ "$WI_TYPE" == "User Story" || "$(plan_kind)" == analisar-us ]]; then
+      NAME_PATTERN="$(setting BranchNamePatternUserStory)"; NAME_PATTERN="${NAME_PATTERN:-feature/{card\}}"
+    else
+      NAME_PATTERN="$(setting BranchNamePattern)"; NAME_PATTERN="${NAME_PATTERN:-hotfix/{card\}}"
+    fi
     # Fluxo: --flow > area do card (BranchFlowByArea) > perguntar.
     if [[ -z "$FLOW" ]]; then
-      CODE="$(curl -s --max-time 60 -o "$TMP/card" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/card/$CARD" 2>/dev/null)"
-      AREA="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.AreaPath"] // ""' "$TMP/card" || true)"
       FLOW="$(jq -r --arg a "$AREA" '[.settings.BranchFlowByArea // [] | .[] | . as $r | select($a != "" and (($a | ascii_downcase) | contains($r.areaContains | ascii_downcase))) | $r.flow][0] // empty' "$SETTINGS")"
     fi
     # Tipo do repositorio: primeira regra de BranchStrategy.repositories que casa (glob, sem diferenciar maiusculas).

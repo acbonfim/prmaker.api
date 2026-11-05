@@ -81,4 +81,66 @@ public class BranchRulesTests
         Assert.Equal("release-version/hotfix-version", rules.FlowTargets());
         Assert.Contains("hotfix/77434-rv", SkillsRulesService.SummaryMarkdown(rules));
     }
+
+    // ── Rodada 6: User Story é feature/, e as branches seguem o repositório ───────────────────────
+
+    [Theory]
+    [InlineData(false, "hotfix/{card}", "feature/{card}", "hotfix/77988")]
+    [InlineData(true, "hotfix/{card}", "feature/{card}", "feature/77988")]
+    [InlineData(true, "hotfix/{card}", null, "feature/77988")]       // sem a chave da US: feature/, nunca hotfix/
+    [InlineData(true, "hotfix/{card}", "us/{card}", "us/77988")]     // o admin pode trocar
+    [InlineData(false, null, "feature/{card}", "hotfix/77988")]
+    public void Main_branch_follows_the_card_type(bool userStory, string? bug, string? us, string expected) =>
+        Assert.Equal(expected, BranchRules.MainBranch(BranchRules.PatternFor(userStory, bug, us), "77988"));
+
+    private const string RepoStrategy = """
+    {"repositories": [{"match": "edv-solvace-apps", "kind": "revamp-frontend"}, {"match": "edv-solvace", "kind": "legacy"}, {"match": "revamp-*", "kind": "revamp-backend"}],
+     "flows": {
+       "producao": {
+         "legacy": {"base": "master", "prs": [{"suffix": "-dev", "from": "development", "target": "development"}, {"suffix": "-qa", "from": "qa", "target": "qa"}]},
+         "revamp-backend": {"base": "master", "prs": [{"suffix": "-dev", "from": "development", "target": "development"}]},
+         "revamp-frontend": {"base": "master", "prs": [{"suffix": "-dev", "from": "development", "target": "development"}, {"suffix": "-qa", "from": "qa", "target": "qa"}]}},
+       "release": {
+         "revamp-backend": {"baseOptions": ["release-version", "hotfix-version"], "askBase": true, "prs": [{"suffix": "", "target": "{base}"}]}}
+     }}
+    """;
+
+    private static CardRules RulesFor(string flow, bool userStory = false)
+    {
+        var main = userStory ? "feature/77988" : "hotfix/77988";
+        return new CardRules("77988", userStory ? "User Story" : "Bug", userStory, null, null, flow, null, main, "x", Suffixes,
+            SkillsRulesService.KindsOf(RepoStrategy, flow, main), "edv-solvace", "legacy", "", "", "",
+            new Dictionary<string, string> { [SkillsConfigurationKeys.BranchStrategy] = RepoStrategy }, null);
+    }
+
+    [Fact]
+    public void Revamp_backend_has_no_qa_branch_but_legacy_and_frontend_do()
+    {
+        var backend = SkillsRulesService.PlanForRepository(RulesFor("producao"), "revamp-Users");
+        Assert.True(backend.Known);
+        Assert.Equal("revamp-backend", backend.Kind);
+        Assert.Equal(["development"], backend.Targets.Select(t => t.Target));
+        Assert.Equal("hotfix/77988-dev", backend.Targets[0].Branch);
+
+        Assert.Equal(["development", "qa"], SkillsRulesService.PlanForRepository(RulesFor("producao"), "edv-solvace").Targets.Select(t => t.Target));
+        Assert.Equal(["development", "qa"], SkillsRulesService.PlanForRepository(RulesFor("producao"), "solvace/edv-solvace-apps").Targets.Select(t => t.Target));
+    }
+
+    [Fact]
+    public void Repository_plan_uses_the_user_story_branch_and_expands_the_release_bases()
+    {
+        var plan = SkillsRulesService.PlanForRepository(RulesFor("release", userStory: true), "revamp-Users");
+        Assert.Equal(["release-version", "hotfix-version"], plan.Targets.Select(t => t.Target));
+        Assert.Equal(["feature/77988-rv", "feature/77988-hv"], plan.Targets.Select(t => t.Branch));
+        Assert.Equal("release-version", plan.Base);
+    }
+
+    [Fact]
+    public void Repository_plan_is_unknown_without_a_rule_or_without_the_kind_in_the_flow()
+    {
+        Assert.False(SkillsRulesService.PlanForRepository(RulesFor("producao"), "outro-repo").Known);
+        Assert.False(SkillsRulesService.PlanForRepository(RulesFor("release"), "edv-solvace").Known); // release sem legacy neste fluxo
+        Assert.False(SkillsRulesService.PlanForRepository(RulesFor("producao"), null).Known);
+        Assert.Empty(SkillsRulesService.PlanForRepository(RulesFor("producao"), "outro-repo").Targets);
+    }
 }

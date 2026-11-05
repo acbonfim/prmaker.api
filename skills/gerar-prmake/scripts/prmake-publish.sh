@@ -2,7 +2,7 @@
 # Publica o PR no PRMake, (para Bug) grava o Root Cause no DevOps e, se houver
 # arquivo de comentario, posta o resumo nao-tecnico (PT/EN) na discussion do card.
 # Uso: prmake-publish.sh <cardNumber> <branchPrefix> <descFile> [rcaFile] [repository]
-#   <branchPrefix> = hotfix/  ou  bugfix/   (com a barra)
+#   <branchPrefix> = hotfix/, bugfix/ ou feature/ (US)   (com a barra)
 #   <descFile>     = arquivo com a descricao do PR (sem o bloco RCA)
 #   [rcaFile]      = arquivo com o root cause (obrigatorio para Bug; omita/"" para US)
 #   [repository]   = default: derivado do git remote origin; sem remote, o DefaultRepository do PRMake
@@ -34,7 +34,7 @@ resolve_repo() {
 }
 
 CARD="${1:?informe o numero do card}"
-PREFIX="${2:?informe o branchPrefix (hotfix/ ou bugfix/)}"
+PREFIX="${2:?informe o branchPrefix (hotfix/, bugfix/ ou feature/)}"
 DESC_FILE="${3:?informe o arquivo de descricao}"
 RCA_FILE="${4:-}"
 REPO="$(resolve_repo "${5:-}")"

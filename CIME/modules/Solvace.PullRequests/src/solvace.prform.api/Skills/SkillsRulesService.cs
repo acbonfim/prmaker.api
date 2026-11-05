@@ -16,6 +16,16 @@ public record CardFlowPr(string Branch, string? From, string Target);
 public record CardFlowKind(string Kind, IReadOnlyList<string> Repositories, string? Base, IReadOnlyList<string> BaseOptions, bool AskBase,
     IReadOnlyList<CardFlowPr> Prs);
 
+/// <summary>Destino de um PR do fluxo para um repositório e a branch de trabalho dele (já com o sufixo do destino).</summary>
+public record RepositoryFlowTarget(string Target, string Branch);
+
+/// <summary>
+/// Branches de um repositório no fluxo do card: o tipo do repositório (legacy, revamp-backend…), a base e só os destinos
+/// que existem para esse tipo — revamp-backend não tem QA, por exemplo. <c>Known</c> = o repositório casa com o
+/// <c>BranchStrategy</c> e o fluxo do card tem o tipo; senão <c>Targets</c> vem vazio e quem chama usa a lista geral.
+/// </summary>
+public record RepositoryBranchPlan(string? Repository, string? Kind, string? Base, IReadOnlyList<RepositoryFlowTarget> Targets, bool Known);
+
 /// <summary>
 /// 0085: o que as regras do PRMake dizem para um card — tipo (Bug/US), área e fluxo, branch principal, branches por
 /// destino, fluxo por tipo de repositório e padrões. Base do <c>GET Skills/rules</c>, do <c>prmake_rules</c>, do
@@ -141,7 +151,8 @@ public class SkillsRulesService(
             cardError = e.Message;
         }
 
-        var pattern = V(SkillsConfigurationKeys.BranchNamePattern, "hotfix/{card}");
+        // User Story é feature/{card}; Bug (ou tipo não lido) é o BranchNamePattern (hotfix/{card}).
+        var pattern = BranchRules.PatternFor(IsUserStory(type), V(SkillsConfigurationKeys.BranchNamePattern), V(SkillsConfigurationKeys.BranchNamePatternUserStory));
         var main = BranchRules.MainBranch(pattern, card);
         var suffixes = BranchRules.ParseSuffixes(V(SkillsConfigurationKeys.BranchSuffixByTarget));
         var (flow, flowRule) = FlowOf(area, V(SkillsConfigurationKeys.BranchFlowByArea));
@@ -156,6 +167,33 @@ public class SkillsRulesService(
             V(SkillsConfigurationKeys.PrTitlePattern, "AB#{card} {TARGET}"),
             V(SkillsConfigurationKeys.PromotionBranchPattern, "{branch}-{target}"),
             settings, cardError, state);
+    }
+
+    /// <summary>
+    /// Branches do repositório no fluxo do card: o tipo vem do <c>BranchStrategy.repositories</c>; os destinos, dos PRs do
+    /// fluxo desse tipo (<c>{base}</c> vira as opções de base); a branch de cada destino é a principal + o sufixo do
+    /// <c>BranchSuffixByTarget</c>. Repositório desconhecido ou fluxo sem o tipo → <c>Known = false</c>, sem destinos.
+    /// </summary>
+    public static RepositoryBranchPlan PlanForRepository(CardRules r, string? repository)
+    {
+        var repo = repository?.Trim();
+        if (string.IsNullOrEmpty(repo)) return new RepositoryBranchPlan(null, null, null, [], false);
+        r.Settings.TryGetValue(SkillsConfigurationKeys.BranchStrategy, out var strategy);
+        var kindName = BranchStrategyKinds.KindOf(repo, strategy);
+        var kind = kindName is null ? null : r.Kinds.FirstOrDefault(k => string.Equals(k.Kind, kindName, StringComparison.OrdinalIgnoreCase));
+        if (kind is null) return new RepositoryBranchPlan(repo, kindName, null, [], false);
+
+        var targets = new List<RepositoryFlowTarget>();
+        foreach (var pr in kind.Prs)
+        {
+            var names = pr.Target.Contains("{base}", StringComparison.OrdinalIgnoreCase)
+                ? (kind.BaseOptions.Count > 0 ? kind.BaseOptions : kind.Base is { Length: > 0 } b ? [b] : [])
+                : [pr.Target];
+            foreach (var name in names)
+                if (name.Length > 0 && !targets.Exists(t => string.Equals(t.Target, name, StringComparison.OrdinalIgnoreCase)))
+                    targets.Add(new RepositoryFlowTarget(name, BranchRules.BranchFor(r.MainBranch, name, r.Suffixes)));
+        }
+        return new RepositoryBranchPlan(repo, kind.Kind, kind.Base ?? kind.BaseOptions.FirstOrDefault(), targets, targets.Count > 0);
     }
 
     public static bool IsUserStory(string? workItemType) =>
@@ -337,7 +375,7 @@ public class SkillsRulesService(
         "Sub-tarefas de um item rodam em ordem; itens diferentes rodam em paralelo. Branch nunca é reaproveitada e nunca há force-push."
     ];
 
-    public static string Markdown(CardRules r)
+    public static string Markdown(CardRules r, IReadOnlyList<RepositoryBranchPlan>? repositories = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Regras do PRMake — card {r.Card}");
@@ -352,7 +390,7 @@ public class SkillsRulesService(
         AppendTypeChanges(sb, r);
 
         sb.AppendLine().AppendLine("## Branches");
-        sb.AppendLine($"- Branch principal do card: `{r.MainBranch}` (BranchNamePattern `{r.BranchNamePattern}`).");
+        sb.AppendLine($"- Branch principal do card: `{r.MainBranch}` ({(r.IsUserStory ? "BranchNamePatternUserStory — User Story é feature/, nunca hotfix/" : "BranchNamePattern")} `{r.BranchNamePattern}`).");
         sb.AppendLine("- Nome da branch por destino (BranchSuffixByTarget) — use exatamente estes:");
         sb.AppendLine();
         AppendBranchesByTarget(sb, r);
@@ -374,6 +412,19 @@ public class SkillsRulesService(
         }
         if (r.DefaultRepository is { Length: > 0 } repo)
             sb.AppendLine($"- Repositório padrão (sem git remote): `{repo}`{(r.DefaultKind is { } dk ? $" ({dk})" : string.Empty)}.");
+
+        if (repositories is { Count: > 0 })
+        {
+            sb.AppendLine().AppendLine("## Branches por repositório do card");
+            sb.AppendLine("Só os destinos que o fluxo do tipo do repositório tem — **nunca** sugira, abra nem planeje PR/branch para outro destino (ex.: revamp-backend não tem QA).");
+            foreach (var p in repositories)
+            {
+                if (!p.Known)
+                    sb.AppendLine($"- `{p.Repository}`{(p.Kind is { } k ? $" ({k})" : string.Empty)}: sem fluxo nas regras (BranchStrategy/BranchFlowByArea) — pergunte a base e os destinos.");
+                else
+                    sb.AppendLine($"- `{p.Repository}` ({p.Kind}): " + string.Join("; ", p.Targets.Select(t => $"`{t.Branch}` → `{t.Target}`")) + ".");
+            }
+        }
 
         sb.AppendLine().AppendLine("## Padrões");
         sb.AppendLine($"- Commit: `{r.CommitPattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}`");

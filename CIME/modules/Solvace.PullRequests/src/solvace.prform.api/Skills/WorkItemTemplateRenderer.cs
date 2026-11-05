@@ -179,7 +179,7 @@ public static partial class WorkItemTemplateRenderer
 
     /// <summary>
     /// O modelo vale para o card? Confere <c>when.type</c>, <c>when.flow</c>, <c>when.repoKinds</c> (do repositório informado ou
-    /// do PR principal) e <c>when.states</c>. O que não se sabe do card (tipo/fluxo/estado/tipo do repo não lidos) não bloqueia.
+    /// do PR principal), <c>when.flowTargets</c> (destinos que o fluxo do repositório tem) e <c>when.states</c>. O que não se sabe do card (tipo/fluxo/estado/tipo do repo não lidos) não bloqueia.
     /// </summary>
     public static (bool Applicable, string? Reason) Evaluate(JsonObject template, WorkItemTemplateContext ctx, string? repository = null)
     {
@@ -198,12 +198,31 @@ public static partial class WorkItemTemplateRenderer
         if (repoKinds.Count > 0 && KindOf(ctx, repo) is { } kind && !repoKinds.Contains(kind, StringComparer.OrdinalIgnoreCase))
             return (false, $"Só para repositórios {string.Join(", ", repoKinds)} ({repo} é {kind}).");
 
+        // when.flowTargets: o fluxo do card, para o tipo do repositório, precisa ter PR para algum destes destinos (ex.: ["qa"]
+        // — revamp-backend não tem QA). Tipo/fluxo não lidos ou sem regra para o tipo não bloqueiam.
+        var flowTargets = Strings(when["flowTargets"]);
+        if (flowTargets.Count > 0 && KindOf(ctx, repo) is { } flowKindName && FlowKind(ctx, flowKindName) is { } flowKind)
+        {
+            var have = FlowPrTargets(flowKind);
+            if (have.Count > 0 && !flowTargets.Any(t => have.Contains(t, StringComparer.OrdinalIgnoreCase)))
+                return (false, $"O fluxo de {repo} ({flowKindName}) não tem destino {string.Join(" ou ", flowTargets)} (destinos do fluxo: {string.Join(", ", have)}).");
+        }
+
         var states = Strings(when["states"]);
         if (states.Count > 0 && ctx.State is { Length: > 0 } state && !states.Contains(state, StringComparer.OrdinalIgnoreCase))
             return (false, $"Só com o card em {string.Join(", ", states)} (está em {state}).");
 
         return (true, null);
     }
+
+    /// <summary>Destinos dos PRs do fluxo para o tipo (<c>{base}</c> vira as opções de base), sem repetir.</summary>
+    private static List<string> FlowPrTargets(CardFlowKind kind) => kind.Prs
+        .SelectMany(p => p.Target.Contains("{base}", StringComparison.OrdinalIgnoreCase)
+            ? kind.BaseOptions.Count > 0 ? kind.BaseOptions : kind.Base is { Length: > 0 } b ? [b] : []
+            : (IEnumerable<string>)[p.Target])
+        .Where(t => t.Length > 0)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     private static string TypeLabel(string type) =>
         string.Equals(type, "user-story", StringComparison.OrdinalIgnoreCase) ? "User Story"

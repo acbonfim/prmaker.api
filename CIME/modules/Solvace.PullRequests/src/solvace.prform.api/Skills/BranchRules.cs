@@ -69,7 +69,23 @@ public static partial class BranchRules
         return (null, null);
     }
 
-    /// <summary>Branch principal do card pelo <c>BranchNamePattern</c> (<c>hotfix/{card}</c>).</summary>
+    /// <summary>Padrão da branch principal de Bug quando <c>BranchNamePattern</c> não existe.</summary>
+    public const string DefaultBugPattern = "hotfix/{card}";
+
+    /// <summary>Padrão da branch principal de User Story quando <c>BranchNamePatternUserStory</c> não existe.</summary>
+    public const string DefaultUserStoryPattern = "feature/{card}";
+
+    /// <summary>
+    /// Padrão da branch principal pelo tipo do card: Bug → <c>BranchNamePattern</c> (<c>hotfix/{card}</c>); User Story →
+    /// <c>BranchNamePatternUserStory</c> (<c>feature/{card}</c>) — User Story nunca recebe prefixo de hotfix.
+    /// </summary>
+    public static string PatternFor(bool isUserStory, string? bugPattern, string? userStoryPattern)
+    {
+        var chosen = isUserStory ? userStoryPattern : bugPattern;
+        return string.IsNullOrWhiteSpace(chosen) ? (isUserStory ? DefaultUserStoryPattern : DefaultBugPattern) : chosen.Trim();
+    }
+
+    /// <summary>Branch principal do card pelo padrão do tipo (<c>hotfix/{card}</c> no Bug, <c>feature/{card}</c> na US).</summary>
     public static string MainBranch(string? pattern, string card) =>
         (string.IsNullOrWhiteSpace(pattern) ? "hotfix/{card}" : pattern.Trim()).Replace("{card}", card, StringComparison.OrdinalIgnoreCase);
 

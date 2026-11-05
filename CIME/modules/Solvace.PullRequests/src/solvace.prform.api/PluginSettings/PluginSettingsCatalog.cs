@@ -251,8 +251,11 @@ public static class PluginSettingsCatalog
 
         // ============================================================== Branches e PRs — Padrões de nome
         new() { Section = "branches", Group = "padroes", Plugin = Skills, Key = SkillsConfigurationKeys.BranchNamePattern, Type = SettingTypes.Pattern, ReadBy = ApiSk,
-            Label = "Nome da branch de correção", Help = "Branch principal do card.", Default = "hotfix/{card}",
+            Label = "Nome da branch de correção (Bug)", Help = "Branch principal de um card do tipo Bug.", Default = "hotfix/{card}",
             Variables = [new("card", "número do card", "77434")] },
+        new() { Section = "branches", Group = "padroes", Plugin = Skills, Key = SkillsConfigurationKeys.BranchNamePatternUserStory, Type = SettingTypes.Pattern, ReadBy = ApiSk,
+            Label = "Nome da branch da User Story", Help = "Branch principal de um card do tipo User Story (feature/, nunca hotfix/).", Default = "feature/{card}",
+            Variables = [new("card", "número do card", "77988")] },
         new() { Section = "branches", Group = "padroes", Plugin = Skills, Key = SkillsConfigurationKeys.BranchSuffixByTarget, Type = SettingTypes.Map, ReadBy = ApiSk,
             Label = "Sufixo da branch por destino",
             Help = "Branch de trabalho de cada destino = branch principal + sufixo (release-version → -rv = hotfix/77434-rv). Destino sem sufixo vira -<destino>.",

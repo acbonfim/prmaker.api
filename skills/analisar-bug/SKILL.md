@@ -229,7 +229,7 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 **0. Atualizar a skill** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true`;
 se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 
-**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte. **Card User Story**
+**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte. Branch `feature/<n>` = User Story (abaixo). **Card User Story**
 (o `contexto` mostra `workItemType=User Story` e cria o plano `analisar-us`) → siga a skill **`analisar-us`**
 (`~/.claude/skills/analisar-us/SKILL.md`): sem causa raiz/RCA, criterios de aceite, item da implementacao `implementation` (nunca item `user-story`).
 

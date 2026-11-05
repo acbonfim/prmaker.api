@@ -132,6 +132,22 @@ public class WorkItemTemplateRendererTests
     // ── when ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public void When_flow_targets_hides_qa_tools_where_the_flow_has_no_qa()
+    {
+        var qa = JsonNode.Parse("""{"key": "validar-em-qa", "when": {"flowTargets": ["qa"]}}""")!.AsObject();
+        // revamp-backend (edv… "revamp-*") não tem QA no fluxo de produção.
+        var (ok, reason) = WorkItemTemplateRenderer.Evaluate(qa, Ctx("revamp-Users"));
+        Assert.False(ok);
+        Assert.Contains("revamp-backend", reason);
+        Assert.Contains("qa", reason);
+        Assert.True(WorkItemTemplateRenderer.Evaluate(qa, Ctx("edv-solvace")).Applicable);
+        Assert.True(WorkItemTemplateRenderer.Evaluate(qa, Ctx("edv-solvace-apps")).Applicable);
+        Assert.True(WorkItemTemplateRenderer.Evaluate(qa, Ctx(repository: null)).Applicable);        // repositório não lido não bloqueia
+        Assert.True(WorkItemTemplateRenderer.Evaluate(qa, Ctx("outro-repo")).Applicable);             // sem regra para o tipo
+    }
+
+
+    [Fact]
     public void When_filters_by_type_flow_repo_kind_and_state()
     {
         var hotfix = JsonNode.Parse("""{"key": "pr-hotfix-version", "when": {"repoKinds": ["legacy", "revamp-backend"]}}""")!.AsObject();
