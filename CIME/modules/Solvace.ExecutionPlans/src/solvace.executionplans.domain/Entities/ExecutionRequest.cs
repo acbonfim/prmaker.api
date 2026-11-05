@@ -72,6 +72,8 @@ public static class ExecutionRequestSource
     public const string Case = "case";
     /// <summary>0080: proposta do especialista aceita (pista principal: monta a nova versão do plano).</summary>
     public const string CaseProposal = "case-proposal";
+    /// <summary>Card 77988: "Criar itens da análise" — a fase de entrega monta o plano (o item de trabalho) da análise concluída.</summary>
+    public const string Delivery = "delivery";
 }
 
 /// <summary>

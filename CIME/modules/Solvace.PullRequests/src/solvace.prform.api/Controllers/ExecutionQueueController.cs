@@ -85,6 +85,15 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
     public Task<ActionResult<ExecutionRequestResponse>> Create([FromBody] CreateExecutionRequestRequest request, CancellationToken ct) =>
         Run<ExecutionRequestResponse>(async () => Ok(await queue.CreateAsync(request, await GetActorAsync(ct), ExecutionRequestSource.Button, ct)));
 
+    /// <summary>
+    /// Card 77988: "Criar itens da análise" — a análise respondida sem plano de entrega vira o plano de implementação/correção
+    /// (e o item de trabalho dele); <c>start=false</c> deixa o plano pausado até o Executar do item.
+    /// </summary>
+    [HttpPost("card/{cardNumber}/delivery")]
+    public Task<ActionResult<ExecutionRequestResponse>> Delivery([FromRoute] string cardNumber, [FromBody] AnalysisDeliveryRequest? request, CancellationToken ct) =>
+        Run<ExecutionRequestResponse>(async () =>
+            Ok(await queue.RequestDeliveryAsync(cardNumber, request?.Start ?? false, request?.Note, await GetActorAsync(ct), ct)));
+
     /// <summary>Pedido ativo do card, últimos pedidos e as máquinas de quem está vendo.</summary>
     [HttpGet("card/{cardNumber}")]
     public Task<ActionResult<ExecutionCardQueueResponse>> GetCard([FromRoute] string cardNumber, CancellationToken ct) =>

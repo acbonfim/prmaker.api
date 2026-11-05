@@ -28,6 +28,7 @@ public class CaseSpecialistGuardTests
     [InlineData("prmake_work_task")]
     [InlineData("prmake_work_item_cancel")]
     [InlineData("prmake_work_item_execute")]
+    [InlineData("prmake_analysis_items")]
     [InlineData("prmake_work_item_create")]
     [InlineData("prmake_work_item_update")]
     [InlineData("prmake_tool_run")]

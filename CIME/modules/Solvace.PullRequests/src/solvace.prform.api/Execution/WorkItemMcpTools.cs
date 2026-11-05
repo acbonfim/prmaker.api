@@ -26,7 +26,8 @@ public class WorkItemMcpTools(
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
     SpecialistActions specialist,
-    CodeCitationGate citations)
+    CodeCitationGate citations,
+    IExecutionQueueApplication queue)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -280,6 +281,26 @@ public class WorkItemMcpTools(
             var item = await items.ExecuteAsync(number, await ActorAsync(ct), ct);
             return (Serialize(new { item.Number, item.Title, item.Status, item.PlanId }),
                 item.PlanId is null ? $"item #{item.Number} na fila do executor" : $"item #{item.Number}: plano retomado");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_analysis_items")]
+    [Description("Cria os itens de trabalho a partir da analise ja respondida que terminou sem plano de implementacao/correcao (ex.: a " +
+                 "pessoa respondeu 'so a analise por enquanto'): o mesmo botao 'Criar itens da analise' da Bancada — o Claude do tratamento " +
+                 "monta o plano (que vira o item de trabalho) na maquina de quem pediu. start=true cria e ja executa; start=false cria e deixa " +
+                 "pausado (a pessoa inicia pelo Executar do item). Especialista do caso: so com pedido da pessoa na conversa.")]
+    public Task<string> AnalysisItems(string card,
+        [Description("true = criar e iniciar agora; false = criar sem iniciar")] bool start,
+        [Description("O que a pessoa acrescentou (opcional)")] string? note = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        return await specialist.RunAsync(c, start ? "Criar os itens da analise e iniciar" : "Criar os itens da analise sem iniciar", null, async () =>
+        {
+            var request = await queue.RequestDeliveryAsync(c, start, note, await ActorAsync(ct), ct);
+            return (Serialize(new { request.Id, request.Status, start }),
+                start ? "itens da analise: o Claude do tratamento monta o plano e executa" : "itens da analise: o Claude do tratamento monta o plano e deixa pausado");
         }, ct);
     });
 

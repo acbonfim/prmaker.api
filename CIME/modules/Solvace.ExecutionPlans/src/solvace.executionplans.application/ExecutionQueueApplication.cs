@@ -1041,14 +1041,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             || await _plans.GetPlanWithStepsAsync(planId, cancellationToken) is not { } plan)
             return (ExecutionPhase.Analysis, false);
         var correction = plan.Phase == ExecutionPhase.Correction
-                         || plan.Steps.Any(s => s.Key == ProposeSolutionsStep && s.Status == ExecutionStatus.Completed);
-        if (!correction)
-        {
-            var proposal = (await _plans.GetQuestionsAsync(plan.Id, cancellationToken))
-                .Where(q => q.StepKey == ProposeSolutionsStep && q.Status != ExecutionQuestionStatus.Cancelled)
-                .ToList();
-            correction = proposal.Count > 0 && proposal.All(q => q.Status == ExecutionQuestionStatus.Answered);
-        }
+                         || AnalysisDelivery.ProposalCompleted(plan)
+                         || AnalysisDelivery.IsAnswered(plan, await _plans.GetQuestionsAsync(plan.Id, cancellationToken));
         if (!correction)
             return (ExecutionPhase.Analysis, false);
         var analysisPlanId = plan.Phase == ExecutionPhase.Correction ? plan.ParentPlanId : plan.Id;
@@ -1070,9 +1064,6 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
                && (await _plans.GetSessionsAsync([id], cancellationToken)).TryGetValue(id, out var sessions)
                && sessions.Any(s => s.SessionId == sessionId);
     }
-
-    /// <summary>Etapa da skill em que as soluções são propostas ao usuário (fim da análise).</summary>
-    private const string ProposeSolutionsStep = "propor-solucoes";
 
     private static string FreshPrompt(ExecutionRequest r, string phase, string skill = BugSkill)
     {
@@ -1136,6 +1127,7 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         ExecutionRequestSource.Checks => "o CI de um PR falhou",
         ExecutionRequestSource.Rule => "regra automatica",
         ExecutionRequestSource.CaseProposal => $"{r.RequestedBy} decidiu na conversa com o Especialista do caso",
+        ExecutionRequestSource.Delivery => $"{r.RequestedBy} pediu os itens de trabalho da analise",
         _ => $"pedido de {r.RequestedBy}"
     };
 

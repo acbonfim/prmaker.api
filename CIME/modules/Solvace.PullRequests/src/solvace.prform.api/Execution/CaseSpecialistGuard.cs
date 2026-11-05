@@ -104,6 +104,8 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         // r5: ações pedidas na conversa (nunca o plano): Timeline, card no DevOps (estado, horas, ações), PR, itens.
         "prmake_timeline", "prmake_devops", "prmake_pr_open",
         "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute",
+        // Card 77988: itens a partir da análise respondida (o Claude do tratamento monta o plano — o especialista não mexe nele).
+        "prmake_analysis_items",
         // r5 (B5a): arquivos do item de trabalho (o chamado completo, script do item) — nunca os arquivos do plano (prmake_file).
         "prmake_work_item_file", "prmake_work_item_files"
     };
@@ -116,7 +118,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     {
         "prmake_timeline", "prmake_devops", "prmake_pr_open",
         "prmake_work_item_create", "prmake_work_item_update", "prmake_tool_run",
-        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute"
+        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]
