@@ -7,7 +7,7 @@ namespace solvace.prform.infra.Migrations
     /// <summary>
     /// 0085: itens de trabalho no "Skills Configurations" — sufixo da branch por destino (<c>release-version</c> → <c>-rv</c>),
     /// tipos de sub-tarefa, modelos prontos, vagas por máquina e a média de horas por tipo de card (bug/US, partindo da
-    /// média geral AssistantAverageHours). Só as chaves que faltam (o valor do admin fica). O padrão
+    /// média geral AssistantAverageHours) e as etapas padrão da análise de User Story (UsAnalysisDefaultSteps). Só as chaves que faltam (o valor do admin fica). O padrão
     /// do nome da branch da promoção passa a usar o sufixo (<c>{branch}{suffix}</c>) — só se ainda for exatamente o semeado.
     /// </summary>
     public partial class SeedWorkItems0085 : Migration
@@ -154,8 +154,23 @@ namespace solvace.prform.infra.Migrations
 ]
 """;
 
+        /// <summary>Etapas padrão da análise de User Story (a mesma reserva do prmake-plan.sh).</summary>
+        private const string UsAnalysisSteps = """
+[
+ {"key":"identificar-card","title":"Identificar a US","description":"Descobrir o número do card (branch feature/us ou informado) e criar a pasta de artefatos."},
+ {"key":"coletar-dados","title":"Ler a US","description":"Título, estado, descrição, critérios de aceite, discussion e anexos da User Story no PRMake/Azure DevOps."},
+ {"key":"entender-us","title":"Entender a US","description":"Objetivo, quem usa, regras e critérios de aceite numerados (CA-1, CA-2...); o que está claro e o que é dúvida."},
+ {"key":"consultar-base","title":"Consultar a Base Solvace","description":"Engenharia reversa do módulo (prmake_base_search/get com o card, termos em português e inglês), armadilhas e Knowledge Center. Conclui citando os itens usados (módulo#ID) ou “lacuna: o que a base não cobre”."},
+ {"key":"mapear-codigo","title":"Mapear no código onde a US entra","description":"Confirmar no código os “Onde:” dos itens usados e levantar os pontos de alteração (telas, APIs, tabelas) por repositório."},
+ {"key":"desenhar-solucao","title":"Desenhar a solução","description":"Opções de solução com o impacto na base (prmake_base_impact), os critérios de aceite que cada uma cobre, riscos e esforço."},
+ {"key":"montar-analise","title":"Montar a análise da US","description":"Escrever a análise em markdown: entendimento, critérios de aceite, solução proposta, impacto e entregas."},
+ {"key":"publicar","title":"Publicar na timeline","description":"Postar a análise completa na Timeline do card."},
+ {"key":"propor-solucoes","title":"Propor a solução e decidir com você","kind":"question","description":"Apresentar as opções (prós, contras, riscos, entregas) e perguntar o que for preciso — responda no PRMake ou no Claude. Com as respostas, nasce o plano de implementação e os itens de trabalho."}
+]
+""";
+
         private const string FieldSettings = """
-{"BranchSuffixByTarget": {"Label": "Itens de trabalho: sufixo da branch por destino (JSON: destino → sufixo; ex.: release-version → -rv = hotfix/77434-rv)"}, "WorkItemTaskKinds": {"Label": "Itens de trabalho: tipos de sub-tarefa (JSON: [{kind, label, icon, executor, params[{key, label}], undo}])"}, "WorkItemTemplates": {"Label": "Itens de trabalho: modelos prontos (JSON: [{key, title, description, tasks[{title, kind, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets})"}, "WorkItemSlots": {"Label": "Itens de trabalho: quantos rodam ao mesmo tempo por máquina (fora do limite de execuções)"}, "AssistantAverageHoursBug": {"Label": "Média de horas por bug"}, "AssistantAverageHoursUserStory": {"Label": "Média de horas por US"}}
+{"BranchSuffixByTarget": {"Label": "Itens de trabalho: sufixo da branch por destino (JSON: destino → sufixo; ex.: release-version → -rv = hotfix/77434-rv)"}, "WorkItemTaskKinds": {"Label": "Itens de trabalho: tipos de sub-tarefa (JSON: [{kind, label, icon, executor, params[{key, label}], undo}])"}, "WorkItemTemplates": {"Label": "Itens de trabalho: modelos prontos (JSON: [{key, title, description, tasks[{title, kind, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets})"}, "WorkItemSlots": {"Label": "Itens de trabalho: quantos rodam ao mesmo tempo por máquina (fora do limite de execuções)"}, "AssistantAverageHoursBug": {"Label": "Média de horas por bug"}, "AssistantAverageHoursUserStory": {"Label": "Média de horas por US"}, "UsAnalysisDefaultSteps": {"Label": "Etapas padrão do plano de análise de User Story (analisar-us; JSON: [{key, title, description, kind?}])"}}
 """;
 
         private const string PromotionLabel =
@@ -179,6 +194,7 @@ namespace solvace.prform.infra.Migrations
                             'WorkItemTaskKinds', $kinds${{TaskKinds}}$kinds$::text,
                             'WorkItemTemplates', $tpl${{Templates}}$tpl$::text,
                             'WorkItemSlots', '2',
+                            'UsAnalysisDefaultSteps', $us${{UsAnalysisSteps}}$us$::text,
                             'AssistantAverageHoursBug', COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0 ->> 'AssistantAverageHours', ''),
                             'AssistantAverageHoursUserStory', COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0 ->> 'AssistantAverageHours', ''))
                             || COALESCE(COALESCE(NULLIF(c."Options", '')::jsonb, '[{}]'::jsonb) -> 0, '{}'::jsonb),
@@ -215,14 +231,14 @@ namespace solvace.prform.infra.Migrations
 
                 UPDATE prform."PluginConfigurations" c
                 SET "Options" = jsonb_set(c."Options"::jsonb, '{0}',
-                        (c."Options"::jsonb -> 0) - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory'])::text
+                        (c."Options"::jsonb -> 0) - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory', 'UsAnalysisDefaultSteps'])::text
                 FROM prform."Plugins" p
                 WHERE p."Id" = c."PluginId" AND p."Description" = '{{SkillsPlugin}}' AND NULLIF(c."Options", '') IS NOT NULL;
 
                 UPDATE prform."Plugins"
                 SET "FieldSettings" = jsonb_set(
                         COALESCE(NULLIF("FieldSettings", '')::jsonb, '{}'::jsonb)
-                            - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory'],
+                            - ARRAY['BranchSuffixByTarget', 'WorkItemTaskKinds', 'WorkItemTemplates', 'WorkItemSlots', 'AssistantAverageHoursBug', 'AssistantAverageHoursUserStory', 'UsAnalysisDefaultSteps'],
                         '{PromotionBranchPattern}', jsonb_build_object('Label', $pl${{OldPromotionLabel}}$pl$::text), true)::text
                 WHERE "Description" = '{{SkillsPlugin}}';
                 """);

@@ -84,6 +84,8 @@ public static class SkillsConfigurationKeys
     public const string SpecialistModel = "SpecialistModel";
     /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>
     public const string SpecialistDeepModel = "SpecialistDeepModel";
+    /// <summary>0085: etapas padrão do plano de análise de User Story (analisar-us; mesmo formato de AnalysisDefaultSteps).</summary>
+    public const string UsAnalysisDefaultSteps = "UsAnalysisDefaultSteps";
     /// <summary>0085: sufixo da branch de trabalho por destino (JSON: {"release-version": "-rv", ...}) — hotfix/77434-rv.</summary>
     public const string BranchSuffixByTarget = "BranchSuffixByTarget";
     /// <summary>0085: tipos de sub-tarefa dos itens de trabalho (JSON: [{kind, label, icon, executor, params[{key,label}], undo}]).</summary>
