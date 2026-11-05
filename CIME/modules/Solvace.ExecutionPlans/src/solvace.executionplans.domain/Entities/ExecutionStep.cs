@@ -48,6 +48,12 @@ public partial class ExecutionStep
     /// <summary>task | code | pr | ticket | question | validation (0024).</summary>
     public string Kind { get; private set; } = ExecutionStepKind.Task;
 
+    /// <summary>
+    /// Tipo da sub-tarefa do item de trabalho que espelha a etapa (catálogo <c>WorkItemTaskKinds</c>: research, sql-script,
+    /// devops-action...). Null = o PRMake deduz pelo tipo, pela chave e pelo título (<see cref="WorkTaskKind.FromStep"/>).
+    /// </summary>
+    public string? TaskKind { get; private set; }
+
     /// <summary>Repositório (etapas de código/PR — uma etapa por repositório).</summary>
     public string? Repository { get; private set; }
 
@@ -93,8 +99,8 @@ public partial class ExecutionStep
         Description = string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    /// <summary>Dono, tipo, repositório e dependências (0024). Null = mantém o atual.</summary>
-    internal void SetShape(string? executor, string? kind, string? repository, IEnumerable<string>? dependsOn)
+    /// <summary>Dono, tipo, tipo da sub-tarefa, repositório e dependências (0024). Null = mantém o atual; taskKind "" = deduzir.</summary>
+    internal void SetShape(string? executor, string? kind, string? repository, IEnumerable<string>? dependsOn, string? taskKind = null)
     {
         if (executor is not null)
         {
@@ -110,6 +116,8 @@ public partial class ExecutionStep
                 throw new DomainException($"Tipo de etapa inválido: '{kind}'.");
             Kind = k;
         }
+        if (taskKind is not null)
+            TaskKind = taskKind.Trim().Length == 0 ? null : WorkItemTask.NormalizeKind(taskKind);
         if (repository is not null)
         {
             var r = repository.Trim();

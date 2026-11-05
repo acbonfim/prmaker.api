@@ -243,6 +243,8 @@ public class ExecutionStepResponse
     public DateTimeOffset UpdatedAt { get; set; }
     public string Executor { get; set; } = ExecutionExecutor.Claude;
     public string Kind { get; set; } = ExecutionStepKind.Task;
+    /// <summary>Tipo da sub-tarefa na Bancada (o informado pela skill ou o deduzido).</summary>
+    public string TaskKind { get; set; } = WorkTaskKind.Task;
     public string? Repository { get; set; }
     public List<string> DependsOn { get; set; } = [];
 }
@@ -548,6 +550,7 @@ public static class ExecutionPlanMappings
         UpdatedAt = step.UpdatedAt,
         Executor = step.Executor,
         Kind = step.Kind,
+        TaskKind = WorkTaskKind.FromStep(step.Kind, step.Executor, step.Key, step.Title, step.TaskKind),
         Repository = step.Repository,
         DependsOn = step.DependsOn.ToList()
     };

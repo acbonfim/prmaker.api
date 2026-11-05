@@ -115,16 +115,24 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Validar o ambiente (`validar-dados`, `validar-configuracao`) | `validation` | claude ou user | **antes** do fechamento, quando o caso pede conferir o resultado (ex.: SQL somente leitura depois do script). A confirmacao **com o cliente** nao e etapa: ela acontece depois do *Test in Production*, fora do plano — so crie uma etapa assim se o usuario pedir |
 | **Preparar o fechamento (`preparar-fechamento`) — com codigo** | `task` | claude | **antes da validacao em QA** (0075: o Ready for QA exige root cause, Resolution Type, classificacoes e Remaining zerado — o usuario move ao concluir `validar-qa` e o card nao pode ter pendencia). `dependsOn` a etapa de validacao/correcao; rode **logo depois de abrir os PRs**: skill `gerar-prmake` **sem** abrir PR (`OPEN_GITHUB_PR` desligado), **reaproveitando** a descricao/RCA salvos na etapa de PR (root cause no DevOps e resumo PT/EN), `devops <card> classify <opcao>` e `devops <card> zero-remaining` (`$REF catalogo fechamento` itens 1–4, **sem** mover o card). `validar-qa` depende dela |
 
+**Categoria na Bancada (`taskKind`)** — cada etapa vira uma sub-tarefa do item de trabalho e a categoria dela aparece
+na Bancada. Informe `taskKind` (catalogo `WorkItemTaskKinds`) em toda etapa que nao for codigo: `research` (analise/consulta
+sem alterar nada — `impacto-na-base`, levantamentos), `sql-query` (consulta SQL so leitura), `sql-script` (`preparar-script-*`),
+`ticket` (`chamado-*`), `pr` (`pr-*`), `devops-action` (`preparar-fechamento`, `fechar-card`, mover o card, root cause,
+classificacao), `notify` (Timeline/Teams), `comment`, `pr-text`, `decision` (decidir com a pessoa), `manual` (tarefa
+da pessoa sem tipo proprio) ou `task` (o que nao cabe em nenhuma); `code` **so** em etapa que altera codigo. Sem `taskKind`
+o PRMake deduz pela chave e pelo titulo (nunca mais "Alterar codigo" para etapa `task`), entao use as chaves desta tabela.
+
 **Tratamento sem codigo** (o plano e dinamico — monte so o que o caso pede): quando a solucao e user education,
 configuracao direto na tela do sistema ou algo do tipo, **nao crie nem sugira** etapas de correcao de codigo,
 branches, PRs, "Gerar PRMake", chamados ou scripts — a menos que o caso realmente precise (ex.: so um script de
 dados → so a etapa de chamado). O plano pode ter apenas, por exemplo:
 
 ```json
-[{"key":"configurar-permissao","title":"Ajustar a permissao do perfil no sistema","kind":"task","executor":"user",
+[{"key":"configurar-permissao","title":"Ajustar a permissao do perfil no sistema","kind":"task","taskKind":"manual","executor":"user",
   "description":"Passo a passo em analises/configuracao.md"},
  {"key":"fechar-card","title":"Fechamento: root cause, classificacao, resumo PT/EN (orientacao ao cliente) e Test in Production",
-  "kind":"task","executor":"claude","dependsOn":["configurar-permissao"],
+  "kind":"task","taskKind":"devops-action","executor":"claude","dependsOn":["configurar-permissao"],
   "description":"O resumo PT/EN publicado na discussion e a orientacao ao cliente (texto de analises/orientacao-cliente.md)"}]
 ```
 
@@ -151,8 +159,8 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
   1. **Antes**, `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`): ja existe item com o mesmo objetivo
      (mesmo destino/repositorio/sub-tarefas, status nao cancelado)? Nao crie — cite o existente. A API recusa duplicata
      (`duplicate` com o item existente); `allowDuplicate` + motivo so quando for outro trabalho de fato.
-  2. Sub-tarefas na ordem, com `kind` do catalogo (`branch, cherry-pick, code, pr, devops-state, sql-script,
-     validation, comment, manual, ticket`), `executor` (`claude`/`user`) e `params` **reais** (item com `sql-script` e sem
+  2. Sub-tarefas na ordem, com `kind` do catalogo (`branch, cherry-pick, code, pr, devops-state, devops-action, sql-script,
+     sql-query, validation, comment, manual, ticket, notify, pr-text, research, decision, task` — `code` so quando altera codigo), `executor` (`claude`/`user`) e `params` **reais** (item com `sql-script` e sem
      `ticket` ganha sozinho, logo depois do script, "Gerar o chamado completo" (claude) + "Abrir o chamado no sistema de
      chamados e colar o link" (user) — ou use a ferramenta `script-com-chamado`): `repository`, `branch` (nome do
      `branches`/`prmake_rules` — nunca inventado), `from`, `target`, `commits`. Ex.: "PR master → release-version" =

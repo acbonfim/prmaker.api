@@ -430,7 +430,7 @@ public class ExecutionPlan
                     step.SetDescription(def.Description);
                 step.Touch(now);
             }
-            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn);
+            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn, def.TaskKind);
         }
 
         foreach (var orphan in Steps.Where(s => !seen.Contains(s.Key)).OrderBy(s => s.Order).ToList())

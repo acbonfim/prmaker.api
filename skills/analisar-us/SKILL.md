@@ -117,6 +117,14 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado). **So se algum PR do `branches` tem destino QA** — repositorio sem QA (ex.: revamp-backend, so `development`) nao tem essa etapa: nao crie `validar-qa`; a validacao fica na `validar`/no destino que o fluxo tem |
 | `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs; mover o card **so** com a acao configurada (`devops <card> config`) e autorizada nas respostas; sem acao aplicavel a US → nao mova e diga |
 
+**Categoria na Bancada (`taskKind`)** — cada etapa vira uma sub-tarefa do item de trabalho e a categoria dela aparece
+na Bancada. Informe `taskKind` (catalogo `WorkItemTaskKinds`) em toda etapa que nao for codigo: `research` (analise/consulta
+sem alterar nada — `impacto-na-base`, levantamentos), `sql-query` (consulta SQL so leitura), `sql-script` (`preparar-script-*`),
+`ticket` (`chamado-*`), `pr` (`pr-*`), `devops-action` (`preparar-fechamento`, `fechar-card`, mover o card, root cause,
+classificacao), `notify` (Timeline/Teams), `comment`, `pr-text`, `decision` (decidir com a pessoa), `manual` (tarefa
+da pessoa sem tipo proprio) ou `task` (o que nao cabe em nenhuma); `code` **so** em etapa que altera codigo. Sem `taskKind`
+o PRMake deduz pela chave e pelo titulo (nunca mais "Alterar codigo" para etapa `task`), entao use as chaves desta tabela.
+
 Script de dados **sempre** vai com o par `preparar-script-*` + `chamado-*` (nunca script sem chamado, nem chamado sem o
 arquivo do chamado completo) — igual ao Bug (`$REF correcao 7`, linha do chamado).
 
@@ -132,7 +140,8 @@ ganha sozinho as sub-tarefas do chamado — gerar o chamado completo + a pessoa 
    planPhase: "correction")` com `type` do item (`implementation` para codigo da US, `pull-request` para so levar PRs,
    `data` para script com chamado (ferramenta `script-com-chamado`),
    `data`, `ticket`... — nunca `user-story`), cada sub-tarefa com `kind` do catalogo (`branch, cherry-pick, code, pr,
-   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify`), `executor` e `params` reais (`repository`, `branch`, `from`, `target`...). Resposta `duplicate` → nao
+   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify, research,
+   decision, task` — `code` so quando altera codigo), `executor` e `params` reais (`repository`, `branch`, `from`, `target`...). Resposta `duplicate` → nao
    insista; `allowDuplicate` + motivo so se for de fato outro trabalho. Esses itens rodam pelo
    `executar-item-de-trabalho` quando a pessoa clicar "Executar".
 
