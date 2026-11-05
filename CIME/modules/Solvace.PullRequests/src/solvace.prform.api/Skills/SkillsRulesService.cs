@@ -159,6 +159,9 @@ public class SkillsRulesService(
     public static bool IsUserStory(string? workItemType) =>
         string.Equals(workItemType?.Trim(), "User Story", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Só o "Skills Configurations" (sem card) — catálogo sem card.</summary>
+    public Task<IReadOnlyDictionary<string, string>> SettingsOnlyAsync(CancellationToken cancellationToken) => SettingsAsync(cancellationToken);
+
     private async Task<IReadOnlyDictionary<string, string>> SettingsAsync(CancellationToken cancellationToken)
     {
         try
