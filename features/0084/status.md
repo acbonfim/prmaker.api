@@ -12,6 +12,9 @@
   opcional sem elemento (ex.: Knowledge Center vazio, "Detalhes técnicos" no Técnico) some sem furar a contagem;
   celular abre/fecha a gaveta da lista; guia "Como usar esta tela" esconde os passos de admin de quem não é; "Mostrar na
   tela" de um passo de sistema abre o sistema; selo de IA abre Minhas integrações. Regressão: tela do card (0081) igual.
+- 2026-11-04 — master com a 0083 (Primeiros passos) juntada ao front: conflitos em `guided-tour.service.ts`/`tour.model.ts`/
+  menu resolvidos mantendo os dois (`held`/`doneText` + `prepare`/`help`); o tour da Base espera o guia e o balão "Tudo
+  fica no seu menu" (tela livre por 1 s) — primeira entrada testada: guia → balão do menu → tour da Base. Bateria refeita.
 
 ## Como funciona
 - Primeira entrada com link direto para uma seção (`?p=`, `?ask=`…) não é interrompida: o tour espera a pessoa chegar
