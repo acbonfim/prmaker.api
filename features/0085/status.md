@@ -53,3 +53,12 @@
   assistente escondidas em toda a Bancada). Testes 81/164/22; builds ok; tela de PR igual (captura antes/depois).
 - 2026-11-05 — análise somente leitura das ações recorrentes (30 cards) em `ferramentas-analise.md` → base das
   ferramentas do especialista (rodada 4).
+- 2026-11-05 — rodada 3 em produção (#157/#87) e fix do editor de plugins (#88: `{branch}{suffix}` deixou de ser
+  validado como JSON — o `_` no PromotionBranchPattern era contorno).
+- 2026-11-05 — rodada 4 em produção (#158/#89): ferramentas do especialista (13 tiradas de 30 cards reais), `when/ask`,
+  `from-template`, `prmake_tools/_tool_run`, tipos próprios de item (`WorkItemTypes`).
+- 2026-11-05 — rodada 5 (`feature/0085-r4`): arquivos do item (B5a, `WorkItemFiles0085`, áudios ocultos), autonomia do
+  especialista + chamado automático em item de script + terminologia US (B5b, `SeedUsTerms0085d`), menu ⋮/arquivos do
+  plano/modal do card/aba Card nova/quem iniciou no PRMake (F5a), aba Arquivos (F5b). Integração local contra a API real:
+  item de script ganha as 2 sub-tarefas de chamado; upload/lista/conteúdo; catálogo 11 tipos/19 ferramentas;
+  `pr-para-branch` → `hotfix/77434-rv`. Testes 128/352/22.
