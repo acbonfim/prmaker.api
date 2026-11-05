@@ -81,7 +81,9 @@ builder.Services.AddMcpServer(o =>
     // 0052: Base Solvace (engenharia reversa por item, seções, KC) pelo MCP — a análise consulta antes do código.
     .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>()
     // 0080: Especialista do caso (conversa do card).
-    .WithTools<solvace.prform.Execution.CaseChatMcpTools>();
+    .WithTools<solvace.prform.Execution.CaseChatMcpTools>()
+    // 0085: regras do card e itens de trabalho.
+    .WithTools<solvace.prform.Execution.WorkItemMcpTools>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".

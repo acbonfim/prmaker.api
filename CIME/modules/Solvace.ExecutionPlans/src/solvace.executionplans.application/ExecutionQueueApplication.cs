@@ -618,14 +618,17 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             var skill = ExecutionRequestKind.IsWorkItem(request.Kind) || request.Kind == ExecutionRequestKind.Specialist
                 ? BugSkill
                 : await AnalysisSkillAsync(request, cancellationToken);
-            var fresh = ExecutionRequestKind.IsWorkItem(request.Kind) ? await WorkItemPromptAsync(request, cancellationToken) : FreshPrompt(request, phase, skill);
+            var (fresh, itemNumber) = ExecutionRequestKind.IsWorkItem(request.Kind)
+                ? await WorkItemPromptAsync(request, cancellationToken)
+                : (FreshPrompt(request, phase, skill), null);
             return new ExecutionClaimResponse
             {
                 Request = request.ToResponse(),
                 ResumePrompt = ExecutionRequestKind.IsWorkItem(request.Kind) ? fresh : ResumePrompt(request, skill),
                 FreshPrompt = fresh,
                 RemainingBudgetUsd = budget is { } limit && !request.Force ? Math.Max(0, limit - spent) : null,
-                Phase = phase
+                Phase = phase,
+                WorkItemNumber = itemNumber
             };
         }
         return null;

@@ -49,7 +49,10 @@ public partial class PrmakeMcpTools(
         "0076: evidencias do card (anexos, prints da descricao e da discussion) com prmake_evidence — abra todas antes da causa raiz. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
-        "Codigo so para confirmar o 'Onde:' que o item cita.";
+        "Codigo so para confirmar o 'Onde:' que o item cita. " +
+        "0085: regras do card (nome de branch por destino, fluxo, padroes) com prmake_rules — nunca invente branch; itens de trabalho " +
+        "com prmake_work_items/prmake_work_item (confira antes de criar: nao duplique), prmake_work_item_create/_update (so pending) e " +
+        "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

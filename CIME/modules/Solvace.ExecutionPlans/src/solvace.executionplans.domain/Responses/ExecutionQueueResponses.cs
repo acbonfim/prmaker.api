@@ -136,6 +136,8 @@ public class ExecutionClaimResponse
     /// enquanto o pedido estiver ativo.
     /// </summary>
     public string? CaseToken { get; set; }
+    /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — o executor limpa os worktrees do item no fim.</summary>
+    public long? WorkItemNumber { get; set; }
 }
 
 public class ExecutionHeartbeatResponse

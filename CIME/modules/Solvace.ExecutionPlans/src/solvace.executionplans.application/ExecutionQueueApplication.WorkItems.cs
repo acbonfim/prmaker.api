@@ -121,7 +121,7 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
     }
 
     /// <summary>Prompt do item: lê a SKILL.md (sem a ferramenta Skill — o modelo é o configurado) com o card e o item.</summary>
-    private async Task<string> WorkItemPromptAsync(ExecutionRequest r, CancellationToken ct)
+    private async Task<(string Prompt, long? Number)> WorkItemPromptAsync(ExecutionRequest r, CancellationToken ct)
     {
         var number = r.WorkItemId is { } id && WorkItemApp is { } items
             ? (await SafeGetItemAsync(items, id, ct))?.Number
@@ -131,11 +131,11 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
         var what = r.Kind == ExecutionRequestKind.WorkItemUndo
             ? "DESFAZER o item de trabalho: as sub-tarefas concluidas em ordem reversa, cada uma pelo 'undo' dela (fechar PR, apagar branch criada, reverter commit, voltar o estado do DevOps)"
             : "EXECUTAR o item de trabalho: as sub-tarefas pendentes em ordem, registrando cada uma (start/complete/fail) com prmake_work_task";
-        return $"Card {r.CardNumber}, {item} — {what}. Leia as instrucoes com `cat ~/.claude/skills/{skill}/SKILL.md` (Bash) e siga-as — " +
+        return ($"Card {r.CardNumber}, {item} — {what}. Leia as instrucoes com `cat ~/.claude/skills/{skill}/SKILL.md` (Bash) e siga-as — " +
                "NAO use a ferramenta Skill: o modelo desta execucao e o configurado no PRMake. " +
                $"Comece por prmake_work_item (card {r.CardNumber}, number {number?.ToString() ?? "?"}) e prmake_rules (card {r.CardNumber}): " +
                "nome de branch, base e destinos vem das regras — nunca invente. Toda gravacao passa pelo PRMake; nunca mescle PR." +
-               ExecutorSuffix(r);
+               ExecutorSuffix(r), number);
     }
 
     private static async Task<solvace.executionplans.domain.Responses.WorkItemResponse?> SafeGetItemAsync(IWorkItemApplication items, Guid id,
