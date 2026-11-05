@@ -94,8 +94,9 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
         });
 
     [McpServerTool(Name = "prmake_case_action")]
-    [Description("Pede confirmacao para uma acao com efeito fora da conversa (subir arquivo num ambiente, abrir chamado, publicar no DevOps...). " +
-                 "So execute depois da mensagem 'confirmou a acao #n' na conversa; ao terminar, prmake_case_action_done.")]
+    [Description("Pede confirmacao para uma acao com efeito fora da conversa quando o pedido e ambiguo ou a acao nao tem ferramenta do PRMake " +
+                 "(ex.: subir arquivo num ambiente). Acao pedida explicitamente (Timeline, horas/estado do card, PR, item de trabalho) roda direto " +
+                 "pela ferramenta dela, que ja registra o cartao. So execute depois da mensagem 'confirmou a acao #n'; ao terminar, prmake_case_action_done.")]
     public Task<string> Action(string card, string title, string? detail = null, string? message = null, CancellationToken ct = default) =>
         Safe(async () =>
         {

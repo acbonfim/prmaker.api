@@ -56,6 +56,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Request = "request";
         public const string Activity = "activity";
         public const string Deleted = "deleted";
+        /// <summary>0085 r5: arquivo gravado no item (<c>WorkItems/{n}/files</c>, <c>prmake_work_item_file</c>).</summary>
+        public const string File = "file";
     }
 
     public static class CaseActions

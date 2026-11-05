@@ -88,6 +88,8 @@ public class CardSituationResponse
     public string Kind { get; set; } = CardSituationKind.None;
     public string Title { get; set; } = CardSituationKind.Title(CardSituationKind.None);
     public string Icon { get; set; } = CardSituationKind.Icon(CardSituationKind.None);
+    /// <summary>r5 (1.5): como chamar a entrega nos textos — "correção" (Bug) ou "implementação" (User Story).</summary>
+    public string Delivery { get; set; } = "correção";
     public DateTimeOffset? Since { get; set; }
     /// <summary>Outras esperas ao mesmo tempo (ex.: chamado e PR), além da principal.</summary>
     public List<string> AlsoWaiting { get; set; } = [];
@@ -144,7 +146,7 @@ public static class CardSituation
     public static CardSituationResponse Build(ExecutionPlan? plan, IReadOnlyList<ExecutionLink> links, IReadOnlyList<ExecutionQuestion> questions,
         IReadOnlyList<ExecutionArtifact> artifacts, Func<string?, bool> isQaBranch, string cardNumber)
     {
-        var r = new CardSituationResponse { CardNumber = cardNumber };
+        var r = new CardSituationResponse { CardNumber = cardNumber, Delivery = PlanTerms.Delivery(plan?.Kind) };
         if (plan is null)
             return Finish(r);
 
@@ -239,11 +241,11 @@ public static class CardSituation
 
     private static string? NextText(CardSituationResponse r, ExecutionPlan plan) => r.Kind switch
     {
-        CardSituationKind.Ticket => "Quando o chamado for atendido, marcar como resolvido no PRMake para a correção seguir.",
-        CardSituationKind.PullRequestReview => "Revisar e mesclar os PRs. Com o merge em QA, a correção segue para validação.",
+        CardSituationKind.Ticket => $"Quando o chamado for atendido, marcar como resolvido no PRMake para a {r.Delivery} seguir.",
+        CardSituationKind.PullRequestReview => $"Revisar e mesclar os PRs. Com o merge em QA, a {r.Delivery} segue para validação.",
         CardSituationKind.QaValidation => r.DevTestInQaAt is null
-            ? "Mover o card para Dev Test in QA, validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA."
-            : "Validar a correção em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA.",
+            ? $"Mover o card para Dev Test in QA, validar a {r.Delivery} em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA."
+            : $"Validar a {r.Delivery} em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA.",
         CardSituationKind.Answer => "Responder as perguntas no PRMake para a análise seguir.",
         CardSituationKind.User when r.PlannedTask => "Fazer o que a etapa pede (o passo a passo está nos arquivos do plano) e concluí-la no PRMake; em seguida vem o fechamento do card.",
         CardSituationKind.User => "Concluir no PRMake o que a etapa pede.",
@@ -285,7 +287,7 @@ public static class CardSituation
             case CardSituationKind.QaValidation:
             {
                 var qa = r.PullRequests.Where(p => p.IsQa && p.Status == ExecutionLinkStatus.Merged).OrderByDescending(p => p.MergedAt).FirstOrDefault();
-                var text = new StringBuilder("A correção foi publicada em QA");
+                var text = new StringBuilder($"A {r.Delivery} foi publicada em QA");
                 if (qa?.MergedAt is { } at) text.Append($" em {Short(at)}");
                 text.Append('.');
                 if (r.DevTestInQaAt is { } moved)
@@ -302,7 +304,7 @@ public static class CardSituation
             case CardSituationKind.PullRequestReview:
             {
                 var open = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Open).ToList();
-                sb.AppendLine(open.Count == 1 ? $"O PR da correção está aberto desde {Short(open[0].OpenedAt)}:" : $"Os PRs da correção estão abertos desde {Short(open.Min(p => p.OpenedAt))}:");
+                sb.AppendLine(open.Count == 1 ? $"O PR da {r.Delivery} está aberto desde {Short(open[0].OpenedAt)}:" : $"Os PRs da {r.Delivery} estão abertos desde {Short(open.Min(p => p.OpenedAt))}:");
                 foreach (var p in open)
                     sb.AppendLine($"- {PrRef(p, manyRepos)}: {Review(p)}");
                 var merged = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Merged).ToList();
@@ -316,14 +318,14 @@ public static class CardSituation
                     var files = t.Files.Count == 0 ? "" : $", com {(t.Files.Count == 1 ? "o arquivo" : "os arquivos")} {Join(t.Files.Select(f => $"`{f}`"))}";
                     sb.AppendLine($"Chamado [{t.Title}]({t.Url}) aberto em {Short(t.OpenedAt)} por {t.OpenedBy}{files}.");
                 }
-                sb.AppendLine().AppendLine("A correção segue quando o chamado for atendido.");
+                sb.AppendLine().AppendLine($"A {r.Delivery} segue quando o chamado for atendido.");
                 break;
             case CardSituationKind.Answer:
                 sb.AppendLine(r.Questions.Count == 1 ? "Há uma pergunta aguardando resposta no PRMake:" : "Há perguntas aguardando resposta no PRMake:");
                 foreach (var q in r.Questions) sb.AppendLine($"- {q}");
                 break;
             case CardSituationKind.User when r.PlannedTask:
-                sb.AppendLine("A correção depende desta etapa, feita por quem trata o card (fora do código), antes do fechamento.");
+                sb.AppendLine($"A {r.Delivery} depende desta etapa, feita por quem trata o card (fora do código), antes do fechamento.");
                 if (r.UserSteps.Count > 1)
                 {
                     sb.AppendLine().AppendLine("Também pendente:");

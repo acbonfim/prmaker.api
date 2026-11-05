@@ -33,8 +33,9 @@ Com a analise publicada, a analise ainda nao terminou: **proponha as solucoes** 
    - **Fluxo de branches**: rode `branches <card> <repo>` para cada repositorio; se ele sair com exit 3, pergunte
      o que ele pedir (o fluxo, quando a area nao tem regra, ou a branch base, quando a regra manda perguntar —
      com as opcoes que ele listar).
-   - Se ha script de dados: vai por **chamado** (o usuario abre no sistema de chamados configurado — `TicketSystem`
-     do `settings`) ou nao e necessario.
+   - Se ha script de dados: vai **sempre** por **chamado** (o usuario abre no sistema de chamados configurado —
+     `TicketSystem` do `settings`) — pergunte so o que decide o script (ambiente, janela, quem aprova), nao "se vai por
+     chamado".
    - Se pode seguir com a correcao agora (ou so deixar o plano pronto).
    **Nova rodada de perguntas** (comentario/anexo/resposta mudou a analise e voce refez as solucoes — card 75648):
    antes do `ask`, veja as perguntas do plano (`prmake_answers`) e trate **cada uma ainda aberta**:
@@ -90,7 +91,7 @@ plano ativo e a tela mostra as abas *Analise* e *Correcao*. Cada etapa tem `exec
 | Corrigir o codigo — **uma por repositorio** (`corrigir-<repo>`) | `code` | claude | `dependsOn: impacto-na-base`; branches e commits do fluxo abaixo |
 | Validar (build/testes/reproducao) | `validation` | claude ou user | depende da correcao; testes com `$PLAN test` (passo 8) |
 | **PRs — uma por repositorio** (`pr-<repo>`) | `pr` | claude | todos os PRs daquele repositorio; conclui sozinha quando **todos** forem mesclados |
-| Chamado de script de dados (`chamado-<nome>`) | `ticket` | **user** | crie com `dependsOn` numa etapa sua que prepara o script (ex.: `preparar-script-<nome>`, `claude`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
+| Chamado de script de dados (`chamado-<nome>`) — **todo script tem** | `ticket` | **user** | sempre em par com a etapa sua que prepara o script e o chamado completo (`preparar-script-<nome>`, `task`, `claude`) — `dependsOn` nela; nunca script sem chamado nem chamado sem o arquivo do chamado completo (vale igual na US: `analisar-us`); **antes** de concluir essa etapa (antes de a do chamado ficar com o usuario), anexe no **plano de correcao**, com `key` = a etapa do chamado: o `.sql` de alteracao com rollback (`prmake_file(card, "01_<nome>.sql", ..., "script", "<etapa>", phase: "correction")`) e o texto do chamado (`prmake_file(card, "chamado-<nome>.md", ..., "ticket", "<etapa>", phase: "correction")` — 1a linha = titulo; corpo com o link do card, cliente, ambiente, banco, o que o script faz, rollback e a consulta de validacao). A API recusa deixar a etapa com o usuario sem os dois (`ticketStepsMissingFiles` no `prmake_control`). Na descricao da etapa cite os arquivos pelo nome ("Abra o chamado no `TicketSystem` com o texto de `chamado-x.md` e anexe `01_x.sql`"); o usuario abre o chamado, cola o link na tela (etapa fica *aguardando* ate o chamado ser marcado resolvido) |
 | Configuracao na tela do sistema (`configurar-<o que>`) | `task` | **user** | voce nao acessa o sistema do cliente: escreva o passo a passo exato (ambiente, tela, campo, valor antes/depois) em `analises/configuracao.md`; o usuario executa e conclui a etapa na tela |
 | ~~`orientar-cliente`~~ — **nao e etapa** | — | — | a orientacao ao cliente (o que aconteceu, o que fazer, passo a passo, por que nao e bug) **e o resumo nao tecnico PT/EN** que o `fechar-card` publica na discussion: redija em `analises/orientacao-cliente.md` e use esse texto no resumo (ver abaixo) |
 | Validar em QA (`validar-qa`) — **com codigo** | `validation` | **user** | `dependsOn` as etapas de PR **e** `preparar-fechamento` (correcao publicada em QA e card sem pendencias); key exatamente `validar-qa` (0075: o PRMake move o card para Dev Test in QA sozinho quando o PR para a branch de QA e mesclado — confira no `prmake_plan`/`situation`; so se ele avisar erro, mova com `devops <card> dev-test-in-qa`); o usuario conclui a etapa na tela quando validar — o diálogo de conclusao ja oferece mover para Ready for QA |
@@ -134,7 +135,9 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
      (mesmo destino/repositorio/sub-tarefas, status nao cancelado)? Nao crie — cite o existente. A API recusa duplicata
      (`duplicate` com o item existente); `allowDuplicate` + motivo so quando for outro trabalho de fato.
   2. Sub-tarefas na ordem, com `kind` do catalogo (`branch, cherry-pick, code, pr, devops-state, sql-script,
-     validation, comment, manual`), `executor` (`claude`/`user`) e `params` **reais**: `repository`, `branch` (nome do
+     validation, comment, manual, ticket`), `executor` (`claude`/`user`) e `params` **reais** (item com `sql-script` e sem
+     `ticket` ganha sozinho, logo depois do script, "Gerar o chamado completo" (claude) + "Abrir o chamado no sistema de
+     chamados e colar o link" (user) — ou use a ferramenta `script-com-chamado`): `repository`, `branch` (nome do
      `branches`/`prmake_rules` — nunca inventado), `from`, `target`, `commits`. Ex.: "PR master → release-version" =
      `branch {branch: hotfix/<card>-rv, from: release-version}` → `cherry-pick {source: hotfix/<card>}` →
      `pr {branch: hotfix/<card>-rv, target: release-version}`.

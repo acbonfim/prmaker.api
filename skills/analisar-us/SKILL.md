@@ -45,6 +45,13 @@ da maquina, codigo da analise na copia da master (`revamp-repos.sh master <repo>
 padroes de bug (A–H) nem resumo PT/EN de fechamento de bug. O "porque" e o **objetivo da US**; a evidencia de pronto sao
 os **criterios de aceite** (`CA-1`, `CA-2`...).
 
+**Terminologia (obrigatoria em tudo o que a pessoa le** — titulos do plano e das etapas, Timeline, perguntas, checkpoint,
+handoff, itens, PR, respostas): US = **plano de implementacao**, **implementar**, **implementacao**, **entrega**. Nunca
+"correcao", "plano de correcao", "corrigir", "causa raiz", "RCA" nem "bug". A fase no servidor continua `correction`
+(nome tecnico: `prmake_correction`, `contexto-correcao`, `phase: "correction"`) — so o nome da ferramenta. Onde as
+referencias da `analisar-bug` (`$REF correcao ...`) dizem "correcao", leia "implementacao". Titulo do plano:
+**"Implementacao <card>: <o que entrega>"** (o PRMake ajusta sozinho se vier "Correcao ...").
+
 ## Fluxo
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-us analisar-bug 2>/dev/null || true`;
 se atualizar, releia esta SKILL.md.
@@ -80,12 +87,13 @@ criterio · como a solucao atende · como validar`), **Base Solvace** (itens usa
 **Duvidas**. Arquivo no plano (`prmake_file(..., "analysis", "montar-analise")` no executor; `sync` no terminal),
 publique na Timeline (`prmake_timeline`) e pergunte (`prmake_ask`, como em `$REF correcao 6`): qual solucao, as
 duvidas que decidem o escopo, criterios derivados (confirma?), fluxo/base de branches quando o `branches` pedir (exit 3),
-se pode seguir com a implementacao agora. **Checkpoint obrigatorio** de `propor-solucoes` (ate ~3.000 caracteres,
+se ha script de dados (vai sempre por **chamado** — `TicketSystem` das regras), se pode seguir com a implementacao agora.
+**Checkpoint obrigatorio** de `propor-solucoes` (ate ~3.000 caracteres,
 autossuficiente: objetivo, CAs, solucao por opcao com refs, entregas, branches levantadas, riscos) — a implementacao
 roda numa sessao nova que le so ele. Com as respostas, `status <card> completed "" .../analise-us.md`.
 
-**7. Plano de implementacao → item de trabalho** — `prmake_correction(card, title, steps)` (script: `bash $PLAN
-correction <card> "<titulo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por
+**7. Plano de implementacao → item de trabalho** — `prmake_correction(card, "Implementacao <card>: <resumo>", steps)`
+(script: `bash $PLAN correction <card> "Implementacao <card>: <resumo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por
 etapa** (`stepKey`), e sincroniza as sub-tarefas conforme as etapas andam (voce **nao** chama `prmake_work_task` para
 esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 
@@ -95,11 +103,17 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | `implementar-<repo>` (uma por repositorio) | `code` | claude | `dependsOn: impacto-na-base`; worktree e commits pelo `branches`; sem comentarios no codigo; testes so do que mudou (`$REF correcao 8`) |
 | `validar` | `validation` | claude | build/testes; CA verificaveis localmente |
 | `pr-<repo>` | `pr` | claude | descricao pelo `pr-text` + prompt de **User Story** (sem `<RCA>`), `save-pr-text` sem rca, `open-pr` nas linhas do `branches`; conclui quando os PRs forem mesclados — nunca mescle |
+| `preparar-script-<nome>` (so com script de dados) | `task` | claude | escreve o `.sql` com rollback e a consulta de validacao e o **chamado completo**; **antes** de concluir, grava no plano com `key` = a etapa do chamado: `prmake_file(card, "01_<nome>.sql", ..., "script", "chamado-<nome>", phase: "correction")` e `prmake_file(card, "chamado-<nome>.md", ..., "ticket", "chamado-<nome>", phase: "correction")` (1a linha = titulo; corpo: link do card, cliente, ambiente, banco, o que o script faz e por que — pelo objetivo da US —, rollback, consulta de validacao). O PRMake recusa a etapa do chamado com o usuario sem os dois arquivos |
+| `chamado-<nome>` | `ticket` | **user** | `dependsOn: preparar-script-<nome>`; descricao cita os arquivos ("Abra o chamado no `TicketSystem` com o texto de `chamado-<nome>.md` e anexe `01_<nome>.sql`; cole o link aqui"); fica aguardando ate o chamado ser resolvido |
 | `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado) |
 | `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs; mover o card **so** com a acao configurada (`devops <card> config`) e autorizada nas respostas; sem acao aplicavel a US → nao mova e diga |
 
+Script de dados **sempre** vai com o par `preparar-script-*` + `chamado-*` (nunca script sem chamado, nem chamado sem o
+arquivo do chamado completo) — igual ao Bug (`$REF correcao 7`, linha do chamado).
+
 **Entregas independentes** (ex.: um PR para producao e outro para `release-version`; uma parte do back que pode ir antes
-do front): alem do plano, crie **itens proprios**:
+do front; um script de dados que vai depois): alem do plano, crie **itens proprios** (item com sub-tarefa `sql-script`
+ganha sozinho as sub-tarefas do chamado — gerar o chamado completo + a pessoa abre no sistema de chamados; nao duplique):
 1. `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`) — ja existe item com o mesmo objetivo
    (titulo/sub-tarefas/fingerprint, status nao cancelado)? Nao crie outro; cite o existente.
 2. `prmake_rules(card)` (ou `dados/regras.md`) para os nomes: branch por destino (`release-version` → `<branch>-rv`),
@@ -107,6 +121,7 @@ do front): alem do plano, crie **itens proprios**:
 3. Ferramenta pronta que serve (`prmake_tools(card)`: PR para uma branch, promocao, ajuste pos-QA...) →
    `prmake_tool_run(card, key, answers)`. Senao `prmake_work_item_create(card, title, description, tasks, type,
    planPhase: "correction")` com `type` do item (`implementation` para codigo da US, `pull-request` para so levar PRs,
+   `data` para script com chamado (ferramenta `script-com-chamado`),
    `data`, `ticket`... — nunca `user-story`), cada sub-tarefa com `kind` do catalogo (`branch, cherry-pick, code, pr,
    devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify`), `executor` e `params` reais (`repository`, `branch`, `from`, `target`...). Resposta `duplicate` → nao
    insista; `allowDuplicate` + motivo so se for de fato outro trabalho. Esses itens rodam pelo

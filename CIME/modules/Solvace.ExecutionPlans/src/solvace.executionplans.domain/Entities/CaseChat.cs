@@ -266,6 +266,11 @@ public class CaseFile
     public long Size { get; private set; }
     public string CreatedBy { get; private set; } = string.Empty;
     public bool FromSpecialist { get; private set; }
+    /// <summary>
+    /// 0085 r5 (1.7): áudio enviado por uma pessoa (mensagem de voz/ditado) — serve para a transcrição e toca dentro da
+    /// mensagem, mas não é "arquivo da conversa": fica fora da lista de arquivos e do contexto do especialista.
+    /// </summary>
+    public bool Hidden { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public CaseFileContent? Content { get; private set; }
 
@@ -290,9 +295,16 @@ public class CaseFile
         Size = data.LongLength;
         CreatedBy = createdBy.Length <= 200 ? createdBy : createdBy[..200];
         FromSpecialist = fromSpecialist;
+        Hidden = IsPersonAudio(Kind, fromSpecialist);
         CreatedAt = now;
         Content = new CaseFileContent(Id, data);
     }
+
+    /// <summary>0085 r5 (1.7): áudio de quem conversa não vira arquivo da conversa (o do especialista, se houver, vira).</summary>
+    public static bool IsPersonAudio(string kind, bool fromSpecialist) => !fromSpecialist && kind == "audio";
+
+    /// <summary>0085 r5 (1.7): só os arquivos que aparecem como "arquivos da conversa" (lista, contexto, mensagens para o especialista).</summary>
+    public static IEnumerable<CaseFile> Listed(IEnumerable<CaseFile> files) => files.Where(f => !f.Hidden);
 
     /// <summary>Arquivo gerado pelo especialista antes da resposta: entra na mensagem dela.</summary>
     public void AttachTo(Guid messageId)
@@ -516,15 +528,16 @@ public class CaseProposal
         };
     }
 
-    /// <summary>Texto da instrução que vai para o plano quando a proposta é aceita (lido pela analisar-bug).</summary>
-    public string InstructionText(string acceptedBy)
+    /// <summary>Texto da instrução que vai para o plano quando a proposta é aceita (lido pela analisar-bug/analisar-us).</summary>
+    /// <param name="planKind">r5: Kind do plano (analisar-us → "plano de implementação").</param>
+    public string InstructionText(string acceptedBy, string? planKind = null)
     {
         var lines = new List<string>
         {
             $"**Proposta do Especialista aceita** (#{Number}, por {acceptedBy}): {Title}",
             string.Empty,
             Phase == ExecutionPhase.Correction
-                ? "Gere uma NOVA VERSÃO do plano de correção (prmake_correction) com estas mudanças:"
+                ? $"Gere uma NOVA VERSÃO do {PlanTerms.DeliveryPlan(planKind)} (prmake_correction) com estas mudanças:"
                 : "Refaça a análise (nova versão do plano de análise) com estas mudanças:"
         };
         foreach (var c in Changes)
@@ -548,7 +561,7 @@ public class CaseProposal
         lines.Add(string.Empty);
         lines.Add(Execute
             ? "Pode executar a nova versão em seguida (sem merge)."
-            : "Só monte a nova versão e pare: NÃO execute a correção até a pessoa pedir.");
+            : $"Só monte a nova versão e pare: NÃO execute a {PlanTerms.Delivery(planKind)} até a pessoa pedir.");
         return string.Join("\n", lines);
     }
 }

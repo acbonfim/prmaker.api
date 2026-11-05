@@ -86,7 +86,13 @@ builder.Services.AddMcpServer(o =>
     // 0080: Especialista do caso (conversa do card).
     .WithTools<solvace.prform.Execution.CaseChatMcpTools>()
     // 0085: regras do card e itens de trabalho.
-    .WithTools<solvace.prform.Execution.WorkItemMcpTools>();
+    .WithTools<solvace.prform.Execution.WorkItemMcpTools>()
+    // 0085 r5: arquivos do item de trabalho (gravar/listar/ler).
+    .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
+    // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
+    .WithTools<solvace.prform.Execution.PullRequestMcpTools>();
+// 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
+builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".

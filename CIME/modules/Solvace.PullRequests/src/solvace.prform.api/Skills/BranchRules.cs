@@ -50,6 +50,25 @@ public static partial class BranchRules
     public static string BranchFor(string mainBranch, string target, IReadOnlyDictionary<string, string> suffixes) =>
         mainBranch + SuffixFor(target, suffixes);
 
+    /// <summary>
+    /// r5: confere a branch de origem de um PR pelas regras do card. Erro (não abre): sem prefixo ("hotfix/...") ou sem o
+    /// número do card. Aviso (abre): fora do <c>BranchNamePattern</c>. As mensagens citam o nome esperado para o destino
+    /// (<c>{branch}{suffix}</c>, ex.: <c>hotfix/77434-rv</c>); promoção (<c>{branch}-...</c>) e a principal passam sem aviso.
+    /// </summary>
+    public static (string? Error, string? Warning) CheckPrSource(string source, string card, string mainBranch, string target,
+        IReadOnlyDictionary<string, string> suffixes)
+    {
+        var s = (source ?? string.Empty).Trim();
+        var expected = BranchFor(mainBranch, target, suffixes);
+        if (!s.Contains('/'))
+            return ($"Informe a branch completa (ex.: {expected}).", null);
+        if (!s.Contains(card, StringComparison.OrdinalIgnoreCase))
+            return ($"A branch {s} nao e deste card ({card}) — pelas regras o nome e {expected} (confira com prmake_rules; nunca invente nome).", null);
+        if (!s.StartsWith(mainBranch, StringComparison.OrdinalIgnoreCase))
+            return (null, $"A branch {s} esta fora do padrao do card ({mainBranch}...); pelas regras para {target}: {expected}.");
+        return (null, null);
+    }
+
     /// <summary>Branch principal do card pelo <c>BranchNamePattern</c> (<c>hotfix/{card}</c>).</summary>
     public static string MainBranch(string? pattern, string card) =>
         (string.IsNullOrWhiteSpace(pattern) ? "hotfix/{card}" : pattern.Trim()).Replace("{card}", card, StringComparison.OrdinalIgnoreCase);

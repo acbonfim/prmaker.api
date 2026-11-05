@@ -125,9 +125,12 @@ public class WorkItemApplication : IWorkItemApplication
             planId = pid;
         }
 
-        var type = await ResolveTypeAsync(req.Type, req.TemplateKey, ct);
+        var settings = TypeSource is { } source ? await source.GetAsync(ct) : null;
+        var type = ResolveType(req.Type, req.TemplateKey, settings);
+        // r5: item com script ganha as sub-tarefas do chamado (gerar o arquivo + abrir no sistema de chamados).
+        var tasks = WorkItemTicketRule.Apply(req.Tasks ?? [], settings?.TicketSystem);
         var now = DateTimeOffset.UtcNow;
-        var item = new WorkItem(cardNumber, type, req.Title, req.Description, o, req.TemplateKey, planId, req.Tasks ?? [],
+        var item = new WorkItem(cardNumber, type, req.Title, req.Description, o, req.TemplateKey, planId, tasks,
             actor.UserId, actor.Name, now);
 
         var existing = await _items.FindDuplicateAsync(cardNumber, item.Fingerprint, null, ct);
@@ -406,7 +409,7 @@ public class WorkItemApplication : IWorkItemApplication
             throw;
         }
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Created, null, ct);
-        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado do plano de {(plan.Phase == ExecutionPhase.Correction ? "correção" : "análise")}: {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
+        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado do plano de {(plan.Phase == ExecutionPhase.Correction ? PlanTerms.Delivery(plan.Kind) : "análise")}: {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -588,9 +591,6 @@ public class WorkItemApplication : IWorkItemApplication
     /// r4: tipo do item novo — o pedido (bug/user-story legados → fix/implementation), senão o do modelo, senão task; precisa
     /// existir no <c>WorkItemTypes</c> (400 com as opções).
     /// </summary>
-    private async Task<string> ResolveTypeAsync(string? requested, string? templateKey, CancellationToken ct) =>
-        ResolveType(requested, templateKey, TypeSource is { } source ? await source.GetAsync(ct) : null);
-
     /// <summary>Regra do tipo do item novo (testável): pedido → modelo → task; legado mapeado; conferido contra os tipos.</summary>
     public static string ResolveType(string? requested, string? templateKey, WorkItemTypeSettings? settings)
     {

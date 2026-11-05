@@ -13,9 +13,9 @@ namespace solvace.prform.Execution;
 
 /// <summary>
 /// 0085: regras do PRMake para o card e itens de trabalho pelo MCP. O Especialista do caso (token do caso) lê as regras,
-/// lista/cria/edita itens pending do próprio card (<see cref="CaseSpecialistMiddleware.AllowedTools"/>); a execução das
-/// sub-tarefas (<c>prmake_work_task</c>) é do executor/skill. Duplicata (mesmo fingerprint) volta como mensagem clara
-/// com o item existente e como forçar.
+/// lista/cria/edita itens pending do próprio card (<see cref="CaseSpecialistMiddleware.AllowedTools"/>) e (r5) cancela,
+/// executa e registra o andamento de itens a pedido de uma pessoa — nunca de sub-tarefa espelho do plano. Duplicata (mesmo
+/// fingerprint) volta como mensagem clara com o item existente e como forçar.
 /// </summary>
 [McpServerToolType]
 public class WorkItemMcpTools(
@@ -24,7 +24,8 @@ public class WorkItemMcpTools(
     SkillsRulesService rules,
     WorkItemToolsService tools,
     IHttpContextAccessor http,
-    solvace.timeline.application.Contracts.IUserRepository users)
+    solvace.timeline.application.Contracts.IUserRepository users,
+    SpecialistActions specialist)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -94,12 +95,15 @@ public class WorkItemMcpTools(
         };
         try
         {
-            var created = await items.CreateAsync(c, request, origin, await ActorAsync(ct), ct);
-            return Serialize(new
+            return await specialist.RunAsync(c, $"Criar o item de trabalho: {title}", description, async () =>
             {
-                created.Number, created.Title, created.Status, created.Origin, created.Fingerprint,
-                tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title })
-            });
+                var created = await items.CreateAsync(c, request, origin, await ActorAsync(ct), ct);
+                return (Serialize(new
+                {
+                    created.Number, created.Title, created.Status, created.Origin, created.Fingerprint,
+                    tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title })
+                }), $"item #{created.Number} criado com {created.Tasks.Count} sub-tarefa(s)");
+            }, ct);
         }
         catch (WorkItemDuplicateException d)
         {
@@ -180,12 +184,15 @@ public class WorkItemMcpTools(
         var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
         try
         {
-            var created = await items.CreateAsync(c, request, origin, await ActorAsync(ct), ct);
-            return Serialize(new
+            return await specialist.RunAsync(c, $"Criar o item de trabalho pela ferramenta {key}", request.Title, async () =>
             {
-                created.Number, created.Type, created.Title, created.Status, created.Origin, created.TemplateKey, created.Fingerprint,
-                tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
-            });
+                var created = await items.CreateAsync(c, request, origin, await ActorAsync(ct), ct);
+                return (Serialize(new
+                {
+                    created.Number, created.Type, created.Title, created.Status, created.Origin, created.TemplateKey, created.Fingerprint,
+                    tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
+                }), $"item #{created.Number} \"{created.Title}\" criado com {created.Tasks.Count} sub-tarefa(s)");
+            }, ct);
         }
         catch (WorkItemDuplicateException d)
         {
@@ -208,17 +215,64 @@ public class WorkItemMcpTools(
         EnsureSpecialistCard(c);
         var current = await items.GetAsync(number, false, ct);
         EnsureSameCard(current, c);
-        var updated = await items.UpdateAsync(number, new UpdateWorkItemRequest
+        return await specialist.RunAsync(c, $"Editar o item de trabalho #{number}", title, async () =>
         {
-            Title = title ?? current.Title,
-            Description = description ?? current.Description,
-            Tasks = tasks is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } t ? ParseTasks(t) : null
-        }, await ActorAsync(ct), ct);
-        return Serialize(new
+            var updated = await items.UpdateAsync(number, new UpdateWorkItemRequest
+            {
+                Title = title ?? current.Title,
+                Description = description ?? current.Description,
+                Tasks = tasks is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } t ? ParseTasks(t) : null
+            }, await ActorAsync(ct), ct);
+            return (Serialize(new
+            {
+                updated.Number, updated.Title, updated.Status, updated.Fingerprint,
+                tasks = updated.Tasks.OrderBy(x => x.Order).Select(x => new { x.Number, x.Order, x.Kind, x.Title, x.Status })
+            }), $"item #{updated.Number} editado");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_item_cancel", Destructive = true)]
+    [Description("Cancela um item de trabalho do card (para o pedido na fila, se houver). undo=true tambem desfaz o que ele ja fez " +
+                 "(cada sub-tarefa concluida pelo 'undo' registrado). Concluido so com undo=true. Especialista do caso: so com pedido " +
+                 "explicito da pessoa na conversa (confirme em uma linha se for ambiguo) e nunca item espelho do plano — o plano se " +
+                 "pausa/cancela na tela.")]
+    public Task<string> Cancel(string card, [Description("Numero do item (#n)")] long number,
+        [Description("Tambem desfazer o que o item ja fez")] bool undo = false,
+        [Description("Motivo (vai para o item e a Timeline)")] string? reason = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var current = await items.GetAsync(number, false, ct);
+        EnsureSameCard(current, c);
+        if (specialist.IsSpecialist && current.PlanId is not null && current.Tasks.Any(t => t.StepKey is not null))
+            throw new McpException($"O item #{number} espelha o plano — o Especialista do caso nao cancela o plano. Para parar, a pessoa " +
+                                   "usa Pausar/Cancelar no menu do plano; para mudar, proponha com prmake_case_propose.");
+        var why = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (specialist.Via is { } via) why = why is null ? via : $"{why} ({via})";
+        return await specialist.RunAsync(c, $"{(undo ? "Cancelar e desfazer" : "Cancelar")} o item de trabalho #{number}", why, async () =>
         {
-            updated.Number, updated.Title, updated.Status, updated.Fingerprint,
-            tasks = updated.Tasks.OrderBy(x => x.Order).Select(x => new { x.Number, x.Order, x.Kind, x.Title, x.Status })
-        });
+            var item = await items.CancelAsync(number, undo, why, await ActorAsync(ct), ct);
+            return (Serialize(new { item.Number, item.Title, item.Status, item.CancelReason }), $"item #{item.Number} {item.Status}");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_item_execute")]
+    [Description("Executa um item de trabalho do card (o mesmo play da Bancada): item avulso entra na fila do executor do dono; " +
+                 "item ligado ao plano retoma o plano. Item cancelado/concluido nao executa (crie outro). Especialista do caso: so " +
+                 "com pedido da pessoa na conversa.")]
+    public Task<string> Execute(string card, [Description("Numero do item (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var current = await items.GetAsync(number, false, ct);
+        EnsureSameCard(current, c);
+        return await specialist.RunAsync(c, $"Executar o item de trabalho #{number}", current.Title, async () =>
+        {
+            var item = await items.ExecuteAsync(number, await ActorAsync(ct), ct);
+            return (Serialize(new { item.Number, item.Title, item.Status, item.PlanId }),
+                item.PlanId is null ? $"item #{item.Number} na fila do executor" : $"item #{item.Number}: plano retomado");
+        }, ct);
     });
 
     [McpServerTool(Name = "prmake_work_task")]
@@ -235,8 +289,12 @@ public class WorkItemMcpTools(
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
-        if (!(await items.ListAsync(c, ct)).Any(i => i.Tasks.Any(t => t.Number == taskNumber)))
-            throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        EnsureSpecialistCard(c);
+        var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
+                    ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        if (specialist.IsSpecialist && owner.PlanId is not null && owner.Tasks.First(t => t.Number == taskNumber).StepKey is not null)
+            throw new McpException($"A sub-tarefa #{taskNumber} espelha uma etapa do plano — o Especialista do caso nao altera o plano. " +
+                                   "Proponha a mudanca com prmake_case_propose.");
         var request = new WorkTaskActionRequest
         {
             Result = result,
@@ -244,16 +302,20 @@ public class WorkItemMcpTools(
             Undo = AsObject(undo) is { } u ? ParseUndo(u) : null,
             Links = AsJson(links) is { ValueKind: JsonValueKind.Array } l ? l.Deserialize<List<WorkItemLink>>(Json) : null
         };
-        var item = await items.TaskActionAsync(taskNumber, (action ?? string.Empty).Trim().ToLowerInvariant(), request, await ActorAsync(ct), ct);
-        var task = item.Tasks.FirstOrDefault(t => t.Number == taskNumber);
-        return Serialize(new
+        var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
+        return await specialist.RunAsync(c, $"Sub-tarefa #{taskNumber} do item #{owner.Number}: {verb}", result, async () =>
         {
-            item = new { item.Number, item.Status, progress = $"{item.Progress.Done}/{item.Progress.Total}" },
-            task = task is null ? null : new { task.Number, task.Status },
-            next = item.Tasks.OrderBy(t => t.Order).FirstOrDefault(t => t.Status is WorkTaskStatus.Pending or WorkTaskStatus.Waiting) is { } n
-                ? new { n.Number, n.Title, n.Kind, n.Status }
-                : null
-        });
+            var item = await items.TaskActionAsync(taskNumber, verb, request, await ActorAsync(ct), ct);
+            var task = item.Tasks.FirstOrDefault(t => t.Number == taskNumber);
+            return (Serialize(new
+            {
+                item = new { item.Number, item.Status, progress = $"{item.Progress.Done}/{item.Progress.Total}" },
+                task = task is null ? null : new { task.Number, task.Status },
+                next = item.Tasks.OrderBy(t => t.Order).FirstOrDefault(t => t.Status is WorkTaskStatus.Pending or WorkTaskStatus.Waiting) is { } n
+                    ? new { n.Number, n.Title, n.Kind, n.Status }
+                    : null
+            }), $"sub-tarefa #{taskNumber}: {task?.Status ?? verb}");
+        }, ct);
     });
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────
@@ -284,8 +346,8 @@ public class WorkItemMcpTools(
 
     private async Task<ExecutionActor> ActorAsync(CancellationToken ct)
     {
-        if (CaseClaims.SpecialistOf(User) is { } specialist)
-            return specialist.AsExecutionActor();
+        if (specialist.Actor() is { } requested)
+            return requested;
         Guid? userId = Guid.TryParse(User.FindFirst("ExternalId")?.Value, out var id) ? id : null;
         string? name = userId.HasValue ? await users.GetFullNameAsync(userId.Value, ct) : null;
         name ??= User.FindFirst(ClaimTypes.Name)?.Value;

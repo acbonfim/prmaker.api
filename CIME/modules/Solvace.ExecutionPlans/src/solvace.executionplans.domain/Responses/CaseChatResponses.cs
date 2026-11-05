@@ -68,6 +68,8 @@ public class CaseFileResponse
     public long Size { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
     public bool FromSpecialist { get; set; }
+    /// <summary>0085 r5 (1.7): áudio da mensagem de voz — só toca na mensagem (não vem em <c>files</c> da conversa).</summary>
+    public bool Hidden { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -176,6 +178,7 @@ public static class CaseChatMappings
         Size = f.Size,
         CreatedBy = f.CreatedBy,
         FromSpecialist = f.FromSpecialist,
+        Hidden = f.Hidden,
         CreatedAt = f.CreatedAt
     };
 

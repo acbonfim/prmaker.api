@@ -63,7 +63,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             (parentPlanId, emptyAnalysis) = await ResolveCorrectionParentAsync(parent, cancellationToken);
             _repository.ClearTracking();
         }
-        var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
+        // r5 (1.5): o plano de entrega da User Story é "Implementação <card>: ..." (nunca "correção").
+        var title = request.Phase == ExecutionPhase.Correction
+            ? PlanTerms.CorrectionTitle(request.Kind, request.CardNumber ?? string.Empty, request.Title)
+            : request.Title;
+        var plan = new ExecutionPlan(request.CardNumber!, request.Kind, title, request.Summary, actor.UserId, actor.Name, now,
             request.Phase, parentPlanId);
         // 0041: a correção é a mesma conversa do Claude que fez a análise — herda a sessão (o executor retoma por ela;
         // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão). 0049: no executor a correção roda numa

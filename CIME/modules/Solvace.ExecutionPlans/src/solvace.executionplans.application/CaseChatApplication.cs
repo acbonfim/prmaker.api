@@ -62,7 +62,8 @@ public class CaseChatApplication(
             Points = (await cases.GetPointsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
             Proposals = (await cases.GetProposalsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
             Actions = (await cases.GetActionsAsync(card, cancellationToken)).Select(a => a.ToResponse()).ToList(),
-            Files = files.Select(f => f.ToResponse()).ToList(),
+            // 0085 r5 (1.7): o áudio da mensagem de voz toca na mensagem, mas não é arquivo da conversa.
+            Files = CaseFile.Listed(files).Select(f => f.ToResponse()).ToList(),
             Participants = (await cases.GetParticipantsAsync(card, cancellationToken))
                 .Select(p => new CaseParticipantResponse { UserId = p.UserId, Name = p.Name, Messages = p.Messages, LastAt = p.LastAt }).ToList(),
             PlanNotes = notes.Select(n => new CasePlanNoteResponse
@@ -277,7 +278,7 @@ public class CaseChatApplication(
             throw new DomainException("O card ainda não tem plano — peça a análise antes de aceitar a proposta.");
         proposal.Accept(request.Execute, actor.Name, now);
         await cases.SaveChangesAsync(cancellationToken);
-        var instruction = proposal.InstructionText(actor.Name);
+        var instruction = proposal.InstructionText(actor.Name, plan.Kind);
         var note = await planApp.AddNoteAsync(plan.Id, instruction, null, [], actor.AsExecutionActor(), cancellationToken);
         cases.ClearTracking();
         var saved = await cases.GetProposalAsync(card, proposalId, cancellationToken) ?? proposal;
@@ -347,6 +348,43 @@ public class CaseChatApplication(
         return action.ToResponse();
     }
 
+    /// <summary>
+    /// r5: ação que o especialista executou a pedido de uma pessoa (Timeline, horas, PR, card, item...) — vira um cartão de
+    /// ação já decidido por quem pediu e concluído (ou falho) na conversa. Nunca derruba a ação: falha aqui só não registra.
+    /// </summary>
+    public async Task<CaseActionResponse?> RecordActionAsync(string cardNumber, string title, string? detail, bool ok, string? result,
+        string requestedBy, CaseActor actor, CancellationToken cancellationToken)
+    {
+        RequireSpecialist(actor);
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var now = DateTimeOffset.UtcNow;
+        var by = string.IsNullOrWhiteSpace(requestedBy) ? "Usuário" : requestedBy.Trim();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                cases.ClearTracking();
+                var action = new CaseAction(card, await cases.GetMaxActionNumberAsync(card, cancellationToken) + 1, title, detail, now);
+                action.Decide(true, by, now);
+                action.Finish(ok, result, now);
+                cases.AddAction(action);
+                var text = ok
+                    ? $"Feito a pedido de {by}: **{action.Title}**" + (action.Result is null ? string.Empty : $" — {action.Result}")
+                    : $"Não consegui (a pedido de {by}): **{action.Title}**" + (action.Result is null ? string.Empty : $" — {action.Result}");
+                var message = await NewSpecialistMessageAsync(card, CaseMessageKind.Action, text, actor, now, cancellationToken);
+                message.LinkAction(action.Id);
+                action.LinkMessage(message.Id);
+                await cases.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Action, number = message.Number }, cancellationToken);
+                return action.ToResponse();
+            }
+            catch (CaseNumberConflictException) when (attempt < Retries)
+            {
+                await Task.Delay(Random.Shared.Next(10, 50) * attempt, cancellationToken);
+            }
+        }
+    }
+
     /// <summary>Há ação confirmada e ainda não concluída (o especialista pode executá-la).</summary>
     public async Task<CaseAction?> ConfirmedActionAsync(string cardNumber, Guid actionId, CancellationToken cancellationToken) =>
         await cases.GetActionAsync(CaseChat.NormalizeCard(cardNumber), actionId, cancellationToken) is { Status: CaseActionStatus.Confirmed } a ? a : null;
@@ -381,7 +419,8 @@ public class CaseChatApplication(
         }
         // As dele mesmo (respostas, propostas, ações) não são "novas" para ele; marcar lido só no que ele leu evita pular
         // a mensagem que alguém mandou enquanto ele escrevia.
-        return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(files[m.Id])).ToList();
+        // 0085 r5 (1.7): o áudio de quem fala não vai para o especialista — ele lê a transcrição.
+        return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(CaseFile.Listed(files[m.Id]))).ToList();
     }
 
     /// <summary>Resposta do especialista (com os passos que ele fez e os arquivos que gerou).</summary>
@@ -467,7 +506,7 @@ public class CaseChatApplication(
         {
             var versions = summaries.Where(s => s.Phase == phase).OrderBy(s => s.VersionNumber).ToList();
             if (versions.Count == 0) continue;
-            sb.AppendLine().AppendLine(phase == ExecutionPhase.Analysis ? "## Análise" : "## Correção");
+            sb.AppendLine().AppendLine(phase == ExecutionPhase.Analysis ? "## Análise" : $"## {PlanTerms.DeliveryTitle(versions[0].Kind)}");
             foreach (var v in versions)
             {
                 var reason = string.IsNullOrWhiteSpace(v.StatusReason) ? string.Empty : $" — motivo: \"{v.StatusReason}\"";
@@ -585,7 +624,8 @@ public class CaseChatApplication(
             ? $"[mensagem de voz] {m.Transcript ?? "(sem transcrição — peça um resumo em texto)"}"
             : m.Text;
         var flags = (m.PeopleOnly ? " [só entre pessoas]" : string.Empty) + (m.Deep ? " [investigar a fundo]" : string.Empty);
-        var att = string.Join(", ", files.Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind})"));
+        // 0085 r5 (1.7): áudio de quem fala fica fora (a mensagem de voz já traz a transcrição).
+        var att = string.Join(", ", CaseFile.Listed(files).Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind})"));
         return $"- ({m.Number}) {who} {m.CreatedAt:dd/MM HH:mm}{flags}: {Cut(content, 1500)}{(att.Length > 0 ? " — " + att : string.Empty)}";
     }
 
@@ -695,7 +735,7 @@ public class CaseChatApplication(
         if (summaries.Where(s => s.Phase == ExecutionPhase.Analysis).MaxBy(s => s.VersionNumber) is { } a)
             knows.Add($"Análise v{a.VersionNumber}");
         if (summaries.Where(s => s.Phase == ExecutionPhase.Correction).MaxBy(s => s.VersionNumber) is { } c)
-            knows.Add($"Correção v{c.VersionNumber} · {StatusLabel(c.Status)}");
+            knows.Add($"{PlanTerms.DeliveryTitle(c.Kind)} v{c.VersionNumber} · {StatusLabel(c.Status)}");
         knows.AddRange(["Base Solvace", "Banco (só leitura)", "Código"]);
         return knows;
     }

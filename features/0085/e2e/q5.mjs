@@ -1,0 +1,11 @@
+import { open, shot, sleep } from './lib.mjs';
+const clickText = (page, sel, text) => page.evaluate((sel, text) => { const el = [...document.querySelectorAll(sel)].find(e => e.innerText.trim().startsWith(text)); if (el) { el.click(); return true; } return false; }, sel, text);
+const { browser, page, logs } = await open({ width: 1440, height: 960 });
+await page.goto('http://localhost:4200/auth/workbench?card=77434&item=58', { waitUntil: 'networkidle2' });
+await sleep(3500);
+console.log('tab', await clickText(page, '.mat-mdc-dialog-container [role=tab]', 'Arquivos'));
+await sleep(1200);
+await shot(page, 'q5-files-real');
+console.log((await page.evaluate(() => document.querySelector('.mat-mdc-dialog-container')?.innerText || '')).slice(0, 700));
+console.log(logs.filter(l => !/ngIf|77434\/full|effort|Failed to load|NG0100|states|branches/.test(l)).join('\n'));
+await browser.close();

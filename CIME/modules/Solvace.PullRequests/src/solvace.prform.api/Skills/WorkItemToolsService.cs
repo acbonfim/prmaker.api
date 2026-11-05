@@ -46,7 +46,7 @@ public class WorkItemToolsService(
         foreach (var t in Templates(settings).OfType<JsonObject>())
             if (WorkItemTemplateRenderer.Str(t, "key") is { Length: > 0 } key && WorkItemTemplateRenderer.Str(t, "type") is { Length: > 0 } type)
                 templateTypes[key.Trim()] = type.Trim();
-        return new WorkItemTypeSettings(keys, templateTypes);
+        return new WorkItemTypeSettings(keys, templateTypes, Value(settings, SkillsConfigurationKeys.TicketSystem));
     }
 
     /// <summary><c>WorkItemTypes</c> configurado (lista de objetos) ou o padrão semeado.</summary>

@@ -31,7 +31,8 @@ feito** em um card, criando um historico do trabalho.
 
 **Sempre que voce comecar uma analise, investigacao, teste ou correcao ligada a um card**, registre
 na timeline o que esta sendo feito — e va adicionando novas entradas conforme o trabalho avanca
-(ex.: hipotese levantada, causa encontrada, teste executado, correcao aplicada). Isso vai
+(ex.: hipotese levantada, causa encontrada, teste executado, correcao aplicada; card **User Story**: fale em
+implementacao/criterios de aceite, nunca correcao/causa raiz). Isso vai
 enriquecendo o card com o contexto do que foi analisado/testado/feito.
 
 - Descubra o card pela branch atual: `hotfix/<card>` ou `bugfix/<card>` (o script deriva sozinho).

@@ -159,6 +159,9 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<bool>("FromSpecialist")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1631,6 +1634,79 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("WorkItems", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("TaskNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkItemId", "Number")
+                        .IsUnique();
+
+                    b.HasIndex("WorkItemId", "Kind", "Name")
+                        .IsUnique();
+
+                    b.ToTable("WorkItemFiles", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFileContent", b =>
+                {
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("FileId");
+
+                    b.ToTable("WorkItemFileContents", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemLog", b =>
                 {
                     b.Property<long>("Id")
@@ -2222,6 +2298,24 @@ namespace solvace.executionplans.infra.Migrations
                     b.Navigation("Actions");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("WorkItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFileContent", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItemFile", null)
+                        .WithOne("Content")
+                        .HasForeignKey("solvace.executionplans.domain.Entities.WorkItemFileContent", "FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemLog", b =>
                 {
                     b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
@@ -2260,6 +2354,11 @@ namespace solvace.executionplans.infra.Migrations
                     b.Navigation("Logs");
 
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>
+                {
+                    b.Navigation("Content");
                 });
 #pragma warning restore 612, 618
         }

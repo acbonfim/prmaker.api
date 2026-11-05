@@ -35,6 +35,9 @@ public static class ExecutionPlanModuleExtensions
         // 0085: itens de trabalho do card (a fila dos itens, IWorkItemQueue, é registrada junto da fila).
         services.AddScoped<IWorkItemRepository, WorkItemRepository>();
         services.AddScoped<IWorkItemApplication, WorkItemApplication>();
+        // 0085 r5: arquivos do item (seção "Arquivos": os do item + os do plano ligado).
+        services.AddScoped<IWorkItemFileRepository, WorkItemFileRepository>();
+        services.AddScoped<IWorkItemFileApplication, WorkItemFileApplication>();
 
         return services;
     }
