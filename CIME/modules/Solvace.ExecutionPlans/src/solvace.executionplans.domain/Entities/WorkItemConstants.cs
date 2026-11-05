@@ -167,6 +167,8 @@ public static class WorkTaskKind
     public const string PrReview = "pr-review";
     /// <summary>0089: resumo do que o card pede (US) ou reclama (Bug), lendo campos, discussion e evidências.</summary>
     public const string CardBrief = "card-brief";
+    /// <summary>0089: arquivo do item com o racional (fica nos arquivos do card).</summary>
+    public const string CardBriefFileName = "resumo-do-pedido.md";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,

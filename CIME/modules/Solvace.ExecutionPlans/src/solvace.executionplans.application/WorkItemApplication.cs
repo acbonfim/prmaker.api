@@ -209,7 +209,28 @@ public class WorkItemApplication : IWorkItemApplication
 
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, taskNumber, ct);
         await AfterStatusChangeAsync(item, before, actor, ct);
+        if (a == WorkTaskAction.Complete && task.Kind == WorkTaskKind.CardBrief && !string.IsNullOrWhiteSpace(req.Result))
+            await EnsureCardBriefFileAsync(item, taskNumber, req.Result, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
+    }
+
+    /// <summary>
+    /// 0089: o racional do pedido sempre vira arquivo do item (e, por isso, dos arquivos do card) — se o Claude concluiu o
+    /// <c>card-brief</c> sem gravar <c>resumo-do-pedido.md</c>, o resultado é gravado com esse nome. Best-effort.
+    /// </summary>
+    private async Task EnsureCardBriefFileAsync(WorkItem item, long taskNumber, string result, ExecutionActor actor, CancellationToken ct)
+    {
+        if (_services.GetService(typeof(IWorkItemFileApplication)) is not IWorkItemFileApplication files)
+            return;
+        try
+        {
+            var existing = await files.ListAsync(item.Number, ct);
+            if (existing.Any(f => f.Source == WorkItemFileResponse.SourceItem && string.Equals(f.Name, WorkTaskKind.CardBriefFileName, StringComparison.OrdinalIgnoreCase)))
+                return;
+            await files.UploadAsync(item.Number, new WorkItemFileUpload(WorkTaskKind.CardBriefFileName, WorkItemFileKind.Analysis, taskNumber,
+                "text/markdown; charset=utf-8", System.Text.Encoding.UTF8.GetBytes(result.Trim())), actor, ct);
+        }
+        catch (Exception e) when (e is DomainException or ExecutionPlanNotFoundException or WorkItemFileNumberConflictException) { }
     }
 
     private async Task ApplyOnPlanStepAsync(Guid planId, string stepKey, string action, string? result, ExecutionActor actor, CancellationToken ct)

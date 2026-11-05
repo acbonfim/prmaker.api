@@ -27,6 +27,25 @@ public class CardBrief0089Tests
     }
 
     [Fact]
+    public void Adjusted_template_makes_focus_optional_and_describes_the_rationale()
+    {
+        var seeded = JsonNode.Parse(SeedCardBrief0089.NewTemplate)!.AsObject();
+        var adjusted = JsonNode.Parse(CardBriefOptionalFocus0089b.NewTemplate)!.AsObject();
+        var asks = adjusted["ask"]!.AsArray().OfType<JsonObject>().ToDictionary(a => (string)a["key"]!);
+        Assert.False((bool)asks["focus"]["required"]!);
+        Assert.True((bool)asks["timeline"]["required"]!);
+        seeded["ask"]![0]!["required"] = false;
+        seeded["description"] = CardBriefOptionalFocus0089b.TemplateDescription;
+        Assert.True(JsonNode.DeepEquals(seeded, adjusted));
+        Assert.Contains("estado atual", CardBriefOptionalFocus0089b.TemplateDescription);
+        Assert.Empty(WorkItemTemplateRenderer.UnknownMarkers(CardBriefOptionalFocus0089b.TemplateDescription));
+
+        var kind = JsonNode.Parse(SeedCardBrief0089.NewKind)!.AsObject();
+        kind["description"] = CardBriefOptionalFocus0089b.KindDescription;
+        Assert.True(JsonNode.DeepEquals(kind, JsonNode.Parse(CardBriefOptionalFocus0089b.NewKind)));
+    }
+
+    [Fact]
     public void Evidence_file_name_is_stable_per_devops_key_and_tells_the_origin()
     {
         CardEvidence E(string key, string file, string source, string? detail = null) => new(key, "https://x", file, source, detail, null, null, null);
