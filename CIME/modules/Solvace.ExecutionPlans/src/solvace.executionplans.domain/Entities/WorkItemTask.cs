@@ -175,6 +175,14 @@ public partial class WorkItemTask
         if (undo is not null) SetUndo(undo);
     }
 
+    internal void Annotate(string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
+    {
+        SetResult(result);
+        if (outputJson is not null) SetOutput(outputJson);
+        if (undo is not null) SetUndo(undo);
+        UpdatedAt = now;
+    }
+
     /// <summary>Espelha o status da etapa do plano (sem validar a transição).</summary>
     internal void Force(string status, string? reason, DateTimeOffset now)
     {

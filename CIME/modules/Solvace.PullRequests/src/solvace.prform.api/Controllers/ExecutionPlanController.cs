@@ -167,6 +167,50 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<ExecutionPlanResponse>> ChangeStatus([FromRoute] Guid id, [FromBody] ChangeExecutionPlanStatusRequest request, CancellationToken ct) =>
         Run<ExecutionPlanResponse>(async () => Ok(await _application.ChangeStatusAsync(id, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
+    /// <summary>
+    /// 0085: cancela o plano (fluxo do status), o pedido ativo do card na pista principal e os itens de trabalho do plano;
+    /// <c>undo=true</c> desfaz o que os itens já fizeram (pedido <c>work-item-undo</c> por item). Plano concluído só com
+    /// <c>undo</c>; plano já cancelado + <c>undo</c> só desfaz.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    public Task<ActionResult<ExecutionPlanResponse>> Cancel([FromRoute] Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelWorkItemRequest? request,
+        [FromServices] IWorkItemApplication workItems, [FromServices] IExecutionQueueApplication queue,
+        [FromServices] IExecutionQueueRepository requests, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: IsExecutorRequest());
+            var undo = request?.Undo ?? false;
+            var reason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request!.Reason!.Trim();
+            var plan = await _application.GetAsync(id, ct);
+            if (plan.Status == ExecutionStatus.Completed && !undo)
+                throw new DomainException("O plano já foi concluído — para voltar o que ele fez, use desfazer.");
+            if (plan.Status is not (ExecutionStatus.Cancelled or ExecutionStatus.Completed))
+                await _application.ChangeStatusAsync(id, new ChangeExecutionPlanStatusRequest
+                {
+                    Status = ExecutionStatus.Cancelled,
+                    Reason = reason ?? $"Plano cancelado por {actor.Name}",
+                }, actor, ct);
+
+            // O Claude que está rodando o plano para (pista principal; o especialista e os itens têm pista própria).
+            if (await requests.GetActiveRequestForCardAsync(plan.CardNumber, ct) is { } active
+                && active.Kind is ExecutionRequestKind.Analyze or ExecutionRequestKind.Resume
+                && (active.PlanId is null || active.PlanId == id))
+            {
+                try
+                {
+                    await queue.CancelAsync(active.Id, reason ?? "Plano cancelado", actor, ct);
+                }
+                catch (DomainException)
+                {
+                    // Terminou entre a leitura e o cancelamento.
+                }
+            }
+
+            await workItems.CancelByPlanAsync(id, undo, reason, actor, ct);
+            return Ok(await _application.GetAsync(id, ct));
+        });
+
     /// <summary>Heartbeat da skill: devolve se ela segue (continue), espera (wait) ou para (stop).</summary>
     [HttpPost("{id:guid}/control")]
     public Task<ActionResult<ExecutionControlResponse>> Control([FromRoute] Guid id, CancellationToken ct) =>

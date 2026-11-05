@@ -76,5 +76,6 @@ public interface IWorkItemRepository
     Task<Dictionary<Guid, string>> GetPlanPhasesAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     /// <summary>Salva. Conflito de concorrência → <see cref="ExecutionPlanConcurrencyException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
-    void ClearTracking();
+    /// <summary>Solta só os itens/sub-tarefas/registros rastreados (o plano e a fila no mesmo contexto ficam).</summary>
+    void DetachWorkItems();
 }

@@ -25,11 +25,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IExecutionResumeTrigger? _resumeTrigger;
     private readonly IExecutionCardDevOps? _devOps;
     private readonly IExecutionCardEvidenceSource? _evidence;
+    /// <summary>0085: itens de trabalho (o plano de correção gera o item; as etapas sincronizam as sub-tarefas).</summary>
+    private readonly IWorkItemApplication? _workItems;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
-        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null)
+        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null,
+        IWorkItemApplication? workItems = null)
     {
+        _workItems = workItems;
         _devOps = devOps;
         _evidence = evidence;
         _cards = cards;
@@ -78,6 +82,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
         await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
+        // 0085: o plano de correção vira um item de trabalho (uma sub-tarefa por etapa), salvo se a skill já criou itens dele.
+        if (plan.Phase == ExecutionPhase.Correction)
+            await CreateWorkItemFromPlanAsync(plan, actor, cancellationToken);
         // 0078: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
         await SuggestOnCreateAsync(plan, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
@@ -821,11 +828,42 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }
     }
 
+    /// <summary>0085: item de trabalho do plano de correção (idempotente). Best-effort: nunca quebra a criação do plano.</summary>
+    private async Task CreateWorkItemFromPlanAsync(ExecutionPlan plan, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (_workItems is null) return;
+        try
+        {
+            await _workItems.FromPlanAsync(plan.CardNumber, plan.Id, actor, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // O item pode ser gerado depois pela tela (POST WorkItems/card/{c}/from-plan/{planId}).
+        }
+    }
+
+    /// <summary>0085: etapas/status do plano → sub-tarefas/status dos itens ligados a ele. Best-effort.</summary>
+    private async Task SyncWorkItemsAsync(ExecutionPlan plan, string action, CancellationToken cancellationToken)
+    {
+        if (_workItems is null || action is not (ExecutionPlanRealTimeEvents.Actions.Steps or ExecutionPlanRealTimeEvents.Actions.Step
+                or ExecutionPlanRealTimeEvents.Actions.Status or ExecutionPlanRealTimeEvents.Actions.Link or ExecutionPlanRealTimeEvents.Actions.Question))
+            return;
+        try
+        {
+            await _workItems.SyncFromPlanAsync(plan.Id, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // O item volta a espelhar o plano na próxima mudança de etapa.
+        }
+    }
+
     /// <summary>
     /// Avisa quem está no card (sinal + refetch, como a timeline). Best-effort: nunca quebra a operação.
     /// </summary>
     private async Task NotifyAsync(ExecutionPlan plan, string action, string? stepKey, CancellationToken cancellationToken)
     {
+        await SyncWorkItemsAsync(plan, action, cancellationToken);
         try
         {
             await _realTimeNotifier.NotifyGroupAsync(

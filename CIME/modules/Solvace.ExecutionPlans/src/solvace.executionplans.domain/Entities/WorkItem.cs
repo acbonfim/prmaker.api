@@ -292,6 +292,16 @@ public class WorkItem
         return task;
     }
 
+    /// <summary>Resultado, saídas e "como desfazer" sem mudar o status (sub-tarefa espelho do plano: o status vem da etapa).</summary>
+    public void AnnotateTask(long taskNumber, string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(result) && outputJson is null && undo is null) return;
+        var task = Tasks.FirstOrDefault(t => t.Number == taskNumber)
+                   ?? throw new DomainException($"Sub-tarefa #{taskNumber} não é do item #{Number}.");
+        task.Annotate(result, outputJson, undo, now);
+        UpdatedAt = now;
+    }
+
     /// <summary>
     /// Espelha o status de uma etapa do plano na sub-tarefa (sem validar a transição — o plano é a fonte). Devolve se mudou.
     /// </summary>

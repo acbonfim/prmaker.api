@@ -31,6 +31,13 @@ public class ExecutionPlanContext : DbContext
     public DbSet<CasePoint> CasePoints { get; set; }
     public DbSet<CaseProposal> CaseProposals { get; set; }
     public DbSet<CaseAction> CaseActions { get; set; }
+    // 0085: itens de trabalho do card.
+    public DbSet<WorkItem> WorkItems { get; set; }
+    public DbSet<WorkItemTask> WorkItemTasks { get; set; }
+    public DbSet<WorkItemLog> WorkItemLogs { get; set; }
+
+    /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
+    public const string WorkItemNumberSequence = "work_item_number_seq";
 
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
@@ -321,10 +328,14 @@ public class ExecutionPlanContext : DbContext
             // especialista do caso tem a dele (um ativo por card) e não disputa com a análise/correção.
             entity.HasIndex(e => e.CardNumber, "IX_ExecutionRequests_ActiveCard")
                 .IsUnique()
-                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" <> 'specialist'");
+                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" NOT IN ('specialist', 'work-item', 'work-item-undo')");
             entity.HasIndex(e => e.CardNumber, "IX_ExecutionRequests_ActiveCaseCard")
                 .IsUnique()
                 .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" = 'specialist'");
+            // 0085: itens de trabalho rodam em paralelo (pista própria por item) — um pedido ativo por item.
+            entity.HasIndex(e => e.WorkItemId, "IX_ExecutionRequests_ActiveWorkItem")
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('queued', 'claimed', 'running') AND \"Kind\" IN ('work-item', 'work-item-undo')");
             entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
             entity.HasIndex(e => new { e.OwnerUserId, e.Status });
             entity.HasIndex(e => new { e.WorkerId, e.Status });
@@ -430,6 +441,77 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.DecidedBy).HasMaxLength(200);
             entity.Property(e => e.Result).HasMaxLength(CaseAction.MaxResultLength);
             entity.HasIndex(e => new { e.CardNumber, e.Number }).IsUnique();
+        });
+
+        // 0085: itens de trabalho — número da sequência global (item e sub-tarefa), JSON em jsonb.
+        modelBuilder.HasSequence<long>(WorkItemNumberSequence, Schema).StartsAt(1).IncrementsBy(1).HasMax(9_999_999);
+
+        modelBuilder.Entity<WorkItem>(entity =>
+        {
+            entity.ToTable("WorkItems");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Number).HasDefaultValueSql($"nextval('{Schema}.{WorkItemNumberSequence}')").ValueGeneratedOnAdd();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(WorkItem.MaxTitleLength);
+            entity.Property(e => e.Description).HasColumnType("text");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Origin).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.TemplateKey).HasMaxLength(WorkItem.MaxTemplateKeyLength);
+            entity.Property(e => e.Fingerprint).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.CreatedByName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.CancelReason).HasMaxLength(WorkItem.MaxReasonLength);
+            entity.Property(e => e.LinksJson).HasColumnName("Links").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb");
+            entity.Property(e => e.Version).IsRowVersion();
+            entity.Ignore(e => e.Links);
+            entity.Ignore(e => e.Editable);
+            entity.Ignore(e => e.OrderedTasks);
+            entity.Ignore(e => e.TasksToUndo);
+
+            entity.HasMany(e => e.Tasks).WithOne().HasForeignKey(t => t.WorkItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.Logs).WithOne().HasForeignKey(l => l.WorkItemId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.Number).IsUnique();
+            entity.HasIndex(e => e.CardNumber);
+            entity.HasIndex(e => e.PlanId);
+            entity.HasIndex(e => new { e.CardNumber, e.Fingerprint });
+        });
+
+        modelBuilder.Entity<WorkItemTask>(entity =>
+        {
+            entity.ToTable("WorkItemTasks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Number).HasDefaultValueSql($"nextval('{Schema}.{WorkItemNumberSequence}')").ValueGeneratedOnAdd();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(WorkItemTask.MaxTitleLength);
+            entity.Property(e => e.Description).HasColumnType("text");
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(WorkItemTask.MaxKindLength);
+            entity.Property(e => e.Executor).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ParamsJson).HasColumnName("Params").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.StepKey).HasMaxLength(ExecutionStep.MaxKeyLength);
+            entity.Property(e => e.Result).HasColumnType("text");
+            entity.Property(e => e.OutputJson).HasColumnName("Output").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.UndoJson).HasColumnName("Undo").HasColumnType("jsonb");
+            entity.Ignore(e => e.Params);
+            entity.Ignore(e => e.OutputElement);
+            entity.Ignore(e => e.Undo);
+
+            entity.HasIndex(e => e.Number).IsUnique();
+            entity.HasIndex(e => new { e.WorkItemId, e.Order });
+        });
+
+        modelBuilder.Entity<WorkItemLog>(entity =>
+        {
+            entity.ToTable("WorkItemLogs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).UseIdentityByDefaultColumn();
+            entity.Property(e => e.Actor).IsRequired().HasMaxLength(WorkItemLog.MaxActorLength);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(WorkItemLog.MaxKindLength);
+            entity.Property(e => e.Text).IsRequired().HasMaxLength(WorkItemLog.MaxTextLength);
+
+            entity.HasIndex(e => new { e.WorkItemId, e.Id });
         });
 
         modelBuilder.Entity<ExecutionWorker>(entity =>

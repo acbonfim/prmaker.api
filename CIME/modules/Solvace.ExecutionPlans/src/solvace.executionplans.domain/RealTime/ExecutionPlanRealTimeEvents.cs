@@ -41,6 +41,23 @@ public static class ExecutionPlanRealTimeEvents
     /// </summary>
     public const string EventCaseUpdated = "caseChatUpdated";
 
+    /// <summary>
+    /// 0085: itens de trabalho do card mudaram — no mesmo grupo do card. Payload:
+    /// <c>{ cardNumber, number, taskNumber?, action, status }</c>. É só sinal: a tela refaz <c>GET WorkItems/card/{card}</c>.
+    /// </summary>
+    public const string EventWorkItemsUpdated = "workItemsUpdated";
+
+    public static class WorkItemActions
+    {
+        public const string Created = "created";
+        public const string Updated = "updated";
+        public const string Task = "task";
+        public const string Status = "status";
+        public const string Request = "request";
+        public const string Activity = "activity";
+        public const string Deleted = "deleted";
+    }
+
     public static class CaseActions
     {
         public const string Message = "message";
