@@ -117,7 +117,7 @@ public partial class ExecutionQueueApplication
     {
         if (_cases is null || string.IsNullOrEmpty(r.SessionId)) return;
         var host = (await _queue.GetWorkerAsync(workerId, cancellationToken))?.Host;
-        await MutateChatAsync(r.CardNumber, chat => chat.RegisterSession(r.SessionId, host, r.SessionCwd, now), now, cancellationToken);
+        await MutateChatAsync(r.CardNumber, chat => chat.RegisterSession(r.SessionId, host, r.SessionCwd, now, r.CreatedAt), now, cancellationToken);
     }
 
     /// <summary>

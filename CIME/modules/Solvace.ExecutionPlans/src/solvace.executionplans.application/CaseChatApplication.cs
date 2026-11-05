@@ -59,11 +59,12 @@ public class CaseChatApplication(
             CardNumber = card,
             Messages = messages.Select(m => m.ToResponse(byMessage[m.Id])).ToList(),
             HasMore = hasMore,
-            Points = (await cases.GetPointsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
-            Proposals = (await cases.GetProposalsAsync(card, cancellationToken)).Select(p => p.ToResponse()).ToList(),
-            Actions = (await cases.GetActionsAsync(card, cancellationToken)).Select(a => a.ToResponse()).ToList(),
+            // 0090: depois de um /clear, só o que veio depois da limpeza.
+            Points = (await cases.GetPointsAsync(card, cancellationToken)).Where(p => Shows(chat, p.CreatedAt)).Select(p => p.ToResponse()).ToList(),
+            Proposals = (await cases.GetProposalsAsync(card, cancellationToken)).Where(p => Shows(chat, p.CreatedAt)).Select(p => p.ToResponse()).ToList(),
+            Actions = (await cases.GetActionsAsync(card, cancellationToken)).Where(a => Shows(chat, a.CreatedAt)).Select(a => a.ToResponse()).ToList(),
             // 0085 r5 (1.7): o áudio da mensagem de voz toca na mensagem, mas não é arquivo da conversa.
-            Files = CaseFile.Listed(files).Select(f => f.ToResponse()).ToList(),
+            Files = CaseFile.Listed(files).Where(f => Shows(chat, f.CreatedAt)).Select(f => f.ToResponse()).ToList(),
             Participants = (await cases.GetParticipantsAsync(card, cancellationToken))
                 .Select(p => new CaseParticipantResponse { UserId = p.UserId, Name = p.Name, Messages = p.Messages, LastAt = p.LastAt }).ToList(),
             PlanNotes = notes.Select(n => new CasePlanNoteResponse
@@ -142,6 +143,106 @@ public class CaseChatApplication(
         message.Delete(DateTimeOffset.UtcNow);
         await cases.SaveChangesAsync(cancellationToken);
         await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Deleted, number = message.Number }, cancellationToken);
+    }
+
+    /// <summary>
+    /// 0090 (<c>/clear</c>): limpa a conversa para todos — para a resposta em andamento, apaga (DeletedAt) as mensagens,
+    /// tira da tela e do contexto os arquivos, pontos, propostas e ações de antes (filtro pela data da limpeza), dá como
+    /// substituída a proposta pendente e como não autorizada a ação pendente, e esquece a sessão do Claude do especialista
+    /// (a próxima resposta começa do zero, só com o contexto do caso). Nada sai do banco; fica a mensagem do sistema.
+    /// </summary>
+    public async Task ClearAsync(string cardNumber, CaseActor actor, CancellationToken cancellationToken)
+    {
+        if (actor.IsSpecialist)
+            throw new ExecutionForbiddenException("Só uma pessoa limpa a conversa do caso.");
+        var card = CaseChat.NormalizeCard(cardNumber);
+        if (await queue.GetSpecialistRunAsync(card, cancellationToken) is { Status: ExecutionRequestStatus.Queued or ExecutionRequestStatus.Claimed or ExecutionRequestStatus.Running } run)
+        {
+            try
+            {
+                await queue.CancelAsync(run.Id, "Conversa do caso limpa", actor.AsExecutionActor(), cancellationToken);
+            }
+            catch (DomainException)
+            {
+                // terminou entre a leitura e o cancelamento
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var last = await cases.GetMaxMessageNumberAsync(card, cancellationToken);
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                cases.ClearTracking();
+                var chat = await cases.GetChatAsync(card, cancellationToken);
+                if (chat is null)
+                {
+                    chat = new CaseChat(card, now);
+                    cases.AddChat(chat);
+                }
+                chat.Clear(actor.Name, last, now);
+                foreach (var p in (await cases.GetProposalsAsync(card, cancellationToken)).Where(p => p.IsPending))
+                    p.Supersede(now);
+                foreach (var a in (await cases.GetActionsAsync(card, cancellationToken)).Where(a => a.Status == CaseActionStatus.Pending))
+                    a.Decide(false, actor.Name, now);
+                await cases.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException && attempt < Retries)
+            {
+                await Task.Delay(Random.Shared.Next(10, 50) * attempt, cancellationToken);
+            }
+        }
+        await cases.DeleteMessagesUpToAsync(card, last, now, cancellationToken);
+        await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Cleared, by = actor.Name }, cancellationToken);
+        await SystemMessageAsync(card, $"{actor.Name} limpou a conversa — o especialista recomeça do zero (o plano, os itens de trabalho e o card não mudam).",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 0090 (<c>/cancelar-item-de-trabalho #n</c>): cancela um item de trabalho deste card pela conversa — com
+    /// <paramref name="undo"/> desfaz o que ele já fez; item já concluído/cancelado só desfaz. Avisa na conversa.
+    /// </summary>
+    public async Task<WorkItemResponse> CancelWorkItemAsync(string cardNumber, long number, bool undo, string? reason, CaseActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.IsSpecialist)
+            throw new ExecutionForbiddenException("O especialista cancela itens com prmake_work_item_cancel.");
+        if (workItems is null)
+            throw new DomainException("Itens de trabalho indisponíveis.");
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var item = await workItems.GetAsync(number, false, cancellationToken);
+        if (!string.Equals(CaseChat.NormalizeCard(item.CardNumber), card, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException($"O item #{number} é do card {item.CardNumber}, não deste — cancele pela conversa daquele card.");
+
+        var anythingDone = item.Tasks.Any(t => t.Status == WorkTaskStatus.Completed);
+        WorkItemResponse result;
+        string text;
+        switch (item.Status)
+        {
+            case WorkItemStatus.Reverting:
+                throw new DomainException($"O item #{number} já está sendo desfeito.");
+            case WorkItemStatus.Reverted:
+                throw new DomainException($"O item #{number} já foi desfeito.");
+            case WorkItemStatus.Completed or WorkItemStatus.Cancelled:
+                if (!undo || !anythingDone)
+                    throw new DomainException(item.Status == WorkItemStatus.Completed
+                        ? $"O item #{number} já foi concluído — para voltar o que ele fez, marque desfazer."
+                        : $"O item #{number} já está cancelado e não tem nada feito para desfazer.");
+                result = await workItems.UndoAsync(number, actor.AsExecutionActor(), cancellationToken);
+                text = $"{actor.Name} pediu para desfazer o item #{number} — {item.Title} (o executor desfaz em ordem reversa).";
+                break;
+            default:
+                result = await workItems.CancelAsync(number, undo, reason, actor.AsExecutionActor(), cancellationToken);
+                text = $"{actor.Name} cancelou o item #{number} — {item.Title}" + (undo && anythingDone ? " e pediu para desfazer o que já foi feito." : ".");
+                break;
+        }
+        var why = reason?.Trim();
+        if (!string.IsNullOrEmpty(why))
+            text += $" Motivo: {Cut(why, 300)}";
+        await SystemMessageAsync(card, text, cancellationToken);
+        return result;
     }
 
     /// <summary>"Fulano está digitando" — só tempo real, nada gravado.</summary>
@@ -570,21 +671,22 @@ public class CaseChatApplication(
                           "allowDuplicate + motivo, quando for de fato outro trabalho.");
         }
 
-        var points = await cases.GetPointsAsync(card, cancellationToken);
+        var chat = await cases.GetChatAsync(card, cancellationToken);
+        var points = (await cases.GetPointsAsync(card, cancellationToken)).Where(p => Shows(chat, p.CreatedAt)).ToList();
         if (points.Count > 0)
         {
             sb.AppendLine().AppendLine("## Pontos combinados na conversa");
             foreach (var p in points.Where(p => p.Status != CasePointStatus.Dropped))
                 sb.AppendLine($"- [{p.Status}] {p.Text}");
         }
-        var proposals = await cases.GetProposalsAsync(card, cancellationToken);
+        var proposals = (await cases.GetProposalsAsync(card, cancellationToken)).Where(p => Shows(chat, p.CreatedAt)).ToList();
         if (proposals.Count > 0)
         {
             sb.AppendLine().AppendLine("## Propostas");
             foreach (var p in proposals.TakeLast(5))
                 sb.AppendLine($"- #{p.Number} [{p.Status}{(p.DecidedBy is null ? string.Empty : " por " + p.DecidedBy)}] {p.Title}{(p.RejectReason is null ? string.Empty : " — " + p.RejectReason)}");
         }
-        var actions = await cases.GetActionsAsync(card, cancellationToken);
+        var actions = (await cases.GetActionsAsync(card, cancellationToken)).Where(a => Shows(chat, a.CreatedAt)).ToList();
         if (actions.Count > 0)
         {
             sb.AppendLine().AppendLine("## Ações");
@@ -601,6 +703,9 @@ public class CaseChatApplication(
         }
 
         var messages = await cases.GetMessagesAsync(card, null, ContextMessages, cancellationToken);
+        if (chat?.ClearedAt is { } cleared)
+            sb.AppendLine().AppendLine($"A conversa foi limpa por {chat.ClearedBy} em {cleared:dd/MM HH:mm} UTC: o que foi dito antes não vale mais — " +
+                                       "não retome assuntos de antes da limpeza a não ser que alguém peça.");
         if (messages.Count > 0)
         {
             sb.AppendLine().AppendLine($"## Conversa (últimas {messages.Count} mensagens)");
@@ -609,6 +714,8 @@ public class CaseChatApplication(
                 sb.AppendLine(MessageLine(m, files[m.Id]));
         }
         sb.AppendLine().AppendLine("Arquivos da conversa: prmake-case.sh file <card> <n> baixa o arquivo #n (imagem/áudio/documento) para ler.");
+        sb.AppendLine("Na conversa, `#123` é o item de trabalho 123 do PRMake (a tela vira link com o popover do item) — leia com " +
+                      "prmake_work_item; ao citar um item, escreva `#<número>`.");
         return sb.ToString();
     }
 
@@ -724,6 +831,8 @@ public class CaseChatApplication(
             await SystemMessageAsync(card, $"O Claude do tratamento não pôde ser chamado: {e.Message}", cancellationToken);
         }
     }
+
+    private static bool Shows(CaseChat? chat, DateTimeOffset createdAt) => chat is null || chat.Shows(createdAt);
 
     private static bool CanDecide(CaseActor actor, ExecutionPlan? plan) =>
         !actor.IsSpecialist && (actor.IsManager || (actor.UserId is { } me && plan?.CreatedByUserId == me));

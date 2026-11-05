@@ -21,6 +21,9 @@ public class CaseChat
     public long InputTokens { get; private set; }
     public long OutputTokens { get; private set; }
     public decimal CostUsd { get; private set; }
+    /// <summary>0090: última vez que alguém limpou a conversa (<c>/clear</c>) — o que veio antes sai da tela e do contexto.</summary>
+    public DateTimeOffset? ClearedAt { get; private set; }
+    public string? ClearedBy { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public uint Version { get; private set; }
@@ -42,9 +45,11 @@ public class CaseChat
         return c;
     }
 
-    public void RegisterSession(string? sessionId, string? host, string? cwd, DateTimeOffset now)
+    /// <param name="requestedAt">Quando o pedido do executor foi criado: sessão de pedido anterior à limpeza não volta.</param>
+    public void RegisterSession(string? sessionId, string? host, string? cwd, DateTimeOffset now, DateTimeOffset? requestedAt = null)
     {
         if (string.IsNullOrWhiteSpace(sessionId)) return;
+        if (ClearedAt is { } cleared && requestedAt is { } at && at < cleared) return;
         SessionId = Cut(sessionId.Trim(), ExecutionSession.MaxSessionIdLength);
         SessionHost = host is null ? SessionHost : Cut(host, ExecutionSession.MaxHostLength);
         SessionCwd = cwd is null ? SessionCwd : Cut(cwd, ExecutionSession.MaxCwdLength);
@@ -63,6 +68,26 @@ public class CaseChat
         PendingRun = pending;
         UpdatedAt = now;
     }
+
+    /// <summary>
+    /// 0090 (<c>/clear</c>): a conversa recomeça — a sessão do Claude do especialista é esquecida (a próxima resposta abre
+    /// outra, só com o contexto do caso) e ele não tem nada a ler até <paramref name="lastNumber"/>.
+    /// </summary>
+    public void Clear(string by, int lastNumber, DateTimeOffset now)
+    {
+        var who = (by ?? string.Empty).Trim();
+        ClearedBy = who.Length == 0 ? "Usuário" : who.Length <= 200 ? who : who[..200];
+        ClearedAt = now;
+        SessionId = null;
+        SessionHost = null;
+        SessionCwd = null;
+        PendingRun = false;
+        if (lastNumber > LastReadNumber) LastReadNumber = lastNumber;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Criado depois da última limpeza (ou não houve limpeza) — continua na tela e no contexto.</summary>
+    public bool Shows(DateTimeOffset createdAt) => ClearedAt is not { } cleared || createdAt > cleared;
 
     public void AddUsage(long? input, long? output, decimal? cost, DateTimeOffset now)
     {

@@ -16,6 +16,8 @@ public interface ICaseChatRepository
     Task<CaseMessage?> GetMessageByNumberAsync(string cardNumber, int number, CancellationToken cancellationToken);
     /// <summary>Mensagens (sem as apagadas), em ordem crescente; <paramref name="afterNumber"/> exclusivo; as últimas <paramref name="limit"/>.</summary>
     Task<List<CaseMessage>> GetMessagesAsync(string cardNumber, int? afterNumber, int limit, CancellationToken cancellationToken);
+    /// <summary>0090 (<c>/clear</c>): marca como apagadas todas as mensagens até <paramref name="lastNumber"/> (em massa).</summary>
+    Task<int> DeleteMessagesUpToAsync(string cardNumber, int lastNumber, DateTimeOffset now, CancellationToken cancellationToken);
     /// <summary>Mensagens escritas por um pedido do executor (rastreadas).</summary>
     Task<List<CaseMessage>> GetMessagesByRequestAsync(Guid requestId, CancellationToken cancellationToken);
     /// <summary>Pessoas que já escreveram na conversa (id, nome, quantas mensagens).</summary>
