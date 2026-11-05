@@ -219,6 +219,9 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   itens separados com `prmake_work_item_create(..., planPhase: "correction")`, **depois** de conferir em
   `prmake_work_items` que nao existe item com o mesmo objetivo. Nomes de branch/titulo so do `branches`/`prmake_rules`
   (`BranchSuffixByTarget`: release-version → `-rv`). Detalhes: `$REF correcao 7`.
+- **Item da analise (ajustes 0085)**: ao criar o plano de analise o servidor ja cria o item "Analise inicial do bug
+  #<card>" (sub-tarefas = etapas, sincronizadas sozinhas) — **nao crie outro item manualmente** para a analise; ao fim,
+  o plano de correcao gera os itens da entrega.
 - PII: o que vai para o plano/Timeline e visivel no PRMake — so o necessario.
 - `PLANO INDISPONIVEL` no `start`/`contexto`: siga normalmente (os comandos do plano viram no-op).
 

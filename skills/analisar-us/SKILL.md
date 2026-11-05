@@ -13,6 +13,10 @@ Leva uma **User Story** da analise aos itens de trabalho, em duas fases, cada um
 2. **Implementacao** — com as respostas, o **plano de implementacao** (fase `correction`) que o PRMake transforma em
    **item de trabalho `user-story`** com uma sub-tarefa por etapa; entregas independentes viram itens proprios.
 
+O servidor ja cria o item **"Analise inicial da US #<card>"** ao nascer o plano de analise (sub-tarefas = etapas,
+sincronizadas sozinhas) — nao crie outro item manualmente para a analise; ao fim, o plano de implementacao gera os
+itens da entrega.
+
 Instalada e atualizada pelo PRMake (fonte: `skills/analisar-us`). Usa os scripts e as referencias da `analisar-bug`
 (instalada junto) — mesmo plano, mesmos comandos. Token: env `PRMAKE_TOKEN` ou `~/.claude/prmake-token.txt`.
 
