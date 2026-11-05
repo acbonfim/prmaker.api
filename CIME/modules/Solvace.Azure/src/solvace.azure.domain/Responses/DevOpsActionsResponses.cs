@@ -79,3 +79,36 @@ public class DevOpsActionResponse
     /// <summary>Texto curto do que foi feito (snackbar e Timeline).</summary>
     public string Message { get; set; } = string.Empty;
 }
+
+/// <summary>0085 r3: estado de um tipo de work item no DevOps (nome, categoria e cor do processo).</summary>
+public class WorkItemTypeState
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Categoria do processo: Proposed, InProgress, Resolved, Completed, Removed (pode faltar).</summary>
+    public string? Category { get; set; }
+    public string? Color { get; set; }
+}
+
+/// <summary>0085 r3: <c>GET Azure/card/{id}/states</c> — estados válidos do tipo do card, o atual e as sugestões.</summary>
+public class CardStatesResponse
+{
+    /// <summary>Tipo do card no DevOps (System.WorkItemType).</summary>
+    public string Type { get; set; } = string.Empty;
+    public string? Current { get; set; }
+    public List<CardStateOption> States { get; set; } = [];
+}
+
+public class CardStateOption
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Category { get; set; }
+
+    /// <summary>Próximo estado usual a partir do atual (ações configuradas ou a categoria seguinte).</summary>
+    public bool Suggested { get; set; }
+
+    /// <summary>Ação do menu "Ações DevOps" que leva a este estado (dev-test-in-qa, ready-for-qa, test-in-production).</summary>
+    public string? Action { get; set; }
+
+    public bool Current { get; set; }
+}
