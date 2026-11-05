@@ -120,6 +120,9 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
   espera, cancelamento) — **nao** chame `prmake_work_task` para esse item. Etapas novas (nova rodada, 8b) entram como
   sub-tarefas novas. Plano concluido (tudo terminado) → item **concluido**. Item do plano roda pelo plano, nunca pelo
   `executar-item-de-trabalho`.
+- **A analise tambem tem item (ajustes 0085)**: o plano de analise ja gerou o item "Analise inicial do bug/da US
+  #<card>" (`origin=analysis`, sincronizado pelo servidor) — nao crie outro para a analise; os itens da entrega saem
+  deste plano de correcao.
 - **Entregas independentes = itens separados**: quando a solucao tem partes que andam sozinhas — ex.: o PR para
   producao (master) e outro para `release-version` levado depois, um script de dados que vai por chamado em outro
   momento, um ajuste pos-QA —, deixe no plano so o que e desta rodada e crie as outras entregas com

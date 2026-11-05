@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.Responses;
 using solvace.executionplans.infra.Contexts;
 
 namespace solvace.executionplans.infra.Repositories;
@@ -37,6 +38,8 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
         context.WorkItems.AsNoTracking()
             .Where(i => i.CardNumber == cardNumber && i.Fingerprint == fingerprint
                         && i.Status != WorkItemStatus.Cancelled && i.Status != WorkItemStatus.Reverted
+                        // Ajustes 0085: o item da análise (espelho do plano de análise) não é entrega — não barra item novo.
+                        && !(i.Origin == WorkItemOrigin.Analysis && i.PlanId != null)
                         && (exceptId == null || i.Id != exceptId))
             .OrderBy(i => i.Number)
             .FirstOrDefaultAsync(cancellationToken);
@@ -84,6 +87,55 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(r => r.Id, r => r.CurrentActivity!);
     }
+
+    public async Task<WorkItemLiveHead?> GetLiveHeadAsync(long number, CancellationToken cancellationToken)
+    {
+        var row = await context.WorkItems.AsNoTracking()
+            .Where(i => i.Number == number)
+            .Select(i => new
+            {
+                i.Id, i.Number, i.CardNumber, i.Status, i.PlanId, i.CreatedBy,
+                Plan = context.Plans.Where(p => p.Id == i.PlanId)
+                    .Select(p => new { p.CreatedByUserId, p.Status, p.LastActivityAt })
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        return row is null
+            ? null
+            : new WorkItemLiveHead(row.Id, row.Number, row.CardNumber, row.Status, row.PlanId, row.CreatedBy,
+                row.Plan?.CreatedByUserId, row.Plan?.Status, row.Plan?.LastActivityAt);
+    }
+
+    public async Task<WorkItemLiveRequestRow?> GetLiveRequestAsync(Guid workItemId, string cardNumber, Guid? planId,
+        CancellationToken cancellationToken)
+    {
+        var query = context.Requests.AsNoTracking().Where(r => ActiveStatuses.Contains(r.Status));
+        query = planId is { } pid
+            ? query.Where(r => r.WorkItemId == workItemId
+                               || (r.WorkItemId == null && r.CardNumber == cardNumber && MainKinds.Contains(r.Kind)
+                                   && (r.PlanId == pid || r.PlanId == null)))
+            : query.Where(r => r.WorkItemId == workItemId);
+        var rows = await query
+            .Select(r => new WorkItemLiveRequestRow(r.Id, r.Kind, r.Status, r.OwnerUserId, r.WorkerId, r.WorkerName, r.ClaimedAt,
+                r.StartedAt, r.LastHeartbeatAt, r.CurrentActivity, r.CurrentActivityTool, r.CurrentActivityAt, r.RecentActivities))
+            .ToListAsync(cancellationToken);
+        // O pedido do próprio item vale mais que o do plano.
+        return rows.Where(r => ExecutionRequestKind.IsWorkItem(r.Kind)).FirstOrDefault() ?? rows.FirstOrDefault();
+    }
+
+    public async Task<List<(string CardNumber, long Number, string Status)>> GetPlanItemHeadsAsync(Guid planId, CancellationToken cancellationToken) =>
+        (await context.WorkItems.AsNoTracking()
+            .Where(i => i.PlanId == planId)
+            .OrderBy(i => i.Number)
+            .Select(i => new { i.CardNumber, i.Number, i.Status })
+            .ToListAsync(cancellationToken))
+        .Select(i => (i.CardNumber, i.Number, i.Status)).ToList();
+
+    public Task<List<WorkItemLiveWorker>> GetLiveWorkersAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        context.Workers.AsNoTracking()
+            .Where(w => w.OwnerUserId == ownerUserId && w.Status != ExecutionWorkerStatus.Revoked)
+            .Select(w => new WorkItemLiveWorker(w.Id, w.Status, w.LastSeenAt))
+            .ToListAsync(cancellationToken);
 
     public async Task<Dictionary<Guid, string>> GetPlanPhasesAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken)
     {

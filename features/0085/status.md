@@ -9,6 +9,9 @@
 | S1 | Skill especialista-do-caso (regras, itens, sem duplicar) | concluída | agente S1 | 5196d38 | `prmake-case.sh rules|items|catalog` (cache 10 min em dados/); testado com API falsa |
 | F3 | PRs/ações GitHub+DevOps e horas do card na Bancada | concluída | agente F3 | front 586de17 | `CardPrStateService` local (providers do componente) — singleton da tela de PR intocado; chips de branch pelas regras; 18 specs ok |
 | S2 | Skills executar/desfazer item, analisar-us, analisar-bug | concluída | agente S2 | 983f029, 3a29d9b | `prmake-plan.sh rules|work-items|work-task|close-pr|delete-branch`, `open-pr/worktree --item`; Kind `analisar-us`; testado com API/git falsos |
+| BA | Ajustes: item automático da análise, `GET WorkItems/{n}/live`, tempo real do pedido do item | concluída | agente BA | 8c671ff, 49d61f5 | 81 testes executionplans; item da análise fora da checagem de duplicidade |
+| FA | Ajustes: timeline em botão, lateral = Especialista, tags do card, robô/conexão, sugestões, sugerir análise inicial | concluída | agente FA | front d43fa4c | `workbench-facts.ts` (cópia do `infoFacts`); tour v2 |
+| FB | Ajustes: ▶ e sessão de execução ao vivo ao lado (abas, sub-tarefas e feed em tempo real) | concluída | agente FB | front bf703a6 | `app-work-item-execution`; 17 specs |
 | Q1 | Build + e2e local + revisão do contrato | concluída (local) | Claude | b5acd3a, 7217cf1, front 5b674b8 | ver Log; roteiros em `e2e/` (harness `.t0085`, Postgres 55485) |
 
 ## Log
@@ -38,3 +41,6 @@
 - Validar com executor/Claude reais: `executar-item-de-trabalho` (PR para release-version no 77434), `desfazer-item-de-trabalho`, `analisar-us` numa US real, especialista criando item sem duplicar.
 - Ajustar as médias por tipo em Skills Configurations (hoje iguais à média geral).
 - `ng test` do projeto não compila por specs antigos (`async` de `@angular/core/testing`) — anterior à 0085.
+- 2026-11-05 — 0085 em produção (back #155, front #85, mesclados juntos com o ok do usuário; deploys ok).
+- 2026-11-05 — ajustes pedidos ao ver as capturas (`ajustes.md`): BA/FA/FB em paralelo na `feature/0085-ajustes`; builds
+  dev/prod ok, testes 81/151/22; capturas `fa-*.png` no harness (card simulado no puppeteer — sem DevOps local).
