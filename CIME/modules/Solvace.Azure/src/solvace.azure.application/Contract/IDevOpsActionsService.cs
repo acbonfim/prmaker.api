@@ -25,6 +25,13 @@ public interface IDevOpsActionsService
     /// </summary>
     Task<DevOpsActionResponse> SetStateAsync(string cardNumber, string state, string? reason, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 0085 r3: estados válidos do tipo do card no DevOps, o atual e os próximos usuais (estados das ações configuradas
+    /// Dev Test in QA / Ready for QA / Test in production que vêm depois do atual; sem elas, o próximo pela ordem e pela
+    /// categoria). Card inexistente → 404; erro do DevOps → 502.
+    /// </summary>
+    Task<CardStatesResponse> GetCardStatesAsync(string cardNumber, CancellationToken cancellationToken = default);
+
     /// <summary>0078: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
     Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default);
 

@@ -149,6 +149,28 @@ public class AzureController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// 0085 r3: estados válidos do tipo do card no DevOps (lista do editor "Mover o card") —
+    /// <c>{ type, current, states:[{name, category?, suggested, action?, current}] }</c>. Card inexistente → 404, DevOps fora → 502.
+    /// </summary>
+    [HttpGet("card/{id}/states")]
+    public async Task<ActionResult<CardStatesResponse>> GetCardStates(string id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _actionsService.GetCardStatesAsync(id, cancellationToken));
+        }
+        catch (DevOpsActionException e)
+        {
+            return StatusCode(e.StatusCode, new { error = e.Message });
+        }
+        catch (InvalidOperationException e)
+        {
+            // Integração do DevOps incompleta (organização/projeto). Sem integração pessoal → 403 (filtro global).
+            return Conflict(new { error = e.Message });
+        }
+    }
+
     /// <summary>0078: lança horas — soma em Completed Work e tira do Remaining Work.</summary>
     [HttpPost("card/{id}/actions/log-hours")]
     public Task<ActionResult<DevOpsActionResponse>> LogHours(string id, [FromBody] LogHoursRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>

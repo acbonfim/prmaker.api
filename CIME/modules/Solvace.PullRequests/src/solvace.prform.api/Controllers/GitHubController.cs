@@ -4,7 +4,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using solvace.github.application.Contract;
+using solvace.github.application.Services;
 using solvace.github.domain.Responses;
+using solvace.prform.Skills;
 
 namespace solvace.prform.Controllers;
 
@@ -91,5 +93,44 @@ public class GitHubController : ControllerBase
 
         var result = await _githubService.GetBranchCommitsAsync(repository, branch, cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// 0085 r3: branches do repositório para o autocomplete do editor de itens de trabalho (integração GitHub do usuário,
+    /// cache de 60 s por repositório) — <c>[{name, protected, isDefault}]</c>. <paramref name="search"/> filtra por "contém"
+    /// (sem diferenciar maiúsculas); ordem: a padrão, as bases do fluxo (Skills Configurations) e protegidas, as do card
+    /// (<paramref name="card"/>: começam pela branch principal dele, ex. <c>hotfix/77434*</c>), o resto em ordem alfabética.
+    /// </summary>
+    [HttpGet("branches")]
+    public async Task<ActionResult<IReadOnlyList<BranchInfoResponse>>> GetBranches(
+        [FromQuery] string? repository,
+        [FromQuery] string? search,
+        [FromQuery] int? limit,
+        [FromQuery] string? card,
+        [FromServices] SkillsRulesService rules,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<BranchInfoResponse> branches;
+        try
+        {
+            branches = await _githubService.ListBranchInfosAsync(repository ?? string.Empty, cancellationToken);
+        }
+        catch (Octokit.NotFoundException)
+        {
+            return NotFound(new { error = $"Repositório '{repository}' não encontrado ou sem acesso pela sua integração do GitHub" });
+        }
+        catch (InvalidOperationException e)
+        {
+            return Conflict(new { error = e.Message }); // token do GitHub não configurado
+        }
+
+        var settings = await rules.SettingsOnlyAsync(cancellationToken);
+        string V(string key) => settings.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : string.Empty;
+        var bases = SkillsRulesService.FlowBaseBranches(V(SkillsConfigurationKeys.BranchStrategy),
+            BranchRules.ParseSuffixes(V(SkillsConfigurationKeys.BranchSuffixByTarget)));
+        var number = SkillsRulesService.NormalizeCard(card);
+        var cardBranch = number.Length > 0 ? BranchRules.MainBranch(V(SkillsConfigurationKeys.BranchNamePattern), number) : null;
+
+        return Ok(BranchSearch.Rank(branches, search, limit, bases, cardBranch, number));
     }
 }

@@ -32,3 +32,21 @@ Branch `feature/0085-ajustes` nos dois repos (a partir da master com a 0085 mesc
 | FA | página: timeline em botão, lateral = Especialista (+ Card recolhido), sugestão de análise inicial (Bug/US), barra de tags do card, robô animado + perda de conexão, sugestões (situação/assistente) | agente FA |
 | FB | `app-work-item-execution` (sessão de execução ao vivo) + play nos itens + modo "executando" na lista (item ao lado, animação, sub-tarefas ao vivo) | agente FB |
 | QA | build, e2e local, PRs e merge | Claude |
+
+## Rodada 3 (branch `feature/0085-r3`, depois de #156/#86 em produção)
+Pedido:
+1. Na Bancada acaba "Correção v1 / Análise v1": **o item de trabalho é a versão**. O histórico é do item (a execução
+   dele). Precisa mudar → cancelar o item ou criar outro (na tela ou pelo especialista).
+2. Tarefas conhecidas (abrir PR etc.) sem digitar: **repositório e branch com lista pesquisável/autocomplete** (repos
+   configurados + branches do GitHub), destino sugerido pelas regras.
+3. Mover o card: **listar/sugerir estados**; cherry-pick: escolher commits; tipo novo **abrir chamado** (e afins).
+
+Contrato:
+- `GET api/v1/Azure/card/{id}/states` → `{ type, current, states:[{name, category?, suggested?:bool}] }` (estados válidos
+  do tipo do card no DevOps; `suggested` = próximos usuais, ex.: das ações configuradas dev-test-in-qa/ready-for-qa/test-in-production).
+- `GET api/v1/GitHub/branches?repository=<r>&search=<q>&limit=50` → `[{name, protected?, isDefault?}]` (com a integração do usuário; cache curto).
+- Commits para cherry-pick: o existente `GET GitHub/commits?repository=&branch=` (+ commits dos PRs do card, se houver endpoint).
+- `WorkItemTaskKinds` ganha `ticket` (Abrir chamado — params: system?, title, description, priority?) e `notify`
+  (Avisar no card/Teams — params: message) via migração idempotente que **acrescenta** kinds que faltam ao array (não
+  sobrescreve o do admin) + modelo `abrir-chamado`.
+- Params com tipo para o editor: cada param do kind ganha `input` (`repository|branch|target-branch|state|commits|text|textarea|select`) e `options?`.

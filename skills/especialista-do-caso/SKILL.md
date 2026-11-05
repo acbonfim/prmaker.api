@@ -84,7 +84,9 @@ trabalho** com sub-tarefas em ordem — nao proposta de plano. Mudanca na soluca
 2. **Montar:** `bash $CASE catalog <card>` — use o **modelo** que serve (`templateKey`; as sub-tarefas ja vem
    preenchidas para o card, com branch e destino calculados) e so complete o que falta (commits, o que ajustar). Sem
    modelo: sub-tarefas dos tipos do catalogo (`branch, cherry-pick, code, pr, devops-state, sql-script, validation,
-   comment, manual`), com os parametros que o tipo pede e os nomes das regras.
+   comment, manual, ticket, notify`), com os parametros que o tipo pede e os nomes das regras.
+   `ticket` = abrir chamado (modelo `abrir-chamado`; params `system?, title, description, priority?`) e `notify` = avisar
+   na Timeline/Teams (param `message`); estado do `devops-state` so um dos que `GET Azure/card/<card>/states` lista.
 3. **Criar:** `prmake_work_item_create(card, title, description, tasks[{title, description, kind, executor, params}],
    type?, templateKey?)`. Se voltar `duplicate`, nao insista: mostre o item existente e siga o passo 1. Depois
    `bash $CASE items <card> --refresh`.

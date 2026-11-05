@@ -262,6 +262,38 @@ public class DevOpsActionsService : IDevOpsActionsService
         return new DevOpsActionResponse { Rev = rev, Message = $"Card movido de {current ?? "—"} para {valid}" };
     }
 
+    public async Task<CardStatesResponse> GetCardStatesAsync(string cardNumber, CancellationToken cancellationToken = default)
+    {
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
+        var type = GetString(card, FieldWorkItemType) ?? "Bug";
+        var states = await _azureService.GetWorkItemTypeStateInfosAsync(type, cancellationToken);
+        var current = GetString(card, FieldState);
+
+        // Ações do menu "Ações DevOps" (só Bug): os estados configurados pelo usuário são os próximos usuais.
+        var actions = new List<(string Action, string? State)>();
+        if (!string.Equals(type, "User Story", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var bug = (await GetConfigAsync(cancellationToken)).Bug;
+                actions.Add((CardStateSuggestions.DevTestInQa, bug.DevTestInQa.State));
+                actions.Add((CardStateSuggestions.ReadyForQa, bug.ReadyForQa.State));
+                actions.Add((CardStateSuggestions.TestInProduction, bug.TestInProduction.State));
+            }
+            catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
+            {
+                // Sem "AI Configurations": sugere pela ordem/categoria do DevOps.
+            }
+        }
+
+        return new CardStatesResponse
+        {
+            Type = type,
+            Current = current,
+            States = CardStateSuggestions.Build(states, current, actions)
+        };
+    }
+
     public async Task<DevOpsEffortResponse> GetEffortAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
         var card = await LoadCardAsync(cardNumber, cancellationToken);
