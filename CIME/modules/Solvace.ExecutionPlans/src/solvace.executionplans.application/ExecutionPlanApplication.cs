@@ -499,6 +499,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                     .Where(l => l.StepKey == key && l.BlocksStep).Append(link).ToList();
                 p.ApplyTicketState(key, blocking, actor.Name, now, actor.IsExecutor);
             }
+            else if (link.Kind == ExecutionLinkKind.PullRequest)
+            {
+                var prs = (await _repository.GetLinksAsync(p.Id, cancellationToken))
+                    .Where(l => l.StepKey == key && l.Kind == ExecutionLinkKind.PullRequest && l.Id != link.Id).Append(link).ToList();
+                p.WaitForPullRequests(key, prs, actor.Name, now, actor.IsExecutor, includeRunning: true);
+            }
             p.Touch(now, actor.IsExecutor);
         }, cancellationToken, actor, () => link!.Kind == ExecutionLinkKind.Ticket
             ? $"🎫 **Chamado anexado** à etapa *{link.StepKey}*: [{link.DisplayName}]({link.Url})"

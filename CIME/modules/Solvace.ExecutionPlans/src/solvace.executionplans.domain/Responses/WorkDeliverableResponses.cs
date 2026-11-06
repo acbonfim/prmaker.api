@@ -250,6 +250,16 @@ public static class WorkDeliverableListing
                 d.Data = ToElement(new JsonObject { ["system"] = system });
             yield return d;
         }
+        else if (WorkTaskTicket.Read(task) is { } attached)
+        {
+            // Chamado na Bancada: o chamado anexado ao item avulso fica em output.ticket = {url, title, status}.
+            var d = New(WorkDeliverableKind.Ticket);
+            d.Url = LooksLikeUrl(attached.Url) ? attached.Url : null;
+            d.Text = d.Url is null ? attached.Url : null;
+            d.Title = attached.Title ?? "Chamado";
+            d.Status = attached.Status;
+            yield return d;
+        }
 
         if (Str(o, "to") is { } to && task.Kind is WorkTaskKind.DevOpsState or WorkTaskKind.DevOpsAction)
         {

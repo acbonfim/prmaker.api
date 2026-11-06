@@ -57,6 +57,23 @@ public class WorkTaskActionRequest
     public List<WorkItemLink>? Links { get; set; }
 }
 
+/// <summary>Chamado na Bancada: <c>POST WorkItems/tasks/{taskNumber}/ticket</c>.</summary>
+public class WorkTaskTicketRequest
+{
+    /// <summary>Link (ou número) do chamado.</summary>
+    public string? Url { get; set; }
+    public string? Title { get; set; }
+}
+
+/// <summary>Chamado na Bancada: <c>PUT WorkItems/tasks/{taskNumber}/ticket</c>.</summary>
+public class WorkTaskTicketStatusRequest
+{
+    /// <summary>open | resolved | closed.</summary>
+    public string? Status { get; set; }
+    /// <summary>Link do plano (sub-tarefa espelho com mais de um chamado); vazio = o mais recente.</summary>
+    public Guid? LinkId { get; set; }
+}
+
 /// <summary>0085: <c>POST WorkItems/{number}/cancel</c> e <c>POST ExecutionPlan/{id}/cancel</c>.</summary>
 public class CancelWorkItemRequest
 {

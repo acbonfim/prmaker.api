@@ -103,6 +103,11 @@ public class WorkTaskResponse
     public WorkTaskUndo? Undo { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    /// <summary>
+    /// Chamado na Bancada: chamados e PRs da sub-tarefa — no item espelho, os links da etapa do plano; no item avulso, o
+    /// chamado anexado (<see cref="WorkTaskTicket"/>).
+    /// </summary>
+    public List<WorkTaskLinkResponse> Links { get; set; } = [];
 
     public static WorkTaskResponse From(WorkItemTask task) => new()
     {
@@ -121,6 +126,32 @@ public class WorkTaskResponse
         Undo = task.Undo,
         StartedAt = task.StartedAt,
         CompletedAt = task.CompletedAt,
+        Links = WorkTaskTicket.Read(task) is { } t ? [t] : [],
+    };
+}
+
+/// <summary>Chamado na Bancada: link de uma sub-tarefa (chamado ou PR) com o status.</summary>
+public class WorkTaskLinkResponse
+{
+    /// <summary>Id do link do plano (item espelho); null no chamado do item avulso.</summary>
+    public Guid? Id { get; set; }
+    /// <summary>ticket | pr | doc | other.</summary>
+    public string Kind { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string Url { get; set; } = string.Empty;
+    /// <summary>Chamado: open | resolved | closed; PR: open | merged | closed.</summary>
+    public string? Status { get; set; }
+    /// <summary>CI do PR aberto: pending | success | failure.</summary>
+    public string? ChecksStatus { get; set; }
+
+    public static WorkTaskLinkResponse From(ExecutionLink link) => new()
+    {
+        Id = link.Id,
+        Kind = link.Kind,
+        Title = link.Title,
+        Url = link.Url,
+        Status = link.Status,
+        ChecksStatus = link.ChecksStatus,
     };
 }
 

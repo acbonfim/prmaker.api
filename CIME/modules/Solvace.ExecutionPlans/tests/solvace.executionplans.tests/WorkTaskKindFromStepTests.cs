@@ -24,6 +24,7 @@ public class WorkTaskKindFromStepTests
     [InlineData("ticket", User, "chamado-limpar-fotos", "Abrir o chamado de limpeza das fotos", WorkTaskKind.Ticket)]
     [InlineData("pr", Claude, "pr-edv-solvace", "Abrir os PRs do edv-solvace (development e qa)", WorkTaskKind.PullRequest)]
     [InlineData("validation", User, "validar-qa", "Validar os criterios de aceite em QA", WorkTaskKind.Validation)]
+    [InlineData("task", Claude, "validar-chamado-limpar-fotos", "Conferir os dados depois do chamado", WorkTaskKind.SqlQuery)]
     [InlineData("task", Claude, "fechar-card", "Fechar o card", WorkTaskKind.DevOpsAction)]
     // Etapas padrão da análise (Bug e US).
     [InlineData("task", Claude, "identificar-card", "Identificar o card", WorkTaskKind.Research)]

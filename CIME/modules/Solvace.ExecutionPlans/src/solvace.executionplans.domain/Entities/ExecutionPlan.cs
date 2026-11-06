@@ -628,6 +628,25 @@ public class ExecutionPlan
             ExecutionWaitingOn.User, actor, now, fromExecutor);
     }
 
+    /// <summary>
+    /// Etapa de PR ainda pendente com PR aberto (aberto pela tela ou por uma sessão que não marcou a etapa) passa a aguardar
+    /// o merge — senão fica "pronta" e o Claude tenta abrir de novo. Etapa em andamento só quando o PR acabou de ser
+    /// anexado (<paramref name="includeRunning"/>); na sincronização ela fica com quem a está tocando.
+    /// </summary>
+    public ExecutionStep? WaitForPullRequests(string key, IReadOnlyCollection<ExecutionLink> stepLinks, string actor, DateTimeOffset now,
+        bool fromExecutor, bool includeRunning = false)
+    {
+        var step = FindStep(ExecutionStep.NormalizeKey(key));
+        if (step is null || Status == ExecutionStatus.Cancelled || step.Kind != ExecutionStepKind.PullRequest
+            || !(step.Status == ExecutionStatus.Pending || (includeRunning && step.Status == ExecutionStatus.Running)))
+            return null;
+        var open = stepLinks.Where(l => l.Kind == ExecutionLinkKind.PullRequest && l.Status == ExecutionLinkStatus.Open).ToList();
+        if (open.Count == 0)
+            return null;
+        var reason = open.Count == 1 ? $"Aguardando o merge do PR {open[0].DisplayName}" : $"Aguardando o merge de {open.Count} PRs";
+        return SetStepWaiting(step.Key, reason, ExecutionWaitingOn.External, actor, now, fromExecutor);
+    }
+
     /// <summary>Conclui uma etapa por uma regra automática (ex.: PRs mesclados) — 0024.</summary>
     public ExecutionStep? CompleteStep(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
     {
