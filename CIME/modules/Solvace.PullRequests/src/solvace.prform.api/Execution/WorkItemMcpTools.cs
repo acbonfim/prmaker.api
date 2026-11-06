@@ -27,7 +27,8 @@ public class WorkItemMcpTools(
     solvace.timeline.application.Contracts.IUserRepository users,
     SpecialistActions specialist,
     CodeCitationGate citations,
-    IExecutionQueueApplication queue)
+    IExecutionQueueApplication queue,
+    IWorkItemDeliverableApplication deliverables)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -346,6 +347,31 @@ public class WorkItemMcpTools(
                     : null
             }), $"sub-tarefa #{taskNumber}: {task?.Status ?? verb}");
         }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_deliverable")]
+    [Description("0091: registra o que a sub-tarefa GEROU (aparece no modal da sub-tarefa e na aba Entregas do item). kind: pr | branch | " +
+                 "commit | ticket | pr-text | devops-state | comment | timeline | hours | notify | doc. Mesma coisa de novo (tipo + repositorio + " +
+                 "branch/numero/url) atualiza. PR aberto pelo PRMake, acoes do DevOps e Timeline ja sao registrados sozinhos; codigo alterado " +
+                 "vai pelo prmake-plan.sh deliver-code (o diff sai do worktree, nao passe diff aqui). data = extras (ex.: {from, to}, {system}).")]
+    public Task<string> Deliverable(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber, string kind,
+        string? title = null, string? url = null, [Description("pr: open|merged|closed|draft; ticket: open|resolved|closed")] string? status = null,
+        string? repository = null, string? branch = null, [Description("pr: destino; branch: base")] string? target = null,
+        int? number = null, string? sha = null, [Description("Texto curto (ate 600)")] string? text = null,
+        [Description("Objeto JSON (ou o JSON em texto) com extras")] JsonElement? data = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        if (specialist.IsSpecialist)
+            throw new McpException("As entregas sao registradas pela execucao da sub-tarefa, nao pelo Especialista do caso.");
+        var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
+                    ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        var saved = await deliverables.RecordAsync(taskNumber, new WorkDeliverableInput
+        {
+            Kind = kind, Title = title, Url = url, Status = status, Repository = repository, Branch = branch, Target = target,
+            Number = number, Sha = sha, Text = text, Data = AsObject(data),
+        }, await ActorAsync(ct), ct);
+        return Serialize(new { item = owner.Number, deliverable = new { saved.Id, saved.TaskNumber, saved.Kind, saved.Title, saved.Url } });
     });
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────

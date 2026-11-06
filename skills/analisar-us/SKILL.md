@@ -109,7 +109,7 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | Etapa | kind | executor | Observacao |
 |---|---|---|---|
 | `impacto-na-base` | `task` | claude | `prmake_base_impact` em cada ponto; vira o roteiro de regressao |
-| `implementar-<repo>` (uma por repositorio) | `code` | claude | `dependsOn: impacto-na-base`; worktree e commits pelo `branches`; sem comentarios no codigo; testes so do que mudou (`$REF correcao 8`) |
+| `implementar-<repo>` (uma por repositorio) | `code` | claude | `dependsOn: impacto-na-base`; worktree e commits pelo `branches`; sem comentarios no codigo; testes so do que mudou (`$REF correcao 8`); no fim, `bash $PLAN deliver-code <card> <repo> --step implementar-<repo>` (0091: branch + diff na sub-tarefa) |
 | `validar` | `validation` | claude | build/testes; CA verificaveis localmente |
 | `pr-<repo>` | `pr` | claude | descricao pelo `pr-text` + prompt de **User Story** (sem `<RCA>`), `save-pr-text` sem rca, `open-pr` nas linhas do `branches`; conclui quando os PRs forem mesclados — nunca mescle |
 | `preparar-script-<nome>` (so com script de dados) | `task` | claude | escreve o `.sql` com rollback e a consulta de validacao e o **chamado completo**; **antes** de concluir, grava no plano com `key` = a etapa do chamado: `prmake_file(card, "01_<nome>.sql", ..., "script", "chamado-<nome>", phase: "correction")` e `prmake_file(card, "chamado-<nome>.md", ..., "ticket", "chamado-<nome>", phase: "correction")` (1a linha = titulo; corpo: link do card, cliente, ambiente, banco, o que o script faz e por que — pelo objetivo da US —, rollback, consulta de validacao). O PRMake recusa a etapa do chamado com o usuario sem os dois arquivos |

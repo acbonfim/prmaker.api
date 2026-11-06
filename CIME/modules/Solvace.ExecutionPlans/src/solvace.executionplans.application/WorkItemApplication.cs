@@ -58,8 +58,16 @@ public class WorkItemApplication : IWorkItemApplication
         var item = await _items.GetByNumberAsync(number, ct) ?? throw NotFound(number);
         var response = (await ToResponsesAsync([item], ct))[0];
         if (withLogs)
-            response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+            await AddDetailAsync(item, response, ct);
         return response;
+    }
+
+    /// <summary>Detalhe do GET por número: histórico e (0091) as entregas.</summary>
+    private async Task AddDetailAsync(WorkItem item, WorkItemResponse response, CancellationToken ct)
+    {
+        response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+        if (_services.GetService(typeof(IWorkItemDeliverableApplication)) is IWorkItemDeliverableApplication deliverables)
+            response.Deliverables = await deliverables.ListAsync(item, ct);
     }
 
     public async Task<WorkItemResponse> ResolveAsync(long number, bool withLogs, CancellationToken ct)
@@ -75,7 +83,7 @@ public class WorkItemApplication : IWorkItemApplication
         if (matchedTask)
             response.MatchedTaskNumber = number;
         if (withLogs)
-            response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+            await AddDetailAsync(item, response, ct);
         return response;
     }
 

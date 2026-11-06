@@ -38,6 +38,8 @@ public static class ExecutionPlanModuleExtensions
         // 0085 r5: arquivos do item (seção "Arquivos": os do item + os do plano ligado).
         services.AddScoped<IWorkItemFileRepository, WorkItemFileRepository>();
         services.AddScoped<IWorkItemFileApplication, WorkItemFileApplication>();
+        services.AddScoped<IWorkItemDeliverableRepository, WorkItemDeliverableRepository>();
+        services.AddScoped<IWorkItemDeliverableApplication, WorkItemDeliverableApplication>();
 
         return services;
     }

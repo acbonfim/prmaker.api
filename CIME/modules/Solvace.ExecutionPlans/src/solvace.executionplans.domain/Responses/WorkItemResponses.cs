@@ -36,6 +36,8 @@ public class WorkItemResponse
     public List<WorkTaskResponse> Tasks { get; set; } = [];
     /// <summary>Histórico (só no GET por número).</summary>
     public List<WorkItemLogResponse>? Logs { get; set; }
+    /// <summary>0091: o que o item e as sub-tarefas geraram (só no GET por número).</summary>
+    public List<WorkDeliverableResponse>? Deliverables { get; set; }
     /// <summary>
     /// O número pedido no GET era de uma sub-tarefa deste item (a numeração é a mesma para itens e sub-tarefas) — quem
     /// citou <c>#n</c> da sub-tarefa recebe o item dono e sabe qual sub-tarefa destacar.

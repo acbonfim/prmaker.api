@@ -159,6 +159,28 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<ExecutionLinkResponse>> AddLink([FromRoute] Guid id, [FromRoute] string key, [FromBody] AddExecutionLinkRequest request, CancellationToken ct) =>
         Run<ExecutionLinkResponse>(async () => Ok(await _application.AddLinkAsync(id, key, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
+    /// <summary>0091: entrega da etapa (vai para a sub-tarefa espelho do item do plano). Body <c>WorkDeliverableInput</c>.</summary>
+    [HttpPost("{id:guid}/steps/{key}/deliverables")]
+    public Task<ActionResult<WorkDeliverableResponse>> RecordStepDeliverable([FromRoute] Guid id, [FromRoute] string key,
+        [FromBody] WorkDeliverableInput input,
+        [FromServices] IWorkItemDeliverableApplication deliverables, CancellationToken ct) =>
+        Run<WorkDeliverableResponse>(async () =>
+            StatusCode(StatusCodes.Status201Created, await deliverables.RecordForStepAsync(id, key, input, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>0091: código alterado da etapa (multipart do <c>deliver-code</c>, igual ao da sub-tarefa).</summary>
+    [HttpPost("{id:guid}/steps/{key}/deliverables/code")]
+    [RequestSizeLimit(WorkItemDeliverable.MaxPatchBytes * 3L)]
+    [RequestFormLimits(MultipartBodyLengthLimit = WorkItemDeliverable.MaxPatchBytes * 3L)]
+    public Task<ActionResult<WorkDeliverableResponse>> RecordStepCode([FromRoute] Guid id, [FromRoute] string key,
+        [FromServices] IWorkItemDeliverableApplication deliverables, CancellationToken ct) =>
+        Run<WorkDeliverableResponse>(async () =>
+        {
+            var (upload, error) = await WorkItemsController.ReadCodeUploadAsync(Request, ct);
+            if (upload is null)
+                return BadRequest(new { error });
+            return StatusCode(StatusCodes.Status201Created, await deliverables.RecordCodeForStepAsync(id, key, upload, await GetActorAsync(ct, executor: IsExecutorRequest()), ct));
+        });
+
     /// <summary>Chamado: o usuário marca aberto/resolvido/fechado (o PRMake não lê o Freshservice).</summary>
     [HttpPatch("{id:guid}/links/{linkId:guid}")]
     public Task<ActionResult<ExecutionLinkResponse>> UpdateLink([FromRoute] Guid id, [FromRoute] Guid linkId, [FromBody] UpdateExecutionLinkRequest request, CancellationToken ct) =>

@@ -41,6 +41,12 @@ public class TimelineController : ControllerBase
         try
         {
             var result = await _timelineApplication.CreateAsync(request, userId, cancellationToken);
+            // 0091: publicado pela skill (ou com ?workItemTask=) → entrega da sub-tarefa em andamento. Pela tela, não.
+            var task = solvace.prform.Execution.WorkDeliverableHooks.TaskOf(HttpContext);
+            if ((task is not null || solvace.prform.Execution.WorkDeliverableHooks.IsClaude(HttpContext))
+                && HttpContext.RequestServices.GetService<solvace.prform.Execution.WorkDeliverableHooks>() is { } hooks)
+                await hooks.TimelineAsync(request.CardNumber, request.Description, task, byClaude: true,
+                    solvace.prform.Execution.WorkDeliverableHooks.ActorOf(HttpContext), cancellationToken);
             return Ok(result);
         }
         catch (DomainException e)

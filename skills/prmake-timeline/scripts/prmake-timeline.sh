@@ -6,6 +6,8 @@
 #   <description> = texto a registrar na timeline. Se omitido, le do STDIN.
 # Env opcional:
 #   PRMAKE_TOKEN  = sobrescreve o token (senao resolve via arquivos, igual ao gerar-prmake).
+#   PRMAKE_WORK_TASK = 0091: sub-tarefa (#n) que publicou — a entrada vira entrega dela (sem ele, a sub-tarefa em
+#                   andamento no card).
 set -euo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -54,8 +56,10 @@ jq -n --arg card "$CARD" --arg desc "$DESC" \
   '{cardNumber:$card, description:$desc}' > /tmp/prmake_timeline_body.json
 
 echo ">> POST $BASE/Timeline (card $CARD)"
-CODE=$(curl -s --max-time 60 -o /tmp/prmake_timeline_resp.json -w "%{http_code}" -X POST "$BASE/Timeline" \
+WT="${PRMAKE_WORK_TASK:-}"; WT="${WT#\#}"
+CODE=$(curl -s --max-time 60 -o /tmp/prmake_timeline_resp.json -w "%{http_code}" -X POST "$BASE/Timeline${WT:+?workItemTask=$WT}" \
   -H 'accept: application/json, text/plain, */*' \
+  -H 'X-Execution-Client: skill' \
   -H 'content-type: application/json' \
   -H "x-api-key: $TOKEN" \
   --data @/tmp/prmake_timeline_body.json)

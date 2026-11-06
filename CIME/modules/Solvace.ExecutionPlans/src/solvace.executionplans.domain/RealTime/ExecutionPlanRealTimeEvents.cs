@@ -58,6 +58,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Deleted = "deleted";
         /// <summary>0085 r5: arquivo gravado no item (<c>WorkItems/{n}/files</c>, <c>prmake_work_item_file</c>).</summary>
         public const string File = "file";
+        /// <summary>0091: entrega gravada (PR, código, chamado...) — a tela recarrega o item aberto.</summary>
+        public const string Deliverable = "deliverable";
     }
 
     public static class CaseActions

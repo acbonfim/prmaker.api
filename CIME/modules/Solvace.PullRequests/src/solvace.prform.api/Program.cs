@@ -40,6 +40,9 @@ builder.Services.AddScoped<solvace.timeline.application.Contracts.IUserRepositor
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionPullRequestSource, ExecutionPlanPullRequestSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionTimelineWriter, ExecutionPlanTimelineWriter>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardRegistrar, ExecutionPlanCardRegistrar>();
+// 0091: entregas dos itens — PRs do card (do banco) e o compare do GitHub por repositório.
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkDeliverableSources, solvace.prform.Execution.WorkDeliverableSources>();
+builder.Services.AddScoped<solvace.prform.Execution.WorkDeliverableHooks>();
 // Fila de execução e executores (0039): credencial do executor, binários publicados e a regra automática (WIQL).
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
 builder.Services.AddSingleton<solvace.prform.Execution.CaseTokenIssuer>();  // 0080: token do Especialista do caso
