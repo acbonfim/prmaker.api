@@ -598,7 +598,8 @@ public partial class PrmakeMcpTools(
     [McpServerTool(Name = "prmake_handoff")]
     [Description("0075: contexto da passagem (handoff) ao entrar em ESPERA (chamado aberto, PR aguardando aprovacao/merge, validacao em QA): " +
                  "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
-                 "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card e no handover. Texto vazio limpa.")]
+                 "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card, na discussion do DevOps e no handover. " +
+                 "Escreva em terceira pessoa, com a espera como status ('Aguardando abrir chamado', 'Aguardando o merge do PR #489') — nunca 'voce'/'falta voce...'. Texto vazio limpa.")]
     public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
