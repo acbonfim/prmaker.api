@@ -28,6 +28,47 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
         context.WorkItems.Include(i => i.Tasks)
             .FirstOrDefaultAsync(i => context.WorkItemTasks.Any(t => t.WorkItemId == i.Id && t.Number == taskNumber), cancellationToken);
 
+    public async Task<List<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken cancellationToken)
+    {
+        var q = (query ?? string.Empty).Trim();
+        var digits = q.Length > 0 && q.All(char.IsAsciiDigit);
+        var lower = q.ToLowerInvariant();
+        var items = context.WorkItems.AsNoTracking().Where(i => exceptCard == null || i.CardNumber != exceptCard);
+
+        var itemHits = items
+            .Where(i => q.Length == 0
+                        || (digits ? i.Number.ToString().StartsWith(q) || i.CardNumber == q : i.Title.ToLower().Contains(lower)))
+            .OrderByDescending(i => digits && i.Number.ToString() == q)
+            .ThenByDescending(i => i.Number)
+            .Take(limit)
+            .Select(i => new WorkItemSearchHit
+            {
+                Kind = "item", Number = i.Number, Title = i.Title, Status = i.Status, CardNumber = i.CardNumber,
+                ItemNumber = i.Number, ItemTitle = i.Title, ItemType = i.Type, UpdatedAt = i.UpdatedAt
+            });
+        var taskHits = context.WorkItemTasks.AsNoTracking()
+            .Join(items, t => t.WorkItemId, i => i.Id, (t, i) => new { t, i })
+            .Where(x => q.Length == 0
+                        || (digits ? x.t.Number.ToString().StartsWith(q) : x.t.Title.ToLower().Contains(lower)))
+            .OrderByDescending(x => digits && x.t.Number.ToString() == q)
+            .ThenByDescending(x => x.t.Number)
+            .Take(limit)
+            .Select(x => new WorkItemSearchHit
+            {
+                Kind = "task", Number = x.t.Number, Title = x.t.Title, Status = x.t.Status, CardNumber = x.i.CardNumber,
+                ItemNumber = x.i.Number, ItemTitle = x.i.Title, ItemType = x.i.Type, UpdatedAt = x.i.UpdatedAt
+            });
+
+        var list = await itemHits.ToListAsync(cancellationToken);
+        list.AddRange(await taskHits.ToListAsync(cancellationToken));
+        // Número exato primeiro; depois os mais recentes (número maior).
+        return list
+            .OrderByDescending(h => digits && h.Number.ToString() == q)
+            .ThenByDescending(h => h.Number)
+            .Take(limit)
+            .ToList();
+    }
+
     public Task<List<WorkItem>> GetByPlanAsync(Guid planId, CancellationToken cancellationToken) =>
         context.WorkItems.Include(i => i.Tasks)
             .Where(i => i.PlanId == planId)

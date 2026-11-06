@@ -14,6 +14,16 @@ public interface IWorkItemApplication
     /// <summary>Itens do card (com sub-tarefas), em ordem de número.</summary>
     Task<IReadOnlyList<WorkItemResponse>> ListAsync(string card, CancellationToken ct);
     Task<WorkItemResponse> GetAsync(long number, bool withLogs, CancellationToken ct);
+    /// <summary>
+    /// Leitura de <c>#n</c> citado (popover, MCP): o item com esse número ou, se for de uma sub-tarefa, o item dono com
+    /// <see cref="WorkItemResponse.MatchedTaskNumber"/>. Para ações use <see cref="GetAsync"/> (só número de item).
+    /// </summary>
+    Task<WorkItemResponse> ResolveAsync(long number, bool withLogs, CancellationToken ct);
+    /// <summary>
+    /// Busca itens e sub-tarefas de qualquer card pelo começo do número ou por parte do título (ou pelo número do card),
+    /// mais recentes primeiro — <paramref name="exceptCard"/> tira os do card informado.
+    /// </summary>
+    Task<IReadOnlyList<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken ct);
     /// <param name="origin">user | specialist | analysis | correction | template (ver <see cref="WorkItemOrigin"/>).</param>
     Task<WorkItemResponse> CreateAsync(string card, CreateWorkItemRequest req, string origin, ExecutionActor actor, CancellationToken ct);
     Task<WorkItemResponse> UpdateAsync(long number, UpdateWorkItemRequest req, ExecutionActor actor, CancellationToken ct);
@@ -79,6 +89,8 @@ public interface IWorkItemRepository
     Task<WorkItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     /// <summary>Item dono da sub-tarefa, rastreado.</summary>
     Task<WorkItem?> GetByTaskNumberAsync(long taskNumber, CancellationToken cancellationToken);
+    /// <summary>Busca (projeção, sem texto grande) de itens e sub-tarefas — ver <see cref="IWorkItemApplication.SearchAsync"/>.</summary>
+    Task<List<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken cancellationToken);
     /// <summary>Itens ligados ao plano, rastreados.</summary>
     Task<List<WorkItem>> GetByPlanAsync(Guid planId, CancellationToken cancellationToken);
     /// <summary>Item não cancelado/desfeito do card com o mesmo fingerprint (sem rastrear) — o item da análise não conta.</summary>
