@@ -52,6 +52,17 @@ public class WorkTaskTicketTests
     }
 
     [Fact]
+    public void Attached_ticket_is_a_deliverable_of_the_task()
+    {
+        var item = Item();
+        var task = item.OrderedTasks.Single();
+        Ticket(item, task.Number, "https://x/tickets/9", "#9 Limpar fotos", ExecutionLinkStatus.Resolved);
+
+        var d = Assert.Single(WorkDeliverableListing.FromOutput(task));
+        Assert.Equal((WorkDeliverableKind.Ticket, "https://x/tickets/9", "#9 Limpar fotos", "resolved"), (d.Kind, d.Url, d.Title, d.Status));
+    }
+
+    [Fact]
     public void Ticket_input_is_validated()
     {
         Assert.Throws<DomainException>(() => WorkTaskTicket.NormalizeUrl("  "));
