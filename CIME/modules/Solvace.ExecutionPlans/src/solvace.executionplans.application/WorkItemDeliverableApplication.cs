@@ -63,14 +63,17 @@ public class WorkItemDeliverableApplication(IWorkItemDeliverableRepository repo,
         return await SaveCodeAsync(item, task.Number, upload, actor, ct);
     }
 
-    public async Task<WorkDeliverableResponse?> RecordAutoAsync(string cardNumber, long? taskNumber, WorkDeliverableInput input, ExecutionActor actor, CancellationToken ct)
+    public async Task<WorkDeliverableResponse?> RecordAutoAsync(string cardNumber, long? taskNumber, WorkDeliverableInput input, ExecutionActor actor,
+        bool byClaude, CancellationToken ct)
     {
         var card = (cardNumber ?? string.Empty).Trim();
         try
         {
             var kind = WorkDeliverableKind.Normalize(input.Kind);
-            var (item, task) = await ResolveTaskAsync(card, taskNumber, kind, ct);
-            return await SaveAsync(item, task?.Number, input, WorkDeliverableSource.Auto, card, actor, ct);
+            var (item, task) = await ResolveTaskAsync(card, taskNumber, kind, byClaude, ct);
+            if (item is null || task is null)
+                return null;
+            return await SaveAsync(item, task.Number, input, WorkDeliverableSource.Auto, card, actor, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -80,10 +83,10 @@ public class WorkItemDeliverableApplication(IWorkItemDeliverableRepository repo,
     }
 
     /// <summary>
-    /// Sub-tarefa que recebe a entrega do servidor: a informada (tem de ser do card) ou a em andamento no card — uma só,
-    /// ou, com várias, a de tipo compatível mais recente. Nenhuma → (null, null): a entrega fica só no card.
+    /// Sub-tarefa que recebe a entrega do servidor: a informada (tem de ser do card) ou a em andamento no card de tipo
+    /// compatível (a mais recente); pelo Claude, sem compatível, a única em andamento. Nenhuma → (null, null).
     /// </summary>
-    private async Task<(WorkItem? Item, WorkItemTask? Task)> ResolveTaskAsync(string card, long? taskNumber, string kind, CancellationToken ct)
+    private async Task<(WorkItem? Item, WorkItemTask? Task)> ResolveTaskAsync(string card, long? taskNumber, string kind, bool byClaude, CancellationToken ct)
     {
         if (taskNumber is > 0)
         {
@@ -96,11 +99,11 @@ public class WorkItemDeliverableApplication(IWorkItemDeliverableRepository repo,
         var running = (await repo.GetItemsWithRunningTaskAsync(card, ct))
             .SelectMany(i => i.Tasks.Where(t => t.Status == WorkTaskStatus.Running).Select(t => (Item: i, Task: t)))
             .ToList();
-        if (running.Count == 1)
-            return running[0];
         var fit = running.Where(r => WorkDeliverableKind.Fits(kind, r.Task.Kind))
             .OrderByDescending(r => r.Task.StartedAt ?? DateTimeOffset.MinValue).ToList();
-        return fit.Count > 0 ? fit[0] : (null, null);
+        if (fit.Count > 0)
+            return fit[0];
+        return byClaude && running.Count == 1 ? running[0] : (null, null);
     }
 
     private async Task<(WorkItem Item, WorkItemTask Task)> MirrorAsync(Guid planId, string stepKey, CancellationToken ct)

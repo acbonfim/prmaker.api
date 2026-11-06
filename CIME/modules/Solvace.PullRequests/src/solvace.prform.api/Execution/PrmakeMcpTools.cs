@@ -54,6 +54,8 @@ public partial class PrmakeMcpTools(
         "0085: regras do card (nome de branch por destino, fluxo, padroes) com prmake_rules — nunca invente branch; itens de trabalho " +
         "com prmake_work_items/prmake_work_item (confira antes de criar: nao duplique), prmake_work_item_create/_update (so pending) e " +
         "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem). " +
+        "0091: o que a sub-tarefa gerou vira entrega dela — PR aberto pelo PRMake, acoes do DevOps e Timeline sozinhos (informe taskNumber quando souber); " +
+        "codigo alterado com prmake-plan.sh deliver-code no worktree ao fim de cada etapa/sub-tarefa de codigo; o resto com prmake_work_deliverable. " +
         "0085 r4: ferramentas do card (modelos prontos: PR para uma branch, PRs do fluxo, promocao, fechamento, QA, script, resumo...) com " +
         "prmake_tools (applicable + perguntas ask) e prmake_tool_run (cria o item com as respostas) — prefira a ferramenta ao item livre. " +
         "Tipo do item = WorkItemTypes (task, pull-request, review, fix, implementation, adjustment, closing, data, ticket, text, analysis); " +
@@ -271,13 +273,20 @@ public partial class PrmakeMcpTools(
     [McpServerTool(Name = "prmake_timeline")]
     [Description("Escreve na Timeline do card (markdown). O PRMake ja escreve sozinho os marcos do plano — nao duplique. " +
                  "Especialista do caso: so quando a pessoa pede; o PRMake grava com o nome de quem pediu e a marca 'via Especialista do caso'.")]
-    public Task<string> Timeline(string card, string markdown, CancellationToken ct = default) => Safe(() =>
+    public Task<string> Timeline(string card, string markdown,
+        [Description("0091: sub-tarefa (#n) que publicou — vira entrega dela (padrao: a sub-tarefa em andamento no card)")] long? taskNumber = null,
+        CancellationToken ct = default) => Safe(() =>
         specialist.RunAsync(card.Trim(), "Publicar na Timeline", Trim(markdown, 600), async () =>
         {
             var actor = await ActorAsync(ct);
             await timeline.WriteAsync(card.Trim(), specialist.Mark(markdown), actor.UserId, actor.Name, ct);
+            if (Hooks is { } hooks)
+                await hooks.TimelineAsync(card.Trim(), markdown, taskNumber, specialist.Via is null, actor, ct);
             return ("ok", "publicado na Timeline do card");
         }, ct));
+
+    /// <summary>0091: ganchos das entregas (resolvidos pelo pedido — o construtor fica como está).</summary>
+    private WorkDeliverableHooks? Hooks => http.HttpContext?.RequestServices.GetService<WorkDeliverableHooks>();
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
     [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior) | log-hours (r5: 'hours' trabalhadas — soma no Completed Work e tira do Remaining). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores. Especialista do caso: so com pedido explicito da pessoa (usa a integracao de quem pediu).")]
@@ -290,6 +299,7 @@ public partial class PrmakeMcpTools(
         [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
         [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
         [Description("log-hours: horas trabalhadas (ex.: 1.5)")] decimal? hours = null,
+        [Description("0091: sub-tarefa (#n) que fez a acao — vira entrega dela (padrao: a de DevOps em andamento no card)")] long? taskNumber = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
@@ -322,6 +332,8 @@ public partial class PrmakeMcpTools(
         return await specialist.RunAsync(id, label, null, async () =>
         {
             var result = await devops.RunAsync(id, run, http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
+            if (Hooks is { } hooks)
+                await hooks.DevOpsAsync(id, action, result.Message, hours, state, taskNumber, specialist.Via is null, await ActorAsync(ct), ct);
             return (Serialize(result), result.Message);
         }, ct);
     });
@@ -432,10 +444,15 @@ public partial class PrmakeMcpTools(
                 Logs = [new ExecutionLogItem { StepKey = from, Kind = string.IsNullOrWhiteSpace(kind) ? ExecutionLogKind.Progress : kind, Message = message }]
             }, ct);
         await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed }, actor, ct);
+        // 0091: etapa de código da correção sem o diff registrado — aviso (não recusa).
+        var warning = http.HttpContext?.RequestServices.GetService<IWorkItemDeliverableApplication>() is { } deliverables
+            ? await deliverables.MissingCodeWarningAsync(planId, from, ct)
+            : null;
+        var note = warning is null ? string.Empty : $"\nAVISO: {warning}";
         if (string.IsNullOrWhiteSpace(to) || to == "-")
-            return $"OK {from} -> completed";
+            return $"OK {from} -> completed{note}";
         await plans.UpdateStepAsync(planId, to, new UpdateExecutionStepRequest { Status = ExecutionStatus.Running }, actor, ct);
-        return $"OK {from} -> completed · {to} -> running";
+        return $"OK {from} -> completed · {to} -> running{note}";
     });
 
     [McpServerTool(Name = "prmake_block")]

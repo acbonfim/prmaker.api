@@ -239,6 +239,8 @@ public static class WorkDeliverableKind
         Comment => taskKind is WorkTaskKind.Comment or WorkTaskKind.Notify,
         Ticket => taskKind is WorkTaskKind.Ticket or WorkTaskKind.SqlScript,
         PrText => taskKind is WorkTaskKind.PrText or WorkTaskKind.PullRequest,
+        Timeline or Notify => taskKind is WorkTaskKind.Notify or WorkTaskKind.Comment,
+        Hours => taskKind is WorkTaskKind.DevOpsAction,
         _ => false,
     };
 }

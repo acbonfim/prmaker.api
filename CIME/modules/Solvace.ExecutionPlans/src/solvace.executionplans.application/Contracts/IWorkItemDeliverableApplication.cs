@@ -24,10 +24,12 @@ public interface IWorkItemDeliverableApplication
     Task<WorkDeliverableResponse> RecordCodeAsync(long taskNumber, WorkDeliverableCodeUpload upload, ExecutionActor actor, CancellationToken ct);
     Task<WorkDeliverableResponse> RecordCodeForStepAsync(Guid planId, string stepKey, WorkDeliverableCodeUpload upload, ExecutionActor actor, CancellationToken ct);
     /// <summary>
-    /// Gancho do servidor: grava na sub-tarefa informada (do card) ou na em andamento do card (com várias, a de tipo
-    /// compatível); sem nenhuma, fica só no card. Nunca lança — o que gerou a entrega já aconteceu.
+    /// Gancho do servidor: grava na sub-tarefa informada (do card) ou na em andamento do card — a de tipo compatível mais
+    /// recente; <paramref name="byClaude"/> (MCP/skill) também aceita a única em andamento de outro tipo. Sem sub-tarefa →
+    /// não grava (o card já tem o registro: Timeline, PRs). Nunca lança — o que gerou a entrega já aconteceu.
     /// </summary>
-    Task<WorkDeliverableResponse?> RecordAutoAsync(string cardNumber, long? taskNumber, WorkDeliverableInput input, ExecutionActor actor, CancellationToken ct);
+    Task<WorkDeliverableResponse?> RecordAutoAsync(string cardNumber, long? taskNumber, WorkDeliverableInput input, ExecutionActor actor,
+        bool byClaude, CancellationToken ct);
     /// <summary>Diff da entrega: a fotografia gravada ou o compare ao vivo no GitHub. Sem diff → 404.</summary>
     Task<WorkDeliverableDiffResponse> DiffAsync(long number, string deliverableId, CancellationToken ct);
     /// <summary>Etapa do plano sem código registrado (aviso do <c>prmake_advance</c>); null = tem ou não se aplica.</summary>
