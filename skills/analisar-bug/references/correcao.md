@@ -285,7 +285,10 @@ Regras:
   checar se o chamado voltar recusado, o que o QA deve testar, refs `[...](ref:<id>)` do que mudou) e **como retomar**.
   Os fatos (PRs, aprovacoes, CI, chamado, estado no DevOps, desde quando) o PRMake ja junta sozinho no resumo
   *Situacao atual* do card — nao repita links/status, explique o contexto. Atualize quando a espera mudar (chamado
-  resolvido → PR; PR mesclado → QA).
+  resolvido → PR; PR mesclado → QA); o PRMake tira do resumo o contexto gravado antes da espera atual.
+  **Escrita do contexto (vai para a discussion do DevOps):** em terceira pessoa e no formato de status — a espera e
+  "Aguardando abrir chamado", "Aguardando o atendimento do chamado", "Aguardando o merge do PR #489", "Aguardando
+  validacao em QA"; **nunca** "voce", "falta voce abrir...", "conclua a etapa" nem instrucoes de tela do PRMake.
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**

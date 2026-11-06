@@ -207,7 +207,8 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   dos resumos de espera na discussion tambem e escolha da pessoa (automatica por card/usuario ou manual pelo cartao).
 - **Espera = contexto da passagem (0075)**: ao entrar em espera (chamado aberto, PR aguardando aprovacao/merge, QA),
   grave `prmake_handoff` — o que foi feito, o que se espera e de quem, riscos, como retomar (`$REF correcao 8`). O
-  PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover).
+  PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover, discussion do DevOps) —
+  em terceira pessoa, espera como status ("Aguardando abrir chamado"), nunca "voce"/"falta voce...".
 - **Codigo citado = fotografia (0075)**: na analise, nas solucoes, no checkpoint e nas perguntas, cite codigo so como
   `[caminho:linhas](ref:<id>)` com a fotografia gravada pelo `coderef` (`$REF analise 4b`) — nunca cole blocos de codigo
   nem `caminho:linha` solto; o *porque* de cada trecho vai no `--why` e nas notas, e o texto fica curto.

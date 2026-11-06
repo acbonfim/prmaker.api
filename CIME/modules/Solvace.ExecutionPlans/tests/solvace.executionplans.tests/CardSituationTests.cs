@@ -176,4 +176,98 @@ public class CardSituationTests
         Assert.False(block.PlannedTask);
         Assert.False(CardSituationKind.PostToDevOps(block, false));
     }
+    // ── Chamado a abrir, QA depois do chamado e contexto velho (77988) ─────────────────────────────
+
+    private static ExecutionPlan TicketPlan()
+    {
+        var plan = Correction(Step("preparar-script"), Step("chamado-limpar", ExecutionStepKind.Ticket, ExecutionExecutor.User, "preparar-script"),
+            Step("validar-chamado-limpar", ExecutionStepKind.Validation, ExecutionExecutor.Claude, "chamado-limpar"),
+            Step("pr-edv-solvace", ExecutionStepKind.PullRequest, ExecutionExecutor.Claude, "preparar-script"),
+            Step("validar-qa", ExecutionStepKind.Validation, ExecutionExecutor.User, "pr-edv-solvace", "chamado-limpar", "validar-chamado-limpar"));
+        plan.CompleteStep("preparar-script", "ok", "claude", Now, true);
+        plan.CompleteStep("pr-edv-solvace", "PR mesclado", "PRMake", Now, false);
+        return plan;
+    }
+
+    private static ExecutionLink Ticket(ExecutionPlan plan, string step) =>
+        new(plan.Id, step, "https://solvace.freshservice.com/public/tickets/600", null, ExecutionLinkKind.Ticket, true, null, null, null, "Alex", Now);
+
+    private static void Situation(ExecutionPlan plan, string kind, DateTimeOffset at)
+    {
+        typeof(ExecutionPlan).GetProperty(nameof(ExecutionPlan.SituationKind))!.SetValue(plan, kind);
+        typeof(ExecutionPlan).GetProperty(nameof(ExecutionPlan.SituationAt))!.SetValue(plan, at);
+    }
+
+    [Fact]
+    public void Ticket_step_without_ticket_is_waiting_to_open_the_ticket()
+    {
+        var plan = TicketPlan();
+        var files = new List<ExecutionArtifact> { Artifact(plan, "chamado-limpar.md", "chamado-limpar"), Artifact(plan, "01_limpar.sql", "chamado-limpar") };
+
+        var s = CardSituation.Build(plan, [Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], files, IsQa, plan.CardNumber);
+
+        Assert.Equal(CardSituationKind.TicketToOpen, s.Kind);
+        Assert.Equal("Aguardando abrir chamado", s.Title);
+        Assert.Equal("chamado-limpar", s.StepKey);
+        Assert.StartsWith("**Aguardando abrir chamado**", s.Markdown);
+        Assert.Contains("Arquivos do chamado no plano: `01_limpar.sql` e `chamado-limpar.md`.", s.Markdown);
+        Assert.Empty(s.UserSteps);
+        Assert.DoesNotContain("você", s.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.True(CardSituationKind.Milestone(s));
+        // QA depende do chamado: vem depois, como "também".
+        Assert.Equal(["Validar em QA"], s.AlsoWaiting);
+    }
+
+    [Fact]
+    public void Attached_ticket_comes_before_qa_that_depends_on_it()
+    {
+        var plan = TicketPlan();
+        var ticket = Ticket(plan, "chamado-limpar");
+        plan.ApplyTicketState("chamado-limpar", [ticket], "Alex", Now, false);
+
+        var s = CardSituation.Build(plan, [ticket, Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], [], IsQa, plan.CardNumber);
+
+        Assert.Equal(CardSituationKind.Ticket, s.Kind);
+        Assert.StartsWith("**Aguardando o atendimento do chamado**", s.Markdown);
+        Assert.Equal(["Validar em QA"], s.AlsoWaiting);
+    }
+
+    [Fact]
+    public void Qa_comes_first_once_everything_before_it_is_done()
+    {
+        var plan = TicketPlan();
+        plan.CompleteStep("chamado-limpar", "Chamado resolvido", "Alex", Now, false);
+        plan.CompleteStep("validar-chamado-limpar", "ok", "claude", Now, true);
+
+        var s = CardSituation.Build(plan, [Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], [], IsQa, plan.CardNumber);
+
+        Assert.Equal(CardSituationKind.QaValidation, s.Kind);
+        Assert.Empty(s.AlsoWaiting);
+    }
+
+    [Fact]
+    public void Handoff_written_before_the_current_wait_is_left_out()
+    {
+        var plan = TicketPlan();
+        var ticket = Ticket(plan, "chamado-limpar");
+        plan.ApplyTicketState("chamado-limpar", [ticket], "Alex", Now, false);
+        plan.SetHandoff("**Espera:** voce abrir o chamado de limpeza.", "Claude", Now.AddHours(-3));
+        var links = new List<ExecutionLink> { ticket };
+
+        // Situação registrada antes de entrar no chamado (o PRMake ainda não gravou a mudança): o contexto é velho.
+        Situation(plan, CardSituationKind.TicketToOpen, Now.AddHours(-4));
+        var s = CardSituation.Build(plan, links, [], [], IsQa, plan.CardNumber);
+        Assert.Null(s.Handoff);
+        Assert.DoesNotContain("voce abrir", s.Markdown);
+
+        // Entrou no chamado depois do contexto: velho também.
+        Situation(plan, CardSituationKind.Ticket, Now.AddHours(-1));
+        Assert.Null(CardSituation.Build(plan, links, [], [], IsQa, plan.CardNumber).Handoff);
+
+        // Contexto gravado na espera atual (ou até 10 min antes de entrar nela): fica.
+        Situation(plan, CardSituationKind.Ticket, Now.AddHours(-3).AddMinutes(5));
+        var fresh = CardSituation.Build(plan, links, [], [], IsQa, plan.CardNumber);
+        Assert.NotNull(fresh.Handoff);
+        Assert.Contains("**Contexto**", fresh.Markdown);
+    }
 }
