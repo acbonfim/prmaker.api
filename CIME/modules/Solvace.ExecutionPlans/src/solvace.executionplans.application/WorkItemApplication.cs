@@ -62,6 +62,29 @@ public class WorkItemApplication : IWorkItemApplication
         return response;
     }
 
+    public async Task<WorkItemResponse> ResolveAsync(long number, bool withLogs, CancellationToken ct)
+    {
+        var item = await _items.GetByNumberAsync(number, ct);
+        var matchedTask = false;
+        if (item is null)
+        {
+            item = await _items.GetByTaskNumberAsync(number, ct) ?? throw NotFound(number);
+            matchedTask = true;
+        }
+        var response = (await ToResponsesAsync([item], ct))[0];
+        if (matchedTask)
+            response.MatchedTaskNumber = number;
+        if (withLogs)
+            response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+        return response;
+    }
+
+    public async Task<IReadOnlyList<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken ct)
+    {
+        var except = string.IsNullOrWhiteSpace(exceptCard) ? null : NormalizeCard(exceptCard);
+        return await _items.SearchAsync(query?.Trim().TrimStart('#'), except, Math.Clamp(limit, 1, 30), ct);
+    }
+
     public async Task<WorkItemResponse?> GetByIdAsync(Guid workItemId, CancellationToken ct)
     {
         var item = await _items.GetByIdAsync(workItemId, ct);

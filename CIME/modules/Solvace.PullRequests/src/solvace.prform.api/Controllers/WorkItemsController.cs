@@ -34,10 +34,22 @@ public partial class WorkItemsController : ExecutionControllerBase
     public Task<ActionResult<IReadOnlyList<WorkItemResponse>>> List([FromRoute] string card, CancellationToken ct) =>
         RunItem<IReadOnlyList<WorkItemResponse>>(async () => Ok(await _items.ListAsync(card, ct)));
 
-    /// <summary>Item com sub-tarefas e histórico.</summary>
+    /// <summary>
+    /// Item com sub-tarefas e histórico. Número de sub-tarefa (mesma numeração) → o item dono, com
+    /// <c>matchedTaskNumber</c> (o <c>#n</c> citado na conversa pode ser de uma sub-tarefa).
+    /// </summary>
     [HttpGet("{number:long}")]
     public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, CancellationToken ct) =>
-        RunItem<WorkItemResponse>(async () => Ok(await _items.GetAsync(number, withLogs: true, ct)));
+        RunItem<WorkItemResponse>(async () => Ok(await _items.ResolveAsync(number, withLogs: true, ct)));
+
+    /// <summary>
+    /// Busca itens e sub-tarefas de qualquer card pelo começo do número, parte do título ou número do card — a lista do
+    /// <c>##</c> na conversa do especialista (referência a item de outro card). <c>exceptCard</c> tira os do card informado.
+    /// </summary>
+    [HttpGet("search")]
+    public Task<ActionResult<IReadOnlyList<WorkItemSearchHit>>> Search([FromQuery] string? q, [FromQuery] string? exceptCard,
+        [FromQuery] int limit = 10, CancellationToken ct = default) =>
+        RunItem<IReadOnlyList<WorkItemSearchHit>>(async () => Ok(await _items.SearchAsync(q, exceptCard, limit, ct)));
 
     /// <summary>
     /// Ajustes 0085: sessão de execução ao vivo do item — pedido ativo (do item ou, no item de plano, da pista principal do
