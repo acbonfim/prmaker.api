@@ -36,6 +36,8 @@ public class WorkItemResponse
     public List<WorkTaskResponse> Tasks { get; set; } = [];
     /// <summary>Histórico (só no GET por número).</summary>
     public List<WorkItemLogResponse>? Logs { get; set; }
+    /// <summary>0091: o que o item e as sub-tarefas geraram (só no GET por número).</summary>
+    public List<WorkDeliverableResponse>? Deliverables { get; set; }
 
     public static WorkItemResponse From(WorkItem item, string? planPhase = null, string? activity = null) => new()
     {

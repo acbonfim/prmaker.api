@@ -926,12 +926,14 @@ public class GitHubService : IGitHubService
         };
     }
 
-    public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
+    public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default, string? repository = null)
     {
         await EnsureClientAsync(cancellationToken);
 
         var owner = Config.GetConfigurationValue("Owner");
         var repo = Config.GetConfigurationValue("Repo");
+        if (!string.IsNullOrWhiteSpace(repository))
+            (owner, repo) = ResolveRepository(repository);
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CompareDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
