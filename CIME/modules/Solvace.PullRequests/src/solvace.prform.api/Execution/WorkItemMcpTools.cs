@@ -64,13 +64,14 @@ public class WorkItemMcpTools(
     });
 
     [McpServerTool(Name = "prmake_work_item", ReadOnly = true)]
-    [Description("Detalhe de um item de trabalho do card: sub-tarefas com params, resultado, saidas (output), como desfazer (undo), " +
-                 "links, pedido da fila e o historico recente.")]
-    public Task<string> Get(string card, [Description("Numero do item (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
+    [Description("Detalhe de um item de trabalho: sub-tarefas com params, resultado, saidas (output), como desfazer (undo), " +
+                 "links, pedido da fila e o historico recente. Aceita o #n citado na conversa: numero de sub-tarefa devolve o item dono " +
+                 "com matchedTaskNumber; item de outro card (citado como referencia) vem com otherCard=true — so leitura, nao altere.")]
+    public Task<string> Get(string card, [Description("Numero do item ou da sub-tarefa (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
     {
-        var item = await items.GetAsync(number, true, ct);
-        EnsureSameCard(item, card);
-        return Serialize(item);
+        var item = await items.ResolveAsync(number, true, ct);
+        var otherCard = !string.Equals(item.CardNumber, RequireCard(card), StringComparison.Ordinal);
+        return otherCard ? Serialize(new { otherCard = true, note = $"Item do card {item.CardNumber} — referencia, so leitura.", item }) : Serialize(item);
     });
 
     [McpServerTool(Name = "prmake_work_item_create")]
