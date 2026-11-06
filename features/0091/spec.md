@@ -53,8 +53,10 @@ chamado, 2 de PR — e **todas com `output: {}` e o item com `links: []`**.
 - **Gravação automática no servidor**, sem depender do Claude lembrar:
   - abrir PR (tela, skill, MCP) → entrega `pr` (+ `branch` de origem) na sub-tarefa;
   - Timeline, horas, estado/ação e comentário do DevOps → entrega na sub-tarefa;
-  - a sub-tarefa é a **informada** (`taskNumber`) ou a **em andamento no card** (a da etapa em andamento do plano; senão,
-    a única sub-tarefa `running`; com várias, a de tipo compatível). Sem nenhuma → fica só no card (sem item).
+  - a sub-tarefa é a **informada** (`taskNumber` / `?workItemTask=`) ou a **em andamento no card** de tipo compatível
+    (PR → `pr`; DevOps → `devops-state`/`devops-action`; Timeline → `notify`/`comment`), a mais recente; vindo do Claude
+    (MCP/skill), sem compatível, a **única** em andamento. Pela tela (pessoa clicando), só a compatível. Sem nenhuma →
+    **não grava** (o card já tem o registro: Timeline, PRs).
 - **Código**: `prmake-plan.sh deliver-code <repo> [--task n]` no worktree, no fim da etapa/sub-tarefa `code`: branch,
   base (merge-base), commits e o **diff completo** gravado (fotografia — a branch pode sumir depois do merge). Limite
   de 2 MB por diff; acima disso grava cortado e a tela oferece o compare no GitHub. O diff vai **direto do script para a
@@ -74,4 +76,5 @@ chamado, 2 de PR — e **todas com `output: {}` e o item com `links: []`**.
     card), cada entrega com o `#n` da sub-tarefa; a Visão geral mostra o resumo (PRs com estado);
   - popover `#nn` e sessão de execução usam as entregas (no lugar de `pullRequestLinks`).
 - **Diff** carregado sob demanda (`GET .../deliverables/{id}/diff`) — nunca no GET do item (regra 0070). PR/branch sem
-  fotografia: compare ao vivo no GitHub (repositório informado).
+  fotografia: compare ao vivo no GitHub (repositório informado); sem a integração do GitHub ou branch apagada → `error`
+  legível com o link do PR. PRs do card para a leitura retroativa vêm do banco (`PullRequestsGithub`), sem o GitHub.
