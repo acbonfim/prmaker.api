@@ -55,6 +55,8 @@ public interface IExecutionPlanRepository
     void AddLink(ExecutionLink link);
     void RemoveLink(ExecutionLink link);
     Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>Chamado na Bancada: chamados e PRs dos planos (só leitura, sem rastrear) para as sub-tarefas espelho.</summary>
+    Task<List<ExecutionLink>> GetStepLinksAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken);
 
     // Comentários e numeração por card (0031)

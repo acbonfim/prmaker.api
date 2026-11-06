@@ -113,24 +113,27 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | `validar` | `validation` | claude | build/testes; CA verificaveis localmente |
 | `pr-<repo>` | `pr` | claude | descricao pelo `pr-text` + prompt de **User Story** (sem `<RCA>`), `save-pr-text` sem rca, `open-pr` nas linhas do `branches`; conclui quando os PRs forem mesclados — nunca mescle |
 | `preparar-script-<nome>` (so com script de dados) | `task` | claude | escreve o `.sql` com rollback e a consulta de validacao e o **chamado completo**; **antes** de concluir, grava no plano com `key` = a etapa do chamado: `prmake_file(card, "01_<nome>.sql", ..., "script", "chamado-<nome>", phase: "correction")` e `prmake_file(card, "chamado-<nome>.md", ..., "ticket", "chamado-<nome>", phase: "correction")` (1a linha = titulo; corpo: link do card, cliente, ambiente, banco, o que o script faz e por que — pelo objetivo da US —, rollback, consulta de validacao). O PRMake recusa a etapa do chamado com o usuario sem os dois arquivos |
-| `chamado-<nome>` | `ticket` | **user** | `dependsOn: preparar-script-<nome>`; descricao cita os arquivos ("Abra o chamado no `TicketSystem` com o texto de `chamado-<nome>.md` e anexe `01_<nome>.sql`; cole o link aqui"); fica aguardando ate o chamado ser resolvido |
+| `chamado-<nome>` | `ticket` | **user** | `dependsOn: preparar-script-<nome>`; descricao cita os arquivos ("Abra o chamado no `TicketSystem` com o texto de `chamado-<nome>.md` e anexe `01_<nome>.sql`; depois use **Anexar chamado** nesta etapa/sub-tarefa com o link"); a etapa fica aguardando o chamado e **conclui sozinha** quando a pessoa marca o chamado como resolvido — nunca peca para clicar em *Concluir* nem ponha a validacao na descricao desta etapa |
+| `validar-chamado-<nome>` | `validation` (`taskKind: sql-query`) | claude | `dependsOn: chamado-<nome>`; com o chamado resolvido, roda a **consulta de validacao** do script (somente leitura, `sql-query.sh` no host/banco do cliente) e confirma que os dados mudaram como o script previa; grava o resultado (consulta + linhas) como evidencia: `prmake_file(card, "<nome>-validacao.md", ..., "analysis", "validar-chamado-<nome>", phase: "correction")` + resumo na Timeline. Divergencia → `fail` dizendo o que ficou diferente (o chamado volta para a pessoa). As etapas seguintes que dependem dos dados (ex.: `validar-qa` com CA de dados, `fechar-card`) dependem desta |
 | `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado). **So se algum PR do `branches` tem destino QA** — repositorio sem QA (ex.: revamp-backend, so `development`) nao tem essa etapa: nao crie `validar-qa`; a validacao fica na `validar`/no destino que o fluxo tem |
 | `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs; mover o card **so** com a acao configurada (`devops <card> config`) e autorizada nas respostas; sem acao aplicavel a US → nao mova e diga |
 
 **Categoria na Bancada (`taskKind`)** — cada etapa vira uma sub-tarefa do item de trabalho e a categoria dela aparece
 na Bancada. Informe `taskKind` (catalogo `WorkItemTaskKinds`) em toda etapa que nao for codigo: `research` (analise/consulta
 sem alterar nada — `impacto-na-base`, levantamentos), `sql-query` (consulta SQL so leitura), `sql-script` (`preparar-script-*`),
-`ticket` (`chamado-*`), `pr` (`pr-*`), `devops-action` (`preparar-fechamento`, `fechar-card`, mover o card, root cause,
+`ticket` (`chamado-*`), `sql-query` (`validar-chamado-*`), `pr` (`pr-*`), `devops-action` (`preparar-fechamento`, `fechar-card`, mover o card, root cause,
 classificacao), `notify` (Timeline/Teams), `comment`, `pr-text`, `decision` (decidir com a pessoa), `manual` (tarefa
 da pessoa sem tipo proprio) ou `task` (o que nao cabe em nenhuma); `code` **so** em etapa que altera codigo. Sem `taskKind`
 o PRMake deduz pela chave e pelo titulo (nunca mais "Alterar codigo" para etapa `task`), entao use as chaves desta tabela.
 
-Script de dados **sempre** vai com o par `preparar-script-*` + `chamado-*` (nunca script sem chamado, nem chamado sem o
-arquivo do chamado completo) — igual ao Bug (`$REF correcao 7`, linha do chamado).
+Script de dados **sempre** vai com o trio `preparar-script-*` + `chamado-*` + `validar-chamado-*` (nunca script sem
+chamado, chamado sem o arquivo do chamado completo, nem chamado sem a conferencia depois) — igual ao Bug (`$REF correcao
+7`, linha do chamado).
 
 **Entregas independentes** (ex.: um PR para producao e outro para `release-version`; uma parte do back que pode ir antes
 do front; um script de dados que vai depois): alem do plano, crie **itens proprios** (item com sub-tarefa `sql-script`
-ganha sozinho as sub-tarefas do chamado — gerar o chamado completo + a pessoa abre no sistema de chamados; nao duplique):
+ganha sozinho as sub-tarefas do chamado — gerar o chamado completo + a pessoa abre no sistema de chamados e anexa o
+link + conferir os dados depois do chamado; nao duplique):
 1. `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`) — ja existe item com o mesmo objetivo
    (titulo/sub-tarefas/fingerprint, status nao cancelado)? Nao crie outro; cite o existente.
 2. `prmake_rules(card)` (ou `dados/regras.md`) para os nomes: branch por destino (`release-version` → `<branch>-rv`),

@@ -124,7 +124,9 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
    com o numero, as sub-tarefas e "Para rodar, clique em **Executar** na Bancada do card
    (`auth/workbench?card=<card>&item=<numero>`) ou me peca".
 5. Item com sub-tarefa `sql-script` ja nasce com as sub-tarefas do chamado (o PRMake acrescenta: gerar o chamado completo
-   + a pessoa abre no sistema de chamados e cola o link) — nao as crie de novo.
+   + a pessoa abre no sistema de chamados e anexa o link na sub-tarefa, que conclui quando o chamado e marcado resolvido
+   + o Claude confere os dados depois do chamado) — nao as crie de novo. Pessoa que diz que abriu o chamado: lembre de
+   usar *Anexar chamado* na sub-tarefa (nao *Concluir*), e de marcar *Resolvido* quando o chamado voltar.
 
 **`#123` na conversa (0090):** `#<numero>` e sempre um **item de trabalho** do PRMake — a tela vira link com o popover
 do item. Quando a pessoa cita `#123`, leia com `prmake_work_item(card, 123)` antes de responder; ao citar um item, escreva

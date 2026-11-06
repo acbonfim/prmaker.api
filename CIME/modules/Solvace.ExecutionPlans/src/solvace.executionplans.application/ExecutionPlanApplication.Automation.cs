@@ -151,6 +151,8 @@ public partial class ExecutionPlanApplication
                     p.CompleteStep(step.Key, active.Count == 1 ? "PR mesclado" : $"{active.Count} PRs mesclados", SystemActor.Name, now, false);
                     changed = true;
                 }
+                else if (p.WaitForPullRequests(step.Key, active, SystemActor.Name, now, false) is not null)
+                    changed = true;
             }
             if (changed || checksChanged) p.Touch(now, fromExecutor: false);
         }, cancellationToken, SystemActor,

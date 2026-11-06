@@ -186,6 +186,13 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
     public Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken) =>
         _context.Links.Where(l => l.PlanId == planId).OrderByDescending(l => l.CreatedAt).ToListAsync(cancellationToken);
 
+    public Task<List<ExecutionLink>> GetStepLinksAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken) =>
+        planIds.Count == 0
+            ? Task.FromResult(new List<ExecutionLink>())
+            : _context.Links.AsNoTracking()
+                .Where(l => planIds.Contains(l.PlanId) && (l.Kind == ExecutionLinkKind.Ticket || l.Kind == ExecutionLinkKind.PullRequest))
+                .OrderBy(l => l.CreatedAt).ToListAsync(cancellationToken);
+
     public Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken) =>
         _context.Links.FirstOrDefaultAsync(l => l.PlanId == planId && l.Id == linkId, cancellationToken);
 

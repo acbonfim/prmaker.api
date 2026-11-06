@@ -229,6 +229,8 @@ public static class WorkTaskKind
         if (k.StartsWith("preparar-script", StringComparison.Ordinal)) return SqlScript;
         if (k.StartsWith("pr-", StringComparison.Ordinal)) return PullRequest;
         if (k.StartsWith("implementar-", StringComparison.Ordinal) || k.StartsWith("corrigir-", StringComparison.Ordinal)) return Code;
+        // Chamado na Bancada: conferir os dados depois do chamado (somente leitura) — antes da regra geral de "validar".
+        if (k.StartsWith("validar-chamado", StringComparison.Ordinal) || k.StartsWith("validar-dados", StringComparison.Ordinal)) return SqlQuery;
         if (k.StartsWith("validar", StringComparison.Ordinal)) return Validation;
         return null;
     }

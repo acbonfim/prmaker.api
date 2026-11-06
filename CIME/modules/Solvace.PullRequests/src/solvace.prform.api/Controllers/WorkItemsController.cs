@@ -111,6 +111,16 @@ public partial class WorkItemsController : ExecutionControllerBase
         RunItem<WorkItemResponse>(async () =>
             Ok(await _items.TaskActionAsync(taskNumber, verb, request ?? new WorkTaskActionRequest(), await ActorAsync(ct), ct)));
 
+    /// <summary>Chamado na Bancada: anexa o chamado à sub-tarefa de chamado (ela aguarda até o chamado ser resolvido).</summary>
+    [HttpPost("tasks/{taskNumber:long}/ticket")]
+    public Task<ActionResult<WorkItemResponse>> AttachTicket([FromRoute] long taskNumber, [FromBody] WorkTaskTicketRequest request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.AttachTicketAsync(taskNumber, request, await ActorAsync(ct), ct)));
+
+    /// <summary>Chamado na Bancada: status do chamado da sub-tarefa — open | resolved (conclui) | closed (sem resolução).</summary>
+    [HttpPut("tasks/{taskNumber:long}/ticket")]
+    public Task<ActionResult<WorkItemResponse>> UpdateTicket([FromRoute] long taskNumber, [FromBody] WorkTaskTicketStatusRequest request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.UpdateTicketAsync(taskNumber, request, await ActorAsync(ct), ct)));
+
     /// <summary>Materializa o item do plano (cards antigos) — idempotente.</summary>
     [HttpPost("card/{card}/from-plan/{planId:guid}")]
     public Task<ActionResult<WorkItemResponse>> FromPlan([FromRoute] string card, [FromRoute] Guid planId, CancellationToken ct) =>

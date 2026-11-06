@@ -20,6 +20,10 @@ public interface IWorkItemApplication
     Task<WorkItemResponse> DuplicateAsync(long number, ExecutionActor actor, CancellationToken ct);
     /// <param name="action">start | complete | fail | wait | skip | revert | cancel (ver <see cref="WorkTaskAction"/>).</param>
     Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Chamado na Bancada: anexa o chamado à sub-tarefa <c>ticket</c> (ela passa a aguardar o chamado).</summary>
+    Task<WorkItemResponse> AttachTicketAsync(long taskNumber, WorkTaskTicketRequest req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Chamado na Bancada: status do chamado da sub-tarefa (resolvido conclui; fechado volta para a pessoa).</summary>
+    Task<WorkItemResponse> UpdateTicketAsync(long taskNumber, WorkTaskTicketStatusRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>Plano ligado → retoma o plano (fila main); avulso → <see cref="IWorkItemQueue.EnqueueAsync"/>.</summary>
     Task<WorkItemResponse> ExecuteAsync(long number, ExecutionActor actor, CancellationToken ct);
     Task<WorkItemResponse> CancelAsync(long number, bool undo, string? reason, ExecutionActor actor, CancellationToken ct);

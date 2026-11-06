@@ -215,6 +215,72 @@ public class WorkItemApplication : IWorkItemApplication
     }
 
     /// <summary>
+    /// Chamado na Bancada: a pessoa anexa o chamado à sub-tarefa <c>ticket</c>. Sub-tarefa espelho → link bloqueante da etapa
+    /// do plano (a etapa aguarda o chamado e conclui quando ele for resolvido); item avulso → chamado nas saídas da
+    /// sub-tarefa, que passa a aguardar.
+    /// </summary>
+    public async Task<WorkItemResponse> AttachTicketAsync(long taskNumber, WorkTaskTicketRequest req, ExecutionActor actor, CancellationToken ct)
+    {
+        req ??= new WorkTaskTicketRequest();
+        var url = WorkTaskTicket.NormalizeUrl(req.Url);
+        var title = WorkTaskTicket.NormalizeTitle(req.Title);
+        var (item, task) = await TicketTaskAsync(taskNumber, ct);
+        if (item.PlanId is { } planId && task.StepKey is { } stepKey)
+        {
+            await PlanApp.AddLinkAsync(planId, stepKey, new AddExecutionLinkRequest
+            {
+                Url = url, Title = title, Kind = ExecutionLinkKind.Ticket, BlocksStep = true,
+            }, actor, ct);
+            _items.DetachWorkItems();
+            return await GetAsync(item.Number, false, ct);
+        }
+        var output = WorkTaskTicket.Output(url, title, ExecutionLinkStatus.Open);
+        var (action, result) = WorkTaskTicket.TaskAction(ExecutionLinkStatus.Open, WorkTaskTicket.DisplayName(url, title));
+        return await TaskActionAsync(taskNumber, action, new WorkTaskActionRequest { Result = result, Output = JsonDocument.Parse(output).RootElement.Clone() }, actor, ct);
+    }
+
+    /// <summary>
+    /// Chamado na Bancada: muda o status do chamado da sub-tarefa (open | resolved | closed). Resolvido conclui a
+    /// sub-tarefa; fechado sem resolução volta para a pessoa. Sem <c>linkId</c>, vale o chamado mais recente.
+    /// </summary>
+    public async Task<WorkItemResponse> UpdateTicketAsync(long taskNumber, WorkTaskTicketStatusRequest req, ExecutionActor actor, CancellationToken ct)
+    {
+        req ??= new WorkTaskTicketStatusRequest();
+        var status = WorkTaskTicket.NormalizeStatus(req.Status);
+        var (item, task) = await TicketTaskAsync(taskNumber, ct);
+        if (item.PlanId is { } planId && task.StepKey is { } stepKey)
+        {
+            var key = ExecutionStep.NormalizeKey(stepKey);
+            var tickets = (await _plans.GetStepLinksAsync([planId], ct))
+                .Where(l => l.StepKey == key && l.Kind == ExecutionLinkKind.Ticket).ToList();
+            var link = (req.LinkId is { } id ? tickets.FirstOrDefault(l => l.Id == id) : tickets.LastOrDefault())
+                       ?? throw new DomainException($"A sub-tarefa #{taskNumber} não tem chamado anexado — anexe o chamado antes.");
+            await PlanApp.UpdateLinkAsync(planId, link.Id, new UpdateExecutionLinkRequest { Status = status }, actor, ct);
+            _items.DetachWorkItems();
+            return await GetAsync(item.Number, false, ct);
+        }
+        var current = WorkTaskTicket.Read(task)
+                      ?? throw new DomainException($"A sub-tarefa #{taskNumber} não tem chamado anexado — anexe o chamado antes.");
+        var output = WorkTaskTicket.Output(current.Url, current.Title, status);
+        var (action, result) = WorkTaskTicket.TaskAction(status, WorkTaskTicket.DisplayName(current.Url, current.Title));
+        return await TaskActionAsync(taskNumber, action, new WorkTaskActionRequest { Result = result, Output = JsonDocument.Parse(output).RootElement.Clone() }, actor, ct);
+    }
+
+    private async Task<(WorkItem Item, WorkItemTask Task)> TicketTaskAsync(long taskNumber, CancellationToken ct)
+    {
+        var item = await _items.GetByTaskNumberAsync(taskNumber, ct)
+                   ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
+        var task = item.Tasks.First(t => t.Number == taskNumber);
+        if (task.Kind != WorkTaskKind.Ticket)
+            throw new DomainException($"A sub-tarefa #{taskNumber} não é de chamado.");
+        if (WorkItemStatus.IsClosed(item.Status) || item.Status == WorkItemStatus.Reverting)
+            throw new DomainException($"O item #{item.Number} está {item.Status} — o chamado não pode mais mudar.");
+        if (WorkTaskStatus.IsDone(task.Status) || task.Status is WorkTaskStatus.Cancelled or WorkTaskStatus.Reverted)
+            throw new DomainException($"A sub-tarefa #{taskNumber} já terminou ({task.Status}).");
+        return (item, task);
+    }
+
+    /// <summary>
     /// 0089: o racional do pedido sempre vira arquivo do item (e, por isso, dos arquivos do card) — se o Claude concluiu o
     /// <c>card-brief</c> sem gravar <c>resumo-do-pedido.md</c>, o resultado é gravado com esse nome. Best-effort.
     /// </summary>
@@ -656,12 +722,16 @@ public class WorkItemApplication : IWorkItemApplication
         var openItems = items.Where(i => i.Status is not (WorkItemStatus.Completed or WorkItemStatus.Cancelled or WorkItemStatus.Reverted)).ToList();
         var (byItem, byPlan) = await _items.GetLiveRequestsAsync(openItems.Select(i => i.Id).ToList(),
             openItems.Where(i => i.PlanId is not null).Select(i => i.PlanId!.Value).Distinct().ToList(), ct);
+        var stepLinks = (await _plans.GetStepLinksAsync(planIds, ct)).ToLookup(l => (l.PlanId, l.StepKey));
         return items.Select(i =>
         {
             (Guid RequestId, string? Activity)? live = byItem.TryGetValue(i.Id, out var own) ? own
                 : i.PlanId is { } pid && byPlan.TryGetValue(pid, out var plan) ? plan : null;
             var response = WorkItemResponse.From(i, i.PlanId is { } p && phases.TryGetValue(p, out var phase) ? phase : null, live?.Activity);
             if (live is { } l) response.RequestId = l.RequestId;
+            if (i.PlanId is { } planId)
+                foreach (var task in response.Tasks.Where(t => t.StepKey is not null))
+                    task.Links.AddRange(stepLinks[(planId, task.StepKey!)].Select(WorkTaskLinkResponse.From));
             return response;
         }).ToList();
     }
