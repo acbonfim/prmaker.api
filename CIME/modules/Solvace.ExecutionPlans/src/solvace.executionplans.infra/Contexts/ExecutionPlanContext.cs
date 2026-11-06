@@ -37,6 +37,8 @@ public class ExecutionPlanContext : DbContext
     public DbSet<WorkItemLog> WorkItemLogs { get; set; }
     public DbSet<WorkItemFile> WorkItemFiles { get; set; }
     public DbSet<WorkItemFileContent> WorkItemFileContents { get; set; }
+    public DbSet<WorkItemDeliverable> WorkItemDeliverables { get; set; }
+    public DbSet<WorkItemDeliverableContent> WorkItemDeliverableContents { get; set; }
 
     /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
     public const string WorkItemNumberSequence = "work_item_number_seq";
@@ -540,6 +542,41 @@ public class ExecutionPlanContext : DbContext
         {
             entity.ToTable("WorkItemFileContents");
             entity.HasKey(e => e.FileId);
+            entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
+        });
+
+        // 0091: entregas do item/sub-tarefa (PR, branch, código com o diff, chamado, DevOps, Timeline...). Diff em tabela própria.
+        modelBuilder.Entity<WorkItemDeliverable>(entity =>
+        {
+            entity.ToTable("WorkItemDeliverables");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(WorkItemDeliverable.MaxKeyLength);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(WorkItemDeliverable.MaxTitleLength);
+            entity.Property(e => e.Url).HasMaxLength(WorkItemDeliverable.MaxUrlLength);
+            entity.Property(e => e.Status).HasMaxLength(40);
+            entity.Property(e => e.Repository).HasMaxLength(WorkItemDeliverable.MaxRefLength);
+            entity.Property(e => e.Branch).HasMaxLength(WorkItemDeliverable.MaxRefLength);
+            entity.Property(e => e.Target).HasMaxLength(WorkItemDeliverable.MaxRefLength);
+            entity.Property(e => e.Sha).HasMaxLength(64);
+            entity.Property(e => e.Text).HasMaxLength(WorkItemDeliverable.MaxTextLength);
+            entity.Property(e => e.DataJson).HasColumnName("Data").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
+
+            entity.HasOne<WorkItem>().WithMany().HasForeignKey(e => e.WorkItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Content).WithOne().HasForeignKey<WorkItemDeliverableContent>(c => c.DeliverableId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.WorkItemId, e.TaskNumber });
+            entity.HasIndex(e => new { e.CardNumber, e.TaskNumber, e.Key }).IsUnique().AreNullsDistinct(false);
+        });
+
+        modelBuilder.Entity<WorkItemDeliverableContent>(entity =>
+        {
+            entity.ToTable("WorkItemDeliverableContents");
+            entity.HasKey(e => e.DeliverableId);
             entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
         });
 

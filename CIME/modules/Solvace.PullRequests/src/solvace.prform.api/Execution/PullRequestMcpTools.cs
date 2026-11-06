@@ -44,6 +44,7 @@ public class PullRequestMcpTools(
         [Description("Titulo (padrao: PrTitlePattern do card)")] string? title = null,
         [Description("Abrir como rascunho")] bool draft = false,
         [Description("Descricao do PR (markdown; padrao: AB#<card>)")] string? description = null,
+        [Description("0091: sub-tarefa (#n) que abriu o PR — vira entrega dela (padrao: a sub-tarefa de PR em andamento no card)")] long? taskNumber = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = SkillsRulesService.NormalizeCard(card);
@@ -83,6 +84,8 @@ public class PullRequestMcpTools(
                 : $"PR #{pr.Number} aberto pelo CIME: {pr.RepositoryId} ({pr.BranchPrefix}{pr.BranchName} → {pr.TargetBranch}) — {pr.Url}";
             var who = await ActorNameAsync(ct);
             await timeline.WriteAsync(c, specialist.Via is { } via ? $"{text} — {via}." : text, UserId(), who, ct);
+            if (services.GetService<WorkDeliverableHooks>() is { } hooks)
+                await hooks.PullRequestAsync(c, pr, taskNumber, specialist.Via is null, new ExecutionActor(UserId(), who, true), ct);
             var response = JsonSerializer.Serialize(new
             {
                 pr.Number, pr.Url, repository = pr.RepositoryId, branch, target = pr.TargetBranch, pr.AlreadyExisted, warning,

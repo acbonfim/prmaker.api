@@ -58,8 +58,39 @@ public class WorkItemApplication : IWorkItemApplication
         var item = await _items.GetByNumberAsync(number, ct) ?? throw NotFound(number);
         var response = (await ToResponsesAsync([item], ct))[0];
         if (withLogs)
-            response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+            await AddDetailAsync(item, response, ct);
         return response;
+    }
+
+    /// <summary>Detalhe do GET por número: histórico e (0091) as entregas.</summary>
+    private async Task AddDetailAsync(WorkItem item, WorkItemResponse response, CancellationToken ct)
+    {
+        response.Logs = (await _items.GetLogsAsync(item.Id, MaxLogs, ct)).Select(WorkItemLogResponse.From).ToList();
+        if (_services.GetService(typeof(IWorkItemDeliverableApplication)) is IWorkItemDeliverableApplication deliverables)
+            response.Deliverables = await deliverables.ListAsync(item, ct);
+    }
+
+    public async Task<WorkItemResponse> ResolveAsync(long number, bool withLogs, CancellationToken ct)
+    {
+        var item = await _items.GetByNumberAsync(number, ct);
+        var matchedTask = false;
+        if (item is null)
+        {
+            item = await _items.GetByTaskNumberAsync(number, ct) ?? throw NotFound(number);
+            matchedTask = true;
+        }
+        var response = (await ToResponsesAsync([item], ct))[0];
+        if (matchedTask)
+            response.MatchedTaskNumber = number;
+        if (withLogs)
+            await AddDetailAsync(item, response, ct);
+        return response;
+    }
+
+    public async Task<IReadOnlyList<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken ct)
+    {
+        var except = string.IsNullOrWhiteSpace(exceptCard) ? null : NormalizeCard(exceptCard);
+        return await _items.SearchAsync(query?.Trim().TrimStart('#'), except, Math.Clamp(limit, 1, 30), ct);
     }
 
     public async Task<WorkItemResponse?> GetByIdAsync(Guid workItemId, CancellationToken ct)

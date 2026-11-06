@@ -1,3 +1,4 @@
+using solvace.prform.Execution;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using solvace.azure.application.Contract;
@@ -100,22 +101,22 @@ public class AzureController : ControllerBase
     /// <summary>Move o card (Bug, sem pendências, na área exigida) para Test in production, com comentário.</summary>
     [HttpPost("card/{id}/actions/test-in-production")]
     public Task<ActionResult<DevOpsActionResponse>> MoveToTestInProduction(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.MoveToTestInProductionAsync(id, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.MoveToTestInProductionAsync(id, cancellationToken), cancellationToken, "test-in-production");
 
     /// <summary>Move o card (Bug, sem pendências) para o estado de Ready for QA.</summary>
     [HttpPost("card/{id}/actions/ready-for-qa")]
     public Task<ActionResult<DevOpsActionResponse>> MoveToReadyForQa(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.MoveToReadyForQaAsync(id, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.MoveToReadyForQaAsync(id, cancellationToken), cancellationToken, "ready-for-qa");
 
     /// <summary>Move o card (Bug) para Dev Test in QA: o dev validando a correção em QA (estado + coluna do board).</summary>
     [HttpPost("card/{id}/actions/dev-test-in-qa")]
     public Task<ActionResult<DevOpsActionResponse>> MoveToDevTestInQa(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.MoveToDevTestInQaAsync(id, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.MoveToDevTestInQaAsync(id, cancellationToken), cancellationToken, "dev-test-in-qa");
 
     /// <summary>Preenche Original Estimate / Remaining Work / Completed Work com os valores do usuário.</summary>
     [HttpPost("card/{id}/actions/initial-estimate")]
     public Task<ActionResult<DevOpsActionResponse>> SetInitialEstimate(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.SetInitialEstimateAsync(id, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.SetInitialEstimateAsync(id, cancellationToken), cancellationToken, "initial-estimate");
 
     /// <summary>Opções de classificação (padrão ou as do "AI Configurations" do usuário) — feature 0028.</summary>
     [HttpGet("actions/classifications")]
@@ -128,7 +129,7 @@ public class AzureController : ControllerBase
     /// </summary>
     [HttpPost("card/{id}/actions/classify")]
     public Task<ActionResult<DevOpsActionResponse>> Classify(string id, [FromBody] ClassifyCardRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.ClassifyAsync(id, request, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.ClassifyAsync(id, request, cancellationToken), cancellationToken, "classify");
 
     /// <summary>0078: horas do card (Original Estimate, Completed Work, Remaining Work).</summary>
     [HttpGet("card/{id}/effort")]
@@ -174,7 +175,7 @@ public class AzureController : ControllerBase
     /// <summary>0078: lança horas — soma em Completed Work e tira do Remaining Work.</summary>
     [HttpPost("card/{id}/actions/log-hours")]
     public Task<ActionResult<DevOpsActionResponse>> LogHours(string id, [FromBody] LogHoursRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.LogHoursAsync(id, request.Hours, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.LogHoursAsync(id, request.Hours, cancellationToken), cancellationToken, "log-hours", hours: request.Hours);
 
     /// <summary>
     /// 0085: muda o estado do card para um estado válido do tipo dele (Bug/User Story) — a skill desfazer-item-de-trabalho
@@ -183,19 +184,19 @@ public class AzureController : ControllerBase
     [HttpPost("card/{id}/actions/set-state")]
     public Task<ActionResult<DevOpsActionResponse>> SetState(string id, [FromBody] SetCardStateRequest request, [FromServices] ITimelineApplication timeline,
         CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.SetStateAsync(id, request.State, request.Reason, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.SetStateAsync(id, request.State, request.Reason, cancellationToken), cancellationToken, "set-state", state: request.State);
 
     /// <summary>Zera o Remaining Work do card.</summary>
     [HttpPost("card/{id}/actions/zero-remaining")]
     public Task<ActionResult<DevOpsActionResponse>> ZeroRemaining(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>
-        RunActionAsync(id, timeline, () => _actionsService.ZeroRemainingAsync(id, cancellationToken), cancellationToken);
+        RunActionAsync(id, timeline, () => _actionsService.ZeroRemainingAsync(id, cancellationToken), cancellationToken, "zero-remaining");
 
     /// <summary>
     /// Executa a ação e registra na Timeline do card. Regra não atendida = 409, card inexistente =
     /// 404, erro do DevOps = 502 — sempre com { error } legível para o usuário.
     /// </summary>
     private async Task<ActionResult<DevOpsActionResponse>> RunActionAsync(string cardNumber, ITimelineApplication timeline,
-        Func<Task<DevOpsActionResponse>> action, CancellationToken cancellationToken)
+        Func<Task<DevOpsActionResponse>> action, CancellationToken cancellationToken, string actionKey, decimal? hours = null, string? state = null)
     {
         DevOpsActionResponse result;
         try
@@ -208,6 +209,10 @@ public class AzureController : ControllerBase
         }
 
         await RegisterOnTimelineAsync(timeline, cardNumber, $"{result.Message} pelo CIME (Ações DevOps).", _logger, User, cancellationToken);
+        // 0091: a ação vira entrega da sub-tarefa (?workItemTask= da skill, ou a de DevOps em andamento no card).
+        if (HttpContext.RequestServices.GetService<WorkDeliverableHooks>() is { } hooks)
+            await hooks.DevOpsAsync(cardNumber, actionKey, result.Message, hours, state, WorkDeliverableHooks.TaskOf(HttpContext),
+                WorkDeliverableHooks.IsClaude(HttpContext), WorkDeliverableHooks.ActorOf(HttpContext), cancellationToken);
         return Ok(result);
     }
 

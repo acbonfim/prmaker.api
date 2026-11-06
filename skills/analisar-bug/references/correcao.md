@@ -250,6 +250,13 @@ Regras:
   <card> <ref> --implemented <sha> --file <caminho> --dir "$WT"` — o popover mostra *Proposta x Feito*. Arquivo mudado
   sem ref na analise (a correcao precisou de mais): fotografe com `--dir "$WT"` antes do commit (`--change change --after`)
   e grave o `--implemented` depois.
+- **Codigo alterado vira entrega do item (0091)**: ao terminar cada etapa `code` (commits feitos no worktree, antes do
+  `advance`), `bash $PLAN deliver-code <card> <repo> --step <key-da-etapa>` (no worktree do card; `--dir "$WT"` se
+  estiver em outro lugar; `--base <base>` se a branch nao nasceu de `origin/<base>`). Grava a branch, a base, os commits
+  e o **diff completo** na sub-tarefa da etapa — a pessoa ve o codigo alterado ao abrir a sub-tarefa na Bancada. O diff
+  vai do worktree direto para o PRMake (nao leia nem cole o diff no chat). Novos commits na mesma etapa (CI, nova
+  rodada) → rode de novo (substitui). O `prmake_advance` avisa quando uma etapa de codigo da correcao conclui sem isso.
+  PRs abertos com `open-pr`, acoes do DevOps e Timeline viram entrega da etapa em andamento sozinhos.
 - Etapa de PR — **descricao no layout padrao do PRMake, salva no card**, antes de abrir os PRs de cada repositorio:
   1. `bash $PLAN pr-text <card> <repo> <branch-correcao>` (a do `branches`, ja no GitHub): baixa o **prompt
      configurado** (o mesmo da `gerar-prmake`), os repro steps e o diff em `$CARD_DIR/pr/<repo>/`.

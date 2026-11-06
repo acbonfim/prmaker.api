@@ -36,6 +36,13 @@ public class WorkItemResponse
     public List<WorkTaskResponse> Tasks { get; set; } = [];
     /// <summary>Histórico (só no GET por número).</summary>
     public List<WorkItemLogResponse>? Logs { get; set; }
+    /// <summary>0091: o que o item e as sub-tarefas geraram (só no GET por número).</summary>
+    public List<WorkDeliverableResponse>? Deliverables { get; set; }
+    /// <summary>
+    /// O número pedido no GET era de uma sub-tarefa deste item (a numeração é a mesma para itens e sub-tarefas) — quem
+    /// citou <c>#n</c> da sub-tarefa recebe o item dono e sabe qual sub-tarefa destacar.
+    /// </summary>
+    public long? MatchedTaskNumber { get; set; }
 
     public static WorkItemResponse From(WorkItem item, string? planPhase = null, string? activity = null) => new()
     {
@@ -174,4 +181,24 @@ public class WorkItemExecuteResponse
     public Guid? RequestId { get; set; }
     public string Status { get; set; } = string.Empty;
     public WorkItemResponse? Item { get; set; }
+}
+
+/// <summary>
+/// Resultado da busca de itens de trabalho por número ou título (<c>GET WorkItems/search</c>, lista do <c>##</c> na conversa
+/// do especialista) — item ou sub-tarefa, sem texto grande.
+/// </summary>
+public class WorkItemSearchHit
+{
+    /// <summary><c>item</c> ou <c>task</c>.</summary>
+    public string Kind { get; set; } = "item";
+    public long Number { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string CardNumber { get; set; } = string.Empty;
+    /// <summary>Item dono (na sub-tarefa; no item é o próprio).</summary>
+    public long ItemNumber { get; set; }
+    public string ItemTitle { get; set; } = string.Empty;
+    /// <summary>Tipo do item (no item e no dono da sub-tarefa).</summary>
+    public string ItemType { get; set; } = string.Empty;
+    public DateTimeOffset UpdatedAt { get; set; }
 }

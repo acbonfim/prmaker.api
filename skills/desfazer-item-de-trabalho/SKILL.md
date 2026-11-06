@@ -70,3 +70,8 @@ com o erro e siga.
 
 **4. Fim** — `prmake_work_item` para conferir. Relatorio curto no chat: o que foi desfeito, o que ficou (com o motivo e
 quem decide). Nao escreva na Timeline (o PRMake registra os marcos do item).
+
+## Entregas (0091)
+As entregas da sub-tarefa (PR, branch, codigo, chamado...) **ficam** no item depois do desfazer, marcadas "desfeito" pelo
+PRMake quando a sub-tarefa vira `reverted` — nao apague nada para isso. Sem `undo`, as entregas da sub-tarefa
+(`prmake_work_item` → `deliverables`) dizem o que ela gerou (PR a fechar, branch a apagar, commits a reverter).

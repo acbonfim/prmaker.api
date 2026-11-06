@@ -27,7 +27,8 @@ public class WorkItemMcpTools(
     solvace.timeline.application.Contracts.IUserRepository users,
     SpecialistActions specialist,
     CodeCitationGate citations,
-    IExecutionQueueApplication queue)
+    IExecutionQueueApplication queue,
+    IWorkItemDeliverableApplication deliverables)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -64,13 +65,14 @@ public class WorkItemMcpTools(
     });
 
     [McpServerTool(Name = "prmake_work_item", ReadOnly = true)]
-    [Description("Detalhe de um item de trabalho do card: sub-tarefas com params, resultado, saidas (output), como desfazer (undo), " +
-                 "links, pedido da fila e o historico recente.")]
-    public Task<string> Get(string card, [Description("Numero do item (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
+    [Description("Detalhe de um item de trabalho: sub-tarefas com params, resultado, saidas (output), como desfazer (undo), " +
+                 "links, pedido da fila e o historico recente. Aceita o #n citado na conversa: numero de sub-tarefa devolve o item dono " +
+                 "com matchedTaskNumber; item de outro card (citado como referencia) vem com otherCard=true — so leitura, nao altere.")]
+    public Task<string> Get(string card, [Description("Numero do item ou da sub-tarefa (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
     {
-        var item = await items.GetAsync(number, true, ct);
-        EnsureSameCard(item, card);
-        return Serialize(item);
+        var item = await items.ResolveAsync(number, true, ct);
+        var otherCard = !string.Equals(item.CardNumber, RequireCard(card), StringComparison.Ordinal);
+        return otherCard ? Serialize(new { otherCard = true, note = $"Item do card {item.CardNumber} — referencia, so leitura.", item }) : Serialize(item);
     });
 
     [McpServerTool(Name = "prmake_work_item_create")]
@@ -345,6 +347,31 @@ public class WorkItemMcpTools(
                     : null
             }), $"sub-tarefa #{taskNumber}: {task?.Status ?? verb}");
         }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_deliverable")]
+    [Description("0091: registra o que a sub-tarefa GEROU (aparece no modal da sub-tarefa e na aba Entregas do item). kind: pr | branch | " +
+                 "commit | ticket | pr-text | devops-state | comment | timeline | hours | notify | doc. Mesma coisa de novo (tipo + repositorio + " +
+                 "branch/numero/url) atualiza. PR aberto pelo PRMake, acoes do DevOps e Timeline ja sao registrados sozinhos; codigo alterado " +
+                 "vai pelo prmake-plan.sh deliver-code (o diff sai do worktree, nao passe diff aqui). data = extras (ex.: {from, to}, {system}).")]
+    public Task<string> Deliverable(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber, string kind,
+        string? title = null, string? url = null, [Description("pr: open|merged|closed|draft; ticket: open|resolved|closed")] string? status = null,
+        string? repository = null, string? branch = null, [Description("pr: destino; branch: base")] string? target = null,
+        int? number = null, string? sha = null, [Description("Texto curto (ate 600)")] string? text = null,
+        [Description("Objeto JSON (ou o JSON em texto) com extras")] JsonElement? data = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        if (specialist.IsSpecialist)
+            throw new McpException("As entregas sao registradas pela execucao da sub-tarefa, nao pelo Especialista do caso.");
+        var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
+                    ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        var saved = await deliverables.RecordAsync(taskNumber, new WorkDeliverableInput
+        {
+            Kind = kind, Title = title, Url = url, Status = status, Repository = repository, Branch = branch, Target = target,
+            Number = number, Sha = sha, Text = text, Data = AsObject(data),
+        }, await ActorAsync(ct), ct);
+        return Serialize(new { item = owner.Number, deliverable = new { saved.Id, saved.TaskNumber, saved.Kind, saved.Title, saved.Url } });
     });
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────

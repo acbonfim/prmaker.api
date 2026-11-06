@@ -16,7 +16,8 @@ public interface IGitHubService
     Task<PullRequestChecksResponse> GetPullRequestChecksAsync(string repository, int number, CancellationToken cancellationToken = default);
     Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default);
     Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null);
-    Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default);
+    /// <summary>Compare base...head; 0091: <paramref name="repository"/> = repositório do card (padrão: o configurado).</summary>
+    Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default, string? repository = null);
     Task<List<BranchCommitResponse>> GetBranchCommitsAsync(string repository, string branch, CancellationToken cancellationToken = default);
 
     /// <summary>0074: nomes de todas as branches do repositório (cache curto). Quem chama filtra.</summary>

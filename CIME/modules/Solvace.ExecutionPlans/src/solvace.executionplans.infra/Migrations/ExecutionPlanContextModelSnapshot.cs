@@ -1644,6 +1644,121 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("WorkItems", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemDeliverable", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Branch")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Data");
+
+                    b.Property<bool>("HasPatch")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int?>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("PatchTruncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Repository")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Sha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<long?>("TaskNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid?>("WorkItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkItemId", "TaskNumber");
+
+                    b.HasIndex("CardNumber", "TaskNumber", "Key")
+                        .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("CardNumber", "TaskNumber", "Key"), false);
+
+                    b.ToTable("WorkItemDeliverables", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemDeliverableContent", b =>
+                {
+                    b.Property<Guid>("DeliverableId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("DeliverableId");
+
+                    b.ToTable("WorkItemDeliverableContents", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2308,6 +2423,23 @@ namespace solvace.executionplans.infra.Migrations
                     b.Navigation("Actions");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemDeliverable", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("WorkItemId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemDeliverableContent", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.WorkItemDeliverable", null)
+                        .WithOne("Content")
+                        .HasForeignKey("solvace.executionplans.domain.Entities.WorkItemDeliverableContent", "DeliverableId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>
                 {
                     b.HasOne("solvace.executionplans.domain.Entities.WorkItem", null)
@@ -2364,6 +2496,11 @@ namespace solvace.executionplans.infra.Migrations
                     b.Navigation("Logs");
 
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemDeliverable", b =>
+                {
+                    b.Navigation("Content");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemFile", b =>

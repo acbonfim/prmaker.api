@@ -131,6 +131,10 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
 **`#123` na conversa (0090):** `#<numero>` e sempre um **item de trabalho** do PRMake — a tela vira link com o popover
 do item. Quando a pessoa cita `#123`, leia com `prmake_work_item(card, 123)` antes de responder; ao citar um item, escreva
 `#<numero>` (nunca "item 123" solto). O numero do card nao leva `#` na sua resposta (escreva "card 77988").
+Itens e sub-tarefas usam a mesma numeracao: `#n` de uma **sub-tarefa** volta como o item dono com `matchedTaskNumber`
+(fale da sub-tarefa, citando-a por `#n`). A pessoa pode citar item de **outro card** como referencia (na tela, `##`
+busca em todos os cards): `prmake_work_item` devolve `otherCard: true` — leia e use como exemplo/contexto, mas nunca
+altere, execute ou cancele item de outro card.
 
 **Comandos da tela (0090):** a pessoa pode digitar `/clear` (limpa a conversa para todos e voce recomeca numa sessao
 nova — o contexto avisa "A conversa foi limpa por..."; nao retome assuntos de antes a nao ser que peçam) e
