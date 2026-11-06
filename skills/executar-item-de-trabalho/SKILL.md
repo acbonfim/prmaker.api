@@ -38,7 +38,7 @@ CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dad
 
 ## MCP primeiro
 Carregue uma vez, no inicio:
-`ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_items,mcp__prmake__prmake_work_task,mcp__prmake__prmake_rules,mcp__prmake__prmake_card,mcp__prmake__prmake_devops,mcp__prmake__prmake_work_item_file")`
+`ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_items,mcp__prmake__prmake_work_task,mcp__prmake__prmake_rules,mcp__prmake__prmake_card,mcp__prmake__prmake_devops,mcp__prmake__prmake_work_item_file,mcp__prmake__prmake_work_deliverable")`
 (`prmake_timeline`, `prmake_pr_open`, `prmake_file`, `prmake_devops_config`, `prmake_base_impact`, `prmake_work_item_evidence`,
 `prmake_work_item_files`, `prmake_notes` so quando precisar).
 
@@ -50,7 +50,9 @@ Carregue uma vez, no inicio:
 | card (estado, area, tipo) | `prmake_card(card)` | `dados/card-resumo.txt` |
 | mover o card / lancar horas | `prmake_devops(card, action)` (`log-hours` com `hours`) | `bash $PLAN devops <card> <acao>` |
 | arquivo do item (chamado completo, script, resultado) | `prmake_work_item_file(card, number, name, content, kind?, taskNumber?)` | — |
-| abrir PR | `prmake_pr_open(card, repository, source, target, title?, draft?, description?)` (devolve `output`/`undo`) | `bash $PLAN open-pr ... --item <n>` |
+| abrir PR | `prmake_pr_open(card, repository, source, target, title?, draft?, description?, taskNumber)` (devolve `output`/`undo`) | `bash $PLAN open-pr ... --item <n> --task <sub-tarefa>` |
+| codigo alterado (branch + diff completo) da sub-tarefa | — | `bash $PLAN deliver-code <card> <repo> --task <sub-tarefa> --item <n>` |
+| outra entrega (chamado, aviso, link) | `prmake_work_deliverable(card, taskNumber, kind, ...)` | — |
 
 ## Fluxo
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet executar-item-de-trabalho analisar-bug 2>/dev/null || true`.
@@ -75,6 +77,11 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
    - `undo`: `{"action": "...", "params": {...}}` do catalogo abaixo — **sempre** que a sub-tarefa mudou algo fora;
      `{"action":"none","params":{"reason":"..."}}` quando nada precisa ser desfeito.
    - Nao deu: `fail` com o motivo e o que tentar (e pare o item). Depende de decisao/acao de alguem: `wait` e pare.
+   - **Entregas (0091)** — o que a sub-tarefa gerou aparece no modal dela e na aba Entregas do item: `code`/`branch`/
+     `cherry-pick` → **antes** do `complete`, `bash $PLAN deliver-code <card> <repo> --task <sub-tarefa> --item <n>`
+     (branch, base, commits e o diff completo, direto do worktree — nao cole diff no chat); PR, acoes do DevOps e Timeline
+     sao registrados sozinhos (passe `taskNumber`/`--task` quando a ferramenta aceitar); chamado com link, aviso ou
+     documento → `prmake_work_deliverable` (o `output` do `complete` tambem e lido, mas a entrega deixa claro).
 6. Proxima sub-tarefa. No fim, `prmake_work_item` para conferir: todas concluidas → o PRMake conclui o item sozinho.
 
 **3. Relatorio** — 3–6 linhas no chat (item, sub-tarefas feitas, PRs/branches, o que ficou esperando quem). Os marcos

@@ -365,7 +365,9 @@ public static class WorkDeliverableListing
 
     private static bool Same(WorkDeliverableResponse a, WorkDeliverableResponse b)
     {
-        if (a.Kind != b.Kind)
+        // O código alterado já mostra a branch: branch e código da mesma branch são uma entrega só.
+        var refs = a.Kind is WorkDeliverableKind.Branch or WorkDeliverableKind.Code && b.Kind is WorkDeliverableKind.Branch or WorkDeliverableKind.Code;
+        if (a.Kind != b.Kind && !refs)
             return false;
         if (a.Kind == WorkDeliverableKind.PullRequest)
             return SamePr(a, b.Repository, b.Number, b.Url);

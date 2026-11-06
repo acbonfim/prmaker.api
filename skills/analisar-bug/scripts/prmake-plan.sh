@@ -63,10 +63,18 @@
 #   attachment  <card> <ref>                             baixa um arquivo do card por referencia: "#12", "12", "anexo 12",
 #                                                        "imagem 2", nome ou parte do nome (qualquer plano do card)
 #   note        <card> <texto|-> [arquivo...] [--step <key>]  o Claude comenta no plano (com anexos)
-#   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md] [--item <n>]
+#   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md] [--item <n>] [--task <n>]
 #                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge;
 #                                                        --item = PR de um item de trabalho (0085): nao exige plano nem
-#                                                        anexa a etapa de PR do plano (o PR vai no output da sub-tarefa)
+#                                                        anexa a etapa de PR do plano (o PR vai no output da sub-tarefa);
+#                                                        --task = sub-tarefa que abriu o PR (0091: vira entrega dela; sem
+#                                                        ele, a sub-tarefa de PR em andamento no card)
+#   deliver-code <card> <repo> [--task <n> | --step <key>] [--item <n>] [--dir <pasta>] [--base <branch>]
+#                                                        0091: registra o CODIGO ALTERADO na sub-tarefa/etapa (branch, base,
+#                                                        commits e o diff completo desde a base) — rode no fim de cada etapa
+#                                                        ou sub-tarefa de codigo/branch/cherry-pick; o diff vai direto do
+#                                                        worktree para o PRMake (nao passa pelo chat). Sem --task/--step =
+#                                                        a etapa em andamento do plano
 #   rules       <card> [--refresh]                       0085: regras do PRMake para o card (fluxo, base, NOME DE BRANCH
 #                                                        POR DESTINO, padroes de commit/titulo, itens) em
 #                                                        $CARD_DIR/dados/regras.md (cache de 10 min)
@@ -1548,9 +1556,13 @@ case "$CMD" in
     # Abre o PR pelo PRMake (o mesmo endpoint da tela/gerar-prmake): fica registrado no card, na Timeline e
     # e acompanhado pela etapa de PR do repositorio (conclui quando for mesclado — por outra pessoa).
     # 0085: --item <n> = PR de um item de trabalho: sem plano, sem anexar a etapa de PR (vai no output da sub-tarefa).
-    ITEM=""; ARGS_PR=()
+    ITEM=""; PR_TASK=""; ARGS_PR=()
     while [[ $# -gt 0 ]]; do
-      case "$1" in --item) ITEM="${2:?numero do item}"; shift 2 ;; *) ARGS_PR+=("$1"); shift ;; esac
+      case "$1" in
+        --item) ITEM="${2:?numero do item}"; shift 2 ;;
+        --task) PR_TASK="${2:?numero da sub-tarefa}"; PR_TASK="${PR_TASK#\#}"; shift 2 ;;
+        *) ARGS_PR+=("$1"); shift ;;
+      esac
     done
     set -- ${ARGS_PR[@]+"${ARGS_PR[@]}"}
     [[ -n "$ITEM" ]] || require_plan
@@ -1568,8 +1580,8 @@ case "$CMD" in
     jq -n --arg repo "$REPO" --arg prefix "$PREFIX" --arg name "$NAME" --arg target "$TARGET" --arg title "$TITLE" \
       --arg desc "$DESC" --arg uid "$USER_ID" \
       '{repositoryId:$repo, branchPrefix:$prefix, branchName:$name, targetBranch:$target, title:$title, description:$desc, draft:false, userId:$uid}' > "$TMP/pr.json"
-    CODE="$(curl -s --max-time 90 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest/$CARD/github" \
-      -H "x-api-key: $TOKEN" -H 'content-type: application/json' --data-binary "@$TMP/pr.json" 2>/dev/null)"
+    CODE="$(curl -s --max-time 90 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest/$CARD/github${PR_TASK:+?workItemTask=$PR_TASK}" \
+      -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/pr.json" 2>/dev/null)"
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao abrir o PR: $(resp_error)"
     NUMBER=$(jq -r '.number // empty' "$TMP/resp"); URL=$(jq -r '.url // empty' "$TMP/resp")
     echo "PR #$NUMBER aberto: $REPO $BRANCH -> $TARGET  $URL$(jq -e '.alreadyExisted' "$TMP/resp" >/dev/null && echo '  (ja existia)')"
@@ -1594,6 +1606,72 @@ case "$CMD" in
       [[ "$CODE" =~ ^2 ]] && echo "   anexado a etapa $STEP"
     fi
     echo "Lembrete: o merge e feito por outra pessoa — nunca mescle."
+    ;;
+
+  deliver-code)
+    # 0091: codigo alterado da sub-tarefa/etapa — branch, base, merge-base, commits e o diff completo (committed + o que
+    # ainda nao foi commitado nos arquivos versionados), do worktree direto para o PRMake. A tela mostra no modal da
+    # sub-tarefa e na aba Entregas do item. Rode de novo depois de novos commits: substitui o anterior (mesma branch).
+    REPO="${1:?repositorio (ex.: edv-solvace)}"; shift
+    DC_TASK=""; DC_STEP=""; DC_ITEM=""; DC_DIR=""; DC_BASE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --task) DC_TASK="${2:?}"; DC_TASK="${DC_TASK#\#}"; shift 2 ;;
+        --step) DC_STEP="${2:?}"; shift 2 ;;
+        --item) DC_ITEM="${2:?}"; DC_ITEM="${DC_ITEM#\#}"; shift 2 ;;
+        --dir) DC_DIR="${2:?}"; shift 2 ;;
+        --base) DC_BASE="${2:?}"; shift 2 ;;
+        *) die "argumento desconhecido: $1" ;;
+      esac
+    done
+    # Pasta: --dir > worktree do item/card (.prmake-wt) > clone pelo mapa da maquina > pasta atual.
+    if [[ -z "$DC_DIR" ]]; then
+      RD=""
+      [[ -f "$SKILLS_TOOL" ]] && RD="$(bash "$SKILLS_TOOL" repos path "$REPO" 2>/dev/null)" || true
+      if [[ -n "$RD" && -d "$RD" ]]; then
+        RD="$(cd "$RD" && pwd)"
+        WTC="$(dirname "$RD")/.prmake-wt/$CARD${DC_ITEM:+/item-$DC_ITEM}/$(basename "$RD")"
+        if [[ -e "$WTC/.git" ]]; then DC_DIR="$WTC"; else DC_DIR="$RD"; fi
+      else
+        DC_DIR="$(pwd)"
+      fi
+    fi
+    git -C "$DC_DIR" rev-parse --git-dir >/dev/null 2>&1 || die "nao e um repositorio git: $DC_DIR (informe --dir <worktree>)"
+    BR="$(git -C "$DC_DIR" rev-parse --abbrev-ref HEAD)"
+    [[ "$BR" != HEAD ]] || die "worktree sem branch (HEAD solto) em $DC_DIR"
+    # Base: --base > de onde a branch nasceu (reflog "Created from origin/<base>") > upstream de outra branch.
+    if [[ -z "$DC_BASE" ]]; then
+      DC_BASE="$(git -C "$DC_DIR" reflog show --format='%gs' "refs/heads/$BR" 2>/dev/null | tail -1 | sed -n 's#^branch: Created from \(refs/remotes/\)\{0,1\}origin/##p')"
+      [[ "$DC_BASE" == HEAD || "$DC_BASE" == */HEAD ]] && DC_BASE=""
+    fi
+    [[ -n "$DC_BASE" ]] || die "nao achei a base da branch $BR — informe --base <branch> (a mesma do 'branches')"
+    git -C "$DC_DIR" fetch -q origin "$DC_BASE" >/dev/null 2>&1 || true
+    BASE_REF="origin/$DC_BASE"; git -C "$DC_DIR" rev-parse -q --verify "$BASE_REF" >/dev/null || BASE_REF="$DC_BASE"
+    MB="$(git -C "$DC_DIR" merge-base HEAD "$BASE_REF" 2>/dev/null)" || die "sem ancestral comum entre $BR e $BASE_REF"
+    HEAD_SHA="$(git -C "$DC_DIR" rev-parse HEAD)"
+    git -C "$DC_DIR" log --no-merges --reverse --format='%H%x09%s' "$MB..HEAD" \
+      | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {sha: .[0], title: (.[1:] | join("\t"))})' > "$TMP/commits.json"
+    git -C "$DC_DIR" diff --no-color -M "$MB" > "$TMP/code.diff"
+    NC="$(jq 'length' "$TMP/commits.json")"
+    STAT="$(git -C "$DC_DIR" diff --shortstat -M "$MB" | sed 's/^ *//')"
+    [[ -s "$TMP/code.diff" || "$NC" -gt 0 ]] || die "nada alterado em $BR desde $BASE_REF — nada a registrar"
+    if [[ -n "$DC_TASK" ]]; then
+      URL_DC="$BASE/WorkItems/tasks/$DC_TASK/deliverables/code"; WHERE="sub-tarefa #$DC_TASK"
+    else
+      require_plan
+      if [[ -z "$DC_STEP" ]]; then
+        api GET "/$PLAN"
+        DC_STEP="$(jq -r '[.steps[] | select(.status == "running")][0].key // empty' "$TMP/resp")"
+        [[ -n "$DC_STEP" ]] || die "nenhuma etapa em andamento — informe --step <key> ou --task <n>"
+      fi
+      URL_DC="$BASE/ExecutionPlan/$PLAN/steps/$DC_STEP/deliverables/code"; WHERE="etapa $DC_STEP"
+    fi
+    CODE="$(curl -s --max-time 120 -o "$TMP/resp" -w '%{http_code}' -X POST "$URL_DC" \
+      -H "x-api-key: $TOKEN" -H 'accept: application/json' -H 'X-Execution-Client: skill' \
+      -F "repository=$REPO" -F "branch=$BR" -F "base=$DC_BASE" -F "mergeBase=$MB" -F "head=$HEAD_SHA" \
+      -F "commits=<$TMP/commits.json" -F "patch=@$TMP/code.diff;type=text/x-diff;filename=code.diff" 2>/dev/null)"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao registrar o codigo alterado: $(resp_error)"
+    echo "codigo registrado ($WHERE): $REPO $BR (base $DC_BASE) — $NC commit(s)${STAT:+, $STAT}$(jq -e '.data.truncated == true' "$TMP/resp" >/dev/null 2>&1 && echo ' — diff grande, gravado cortado')"
     ;;
 
   rules)
