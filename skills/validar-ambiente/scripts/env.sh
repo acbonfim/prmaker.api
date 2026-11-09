@@ -221,14 +221,33 @@ has_password() { # <env-json> <email>
       | select((.password // "") != "")] | length > 0' "$CREDS" >/dev/null 2>&1
 }
 
+# Usuarios com senha gravada nesta maquina para o ambiente (so os e-mails; a senha nunca sai do arquivo).
+saved_users() { # <env-json>
+  [[ -s "$CREDS" ]] || return 0
+  jq -r --arg k "$(jq -r .key <<<"$1")" --arg h "$(jq -r '.url' <<<"$1" | sed -E 's#^[a-z]+://##; s#/.*$##' | tr 'A-Z' 'a-z')" '
+    [(.environments // [])[] | select(((.env // "") | ascii_downcase) == $k
+        or (((.url // .host // "") | ascii_downcase | sub("^[a-z]+://"; "") | sub("/.*$"; "")) == $h))
+      | select((.password // "") != "") | (.user // empty)] | unique | .[]' "$CREDS" 2>/dev/null
+}
+
+plant_admin() { # <sigla>
+  local pattern
+  pattern="$(jq -r '.plantAdminPattern // "admin{plant}@solvacelabs.com"' "$CACHE")"
+  printf '%s' "${pattern//\{plant\}/$(printf '%s' "$1" | tr 'A-Z' 'a-z')}"
+}
+
+# Usuario de entrada quando a sub-tarefa nao traz um: quem JA TEM senha nesta maquina vence (a pessoa gravou de
+# proposito, ex.: admin@ewcm.com.br, que entra em qualquer planta e troca de planta na tela). Ordem: admin da planta (com
+# senha) → usuario da configuracao (com senha) → usuario com senha gravada para o ambiente → configuracao → admin da planta.
 default_user() { # <env-json> [sigla]
-  local env="$1" plant="${2:-}" pattern
-  if [[ -n "$plant" ]]; then
-    pattern="$(jq -r '.plantAdminPattern // "admin{plant}@solvacelabs.com"' "$CACHE")"
-    printf '%s' "${pattern//\{plant\}/$(printf '%s' "$plant" | tr 'A-Z' 'a-z')}"
-    return
-  fi
-  jq -r '.user // empty' <<<"$env"
+  local env="$1" plant="${2:-}" cfg saved admin=""
+  cfg="$(jq -r '.user // empty' <<<"$env")"
+  [[ -n "$plant" ]] && admin="$(plant_admin "$plant")"
+  if [[ -n "$admin" ]] && has_password "$env" "$admin"; then printf '%s' "$admin"; return; fi
+  if [[ -n "$cfg" ]] && has_password "$env" "$cfg"; then printf '%s' "$cfg"; return; fi
+  saved="$(saved_users "$env" | grep -v -i -x -F "${admin:-@@}" | head -1)"
+  [[ -n "$saved" ]] && { printf '%s' "$saved"; return; }
+  printf '%s' "${cfg:-$admin}"
 }
 
 # Sub-tarefa esperando a pessoa (POST WorkItems/tasks/{n}/wait): o que falta e o comando exato.
@@ -294,10 +313,13 @@ case "$CMD" in
   resolve)
     [[ -n "${1:-}" ]] || die "uso: env.sh resolve <ambiente|url|cliente>"
     ENV="$(need_env "$1")" || exit 1
-    jq -r '"ambiente: \(.key) — \(.label)", "url: \(.url)", "usuario padrao: \(.user // "(nenhum: use o admin da planta — env.sh plants/admin)")",
+    jq -r '"ambiente: \(.key) — \(.label)", "url: \(.url)", "usuario da configuracao: \(.user // "(nenhum)")",
       "somente leitura: \(if .readOnly then "SIM — so navegar e consultar, nunca gravar" else "nao" end)",
       (if .database.global then "banco global: \(.database.host // "?")/\(.database.global)" else "banco global: (desconhecido — env.sh plants descobre)" end),
       (if .note then "atencao: \(.note)" else empty end), (if .source then "origem: banco corporativo (fora da configuracao)" else empty end)' <<<"$ENV"
+    SAVED="$(saved_users "$ENV" | paste -sd, - | sed 's/,/, /g')"
+    echo "com senha nesta maquina: ${SAVED:-nenhum}"
+    echo "entrada padrao (sem params.user): $(default_user "$ENV")"
     ;;
 
   plants)
@@ -306,13 +328,13 @@ case "$CMD" in
     DB="$(env_db "$ENV")" || die "nao achei o banco global de $1 (sem credencial de banco nesta maquina? bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials)" 4
     F="$(printf '%s' "${2:-}" | tr -cd 'A-Za-z0-9 ._-')"
     bash "$SQL" --host "${DB%%|*}" -d "${DB#*|}" -q "SELECT SITE_ID, SITE_ACRONYM, SITE_NAME, INSTANCE_NAME, ACTIVE FROM TB_WCM_SITE WHERE ('$F' = '' OR SITE_NAME LIKE '%$F%' OR SITE_ACRONYM LIKE '%$F%') ORDER BY ACTIVE DESC, SITE_NAME"
-    echo "admin da planta: $(default_user "$ENV" "<sigla>") (env.sh admin $1 <sigla>)"
+    echo "admin da planta: $(plant_admin "<sigla>") (env.sh admin $1 <sigla>) · entrada padrao: $(default_user "$ENV") (com senha nesta maquina, troca de planta na tela)"
     ;;
 
   admin|user)
     [[ -n "${1:-}" && -n "${2:-}" ]] || die "uso: env.sh admin <ambiente> <sigla> | env.sh user <ambiente> <email>"
     ENV="$(need_env "$1")" || exit 1
-    if [[ "$CMD" == admin ]]; then EMAIL="$(default_user "$ENV" "$2")"; else EMAIL="$2"; fi
+    if [[ "$CMD" == admin ]]; then EMAIL="$(plant_admin "$2")"; else EMAIL="$2"; fi
     EMAIL_SQL="$(printf '%s' "$EMAIL" | tr -cd 'A-Za-z0-9@._+-')"
     echo "usuario: $EMAIL"
     if DB="$(env_db "$ENV")"; then
@@ -358,6 +380,8 @@ case "$CMD" in
         PLANT="$(plant_acronym "$ENV" "$(jq -r '.plantName' <<<"$ENV")")"
       fi
       USER_ARG="${USER_ARG:-$(default_user "$ENV" "$PLANT")}"
+      [[ -n "$PLANT" && "$(printf '%s' "$USER_ARG" | tr 'A-Z' 'a-z')" != "$(plant_admin "$PLANT")" ]] \
+        && echo "usuario: $USER_ARG (tem senha nesta maquina; o admin da planta $PLANT nao) — troque para a planta $PLANT no seletor de planta da tela"
       [[ -n "$USER_ARG" ]] || die "sem usuario para $(jq -r .key <<<"$ENV"): informe --user <email> ou --plant <sigla> (admin da planta)"
       KEY="$(jq -r .key <<<"$ENV")"
       OUT="$CARDS/${CARD:-sem-card}/validacao/${KEY}${TASK:+-$TASK}"

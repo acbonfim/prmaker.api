@@ -101,6 +101,62 @@ def password_for(env, url, user):
 
 # ── Servidor da sessao (um processo por ambiente + usuario) ──────────────────────────────────
 
+# Elementos clicaveis e titulos da tela (roda na moldura e em cada iframe da tela).
+SNAP_JS = """() => {
+  const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  // Campo de formulario: o rotulo dele (label[for], label do mesmo grupo) diz o que e (filtros do legado sem id).
+  const label = e => { if (!/^(INPUT|SELECT|TEXTAREA)$/.test(e.tagName)) return '';
+    if (e.labels && e.labels[0] && e.labels[0].innerText.trim()) return e.labels[0].innerText.trim();
+    // Rotulo antes do campo no mesmo grupo (legado: <span class="font-size-sm">Lugar</span> + select2).
+    for (let p = e.parentElement, i = 0; p && i < 7; p = p.parentElement, i++) {
+      const x = [...p.querySelectorAll('label, span, small, h6, p')].find(l => !l.contains(e) && !l.querySelector('input, select, textarea')
+        && (l.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && l.innerText.trim() && l.innerText.trim().length <= 40);
+      if (x) return x.innerText.trim(); }
+    return ''; };
+  const name = e => (e.getAttribute('aria-label') || label(e) || e.innerText || e.value || e.placeholder || e.title || e.getAttribute('data-original-title')
+    || e.getAttribute('data-bs-original-title') || e.getAttribute('data-tooltip') || e.getAttribute('mattooltip') || e.name || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
+  // Botao so de icone (menu de modulos, hamburguer): nome pelo icone/classe, para o Claude saber o que e.
+  const icon = e => { const i = [...e.querySelectorAll('mat-icon, i, svg, img')].find(vis);
+    const cls = x => (typeof x.className === 'string' ? x.className : (x.className && x.className.baseVal) || '')
+      .split(/\\s+/).filter(c => c && !/ripple|mdc-|mat-mdc|focus|touch|ng-/.test(c)).join(' ');
+    const t = i ? ((i.getAttribute('fonticon') || i.getAttribute('data-mat-icon-name') || i.getAttribute('svgicon')
+      || i.getAttribute('data-icon') || i.getAttribute('alt') || (i.tagName === 'IMG' ? (i.getAttribute('src') || '').split('/').pop() : '')
+      || (i.tagName === 'MAT-ICON' || i.tagName === 'I' ? i.textContent : '') || '').trim() || cls(i)) : '';
+    const r = e.getBoundingClientRect();
+    return 'icone: ' + ((t || cls(e) || '?').trim().replace(/\\s+/g, ' ').slice(0, 40)) + ` @${Math.round(r.x)},${Math.round(r.y)}`; };
+  let seq = 0;
+  document.querySelectorAll('[data-pm]').forEach(x => x.removeAttribute('data-pm'));  // marcas valem so ate o proximo snap
+  const out = [];
+  for (const e of document.querySelectorAll('button, a[href], input, select, textarea, [role=button], [role=tab], [role=menuitem], [role=link], [role=option], [role=checkbox]')) {
+    if (!vis(e) || out.length >= 90) continue;
+    const tag = e.tagName.toLowerCase(); const role = e.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'select' ? 'combobox' : tag === 'textarea' ? 'textbox' : tag === 'input' ? (['checkbox','radio','submit','button'].includes(e.type) ? e.type : 'textbox') : tag);
+    const n = name(e) || icon(e); const id = e.id && e.id !== 'undefined' && document.querySelectorAll('#' + CSS.escape(e.id)).length === 1 ? '#' + e.id : '';
+    // Sem id/nome estavel: marca o elemento (data-pm) para o click/fill desta tela achar exatamente ele.
+    const mark = () => { const k = 'pm' + (++seq); e.setAttribute('data-pm', k); return `[data-pm="${k}"]`; };
+    const fc = e.getAttribute('formcontrolname'); const sel = id || (fc ? `[formcontrolname="${fc}"]` : (e.name ? `${tag}[name="${e.name}"]` : (e.placeholder ? `[placeholder="${e.placeholder}"]` : (name(e) && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.tagName) ? `text=${n}` : mark()))));
+    if (tag === 'input' && e.type === 'password') { out.push(`${role} (senha) ${sel}`); continue; }
+    // Link de icone: o destino diz para onde vai (menu lateral do legado).
+    const href = tag === 'a' && !name(e) ? (e.getAttribute('href') || '').replace(location.origin, '').slice(0, 80) : '';
+    out.push(`${role} "${n}"${href && !href.startsWith('#') && !href.startsWith('javascript') ? ` (vai para ${href})` : ''}${sel ? '  -> ' + sel : ''}`);
+  }
+  // Blocos clicaveis que nao sao botao/link (tiles do menu de modulos, itens de menu do legado): cursor de mao, o mais
+  // externo, com texto, fora dos ja listados.
+  const seen = new Set(document.querySelectorAll('button, a[href], input, select, textarea, [role=button], [role=tab], [role=menuitem], [role=link], [role=option], [role=checkbox]'));
+  const ptr = e => getComputedStyle(e).cursor === 'pointer';
+  for (const e of document.querySelectorAll('div, span, li, td, mat-card, img, label')) {
+    if (out.length >= 140) break;
+    if (!ptr(e) || (e.parentElement && ptr(e.parentElement)) || seen.has(e) || [...seen].some(x => e.contains(x) || x.contains(e)) || !vis(e)) continue;
+    const n = (e.innerText || e.getAttribute('title') || e.getAttribute('alt') || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
+    if (!n) continue;
+    seen.add(e);
+    out.push(`item "${n}"  -> ${e.id && document.querySelectorAll('#' + CSS.escape(e.id)).length === 1 ? '#' + e.id : (() => { const k = 'pm' + (++seq); e.setAttribute('data-pm', k); return `[data-pm="${k}"]`; })()}`);
+  }
+  const heads = [...document.querySelectorAll('h1,h2,h3,[role=heading]')].filter(vis).map(h => h.innerText.trim()).filter(Boolean).slice(0, 12);
+  return { heads, out };
+}"""
+
+
 class Session:
     def __init__(self, meta):
         self.meta = meta
@@ -203,13 +259,50 @@ class Session:
         return ""
 
     # Comandos ---------------------------------------------------------------------------------
+    def frames(self):
+        """Iframes visiveis com pagina (o legado abre cada tela no iframe #framepag do systems/application/default.asp)."""
+        out = []
+        for f in self.page.main_frame.child_frames:
+            try:
+                if not f.url or f.url == "about:blank":
+                    continue
+                el = f.frame_element()
+                if not el.is_visible():
+                    continue
+                fid, fname = el.get_attribute("id"), el.get_attribute("name")
+            except Exception:  # noqa: BLE001
+                continue
+            if fid or fname:
+                out.append((f"#{fid}" if fid else f'iframe[name="{fname}"]', f))
+        return out
+
+    @staticmethod
+    def locate_in(scope, t):
+        if re.match(r"^(text|role|css|xpath|id|data-testid|placeholder|label)=", t) or t.startswith(("//", "#", ".", "[")):
+            return scope.locator(t).first
+        if re.match(r"^[a-z]+[\w-]*(\[|\.|#|:|$)", t) and " " not in t:
+            return scope.locator(t).first
+        return scope.get_by_text(t, exact=False).first
+
     def locate(self, target):
         t = target.strip()
-        if re.match(r"^(text|role|css|xpath|id|data-testid|placeholder|label)=", t) or t.startswith(("//", "#", ".", "[")):
-            return self.page.locator(t).first
-        if re.match(r"^[a-z]+[\w-]*(\[|\.|#|$)", t) and " " not in t:
-            return self.page.locator(t).first
-        return self.page.get_by_text(t, exact=False).first
+        m = re.match(r"^frame=(.+?)\s*>>\s*(.+)$", t)
+        if m:
+            frame = next((f for sel, f in self.frames() if sel == m.group(1).strip()), None)
+            if frame is None:
+                raise ValueError(f"iframe {m.group(1).strip()} nao esta na tela (rode snap)")
+            return self.locate_in(frame, m.group(2).strip())
+        loc = self.locate_in(self.page, t)
+        try:
+            if not loc.count():
+                # Tela legada: o alvo esta dentro do iframe da tela, nao na moldura.
+                for _, frame in self.frames():
+                    alt = self.locate_in(frame, t)
+                    if alt.count():
+                        return alt
+        except Exception:  # noqa: BLE001
+            pass
+        return loc
 
     def run(self, cmd, args):
         self.last = time.time()
@@ -245,7 +338,13 @@ class Session:
         elif cmd == "snap":
             return self.snap()
         elif cmd == "text":
-            return {"text": p.locator("body").inner_text(timeout=10000)[:20000]}
+            text = p.locator("body").inner_text(timeout=10000)
+            for sel, frame in self.frames():
+                try:
+                    text += f"\n\n[iframe {sel}: {frame.url}]\n" + frame.locator("body").inner_text(timeout=10000)
+                except Exception:  # noqa: BLE001
+                    pass
+            return {"text": text[:20000]}
         else:
             raise ValueError(f"comando desconhecido: {cmd}")
         return {}
@@ -270,25 +369,29 @@ class Session:
     def snap(self):
         path = self.out / "_snap.jpg"
         self.page.screenshot(path=str(path), type="jpeg", quality=70)
-        items = self.page.evaluate("""() => {
-          const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
-            return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-          const name = e => (e.getAttribute('aria-label') || e.innerText || e.value || e.placeholder || e.title || e.name || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
-          const out = [];
-          for (const e of document.querySelectorAll('button, a[href], input, select, textarea, [role=button], [role=tab], [role=menuitem], [role=link], [role=option], [role=checkbox]')) {
-            if (!vis(e) || out.length >= 90) continue;
-            const tag = e.tagName.toLowerCase(); const role = e.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'select' ? 'combobox' : tag === 'textarea' ? 'textbox' : tag === 'input' ? (['checkbox','radio','submit','button'].includes(e.type) ? e.type : 'textbox') : tag);
-            const n = name(e); const id = e.id ? '#' + e.id : '';
-            const fc = e.getAttribute('formcontrolname'); const sel = id || (fc ? `[formcontrolname="${fc}"]` : (e.name ? `${tag}[name="${e.name}"]` : (n ? `text=${n}` : '')));
-            if (tag === 'input' && e.type === 'password') { out.push(`${role} (senha) ${sel}`); continue; }
-            out.push(`${role} "${n}"${sel ? '  -> ' + sel : ''}`);
-          }
-          const heads = [...document.querySelectorAll('h1,h2,h3,[role=heading]')].filter(vis).map(h => h.innerText.trim()).filter(Boolean).slice(0, 12);
-          return { heads, out };
-        }""")
+        items = self.page.evaluate(SNAP_JS)
+        frames = []
+        for sel, frame in self.frames():
+            try:
+                fi = frame.evaluate(SNAP_JS)
+            except Exception:  # noqa: BLE001
+                continue
+            items["heads"] += fi["heads"]
+            items["out"] += [re.sub(r"  -> (.+)$", lambda m: f"  -> frame={sel} >> {m.group(1)}", e) for e in fi["out"]]
+            try:
+                ftext = frame.locator("body").inner_text(timeout=10000)
+            except Exception:  # noqa: BLE001
+                ftext = ""
+            frames.append(f"{sel} -> {frame.url}")
+            items.setdefault("ftext", []).append(f"[iframe {sel}]\n{ftext}")
         text = self.page.locator("body").inner_text(timeout=10000)
-        return {"screenshot": str(path), "headings": items["heads"], "elements": items["out"],
-                "text": re.sub(r"\n{3,}", "\n\n", text)[:3500]}
+        if items.get("ftext"):
+            text = "\n\n".join(items["ftext"]) + "\n\n[moldura]\n" + text
+        out = {"screenshot": str(path), "headings": items["heads"], "elements": items["out"],
+               "text": re.sub(r"\n{3,}", "\n\n", text)[:3500]}
+        if frames:
+            out["frames"] = frames
+        return out
 
 
 def write_meta(meta):
@@ -395,6 +498,8 @@ def report(res):
         if res.get(k):
             print(f"{'print' if k == 'file' else 'tela'}: {res[k]}" + (f" (#{res['number']})" if k == "file" else "")
                   + (" — IGUAL a um print ja tirado: nao gravei outro (use o mesmo no relatorio)" if k == "file" and res.get("duplicate") else ""))
+    if res.get("frames"):
+        print("iframes da tela (tela legada: os alvos dentro dele vem com 'frame=<iframe> >> '): " + " | ".join(res["frames"]))
     if res.get("headings"):
         print("titulos: " + " | ".join(res["headings"]))
     if res.get("elements"):
