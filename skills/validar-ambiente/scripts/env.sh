@@ -11,7 +11,9 @@
 #   env.sh admin <ambiente> <sigla-da-planta>    admin da planta (admin<sigla>@solvacelabs.com) e se existe/ativo no banco
 #   env.sh user <ambiente> <email>               o usuario existe e esta ativo no banco global?
 #   env.sh has-password <ambiente> <email>       exit 0 = ha senha nesta maquina; 4 = falta (mostra o comando para a pessoa)
-#   env.sh browser start <ambiente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--headed]
+#   env.sh browser start <ambiente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--allow <rota>]... [--headed]
+#                                                --allow = rota que pode gravar no ambiente somente leitura (so com autorizacao
+#                                                da pessoa; as da configuracao readOnlyAllow ja entram sozinhas)
 #   env.sh browser go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]   (env_browser.py)
 #   env.sh browser status
 #   env.sh evidence <card> <item> <sub-tarefa> <pasta> [--report <relatorio.md>]
@@ -88,7 +90,8 @@ DEFAULT_ENVS='{"environments":[
  {"key":"mondelez","label":"Produção Mondelez","url":"https://mondelez.solvacelabs.com/","kind":"production","client":"Mondelez","readOnly":true,"database":{"host":"prod","global":"DB_MDLZ_PRD_GLOBAL"}}],
  "plantAdminPattern":"admin{plant}@solvacelabs.com",
  "corporate":{"host":"corporate","database":"CORPORATE_SOLVACE_DB","table":"TB_WCM_ENVIRONMENT"},
- "productionReadOnly":true}'
+ "productionReadOnly":true,
+ "readOnlyAllow":["user-report-preferences"]}'
 load_envs() {
   local refresh="${1:-}" tok code
   mkdir -p "$(dirname "$CACHE")"
@@ -334,7 +337,7 @@ case "$CMD" in
     if [[ "$SUB" == start ]]; then
       [[ -n "${1:-}" ]] || die "uso: env.sh browser start <ambiente|cliente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--headed]"
       ENV_ARG="$1"; shift
-      USER_ARG=""; PLANT=""; CARD="${PRMAKE_CARD:-}"; TASK=""; HEADED=()
+      USER_ARG=""; PLANT=""; CARD="${PRMAKE_CARD:-}"; TASK=""; HEADED=(); ALLOW=()
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --user) USER_ARG="${2:?}"; shift 2 ;;
@@ -342,6 +345,7 @@ case "$CMD" in
           --card) CARD="${2:?}"; shift 2 ;;
           --task) TASK="${2:?}"; TASK="${TASK#\#}"; shift 2 ;;
           --headed) HEADED=(--headed); shift ;;
+          --allow) ALLOW+=(--allow "${2:?rota}"); shift 2 ;;
           *) die "argumento desconhecido: $1" ;;
         esac
       done
@@ -356,8 +360,11 @@ case "$CMD" in
       KEY="$(jq -r .key <<<"$ENV")"
       OUT="$CARDS/${CARD:-sem-card}/validacao/${KEY}${TASK:+-$TASK}"
       RO=(); [[ "$(jq -r '.readOnly // false' <<<"$ENV")" == true ]] && RO=(--read-only)
+      # Rotas que gravam mas nao alteram dado de negocio (preferencia/filtro do usuario): configuracao geral + do ambiente.
+      while IFS= read -r route; do [[ -n "$route" ]] && ALLOW+=(--allow "$route"); done \
+        < <( { jq -r '(.readOnlyAllow // [])[]' "$CACHE"; jq -r '(.allow // [])[]' <<<"$ENV"; } 2>/dev/null )
       "$PY" "$DIR/env_browser.py" start --env "$KEY" --url "$(jq -r .url <<<"$ENV")" --user "$USER_ARG" --out "$OUT" \
-        --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
+        --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${ALLOW[@]+"${ALLOW[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
       RC=${PIPESTATUS[0]}
       # A pessoa fica sabendo na ferramenta (Bancada/Execução: "aguardando você" + "Já resolvi"), sem depender do Claude.
       [[ $RC -eq 2 || $RC -eq 3 || $RC -eq 4 ]] && [[ -n "$TASK" ]] && notify_wait "$TASK" "$RC" "$(env_ref "$ENV")" "$(jq -r .label <<<"$ENV")" "$(jq -r .url <<<"$ENV")" "$USER_ARG" "$TMP/start.out"

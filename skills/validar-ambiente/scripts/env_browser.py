@@ -5,10 +5,12 @@ Um processo local por sessao (ambiente + usuario) mantem o Chrome aberto e logad
 seguir o roteiro passo a passo e gravar os prints. A senha vem so do arquivo local de credenciais
 (~/.claude/solvace-env-credentials.json, gravado por `prmake-skills.sh env-credentials`) e nunca e impressa.
 Ambiente somente leitura (DEMO, producao): toda gravacao na rede (POST/PUT/PATCH/DELETE fora da lista de leitura) e
-bloqueada enquanto a sessao existir.
+bloqueada enquanto a sessao existir — menos as rotas de --allow (configuracao readOnlyAllow, ex.: preferencia/filtro do
+usuario, ou uma rota que a pessoa autorizou), que passam e ficam registradas.
 
 Uso (pelo env.sh):
-  env_browser.py start --env <key> --url <url> --user <email> --out <pasta> [--read-only] [--headed] [--label <nome>]
+  env_browser.py start --env <key> --url <url> --user <email> --out <pasta> [--read-only] [--allow <trecho-da-rota>]...
+                       [--headed] [--label <nome>]
   env_browser.py go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]
   env_browser.py status
 Saida: 0 ok · 1 erro · 2 sem navegador/Playwright · 3 login recusado · 4 sem senha · 5 sessao inexistente.
@@ -102,7 +104,9 @@ class Session:
     def __init__(self, meta):
         self.meta = meta
         self.read_only = bool(meta.get("readOnly"))
+        self.allow = [a.strip().lower() for a in meta.get("allow") or [] if a and a.strip()]
         self.blocked = []
+        self.allowed = []
         self.out = Path(meta["out"])
         self.out.mkdir(parents=True, exist_ok=True)
         self.last = time.time()
@@ -113,6 +117,9 @@ class Session:
         if self.read_only and self.guard_on and req.method in MUTATING:
             u = urlparse(req.url)
             if not TELEMETRY_HOST.search(u.hostname or "") and not READ_PATH.search(u.path):
+                if any(a in u.path.lower() for a in self.allow):
+                    self.allowed.append(f"{req.method} {u.hostname}{u.path}")
+                    return route.continue_()
                 self.blocked.append(f"{req.method} {u.hostname}{u.path}")
                 return route.abort("blockedbyclient")
         return route.continue_()
@@ -206,6 +213,7 @@ class Session:
     def run(self, cmd, args):
         self.last = time.time()
         self.blocked.clear()
+        self.allowed.clear()
         p = self.page
         if cmd == "go":
             dest = args["url"]
@@ -334,7 +342,7 @@ def serve(sid):
                     except Exception as e:  # noqa: BLE001
                         out = {"ok": False, "error": str(e).splitlines()[0][:400]}
                     out.update(url=s.page.url, title=s.page.title() if not s.page.is_closed() else "",
-                               blocked=list(s.blocked))
+                               blocked=list(s.blocked), allowed=list(s.allowed))
                 raw = json.dumps(out, ensure_ascii=False).encode()
                 self.send_response(200)
                 self.send_header("content-type", "application/json")
@@ -370,7 +378,10 @@ def call(sid, cmd, args=None, timeout=120):
 
 def report(res):
     for b in res.get("blocked") or []:
-        print(f"BLOQUEADO (ambiente somente leitura): {b}")
+        print(f"BLOQUEADO (ambiente somente leitura): {b} — so com autorizacao da pessoa para esta rota: reabra com "
+              f"env.sh browser start <ambiente> ... --allow '{urlparse('https://' + b.split(' ', 1)[-1]).path.rsplit('/', 1)[-1]}'")
+    for a in res.get("allowed") or []:
+        print(f"LIBERADO (rota autorizada no somente leitura): {a}")
     if not res.get("ok", True):
         print(f"FALHOU: {res.get('error')}")
     for k in ("file", "screenshot"):
@@ -396,14 +407,17 @@ def start(a):
     if f.exists():
         meta = json.loads(f.read_text())
         if meta.get("status") == "ready" and alive(meta.get("pid")):
-            print(f"sessao {sid} ja aberta ({meta['url']} como {meta['user']}) — pagina: {meta.get('landed', '')}")
-            return 0
+            if sorted(meta.get("allow") or []) == sorted(a.allow or []):
+                print(f"sessao {sid} ja aberta ({meta['url']} como {meta['user']}) — pagina: {meta.get('landed', '')}")
+                return 0
+            # Rotas liberadas mudaram: a guarda e montada ao abrir — reabre a sessao (o login fica no perfil).
+            stop(sid)
     if not password_for(a.env, a.url, a.user):
         print(f"SEM SENHA para {a.user} em {a.env} ({host_of(a.url)}).")
         print(f"A pessoa grava no PROPRIO terminal (fora do chat): {CREDS_CMD} {a.env} {a.user}")
         return 4
     meta = {"sid": sid, "env": a.env, "label": a.label or a.env, "url": a.url, "user": a.user, "readOnly": a.read_only,
-            "headed": a.headed, "out": str(Path(a.out).expanduser().resolve()), "status": "starting",
+            "allow": sorted(set(a.allow or [])), "headed": a.headed, "out": str(Path(a.out).expanduser().resolve()), "status": "starting",
             "started": time.strftime("%Y-%m-%d %H:%M:%S")}
     write_meta(meta)
     log = open(ROOT / f"{sid}.log", "ab")
@@ -418,7 +432,8 @@ def start(a):
             print(f"pagina: {meta.get('landed')}")
             print(f"prints em: {meta['out']}")
             if a.read_only:
-                print("SOMENTE LEITURA: gravacoes na rede ficam bloqueadas nesta sessao (so navegar e consultar).")
+                print("SOMENTE LEITURA: gravacoes na rede ficam bloqueadas nesta sessao (so navegar e consultar)"
+                      + (f" — menos as rotas liberadas: {', '.join(meta.get('allow') or [])}." if meta.get("allow") else "."))
             return 0
         if meta.get("status") == "error":
             code = int(meta.get("code") or 1)
@@ -481,6 +496,7 @@ def main():
         ap.add_argument("--label")
         ap.add_argument("--read-only", action="store_true")
         ap.add_argument("--headed", action="store_true")
+        ap.add_argument("--allow", action="append", default=[])
         return start(ap.parse_args(argv[1:]))
     if len(argv) < 2:
         die(f"uso: env_browser.py {cmd} <sessao> ...")
