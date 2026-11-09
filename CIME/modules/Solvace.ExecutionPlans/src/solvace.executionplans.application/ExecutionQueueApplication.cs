@@ -1073,7 +1073,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             // 0049: a correção não carrega a conversa da análise — só o resumo que a análise deixou no plano. Sem invocar
             // a skill: o "model: opus" do cabeçalho dela valeria para a execução inteira do claude -p, por cima do --model
             // da correção (card 75067 rodou a correção toda no Opus).
-            return $"Card {r.CardNumber} — skill {skill}, FASE DE CORRECAO numa sessao nova. Leia as instrucoes da skill com " +
+            return $"Card {r.CardNumber} — skill {skill}, FASE DE CORRECAO numa sessao nova. Garanta as skills (instala as que faltam): " +
+                   $"`{EnsureSkillsCommand(skill)}` (Bash). Leia as instrucoes da skill com " +
                    $"`cat ~/.claude/skills/{skill}/SKILL.md` (Bash) e siga-as — NAO use a ferramenta Skill nem /{skill}: a skill " +
                    "fixa o Opus para a execucao inteira e a correcao roda no modelo configurado no PRMake. " +
                    "A analise deste card rodou em outra sessao e o contexto dela nao esta aqui de proposito (cada resposta relia a analise " +

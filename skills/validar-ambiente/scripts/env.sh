@@ -51,11 +51,22 @@ venv_python() {
   [[ -x "$p" ]] || p="$SKILL_DIR/.venv/Scripts/python.exe"
   printf '%s' "$p"
 }
+# Venv com pip que funciona: alguns Pythons criam o venv sem pip (ex.: 3.14 sem ler a versao do macOS — ensurepip
+# falha); tenta os interpretadores da maquina ate um dar certo.
 setup() {
-  local py; py="$(venv_python)"
-  if [[ ! -x "$py" ]]; then
-    python3 -m venv "$SKILL_DIR/.venv" >/dev/null 2>&1 || die "nao consegui criar o venv em $SKILL_DIR/.venv (python3 -m venv)" 2
-    py="$(venv_python)"
+  local py c
+  py="$(venv_python)"
+  if [[ ! -x "$py" ]] || ! "$py" -m pip --version >/dev/null 2>&1; then
+    for c in python3 python3.13 python3.12 python3.11 python3.10 py python; do
+      command -v "$c" >/dev/null 2>&1 || continue
+      "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1 || continue
+      rm -rf "$SKILL_DIR/.venv"
+      "$c" -m venv "$SKILL_DIR/.venv" >/dev/null 2>&1
+      py="$(venv_python)"
+      [[ -x "$py" ]] && "$py" -m pip --version >/dev/null 2>&1 && break
+      py=""
+    done
+    [[ -n "$py" ]] || die "nao consegui criar um venv com pip em $SKILL_DIR/.venv (instale o Python 3.10+ — python.org ou brew install python@3.13)" 2
   fi
   if ! "$py" -c 'import playwright' >/dev/null 2>&1; then
     echo "Instalando o Playwright no venv da skill (uma vez, ~40 MB; usa o Chrome desta maquina)..." >&2
