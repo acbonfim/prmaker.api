@@ -353,7 +353,7 @@ public class WorkItemTemplateRendererTests
         var catalog = await tools.CatalogAsync("77434", CancellationToken.None);
         Assert.Equal("edv-solvace-apps", (string?)catalog["repository"]);
         Assert.Equal("revamp-frontend", (string?)catalog["repoKind"]);
-        Assert.Equal(11, catalog["itemTypes"]!.AsArray().Count);
+        Assert.Equal(12, catalog["itemTypes"]!.AsArray().Count);
         var templates = catalog["templates"]!.AsArray().OfType<JsonObject>().ToDictionary(t => (string)t["key"]!);
         Assert.False((bool)templates["pr-hotfix-version"]["applicable"]!);
         Assert.NotNull(templates["pr-hotfix-version"]["reason"]);

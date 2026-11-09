@@ -53,7 +53,10 @@ public class WorkItemToolsService(
     public static JsonArray ItemTypes(IReadOnlyDictionary<string, string> settings)
     {
         var configured = ParseArray(Value(settings, SkillsConfigurationKeys.WorkItemTypes));
-        return configured.OfType<JsonObject>().Any() ? configured : ParseArray(DefaultItemTypesJson);
+        if (configured.OfType<JsonObject>().Any()) return configured;
+        var defaults = ParseArray(DefaultItemTypesJson);
+        defaults.Add(JsonNode.Parse(solvace.prform.infra.Migrations.SeedEnvValidation0092.NewItemType));
+        return defaults;
     }
 
     private static JsonArray Templates(IReadOnlyDictionary<string, string> settings) =>
@@ -79,7 +82,9 @@ public class WorkItemToolsService(
             BranchStrategyJson = V(SkillsConfigurationKeys.BranchStrategy),
             Profiles = PromotionProfileSet.Parse(V(SkillsConfigurationKeys.PromotionProfiles)),
             QaBranchPattern = V(SkillsConfigurationKeys.QaBranchPattern),
-            TicketSystem = V(SkillsConfigurationKeys.TicketSystem)
+            TicketSystem = V(SkillsConfigurationKeys.TicketSystem),
+            Environments = ValidationEnvironments.Parse(V(SkillsConfigurationKeys.ValidationEnvironments)),
+            EnvironmentDefaults = ValidationEnvironments.Defaults(V(SkillsConfigurationKeys.ValidationEnvironments))
         };
     }
 
@@ -157,7 +162,8 @@ public class WorkItemToolsService(
         var settings = r?.Settings ?? await rules.SettingsOnlyAsync(ct);
 
         var kinds = ParseArray(Value(settings, SkillsConfigurationKeys.WorkItemTaskKinds));
-        WorkItemParamInputs.Apply(kinds, Value(settings, SkillsConfigurationKeys.TicketSystem));
+        WorkItemParamInputs.Apply(kinds, Value(settings, SkillsConfigurationKeys.TicketSystem),
+            ValidationEnvironments.Parse(Value(settings, SkillsConfigurationKeys.ValidationEnvironments)));
         var templates = Templates(settings);
         var ctx = r is null ? null : await ContextAsync(r, ct);
 

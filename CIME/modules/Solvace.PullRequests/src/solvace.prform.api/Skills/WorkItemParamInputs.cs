@@ -46,7 +46,7 @@ public static class WorkItemParamInputs
     /// Preenche <c>input</c>/<c>options</c> dos params que não têm. O param <c>system</c> (sistema de chamados) sem opções vira
     /// select com o <c>TicketSystem</c> configurado (separado por vírgula/ponto e vírgula) ou texto, se não houver.
     /// </summary>
-    public static void Apply(JsonArray kinds, string? ticketSystem)
+    public static void Apply(JsonArray kinds, string? ticketSystem, IReadOnlyList<ValidationEnvironment>? environments = null)
     {
         var systems = (ticketSystem ?? string.Empty)
             .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -60,6 +60,14 @@ public static class WorkItemParamInputs
                 if (string.Equals(key, "system", StringComparison.OrdinalIgnoreCase))
                 {
                     FillSystem(param, systems);
+                    continue;
+                }
+                // 0092: ambiente da validação = um dos ambientes configurados (o select mantém um valor fora da lista).
+                if (string.Equals(key, "environment", StringComparison.OrdinalIgnoreCase) && environments is { Count: > 0 }
+                    && Str(param, "input") is null or Select && param["options"] is null)
+                {
+                    param["input"] = Select;
+                    param["options"] = ValidationEnvironments.Options(environments);
                     continue;
                 }
                 if (Str(param, "input") is { Length: > 0 }) continue;
