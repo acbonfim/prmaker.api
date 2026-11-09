@@ -67,7 +67,8 @@ public static class WorkItemParamInputs
                     && Str(param, "input") is null or Select && param["options"] is null)
                 {
                     param["input"] = Select;
-                    param["options"] = ValidationEnvironments.Options(environments);
+                    param["options"] = ValidationEnvironments.Options(environments,
+                        withClient: string.Equals(kindName, solvace.executionplans.domain.Entities.WorkTaskKind.EnvReproduction, StringComparison.OrdinalIgnoreCase));
                     continue;
                 }
                 if (Str(param, "input") is { Length: > 0 }) continue;

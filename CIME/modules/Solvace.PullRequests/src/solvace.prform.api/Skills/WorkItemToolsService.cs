@@ -56,6 +56,7 @@ public class WorkItemToolsService(
         if (configured.OfType<JsonObject>().Any()) return configured;
         var defaults = ParseArray(DefaultItemTypesJson);
         defaults.Add(JsonNode.Parse(solvace.prform.infra.Migrations.SeedEnvValidation0092.NewItemType));
+        defaults.Add(JsonNode.Parse(solvace.prform.infra.Migrations.SeedEnvReproduction0093.NewItemType));
         return defaults;
     }
 

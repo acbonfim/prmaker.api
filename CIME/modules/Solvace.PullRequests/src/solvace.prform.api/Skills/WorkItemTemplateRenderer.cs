@@ -70,7 +70,7 @@ public static partial class WorkItemTemplateRenderer
     /// <summary>Nomes de marcador que o renderizador resolve (sem parâmetro).</summary>
     public static readonly IReadOnlySet<string> SimpleMarkers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "card", "branch", "repository", "repoKind", "flow", "flowTargets", "base", "qaBranch", "promotionTargets", "ticketSystem",
-          "each", "eachLabel", "validationEnvironments", "validationDefaults" };
+          "each", "eachLabel", "validationEnvironments", "validationDefaults", "reproductionEnvironments" };
 
     // ── Contexto derivado ────────────────────────────────────────────────────────────────────────
 
@@ -256,7 +256,7 @@ public static partial class WorkItemTemplateRenderer
             if (key is null) continue;
             var options = ResolveOptions(ask["options"], ctx, repo);
             if (IsEnvironmentsAsk(ask))
-                copy["options"] = ValidationEnvironments.Options(ctx.Environments);
+                copy["options"] = ValidationEnvironments.Options(ctx.Environments, IsReproductionMarker(ask["options"]));
             else if (options is not null)
                 copy["options"] = new JsonArray(options.Select(o => (JsonNode?)JsonValue.Create(o)).ToArray());
             if (IsPromotionMarker(ask["options"]))
@@ -283,7 +283,12 @@ public static partial class WorkItemTemplateRenderer
         || (string.Equals(Str(ask, "input"), ValidationEnvironments.Input, StringComparison.OrdinalIgnoreCase) && ask["options"] is null);
 
     private static bool IsEnvironmentsMarker(JsonNode? options) =>
-        options is JsonValue v && v.TryGetValue<string>(out var s) && string.Equals(s.Trim(), ValidationEnvironments.OptionsMarker, StringComparison.OrdinalIgnoreCase);
+        options is JsonValue v && v.TryGetValue<string>(out var s)
+        && (string.Equals(s.Trim(), ValidationEnvironments.OptionsMarker, StringComparison.OrdinalIgnoreCase) || IsReproductionMarker(v));
+
+    /// <summary>0093: opções da reprodução (com o "ambiente do cliente").</summary>
+    private static bool IsReproductionMarker(JsonNode? options) =>
+        options is JsonValue v && v.TryGetValue<string>(out var s) && string.Equals(s.Trim(), ValidationEnvironments.ReproductionOptionsMarker, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsPromotionMarker(JsonNode? options) =>
         options is JsonValue v && v.TryGetValue<string>(out var s) && string.Equals(s.Trim(), PromotionTargetsMarker, StringComparison.OrdinalIgnoreCase);
@@ -299,7 +304,8 @@ public static partial class WorkItemTemplateRenderer
                 if (IsPromotionMarker(v))
                     return PromotionTargets(ctx, KindOf(ctx, repository)).ToList();
                 if (IsEnvironmentsMarker(v))
-                    return ctx.Environments.Select(e => e.Key).ToList();
+                    return (IsReproductionMarker(v) ? [ValidationEnvironments.ClientKey] : new List<string>())
+                        .Concat(ctx.Environments.Select(e => e.Key)).ToList();
                 return SplitList(RenderText(s, ctx, Vars(ctx, repository, null)));
             case JsonArray arr:
                 return arr.SelectMany(o => o is JsonValue ov && ov.TryGetValue<string>(out var os)
@@ -525,6 +531,7 @@ public static partial class WorkItemTemplateRenderer
                 "eachlabel" => vars.EachLabel ?? vars.Each ?? m.Value,
                 "validationenvironments" => string.Join(", ", ctx.Environments.Select(e => e.Key)),
                 "validationdefaults" => ValidationDefaults(ctx),
+                "reproductionenvironments" => string.Join(", ", ctx.Environments.Select(e => e.Key).Prepend(ValidationEnvironments.ClientKey)),
                 _ => m.Value
             };
         });

@@ -95,6 +95,8 @@ public static partial class WorkItemType
     public const string Text = "text";
     /// <summary>0092: validar a demanda em ambientes (uma sub-tarefa <c>env-validation</c> por ambiente, com prints).</summary>
     public const string Validation = "validation";
+    /// <summary>0093: reproduzir o bug num ambiente (por padrão o relatado pelo cliente), com prints.</summary>
+    public const string Reproduction = "reproduction";
 
     /// <summary>Legado (itens antigos): seguiam o tipo do card.</summary>
     public const string Bug = "bug";
@@ -104,7 +106,7 @@ public static partial class WorkItemType
 
     /// <summary>Tipos semeados (padrão quando <c>WorkItemTypes</c> não está configurado).</summary>
     public static readonly IReadOnlyList<string> Defaults =
-        [Task, PullRequest, Review, Analysis, Fix, Implementation, Adjustment, Closing, Data, Ticket, Text, Validation];
+        [Task, PullRequest, Review, Analysis, Fix, Implementation, Adjustment, Closing, Data, Ticket, Text, Validation, Reproduction];
 
     public static readonly IReadOnlySet<string> Legacy = new HashSet<string> { Bug, UserStory };
 
@@ -173,6 +175,8 @@ public static class WorkTaskKind
     public const string CardBriefFileName = "resumo-do-pedido.md";
     /// <summary>0092: validar no ambiente (login, roteiro e prints como evidência da sub-tarefa).</summary>
     public const string EnvValidation = "env-validation";
+    /// <summary>0093: reproduzir o bug no ambiente (login, passos do card e prints como evidência da sub-tarefa).</summary>
+    public const string EnvReproduction = "env-reproduction";
 
     /// <summary>Tipos de sub-tarefa: levantamento/consulta sem alterar nada (impacto na base, ler o card, mapear o código).</summary>
     public const string Research = "research";
@@ -183,7 +187,7 @@ public static class WorkTaskKind
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
-          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation };
+          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation, EnvReproduction };
 
     /// <summary>
     /// Tipo da sub-tarefa que espelha uma etapa do plano: o <c>taskKind</c> que a skill informou; sem ele, pelo tipo da
