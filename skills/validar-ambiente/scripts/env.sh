@@ -180,6 +180,31 @@ default_user() { # <env-json> [sigla]
   jq -r '.user // empty' <<<"$env"
 }
 
+# Sub-tarefa esperando a pessoa (POST WorkItems/tasks/{n}/wait): o que falta e o comando exato.
+notify_wait() { # <sub-tarefa> <exit> <chave> <rotulo> <url> <usuario> <saida-do-start>
+  local task="$1" rc="$2" key="$3" label="$4" url="$5" user="$6" out="$7" tok host msg detail code
+  tok="$(token)"; [[ -n "$tok" ]] || return 0
+  host="$( (hostname -s 2>/dev/null || hostname) | tr -d '\r')"
+  case "$rc" in
+    4) msg="**Falta a senha de \`$user\` em $label ($url) na máquina $host**, onde o executor roda — a senha fica só nela, nunca no PRMake." ;;
+    3) detail="$(grep -o 'login recusado[^.]*' "$out" | head -1)"
+       msg="**O login de \`$user\` em $label ($url) foi recusado** (${detail:-senha errada ou expirada}) na máquina $host. Regrave a senha (ou informe outro usuário na sub-tarefa)." ;;
+    2) msg="**A máquina $host não conseguiu abrir o navegador da validação** (falta o Google Chrome ou o Playwright). Instale o Google Chrome (ou defina PRMAKE_CHROME com o caminho do navegador) e rode: \`bash ~/.claude/skills/validar-ambiente/scripts/env.sh setup\`." ;;
+  esac
+  if [[ "$rc" != 2 ]]; then
+    msg+=$'\n\nNo **seu terminal** (fora do chat do Claude), rode e digite a senha quando pedir:\n\n```\n'"$CREDS_CMD $key $user"$'\n```'
+  fi
+  msg+=$'\n\nDepois clique em **Já resolvi** nesta sub-tarefa — a validação continua sozinha.'
+  jq -n --arg r "$msg" '{result: $r}' > "$TMP/wait.json"
+  code="$(curl -s --max-time 30 -o "$TMP/wait.resp" -w '%{http_code}' -X POST "$BASE/WorkItems/tasks/$task/wait" \
+    -H "x-api-key: $tok" -H 'X-Execution-Client: skill' -H 'content-type: application/json' --data-binary "@$TMP/wait.json" 2>/dev/null)"
+  if [[ "$code" =~ ^2 ]]; then
+    echo "AVISADO NA FERRAMENTA: a sub-tarefa #$task ficou aguardando a pessoa com a orientação acima — encerre a vez (nao chame wait de novo)."
+  else
+    echo "nao consegui marcar a espera na sub-tarefa #$task (HTTP $code) — registre voce: prmake_work_task(wait) com a orientacao acima."
+  fi
+}
+
 CMD="${1:-}"; shift || true
 case "$CMD" in
   setup) setup; echo "ok — venv: $(venv_python)" ;;
@@ -254,8 +279,12 @@ case "$CMD" in
       KEY="$(jq -r .key <<<"$ENV")"
       OUT="$CARDS/${CARD:-sem-card}/validacao/${KEY}${TASK:+-$TASK}"
       RO=(); [[ "$(jq -r '.readOnly // false' <<<"$ENV")" == true ]] && RO=(--read-only)
-      exec "$PY" "$DIR/env_browser.py" start --env "$KEY" --url "$(jq -r .url <<<"$ENV")" --user "$USER_ARG" --out "$OUT" \
-        --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${HEADED[@]+"${HEADED[@]}"}
+      "$PY" "$DIR/env_browser.py" start --env "$KEY" --url "$(jq -r .url <<<"$ENV")" --user "$USER_ARG" --out "$OUT" \
+        --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
+      RC=${PIPESTATUS[0]}
+      # A pessoa fica sabendo na ferramenta (Bancada/Execução: "aguardando você" + "Já resolvi"), sem depender do Claude.
+      [[ $RC -eq 2 || $RC -eq 3 || $RC -eq 4 ]] && [[ -n "$TASK" ]] && notify_wait "$TASK" "$RC" "$KEY" "$(jq -r .label <<<"$ENV")" "$(jq -r .url <<<"$ENV")" "$USER_ARG" "$TMP/start.out"
+      exit "$RC"
     fi
     exec "$PY" "$DIR/env_browser.py" "$SUB" "$@"
     ;;
