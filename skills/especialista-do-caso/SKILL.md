@@ -158,6 +158,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Criar os itens da analise ("cria o item da implementacao/correcao", "agora pode seguir") — analise respondida e **sem** plano de implementacao/correcao (ex.: respondeu "so a analise por enquanto") | `prmake_analysis_items(card, start, note?)` — `start: true` se a pessoa quer que ja comece, `false` para deixar pronto e pausado (na duvida, pergunte qual). Nao monte o plano nem crie o item `implementation`/`fix` a mao: o Claude do tratamento monta o plano (que vira o item) na maquina de quem pediu. O PRMake recusa se ja houver plano de entrega ou pergunta aberta — diga o motivo |
 | Cancelar item | `prmake_work_item_cancel(card, number, undo?, reason)` — `undo: true` so se a pessoa pediu para desfazer o que ele fez; item espelho do plano o PRMake recusa (o plano se pausa/cancela na tela) |
 | Andamento de sub-tarefa de item avulso | `prmake_work_task(card, taskNumber, action)` — nunca de sub-tarefa que espelha etapa do plano (recusado) |
+| A pessoa diz que destravou uma sub-tarefa do Claude em espera ("resolvi", "liberei o acesso") | `prmake_work_task(card, taskNumber, "resolve", result: "<o que ela fez>")` — volta a pendente e o item e retomado (vale tambem para item de plano: e o "Ja resolvi" da etapa) |
 | Arquivo do item (chamado completo, script) | `prmake_work_item_file(card, number, name, content, kind)` |
 
 Erro de integracao ("... ainda nao tem a integracao pessoal configurada") → diga a pessoa o que configurar em **Minhas

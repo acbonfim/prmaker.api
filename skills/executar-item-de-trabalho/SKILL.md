@@ -62,7 +62,9 @@ usa o cache do card). Contexto minimo do card: `$CARD_DIR/dados/card-resumo.txt`
 Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o arquivo que a sub-tarefa citar.
 - `planId` presente → regra 4. Status `completed`/`cancelled`/`reverted` → nada a fazer, encerre.
 - Sub-tarefas: siga `order`; pule as `completed`/`skipped`; retome a `running`/`waiting` (o executor te chamou de novo
-  porque a pessoa agiu — confira o que mudou antes de seguir).
+  porque a pessoa agiu — confira o que mudou antes de seguir). Sub-tarefa que voltou de uma espera pelo **"Já resolvi"**
+  fica `pending` com `**Resolvido por <pessoa>:** <nota>` no fim do `result`: e o que a pessoa fez (ex.: "adicionei o
+  alias X") — use isso e tente de novo; ainda sem saida → `wait` de novo dizendo o que continua faltando.
 
 **2. Para cada sub-tarefa, na ordem** (uma por vez):
 1. Checagem do item (regra 5).
