@@ -17,6 +17,14 @@ public static class ValidationEnvironments
     /// <summary>Marcador das opções do ask: os ambientes como <c>{value, label}</c>.</summary>
     public const string OptionsMarker = "{validationEnvironments}";
 
+    /// <summary>0093: marcador das opções da reprodução — "ambiente do cliente" primeiro e depois os ambientes.</summary>
+    public const string ReproductionOptionsMarker = "{reproductionEnvironments}";
+
+    /// <summary>0093: valor que quer dizer "o ambiente relatado pelo cliente no card" (a skill descobre qual é).</summary>
+    public const string ClientKey = "cliente";
+
+    public const string ClientLabel = "Ambiente do cliente (relatado no card)";
+
     /// <summary>Input do ask/parâmetro que aceita vários ambientes (separados por vírgula) e valor livre (nome ou URL).</summary>
     public const string Input = "environments";
 
@@ -103,14 +111,20 @@ public static class ValidationEnvironments
         return $"{env.Label} · {host}{(env.ReadOnly ? " · somente leitura" : string.Empty)}";
     }
 
-    /// <summary>Opções do ask (<c>{value, label}</c>).</summary>
-    public static JsonArray Options(IEnumerable<ValidationEnvironment> envs) =>
-        new(envs.Select(e => (JsonNode?)new JsonObject { ["value"] = e.Key, ["label"] = OptionLabel(e) }).ToArray());
+    /// <summary>Opções do ask (<c>{value, label}</c>); <paramref name="withClient"/> põe o "ambiente do cliente" primeiro (0093).</summary>
+    public static JsonArray Options(IEnumerable<ValidationEnvironment> envs, bool withClient = false)
+    {
+        var options = envs.Select(e => (JsonNode?)new JsonObject { ["value"] = e.Key, ["label"] = OptionLabel(e) }).ToList();
+        if (withClient)
+            options.Insert(0, new JsonObject { ["value"] = ClientKey, ["label"] = ClientLabel });
+        return new JsonArray(options.ToArray());
+    }
 
     /// <summary>Rótulo para o <c>{eachLabel}</c>: o ambiente conhecido pela chave ou pela URL; senão o próprio valor.</summary>
     public static string LabelOf(IEnumerable<ValidationEnvironment> envs, string value)
     {
         var v = value.Trim();
+        if (string.Equals(v, ClientKey, StringComparison.OrdinalIgnoreCase)) return ClientLabel;
         var hit = envs.FirstOrDefault(e => string.Equals(e.Key, v, StringComparison.OrdinalIgnoreCase)
                                            || string.Equals(e.Url.TrimEnd('/'), v.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
         return hit?.Label ?? v;

@@ -262,7 +262,11 @@ codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito, localizar co
 `$REF consultas 3a|3b|3c` (`consultar-ambiente`; cancele com motivo so se o caso **nao** depender de dados). Card que envolve dados
 (usuario, cadastro, status, configuracao por tenant): **antes de investigar a fundo**,
 `bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host <h> -d <db> --ping` — falhou → `block` com o que fazer
-(ligar a VPN, liberar a permissao, credencial). Reconheca o padrao do caso no catalogo: `$REF catalogo catalogo`. Se o
+(ligar a VPN, liberar a permissao, credencial). **Reproduzir no ambiente do cliente (0093)**: quando o erro e de tela/fluxo e ver acontecendo
+ajuda a confirmar a causa, crie (sem duplicar) o item de reproducao `prmake_env_reproduction(card)` — padrao: o ambiente
+relatado pelo cliente no card (Environment/Site); outro so se a pessoa indicar — e diga na analise o `#numero`; com o
+executor, ele roda em paralelo (`prmake_work_item_execute`) e os prints ficam na sub-tarefa (cite o resultado na secao
+Reproducao quando chegar; nao espere por ele para seguir a investigacao). Reconheca o padrao do caso no catalogo: `$REF catalogo catalogo`. Se o
 codigo divergir da Base Solvace, registre um `log warning` e proponha a correcao da secao:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> divergencia.md --kind divergence --card <card>`.
 

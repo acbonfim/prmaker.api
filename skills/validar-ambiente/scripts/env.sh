@@ -3,6 +3,8 @@
 #
 # Uso:
 #   env.sh envs [--refresh]                      ambientes conhecidos (ValidationEnvironments do PRMake; cache 10 min)
+#   env.sh card-env <card>                       0093: ambiente e planta relatados pelo cliente no card (Environment/Site
+#                                                e URLs dos passos) + admin da planta; "cliente" no browser start usa isto
 #   env.sh resolve <ambiente|url|cliente>        URL, usuario padrao, somente leitura, banco (host/global); fora da lista:
 #                                                procura no banco corporativo (TB_WCM_ENVIRONMENT, so colunas sem segredo)
 #   env.sh plants <ambiente> [filtro]            plantas do ambiente (TB_WCM_SITE do banco global: sigla, banco local)
@@ -116,13 +118,14 @@ find_env() { # <termo>
 # Banco: host da configuracao; sem host, procura o banco global em cada servidor das credenciais da maquina.
 db_host() { # <global>
   local global="$1" alias out
-  for alias in $(jq -r '(.servers // [])[].alias | select(test("^[A-Za-z0-9_-]+$"))' "$HOME/.claude/sqlserver-credentials.json" 2>/dev/null); do
-    out="$(bash "$SQL" --host "$alias" -d master -q "SELECT name FROM sys.databases WHERE name = '$global'" --json 2>/dev/null)" || continue
+  while IFS= read -r alias; do
+    [[ -n "$alias" ]] || continue
+    out="$(bash "$SQL" --host "$alias" -d master -q "SELECT name FROM sys.databases WHERE name = '$global'" --json </dev/null 2>/dev/null)" || continue
     printf '%s' "$out" | grep -q "\"$global\"" && { printf '%s' "$alias"; return 0; }
-  done
+  done < <(jq -r '(.servers // [])[].alias // empty' "$HOME/.claude/sqlserver-credentials.json" 2>/dev/null)
   return 1
 }
-env_db() { # <env-json> -> "host global" (descobre o host se faltar)
+env_db() { # <env-json> -> "host|global" (descobre o host se faltar)
   local env="$1" host global
   host="$(jq -r '.database.host // empty' <<<"$env")"; global="$(jq -r '.database.global // empty' <<<"$env")"
   if [[ -z "$global" ]]; then
@@ -130,7 +133,7 @@ env_db() { # <env-json> -> "host global" (descobre o host se faltar)
   fi
   [[ -n "$global" ]] || return 1
   [[ -n "$host" ]] || host="$(db_host "$global")" || return 1
-  printf '%s %s' "$host" "$global"
+  printf '%s|%s' "$host" "$global"
 }
 corporate_lookup() { # <termo> -> JSON (so colunas sem segredo)
   local term c_host c_db t
@@ -147,7 +150,8 @@ resolve_json() { # <termo> -> JSON do ambiente (configurado ou achado no corpora
   if [[ -n "$env" ]]; then printf '%s' "$env"; return 0; fi
   rows="$(corporate_lookup "$term")"
   host="$(printf '%s' "$term" | sed -E 's#^[a-z]+://##; s#/.*$##' | tr 'A-Z' 'a-z')"
-  row="$(jq -c --arg h "$host" '[.[] | select((.ENVIRONMENT_URL | ascii_downcase | sub("^[a-z]+://"; "") | sub("/.*$"; "")) == $h)][0]
+  row="$(jq -c --arg h "$host" --arg t "$(printf '%s' "$term" | tr 'A-Z' 'a-z')" '[.[] | select((.ENVIRONMENT_URL | ascii_downcase | sub("^[a-z]+://"; "") | sub("/.*$"; "")) == $h)][0]
+    // [.[] | select((.ENVIRONMENT_NAME | ascii_downcase) == $t)][0]
     // (if length == 1 then .[0] else empty end)' <<<"${rows:-[]}" 2>/dev/null)"
   if [[ -z "$row" ]]; then
     if [[ "$(jq 'length' <<<"${rows:-[]}" 2>/dev/null)" -gt 1 ]]; then
@@ -160,7 +164,49 @@ resolve_json() { # <termo> -> JSON do ambiente (configurado ou achado no corpora
       url: (.ENVIRONMENT_URL | sub("/?$"; "/")), kind: (if (.ENVIRONMENT_NAME | test("Production"; "i")) then "production" else "test" end),
       readOnly: (.ENVIRONMENT_NAME | test("Production|Demo"; "i")), database: {global: .CATALOG_GLOBAL}, source: "corporativo"}' <<<"$row"
 }
-need_env() { resolve_json "$1" || die "ambiente '$1' nao encontrado (nem na configuracao nem no banco corporativo) — confira com: env.sh envs" ; }
+need_env() {
+  if [[ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" == cliente ]]; then
+    [[ -n "${CARD:-}" ]] || die "'cliente' = o ambiente relatado no card: informe --card <card> (ou rode: env.sh card-env <card>)"
+    client_env_json "$CARD" || die "nao achei o ambiente do cliente no card $CARD — veja: env.sh card-env $CARD" 
+    return
+  fi
+  resolve_json "$1" || die "ambiente '$1' nao encontrado (nem na configuracao nem no banco corporativo) — confira com: env.sh envs"
+}
+
+# 0093: ambiente e planta relatados pelo cliente — campos Environment/Site do card (card-resumo.txt do bug-fetch) e as
+# URLs *.solvacelabs.com dos passos para reproduzir/discussion. Imprime o JSON do ambiente com .plantName.
+card_data() { # <card> -> pasta com card-resumo.txt (busca o card se faltar)
+  local d="$CARDS/$1/dados"
+  if [[ ! -s "$d/card-resumo.txt" ]]; then
+    mkdir -p "$d"
+    OUTDIR="$d" bash "$HOME/.claude/skills/analisar-bug/scripts/bug-fetch.sh" "$1" </dev/null >/dev/null 2>&1 || true
+  fi
+  printf '%s' "$d"
+}
+client_env_json() { # <card>
+  local d name site url env
+  d="$(card_data "$1")"
+  [[ -s "$d/card-resumo.txt" ]] || return 1
+  name="$(sed -n 's/^Environment: *//p' "$d/card-resumo.txt" | head -1 | tr -d '\r')"
+  site="$(sed -n 's/^Site: *//p' "$d/card-resumo.txt" | head -1 | tr -d '\r')"
+  url="$(cat "$d"/description.txt "$d"/discussion.txt 2>/dev/null | grep -oiE 'https?://[a-z0-9-]+\.solvacelabs\.com' | grep -viE '//(apigw|api)[.-]' | head -1)"
+  env=""
+  [[ -n "$name" ]] && env="$(resolve_json "$name" 2>/dev/null)"
+  [[ -z "$env" && -n "$url" ]] && env="$(resolve_json "$url" 2>/dev/null)"
+  [[ -n "$env" ]] || return 1
+  jq -c --arg site "$site" --arg name "$name" --arg url "$url" '. + {plantName: $site, cardEnvironment: $name, cardUrl: $url}' <<<"$env"
+}
+# Sigla da planta pelo nome (TB_WCM_SITE do banco global do ambiente).
+plant_acronym() { # <env-json> <nome da planta>
+  local db name
+  name="$(printf '%s' "$2" | sed "s/['\";]//g")"
+  [[ -n "$name" ]] || return 1
+  db="$(env_db "$1")" || return 1
+  bash "$SQL" --host "${db%%|*}" -d "${db#*|}" --json -q "SELECT TOP 3 SITE_ACRONYM, SITE_NAME FROM TB_WCM_SITE WHERE SITE_NAME = N'$name' OR SITE_ACRONYM = N'$name'" 2>/dev/null \
+    | jq -r '(.rows // [])[0].SITE_ACRONYM // empty'
+}
+# Referencia do ambiente nos comandos para a pessoa: a chave da configuracao ou, fora dela, a URL.
+env_ref() { jq -r 'if .source then .url else .key end' <<<"$1"; }
 
 has_password() { # <env-json> <email>
   [[ -s "$CREDS" ]] || return 1
@@ -194,7 +240,7 @@ notify_wait() { # <sub-tarefa> <exit> <chave> <rotulo> <url> <usuario> <saida-do
   if [[ "$rc" != 2 ]]; then
     msg+=$'\n\nNo **seu terminal** (fora do chat do Claude), rode e digite a senha quando pedir:\n\n```\n'"$CREDS_CMD $key $user"$'\n```'
   fi
-  msg+=$'\n\nDepois clique em **Já resolvi** nesta sub-tarefa — a validação continua sozinha.'
+  msg+=$'\n\nDepois clique em **Já resolvi** nesta sub-tarefa — ela continua sozinha.'
   jq -n --arg r "$msg" '{result: $r}' > "$TMP/wait.json"
   code="$(curl -s --max-time 30 -o "$TMP/wait.resp" -w '%{http_code}' -X POST "$BASE/WorkItems/tasks/$task/wait" \
     -H "x-api-key: $tok" -H 'X-Execution-Client: skill' -H 'content-type: application/json' --data-binary "@$TMP/wait.json" 2>/dev/null)"
@@ -208,6 +254,31 @@ notify_wait() { # <sub-tarefa> <exit> <chave> <rotulo> <url> <usuario> <saida-do
 CMD="${1:-}"; shift || true
 case "$CMD" in
   setup) setup; echo "ok — venv: $(venv_python)" ;;
+
+  card-env)
+    CARD="${1:?card}"
+    load_envs
+    ENV="$(client_env_json "$CARD")" || die "nao achei o ambiente do cliente no card $CARD (campo Environment do card vazio e nenhuma URL *.solvacelabs.com nos passos/discussion) — informe o ambiente" 1
+    PLANT_NAME="$(jq -r '.plantName // empty' <<<"$ENV")"
+    ACR=""; [[ -n "$PLANT_NAME" ]] && ACR="$(plant_acronym "$ENV" "$PLANT_NAME")"
+    jq -r '"ambiente do cliente: \(.label) — \(.url)\(if .readOnly then " (SOMENTE LEITURA)" else "" end)",
+      "no card: Environment=\(.cardEnvironment // "-") · Site=\(.plantName // "-")\(if (.cardUrl // "") != "" then " · URL nos passos: " + .cardUrl else "" end)"' <<<"$ENV"
+    if [[ -n "$ACR" ]]; then
+      USER_SUG="$(default_user "$ENV" "$ACR")"
+      echo "planta: $PLANT_NAME ($ACR) → usuario: $USER_SUG"
+    elif [[ -n "$PLANT_NAME" ]]; then
+      USER_SUG="$(default_user "$ENV")"
+      if env_db "$ENV" >/dev/null; then
+        echo "planta: $PLANT_NAME (sigla nao achada no banco global — confira: env.sh plants $(env_ref "$ENV") \"$PLANT_NAME\")"
+      else
+        echo "planta: $PLANT_NAME (sem acesso ao banco global de $(jq -r .label <<<"$ENV") nesta maquina — VPN/credencial: prmake-skills.sh db-credentials; ou informe a sigla com --plant)"
+      fi
+    else
+      USER_SUG="$(default_user "$ENV")"
+    fi
+    [[ -n "$USER_SUG" ]] && { has_password "$ENV" "$USER_SUG" && echo "senha nesta maquina: sim" || echo "senha nesta maquina: NAO ($CREDS_CMD $(env_ref "$ENV") $USER_SUG)"; }
+    echo "abrir: env.sh browser start cliente --card $CARD${ACR:+ --plant $ACR} --task <n>"
+    ;;
 
   envs)
     load_envs "${1:-}"
@@ -229,7 +300,7 @@ case "$CMD" in
     ENV="$(need_env "$1")" || exit 1
     DB="$(env_db "$ENV")" || die "nao achei o banco global de $1 (sem credencial de banco nesta maquina? bash ~/.claude/skills/.prmake/prmake-skills.sh db-credentials)" 4
     F="$(printf '%s' "${2:-}" | tr -cd 'A-Za-z0-9 ._-')"
-    bash "$SQL" --host "${DB%% *}" -d "${DB#* }" -q "SELECT SITE_ID, SITE_ACRONYM, SITE_NAME, INSTANCE_NAME, ACTIVE FROM TB_WCM_SITE WHERE ('$F' = '' OR SITE_NAME LIKE '%$F%' OR SITE_ACRONYM LIKE '%$F%') ORDER BY ACTIVE DESC, SITE_NAME"
+    bash "$SQL" --host "${DB%%|*}" -d "${DB#*|}" -q "SELECT SITE_ID, SITE_ACRONYM, SITE_NAME, INSTANCE_NAME, ACTIVE FROM TB_WCM_SITE WHERE ('$F' = '' OR SITE_NAME LIKE '%$F%' OR SITE_ACRONYM LIKE '%$F%') ORDER BY ACTIVE DESC, SITE_NAME"
     echo "admin da planta: $(default_user "$ENV" "<sigla>") (env.sh admin $1 <sigla>)"
     ;;
 
@@ -240,7 +311,7 @@ case "$CMD" in
     EMAIL_SQL="$(printf '%s' "$EMAIL" | tr -cd 'A-Za-z0-9@._+-')"
     echo "usuario: $EMAIL"
     if DB="$(env_db "$ENV")"; then
-      bash "$SQL" --host "${DB%% *}" -d "${DB#* }" -q "SELECT u.USER_EMAIL, u.ACTIVE, s.SITE_ACRONYM, s.SITE_NAME, s.INSTANCE_NAME FROM TB_WCM_USER u LEFT JOIN TB_WCM_SITE s ON s.SITE_ID = u.SITE_ID WHERE LOWER(u.USER_EMAIL) = LOWER('$EMAIL_SQL') OR LOWER(u.USER_USERNAME) = LOWER('$EMAIL_SQL')"
+      bash "$SQL" --host "${DB%%|*}" -d "${DB#*|}" -q "SELECT u.USER_EMAIL, u.ACTIVE, s.SITE_ACRONYM, s.SITE_NAME, s.INSTANCE_NAME FROM TB_WCM_USER u LEFT JOIN TB_WCM_SITE s ON s.SITE_ID = u.SITE_ID WHERE LOWER(u.USER_EMAIL) = LOWER('$EMAIL_SQL') OR LOWER(u.USER_USERNAME) = LOWER('$EMAIL_SQL')"
     else
       echo "(nao conferi no banco: banco global de $1 desconhecido ou sem credencial)"
     fi
@@ -261,8 +332,8 @@ case "$CMD" in
     setup
     PY="$(venv_python)"
     if [[ "$SUB" == start ]]; then
-      [[ -n "${1:-}" ]] || die "uso: env.sh browser start <ambiente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--headed]"
-      ENV="$(need_env "$1")" || exit 1; shift
+      [[ -n "${1:-}" ]] || die "uso: env.sh browser start <ambiente|cliente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--headed]"
+      ENV_ARG="$1"; shift
       USER_ARG=""; PLANT=""; CARD="${PRMAKE_CARD:-}"; TASK=""; HEADED=()
       while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -274,6 +345,12 @@ case "$CMD" in
           *) die "argumento desconhecido: $1" ;;
         esac
       done
+      load_envs
+      ENV="$(need_env "$ENV_ARG")" || exit 1
+      # 0093: no ambiente do cliente, a planta padrao e a do card (Site).
+      if [[ -z "$PLANT" && -z "$USER_ARG" && -n "$(jq -r '.plantName // empty' <<<"$ENV")" ]]; then
+        PLANT="$(plant_acronym "$ENV" "$(jq -r '.plantName' <<<"$ENV")")"
+      fi
       USER_ARG="${USER_ARG:-$(default_user "$ENV" "$PLANT")}"
       [[ -n "$USER_ARG" ]] || die "sem usuario para $(jq -r .key <<<"$ENV"): informe --user <email> ou --plant <sigla> (admin da planta)"
       KEY="$(jq -r .key <<<"$ENV")"
@@ -283,7 +360,7 @@ case "$CMD" in
         --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
       RC=${PIPESTATUS[0]}
       # A pessoa fica sabendo na ferramenta (Bancada/Execução: "aguardando você" + "Já resolvi"), sem depender do Claude.
-      [[ $RC -eq 2 || $RC -eq 3 || $RC -eq 4 ]] && [[ -n "$TASK" ]] && notify_wait "$TASK" "$RC" "$KEY" "$(jq -r .label <<<"$ENV")" "$(jq -r .url <<<"$ENV")" "$USER_ARG" "$TMP/start.out"
+      [[ $RC -eq 2 || $RC -eq 3 || $RC -eq 4 ]] && [[ -n "$TASK" ]] && notify_wait "$TASK" "$RC" "$(env_ref "$ENV")" "$(jq -r .label <<<"$ENV")" "$(jq -r .url <<<"$ENV")" "$USER_ARG" "$TMP/start.out"
       exit "$RC"
     fi
     exec "$PY" "$DIR/env_browser.py" "$SUB" "$@"

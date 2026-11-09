@@ -1,6 +1,6 @@
 ---
 name: validar-ambiente
-description: Valida a demanda de um card num ambiente Solvace (feature 0092) — entra no ambiente pelo navegador da maquina (Chrome sem janela, com a senha guardada SO nesta maquina), segue o roteiro do que mudou e grava a sequencia de prints mostrando o funcionamento como evidencia na sub-tarefa `env-validation` do item de validacao no PRMake. Sabe achar a URL do ambiente (configuracao ValidationEnvironments e banco corporativo), as plantas e os bancos de cada planta (TB_WCM_SITE) e o admin da planta (admin<sigla>@solvacelabs.com); sem a senha, orienta a pessoa a grava-la no proprio terminal. DEMO e producao sao somente leitura (o navegador bloqueia gravacoes). Use quando a sub-tarefa for `env-validation`, quando o prompt pedir para "validar em <ambiente>", "validar em dev/qa/sandboxefeso/sandboxrt/producao", "tirar prints da validacao", "gravar as evidencias da validacao", ou para criar o item de validacao de um card.
+description: Valida a demanda de um card num ambiente Solvace (feature 0092) — entra no ambiente pelo navegador da maquina (Chrome sem janela, com a senha guardada SO nesta maquina), segue o roteiro do que mudou e grava a sequencia de prints mostrando o funcionamento como evidencia na sub-tarefa `env-validation` do item de validacao no PRMake. Sabe achar a URL do ambiente (configuracao ValidationEnvironments e banco corporativo), as plantas e os bancos de cada planta (TB_WCM_SITE) e o admin da planta (admin<sigla>@solvacelabs.com); sem a senha, orienta a pessoa a grava-la no proprio terminal. DEMO e producao sao somente leitura (o navegador bloqueia gravacoes). Tambem REPRODUZ o bug no ambiente (feature 0093, sub-tarefa `env-reproduction`): por padrao no ambiente relatado pelo cliente no card (campos Environment/Site), ou noutro indicado, com os prints do erro. Use quando a sub-tarefa for `env-validation` ou `env-reproduction`, quando pedirem para "reproduzir o bug no ambiente/no cliente/em qa", quando o prompt pedir para "validar em <ambiente>", "validar em dev/qa/sandboxefeso/sandboxrt/producao", "tirar prints da validacao", "gravar as evidencias da validacao", ou para criar o item de validacao de um card.
 ---
 
 # validar-ambiente
@@ -90,6 +90,38 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
      {reason: "so leitura/validacao"}})`.
    - Reprovado → `prmake_work_task(fail, result: "<o que falhou, em qual passo, print #n>")` — os prints ja estao na
      sub-tarefa; nao siga para os outros ambientes do item sem a pessoa decidir.
+
+## Reproduzir o bug (sub-tarefa `env-reproduction`, 0093)
+Params: `environment` (`cliente` = o relatado no card — padrao; ou chave/URL de outro ambiente), `plant?`, `user?`,
+`steps?` (vazio = os passos do card), `expected?`. Mesmas regras e mesmo navegador da validacao.
+1. `prmake_work_task(card, taskNumber, start)`.
+2. **Ambiente do cliente**: `bash $ENV card-env <card>` — le os campos `Environment`/`Site` do card (busca o card se faltar)
+   e as URLs `*.solvacelabs.com` dos passos/discussion; mostra ambiente, planta (sigla) e o admin da planta. `environment`
+   = `cliente` → `browser start cliente --card <card> --task <n>` ja usa isso (planta do card → `admin<sigla>`).
+   Card sem ambiente → `wait` pedindo o ambiente (ou que a pessoa edite a sub-tarefa) e pare.
+3. **Passos**: `params.steps`, senao os passos para reproduzir do card (`$CARD_DIR/dados/description.txt`; Bug = Repro
+   Steps) + prints/evidencias do card quando ajudarem (`prmake_work_item_evidence`). Anote a versao/tela/usuario do relato.
+4. **Abrir** como no fluxo da validacao (sem senha / login recusado / sem navegador → o `env.sh` ja avisa na ferramenta;
+   encerre a vez). Reproduza **com o perfil mais proximo do relatado** que der (admin da planta do card).
+5. **Seguir os passos** com `snap`/`click`/`fill`, um `shot` em cada passo e **no erro** (mensagem, tela quebrada, valor
+   errado, `Invalid date`...). Erro de console/rede ajuda: anote a URL e o texto do erro no relatorio.
+6. **Somente leitura (producao/DEMO)**: reproduza ate o passo que grava; se o bug so aparece ao salvar/alterar, **nao
+   contorne o bloqueio** — tire o print do ponto em que parou e repita a parte que grava no **sandbox do cliente**
+   (`bash $ENV resolve sandbox<cliente>`/URL do sandbox; ex.: `sandboxmondelez`) ou em `qa`, dizendo isso no relatorio.
+7. **Fechar e evidencias**: `browser stop`; relatorio `reproducao-<amb>.md` (ambiente, URL, usuario, planta, versao se
+   visivel, passos seguidos, por print o que mostra, **resultado: reproduziu / nao reproduziu / parcial** e o que
+   difere do relato) → `bash $ENV evidence <card> <item> <n> <pasta> --report <pasta>/reproducao-<amb>.md`.
+8. **Concluir sempre com `complete`** (nao reproduzir tambem e resultado): `result` = 2–5 linhas (reproduziu? em qual
+   passo, a mensagem, prints #n; nao reproduziu: o que foi tentado e a diferenca provavel — dado, permissao, planta,
+   versao), `output: {environment, url, user, plant?, shots, reproduced: "sim|nao|parcial"}`, `undo: {action: "none",
+   params: {reason: "so leitura/reproducao"}}`. `fail` so quando nao deu para tentar (ambiente fora do ar etc.).
+Com plano de analise aberto, cite o resultado na analise (secao Reproducao) — o item nao muda o plano.
+
+## Criar o item de reproducao
+- MCP: `prmake_env_reproduction(card, environments?, plant?, user?, steps?, expected?, execute?)` — `environments`
+  vazio/`cliente` = o ambiente relatado (padrao); outro e opcional (ex.: `"cliente, qa"`). So Bug.
+- Ferramenta: `prmake_tool_run(card, "reproduzir-bug-no-ambiente", {"environments": "cliente"})`; na tela: Ferramentas →
+  **Reproduzir o bug no ambiente**, ou `/reproduzir-bug-no-ambiente` na conversa do Especialista.
 
 ## Criar o item de validacao (padrao do PRMake)
 Toda entrega que **altera** algo e precisa ser validada ganha um **item de validacao** (tipo `validation`), com **uma
