@@ -10,6 +10,7 @@
   ],
   "depends": [
     "analisar-bug",
-    "gerar-prmake"
+    "gerar-prmake",
+    "validar-ambiente"
   ]
 }

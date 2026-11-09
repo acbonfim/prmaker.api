@@ -10,6 +10,9 @@
 #   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
 #   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
 #   prmake-skills.sh db-credentials [list]         cadastra (no SEU terminal) as credenciais de leitura dos bancos
+#   prmake-skills.sh env-credentials [list | set [ambiente] [usuario] | remove <ambiente> <usuario>]
+#                                                  0092: senhas dos usuarios dos ambientes Solvace (validacao com prints),
+#                                                  so nesta maquina (no SEU terminal; nunca no chat nem no PRMake)
 #   prmake-skills.sh mcp [remove]                  registra no Claude Code o MCP remoto do PRMake (0039)
 #   prmake-skills.sh agent [install|update|status|uninstall]
 #                                                  executor do PRMake (0039): roda a analise pela tela, sem terminal
@@ -248,6 +251,7 @@ ensure_hook() {
 PERMISSION_GROUPS=(
   "devops-v1|analisar-bug/scripts/prmake-plan.sh devops:*|fechamento pelo PRMake (prmake-plan.sh devops)"
   "readonly-v2|analisar-bug/scripts/sql-query.sh:*;analisar-bug/scripts/cognito-query.sh:*|consultas somente leitura (sql-query.sh, cognito-query.sh)"
+  "envvalidation-v1|validar-ambiente/scripts/env.sh:*|validacao em ambiente (env.sh: navegador com prints, somente leitura na DEMO/producao)"
 )
 # Regras (JSON) de uma lista de scripts separados por ';' — nas formas de caminho que o Claude usa (~, $HOME, absoluto).
 permission_rules() {
@@ -395,6 +399,94 @@ db_credentials() {
     [[ "$more" =~ ^[sS] ]] || break
   done
   echo "Pronto. Na próxima análise o Claude já consegue ler esses bancos (somente leitura)."
+}
+
+# Senhas dos ambientes Solvace (0092) para a validação em ambiente (skill validar-ambiente: o Claude entra no ambiente e
+# grava os prints). Ficam só na máquina do usuário, com acesso restrito a ele; a senha é digitada sem eco e nunca passa
+# pelo chat do Claude nem pelo PRMake. O navegador da validação lê o arquivo direto e nunca imprime a senha.
+ENV_CREDS_FILE="${PRMAKE_ENV_CREDENTIALS:-$HOME/.claude/solvace-env-credentials.json}"
+ENV_SH="$SKILLS_DIR/validar-ambiente/scripts/env.sh"
+env_creds_report() { # linha do doctor
+  if [[ ! -s "$ENV_CREDS_FILE" ]]; then
+    printf '  %-28s %s\n' "senhas dos ambientes" "nenhuma — a validação em ambiente pede quando precisar: bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <ambiente> <usuario>"
+    return
+  fi
+  local n mode
+  n="$(jq -r '[(.environments // [])[] | "\(.env // "?"):\(.user // "?")"] | join(", ")' "$ENV_CREDS_FILE" 2>/dev/null)" || n="arquivo inválido"
+  mode="$(file_mode "$ENV_CREDS_FILE")"
+  printf '  %-28s %s\n' "senhas dos ambientes" "${n:-nenhuma} ($ENV_CREDS_FILE$([[ $WINDOWS -eq 0 && -n "$mode" && "$mode" != "600" ]] && echo " — permissão $mode: rode chmod 600"))"
+}
+env_credentials() {
+  local sub="${1:-set}"
+  case "$sub" in
+    list)
+      [[ -s "$ENV_CREDS_FILE" ]] || { echo "Nenhuma senha de ambiente nesta máquina ($ENV_CREDS_FILE)."; return 0; }
+      echo "Ambientes com senha em $ENV_CREDS_FILE (senhas não são mostradas):"
+      jq -r '(.environments // [])[] | "  \(.env // "?")\t\(.url // "?")\tusuário: \(.user // "?")\t(gravada em \(.savedAt // "?"))"' "$ENV_CREDS_FILE"
+      return 0 ;;
+    remove)
+      local e="${2:-}" u="${3:-}"
+      [[ -n "$e" && -n "$u" ]] || die "uso: prmake-skills.sh env-credentials remove <ambiente> <usuario>"
+      [[ -s "$ENV_CREDS_FILE" ]] || { echo "Nada a remover."; return 0; }
+      ( umask 077; jq --arg e "$e" --arg u "$(printf '%s' "$u" | tr 'A-Z' 'a-z')" \
+          '.environments = [(.environments // [])[] | select(((.env // "") == $e and ((.user // "") | ascii_downcase) == $u) | not)]' \
+          "$ENV_CREDS_FILE" > "$ENV_CREDS_FILE.tmp" ) && mv "$ENV_CREDS_FILE.tmp" "$ENV_CREDS_FILE" || die "não consegui gravar $ENV_CREDS_FILE"
+      chmod 600 "$ENV_CREDS_FILE" 2>/dev/null
+      echo "✔ removida a senha de $u em $e"
+      return 0 ;;
+    set) shift ;;
+    *) ;;
+  esac
+  # A senha não pode passar pela conversa: sem terminal interativo (ex.: rodado pelo Claude) recusa.
+  [[ -t 0 && -t 1 ]] || die "rode no SEU terminal, fora do chat do Claude: bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set ${1:-<ambiente>} ${2:-<usuario>}"
+  command -v jq >/dev/null || die "precisa do jq"
+  echo "Senhas dos ambientes Solvace para a validação com prints — gravadas só nesta máquina em $ENV_CREDS_FILE (acesso só seu)."
+  echo "Use o usuário de teste/admin que você recebeu pelo canal oficial. Nunca cole a senha no chat do Claude, no PRMake ou no Teams."
+  echo "Ctrl+C cancela sem gravar."
+  local envkey="${1:-}" user="${2:-}" url pass more test info
+  mkdir -p "$(dirname "$ENV_CREDS_FILE")"
+  if [[ ! -s "$ENV_CREDS_FILE" ]]; then
+    ( umask 077; echo '{"environments":[]}' > "$ENV_CREDS_FILE" )
+  elif ! jq -e . "$ENV_CREDS_FILE" >/dev/null 2>&1; then
+    die "$ENV_CREDS_FILE não é um JSON válido — corrija ou renomeie o arquivo (não vou sobrescrever)"
+  fi
+  while :; do
+    echo
+    [[ -n "$envkey" ]] || read -rp "Ambiente (dev, qa, sandboxefeso, demo, mondelez... ou a URL): " envkey
+    [[ -n "$envkey" ]] || { echo "ambiente obrigatório"; continue; }
+    url=""
+    if [[ -f "$ENV_SH" ]]; then
+      info="$(bash "$ENV_SH" resolve "$envkey" </dev/null 2>/dev/null)" && url="$(sed -n 's/^url: //p' <<<"$info" | head -1)" \
+        && envkey="$(sed -n 's/^ambiente: \([^ ]*\).*/\1/p' <<<"$info" | head -1)"
+    fi
+    if [[ -z "$url" ]]; then
+      if [[ "$envkey" =~ ^https?:// ]]; then url="$envkey"; envkey="$(sed -E 's#^[a-z]+://##; s#\..*$##' <<<"$envkey")"
+      else read -rp "URL do ambiente (ex.: https://qa.solvacelabs.com/): " url; fi
+    fi
+    echo "Ambiente: $envkey ($url)"
+    [[ -n "$user" ]] || read -rp "Usuário (e-mail, ex.: admin@ewcm.com.br ou admin<planta>@solvacelabs.com): " user
+    read -rsp "Senha de $user (não aparece): " pass; echo
+    [[ -n "$url" && -n "$user" && -n "$pass" ]] || { echo "URL, usuário e senha são obrigatórios — nada gravado"; envkey=""; user=""; continue; }
+    ( umask 077
+      # A senha vai por variável de ambiente (não aparece na lista de processos).
+      EC_ENV="$envkey" EC_URL="$url" EC_USER="$(printf '%s' "$user" | tr 'A-Z' 'a-z')" EC_PASS="$pass" EC_AT="$(date '+%Y-%m-%d %H:%M')" jq '
+        .environments = ([(.environments // [])[] | select(((.env // "") == env.EC_ENV and ((.user // "") | ascii_downcase) == env.EC_USER) | not)]
+          + [{env: env.EC_ENV, url: env.EC_URL, user: env.EC_USER, password: env.EC_PASS, savedAt: env.EC_AT}])' "$ENV_CREDS_FILE" > "$ENV_CREDS_FILE.tmp" ) \
+      && mv "$ENV_CREDS_FILE.tmp" "$ENV_CREDS_FILE" || { rm -f "$ENV_CREDS_FILE.tmp"; die "não consegui gravar $ENV_CREDS_FILE"; }
+    pass=""
+    chmod 600 "$ENV_CREDS_FILE" 2>/dev/null
+    echo "✔ senha de $user em $envkey gravada em $ENV_CREDS_FILE"
+    if [[ -f "$ENV_SH" ]]; then
+      read -rp "Testar o login agora (abre o navegador sem janela, ~20 s)? [S/n] " test
+      if [[ ! "$test" =~ ^[nN] ]]; then
+        bash "$ENV_SH" browser start "$envkey" --user "$user" && bash "$ENV_SH" browser stop "$(printf '%s-%s' "$envkey" "$user" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-80)" >/dev/null
+      fi
+    fi
+    read -rp "Cadastrar outra senha? [s/N] " more
+    [[ "$more" =~ ^[sS] ]] || break
+    envkey=""; user=""
+  done
+  echo "Pronto. Clique em *Já resolvi* na sub-tarefa de validação (ou avise o Claude) para ele continuar."
 }
 
 # A própria ferramenta também se atualiza (vale a partir da próxima execução).
@@ -885,6 +977,7 @@ case "$cmd" in
     ok "hook esperado" "$HOOK_CMD"
     permissions_report
     creds_report
+    env_creds_report
  ok "MCP do PRMake" "$([[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1 && echo "ok ($MCP_URL)" || echo 'NÃO — rode: prmake-skills.sh mcp')"
     ok "executor" "$([[ -x "$(agent_bin)" ]] && "$(agent_bin)" status 2>/dev/null | head -1 || echo 'não instalado (opcional: prmake-skills.sh agent install)')"
     ok "repositórios" "$(repos_summary) ($REPOS_FILE)"
@@ -899,6 +992,10 @@ case "$cmd" in
 
   db-credentials)
     db_credentials ${ARGS[@]+"${ARGS[@]}"}
+    ;;
+
+  env-credentials)
+    env_credentials ${ARGS[@]+"${ARGS[@]}"}
     ;;
 
   mcp)
@@ -944,5 +1041,5 @@ case "$cmd" in
     esac
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|mcp|agent|repos [--quiet] [--force] [skill...]" ;;
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|env-credentials|mcp|agent|repos [--quiet] [--force] [skill...]" ;;
 esac
