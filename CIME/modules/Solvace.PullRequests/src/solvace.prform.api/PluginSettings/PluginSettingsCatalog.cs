@@ -80,7 +80,8 @@ public static class PluginSettingsCatalog
         new("itens", "Itens de trabalho", "checklist", "Tipos de sub-tarefa e modelos prontos dos itens de trabalho (Bancada do card).",
         [
             new("tipos", "Tipos de item e de sub-tarefa", "Os tipos de item, o que cada sub-tarefa faz e quem executa."),
-            new("modelos", "Modelos de item", "Itens prontos para criar com um clique.")
+            new("modelos", "Modelos de item", "Itens prontos para criar com um clique."),
+            new("validacao", "Validação em ambiente", "Ambientes onde o Claude valida a demanda com prints (URL, usuário padrão, banco, somente leitura).")
         ]),
         new("assistente", "Assistente e horas", "schedule", "Sugestões do assistente do card (estimativa inicial, lançar horas, publicar resumos) e as médias de horas do time.",
         [
@@ -377,8 +378,14 @@ public static class PluginSettingsCatalog
             MultilineHint = true },
         new() { Section = "itens", Group = "modelos", Plugin = Skills, Key = SkillsConfigurationKeys.WorkItemTemplates, Type = SettingTypes.Json, JsonRoot = "array", ReadBy = Api,
             Label = "Modelos de item de trabalho",
-            Help = "[{key, title, description, type?, tasks: [{title, kind, executor?, params}]}]. Marcadores: {card}, {branch}, {suffix:destino}, {repository}, {flowTargets}.",
+            Help = "[{key, title, description, type?, tasks: [{title, kind, executor?, params, repeat?}]}]. Marcadores: {card}, {branch}, {suffix:destino}, {repository}, {flowTargets}; repeat = uma sub-tarefa por valor ({each}, {eachLabel}).",
             MultilineHint = true },
+        new() { Section = "itens", Group = "validacao", Plugin = Skills, Key = SkillsConfigurationKeys.ValidationEnvironments, Type = SettingTypes.Json, JsonRoot = "object", ReadBy = ApiSk,
+            Label = "Ambientes de validação",
+            Help = "environments: [{key, label, url, user?, kind?, readOnly?, client?, note?, database: {host = alias das credenciais da máquina, global}}]; " +
+                   "plantAdminPattern (admin da planta: admin{plant}@solvacelabs.com); corporate (banco com todos os ambientes); productionReadOnly; " +
+                   "defaults por tipo do card (bug, user-story). readOnly = o navegador da validação bloqueia gravações (DEMO, produção). Senha nunca aqui: só na máquina de quem valida.",
+            Default = Indented(ValidationEnvironments.DefaultJson), MultilineHint = true },
 
         // ============================================================== Assistente e horas
         new() { Section = "assistente", Group = "assistente", Plugin = Skills, Key = SkillsConfigurationKeys.AssistantEnabled, Type = SettingTypes.Bool, ReadBy = Api,

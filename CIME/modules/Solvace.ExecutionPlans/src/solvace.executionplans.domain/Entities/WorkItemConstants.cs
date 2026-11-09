@@ -93,6 +93,8 @@ public static partial class WorkItemType
     public const string Data = "data";
     public const string Ticket = "ticket";
     public const string Text = "text";
+    /// <summary>0092: validar a demanda em ambientes (uma sub-tarefa <c>env-validation</c> por ambiente, com prints).</summary>
+    public const string Validation = "validation";
 
     /// <summary>Legado (itens antigos): seguiam o tipo do card.</summary>
     public const string Bug = "bug";
@@ -102,7 +104,7 @@ public static partial class WorkItemType
 
     /// <summary>Tipos semeados (padrão quando <c>WorkItemTypes</c> não está configurado).</summary>
     public static readonly IReadOnlyList<string> Defaults =
-        [Task, PullRequest, Review, Analysis, Fix, Implementation, Adjustment, Closing, Data, Ticket, Text];
+        [Task, PullRequest, Review, Analysis, Fix, Implementation, Adjustment, Closing, Data, Ticket, Text, Validation];
 
     public static readonly IReadOnlySet<string> Legacy = new HashSet<string> { Bug, UserStory };
 
@@ -169,6 +171,8 @@ public static class WorkTaskKind
     public const string CardBrief = "card-brief";
     /// <summary>0089: arquivo do item com o racional (fica nos arquivos do card).</summary>
     public const string CardBriefFileName = "resumo-do-pedido.md";
+    /// <summary>0092: validar no ambiente (login, roteiro e prints como evidência da sub-tarefa).</summary>
+    public const string EnvValidation = "env-validation";
 
     /// <summary>Tipos de sub-tarefa: levantamento/consulta sem alterar nada (impacto na base, ler o card, mapear o código).</summary>
     public const string Research = "research";
@@ -179,7 +183,7 @@ public static class WorkTaskKind
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
-          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task };
+          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation };
 
     /// <summary>
     /// Tipo da sub-tarefa que espelha uma etapa do plano: o <c>taskKind</c> que a skill informou; sem ele, pelo tipo da

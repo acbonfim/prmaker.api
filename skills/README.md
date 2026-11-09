@@ -10,9 +10,10 @@ Fonte única das skills (feature 0024). Cada deploy da API publica o conteúdo d
 | `executar-item-de-trabalho/` | 0085: executa um item de trabalho (pedido `work-item` do executor ou `/executar-item-de-trabalho <card> <n>`): sub-tarefas na ordem, com resultado, saidas e "como desfazer" |
 | `desfazer-item-de-trabalho/` | 0085: desfaz um item cancelado (pedido `work-item-undo`): sub-tarefas feitas em ordem reversa — fecha PR, apaga branch criada, reverte commit, volta o card — sempre pelo PRMake |
 | `especialista-do-caso/`, `base-solvace/`, `engenharia-reversa/` | especialista do caso (0080), Base Solvace e engenharia reversa |
+| `validar-ambiente/` | 0092: validacao em ambiente (sub-tarefa `env-validation`): `scripts/env.sh` acha ambiente/planta/admin (configuracao `ValidationEnvironments` + banco corporativo), abre o Chrome da maquina logado (`env_browser.py`, Playwright no venv; senha so em `~/.claude/solvace-env-credentials.json`, gravada por `prmake-skills.sh env-credentials`) e sobe os prints como evidencia da sub-tarefa; DEMO/producao com gravacoes bloqueadas |
 | `_tooling/install.sh` | instalador de um comando para macOS/Linux/Git Bash (servido em `/Skills/install.sh`); instala jq/unzip/python3 que faltarem |
 | `_tooling/install.ps1` | instalador do Windows no PowerShell (servido em `/Skills/install.ps1`): winget para Git/jq/Python e roda o `install.sh` no Git Bash |
-| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
+| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` · `db-credentials` · `env-credentials` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
 
 **Instalar** (o comando com a api-key está na tela *Skills* do PRMake):
 

@@ -148,6 +148,14 @@ link + conferir os dados depois do chamado; nao duplique):
    insista; `allowDuplicate` + motivo so se for de fato outro trabalho. Esses itens rodam pelo
    `executar-item-de-trabalho` quando a pessoa clicar "Executar".
 
+**Item de validacao em ambiente (0092)** — toda implementacao que altera algo e precisa ser validada ganha (sem duplicar)
+o item de validacao, uma sub-tarefa por ambiente: `prmake_env_validation(card, environments, plant?, scenario?,
+expected?)` — padrao: `dev` e `qa` quando ha PR para eles, `sandboxefeso`/`sandboxrt` quando o fluxo leva para a
+homologacao, e o **cliente especifico** da US (producao ou sandbox do cliente, com a planta, quando a US e de um
+cliente — `bash ~/.claude/skills/validar-ambiente/scripts/env.sh resolve <cliente>`); ambiente pedido pela pessoa entra
+tambem. `scenario` = os criterios de aceite como roteiro (CA → passo → esperado). Fica pendente: roda quando a
+implementacao estiver no ambiente (skill `validar-ambiente`: login, prints e evidencias na sub-tarefa).
+
 **8. Executar** — como a analisar-bug (`$REF correcao 8`): `control` entre etapas, worktree do card, PRs com
 `open-pr`, espera com `prmake_handoff` (terceira pessoa, espera como status: "Aguardando abrir chamado"), nova rodada no mesmo plano se a validacao falhar (`$REF correcao 8b`). Plano
 concluido → o PRMake conclui o item.

@@ -99,4 +99,7 @@ public static class SkillsConfigurationKeys
 
     /// <summary>0085 r4: tipos de item de trabalho (JSON: [{key, label, icon, color, description}]).</summary>
     public const string WorkItemTypes = "WorkItemTypes";
+
+    /// <summary>0092: ambientes de validação (JSON: {environments: [{key, label, url, user?, kind?, readOnly?, database?}], plantAdminPattern, corporate, defaults}).</summary>
+    public const string ValidationEnvironments = "ValidationEnvironments";
 }

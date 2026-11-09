@@ -170,6 +170,15 @@ User education puro (nada a configurar) = **so o `fechar-card`**.
      `pr {branch: hotfix/<card>-rv, target: release-version}`.
   3. Diga no checkpoint/resumo quais itens criou (`#numero`). A pessoa executa cada item pela tela ("Executar", roda
      em paralelo pelo `executar-item-de-trabalho`); cancelar com "desfazer" usa o `desfazer-item-de-trabalho`.
+- **Item de validacao em ambiente (0092) — toda correcao que altera algo e precisa ser validada**: alem do plano, crie
+  (sem duplicar) o item de validacao com uma sub-tarefa por ambiente pelo `prmake_env_validation(card, environments,
+  plant?, scenario?, expected?)` — padrao: os ambientes por onde a correcao passa no fluxo do card (`dev` e `qa` quando
+  ha PR para eles; `sandboxefeso` = homologacao de release, `sandboxrt` = release/hotfix, quando o fluxo leva para la) +
+  a **producao do cliente do bug** (chave da configuracao, ex.: `mondelez`, `gerdau`, ou a URL; `bash
+  ~/.claude/skills/validar-ambiente/scripts/env.sh resolve <cliente>`) com a **planta** do cliente que reportou;
+  ambiente que a pessoa pediu entra tambem. `scenario` = o roteiro curto (passo → esperado) do *Como validar*. O item
+  fica pendente (nao execute): a pessoa (ou o especialista, a pedido) executa quando a correcao estiver no ambiente; o
+  Claude entra, grava os prints e anexa na sub-tarefa (skill `validar-ambiente`). Cite o `#numero` no resumo.
 
 **Orientacao ao cliente = resumo PT/EN do fechamento** (card 74669): o resumo nao tecnico que o `fechar-card`
 publica na discussion e o que o cliente le — entao ele **e** a orientacao. Redija a orientacao (o que aconteceu, o

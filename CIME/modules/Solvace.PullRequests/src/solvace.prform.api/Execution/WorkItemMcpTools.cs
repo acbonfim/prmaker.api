@@ -214,6 +214,84 @@ public class WorkItemMcpTools(
         }
     });
 
+    /// <summary>0092: chave da ferramenta da validação em ambiente (semeada pela <c>SeedEnvValidation0092</c>).</summary>
+    public const string EnvValidationTemplate = "validar-em-ambiente";
+
+    [McpServerTool(Name = "prmake_env_validation")]
+    [Description("Cria o item de VALIDACAO EM AMBIENTE do card (ferramenta validar-em-ambiente): uma sub-tarefa env-validation por " +
+                 "ambiente — o Claude entra no ambiente (navegador da maquina de quem executa, senha guardada so nela), segue o roteiro e " +
+                 "grava a sequencia de prints como evidencia na sub-tarefa. environments = chaves de ValidationEnvironments (dev, qa, " +
+                 "sandboxefeso, sandboxrt, performancetest, demo, gerdau, mondelez...) ou URL/nome de outro ambiente, separados por virgula; " +
+                 "vazio = os sugeridos para o tipo do card. DEMO e producao: so navegar e consultar. Mesma checagem de duplicidade do " +
+                 "prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa).")]
+    public Task<string> EnvValidation(string card,
+        [Description("Ambientes separados por virgula (ex.: \"dev, qa, mondelez\"); vazio = os sugeridos")] string? environments = null,
+        [Description("Sigla da planta (ex.: COR) — o usuario padrao vira o admin da planta")] string? plant = null,
+        [Description("E-mail do usuario (opcional; padrao: o do ambiente ou o admin da planta)")] string? user = null,
+        [Description("O que validar (roteiro curto; vazio = o que o card pede)")] string? scenario = null,
+        [Description("Resultado esperado (opcional)")] string? expected = null,
+        [Description("Titulo do item (opcional)")] string? title = null,
+        [Description("true = ja coloca na fila do executor")] bool execute = false,
+        [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
+        string? duplicateReason = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var answers = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        void Put(string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) answers[key] = JsonSerializer.SerializeToElement(value.Trim());
+        }
+        Put("environments", environments);
+        Put("plant", plant);
+        Put("user", user);
+        Put("scenario", scenario);
+        CreateWorkItemRequest request;
+        try
+        {
+            request = await tools.BuildCreateRequestAsync(c, new CreateFromTemplateRequest
+            {
+                TemplateKey = EnvValidationTemplate, Answers = answers, Title = title, AllowDuplicate = allowDuplicate, DuplicateReason = duplicateReason
+            }, ct);
+        }
+        catch (WorkItemTemplateException e) when (e.Code == WorkItemTemplateException.NotFound)
+        {
+            throw new McpException($"A ferramenta {EnvValidationTemplate} nao esta no catalogo (WorkItemTemplates) — peca ao admin para restaurar o modelo semeado.", e);
+        }
+        catch (WorkItemTemplateException e)
+        {
+            throw new McpException(e.Missing.Count > 0 ? $"{e.Message} Faltando: {string.Join(", ", e.Missing)}." : e.Message, e);
+        }
+        if (!string.IsNullOrWhiteSpace(expected))
+            foreach (var t in request.Tasks.Where(t => t.Kind == WorkTaskKind.EnvValidation))
+                (t.Params ??= [])["expected"] = expected.Trim();
+        var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
+        try
+        {
+            return await specialist.RunAsync(c, "Criar o item de validacao em ambiente", request.Title, async () =>
+            {
+                var actor = await ActorAsync(ct);
+                var created = await items.CreateAsync(c, request, origin, actor, ct);
+                var status = created.Status;
+                if (execute)
+                    status = (await items.ExecuteAsync(created.Number, actor, ct)).Status;
+                return (Serialize(new
+                {
+                    created.Number, created.Type, created.Title, status, created.Origin, created.TemplateKey, created.Fingerprint,
+                    tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
+                }), $"item de validacao #{created.Number} criado com {created.Tasks.Count} ambiente(s){(execute ? " e na fila do executor" : string.Empty)}");
+            }, ct);
+        }
+        catch (WorkItemDuplicateException d)
+        {
+            throw new McpException(
+                $"Ja existe o item #{d.ExistingNumber} \"{d.ExistingTitle}\" ({d.ExistingStatus}) com a mesma validacao neste card — nao criei outro. " +
+                $"Use o existente (prmake_work_item card {c} number {d.ExistingNumber}); se for de fato outra validacao, chame de novo com " +
+                "allowDuplicate=true e duplicateReason explicando a diferenca.", d);
+        }
+    });
+
     [McpServerTool(Name = "prmake_work_item_update")]
     [Description("Edita um item de trabalho AINDA pendente (todas as sub-tarefas pending): titulo, descricao e/ou sub-tarefas " +
                  "(tasks substitui a lista; mande 'number' de uma sub-tarefa existente para mante-la). Item iniciado/concluido nao edita: " +

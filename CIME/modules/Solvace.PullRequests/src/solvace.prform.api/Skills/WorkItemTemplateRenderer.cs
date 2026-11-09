@@ -27,6 +27,10 @@ public sealed record WorkItemTemplateContext
     public PromotionProfileSet Profiles { get; init; } = PromotionProfileSet.Empty;
     public string? QaBranchPattern { get; init; }
     public string? TicketSystem { get; init; }
+    /// <summary>0092: ambientes de validação (<c>ValidationEnvironments</c>) — opções do ask e rótulo do <c>{eachLabel}</c>.</summary>
+    public IReadOnlyList<ValidationEnvironment> Environments { get; init; } = [];
+    /// <summary>0092: ambientes sugeridos por tipo do card (<c>ValidationEnvironments.defaults</c>) — o <c>{validationDefaults}</c>.</summary>
+    public IReadOnlyDictionary<string, string> EnvironmentDefaults { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>Modelo renderizado, pronto para virar <c>CreateWorkItemRequest</c>.</summary>
@@ -54,6 +58,9 @@ public class WorkItemTemplateException(string code, string message, IReadOnlyLis
 /// <c>{suffix:&lt;destino&gt;}</c>, <c>{suffix:@&lt;ask&gt;}</c> (sufixo do destino respondido), <c>{ask:&lt;key&gt;}</c>,
 /// <c>{repository}</c> (o respondido em <c>ask.repository</c>, senão o do PR principal do card), <c>{repoKind}</c>,
 /// <c>{flow}</c>, <c>{flowTargets}</c>, <c>{base}</c>, <c>{qaBranch}</c>, <c>{promotionTargets}</c> e <c>{ticketSystem}</c>.
+/// 0092: <c>{validationEnvironments}</c> nas <c>options</c> do ask (os ambientes de validação como <c>{value, label}</c>),
+/// <c>{validationDefaults}</c> (ambientes sugeridos para o tipo do card) e sub-tarefa com <c>repeat</c> — uma por valor
+/// (separados por vírgula) do texto renderizado, com <c>{each}</c> (o valor) e <c>{eachLabel}</c> (o rótulo da opção).
 /// Marcador desconhecido fica como está.
 /// </summary>
 public static partial class WorkItemTemplateRenderer
@@ -62,7 +69,8 @@ public static partial class WorkItemTemplateRenderer
 
     /// <summary>Nomes de marcador que o renderizador resolve (sem parâmetro).</summary>
     public static readonly IReadOnlySet<string> SimpleMarkers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "card", "branch", "repository", "repoKind", "flow", "flowTargets", "base", "qaBranch", "promotionTargets", "ticketSystem" };
+        { "card", "branch", "repository", "repoKind", "flow", "flowTargets", "base", "qaBranch", "promotionTargets", "ticketSystem",
+          "each", "eachLabel", "validationEnvironments", "validationDefaults" };
 
     // ── Contexto derivado ────────────────────────────────────────────────────────────────────────
 
@@ -247,7 +255,9 @@ public static partial class WorkItemTemplateRenderer
             var key = Str(ask, "key");
             if (key is null) continue;
             var options = ResolveOptions(ask["options"], ctx, repo);
-            if (options is not null)
+            if (IsEnvironmentsAsk(ask))
+                copy["options"] = ValidationEnvironments.Options(ctx.Environments);
+            else if (options is not null)
                 copy["options"] = new JsonArray(options.Select(o => (JsonNode?)JsonValue.Create(o)).ToArray());
             if (IsPromotionMarker(ask["options"]))
             {
@@ -267,6 +277,14 @@ public static partial class WorkItemTemplateRenderer
         return result;
     }
 
+    /// <summary>0092: pergunta de ambientes de validação (opções <c>{validationEnvironments}</c> ou input <c>environments</c> sem opções).</summary>
+    private static bool IsEnvironmentsAsk(JsonObject ask) =>
+        IsEnvironmentsMarker(ask["options"])
+        || (string.Equals(Str(ask, "input"), ValidationEnvironments.Input, StringComparison.OrdinalIgnoreCase) && ask["options"] is null);
+
+    private static bool IsEnvironmentsMarker(JsonNode? options) =>
+        options is JsonValue v && v.TryGetValue<string>(out var s) && string.Equals(s.Trim(), ValidationEnvironments.OptionsMarker, StringComparison.OrdinalIgnoreCase);
+
     private static bool IsPromotionMarker(JsonNode? options) =>
         options is JsonValue v && v.TryGetValue<string>(out var s) && string.Equals(s.Trim(), PromotionTargetsMarker, StringComparison.OrdinalIgnoreCase);
 
@@ -280,6 +298,8 @@ public static partial class WorkItemTemplateRenderer
             case JsonValue v when v.TryGetValue<string>(out var s):
                 if (IsPromotionMarker(v))
                     return PromotionTargets(ctx, KindOf(ctx, repository)).ToList();
+                if (IsEnvironmentsMarker(v))
+                    return ctx.Environments.Select(e => e.Key).ToList();
                 return SplitList(RenderText(s, ctx, Vars(ctx, repository, null)));
             case JsonArray arr:
                 return arr.SelectMany(o => o is JsonValue ov && ov.TryGetValue<string>(out var os)
@@ -374,25 +394,48 @@ public static partial class WorkItemTemplateRenderer
         {
             foreach (var t in list.OfType<JsonObject>())
             {
-                var kind = Str(t, "kind")?.Trim() is { Length: > 0 } k ? k : "manual";
-                var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
-                if (t["params"] is JsonObject ps)
-                    foreach (var (pk, pv) in ps)
-                        parameters[pk] = pv switch
-                        {
-                            JsonValue jv when jv.TryGetValue<string>(out var s) => R(s),
-                            null => string.Empty,
-                            JsonArray arr => string.Join(",", arr.Select(x => x is JsonValue xv && xv.TryGetValue<string>(out var xs) ? R(xs) : x?.ToJsonString())),
-                            _ => pv.ToJsonString()
-                        };
-                var executor = Str(t, "executor") is { Length: > 0 } e ? e
-                    : kindExecutors is not null && kindExecutors.TryGetValue(kind, out var ke) && ke.Length > 0 ? ke : null;
-                tasks.Add(new RenderedWorkTask(R(Str(t, "title") ?? kind), Str(t, "description") is { } desc ? R(desc) : null, kind, executor, parameters));
+                if (Str(t, "repeat") is not { } repeat)
+                {
+                    tasks.Add(RenderTask(t, R));
+                    continue;
+                }
+                // 0092: uma sub-tarefa por valor (ex.: um ambiente de validação por sub-tarefa).
+                foreach (var each in SplitList(R(repeat)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    var eachVars = vars with { Each = each, EachLabel = EachLabel(template, ctx, each) };
+                    tasks.Add(RenderTask(t, text => RenderText(text, ctx, eachVars)));
+                }
             }
+        }
+
+        RenderedWorkTask RenderTask(JsonObject t, Func<string?, string> render)
+        {
+            var kind = Str(t, "kind")?.Trim() is { Length: > 0 } k ? k : "manual";
+            var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (t["params"] is JsonObject ps)
+                foreach (var (pk, pv) in ps)
+                    parameters[pk] = pv switch
+                    {
+                        JsonValue jv when jv.TryGetValue<string>(out var s) => render(s),
+                        null => string.Empty,
+                        JsonArray arr => string.Join(",", arr.Select(x => x is JsonValue xv && xv.TryGetValue<string>(out var xs) ? render(xs) : x?.ToJsonString())),
+                        _ => pv.ToJsonString()
+                    };
+            var executor = Str(t, "executor") is { Length: > 0 } e ? e
+                : kindExecutors is not null && kindExecutors.TryGetValue(kind, out var ke) && ke.Length > 0 ? ke : null;
+            return new RenderedWorkTask(render(Str(t, "title") ?? kind), Str(t, "description") is { } desc ? render(desc) : null, kind, executor, parameters);
         }
 
         return new RenderedWorkItem(key, R(Str(template, "title") ?? key), Str(template, "description") is { } d2 ? R(d2) : null,
             Str(template, "type"), tasks, effective);
+    }
+
+    /// <summary>0092: rótulo do valor do <c>repeat</c> — a opção de algum ask cujo valor bate (ambientes: o nome do ambiente).</summary>
+    private static string EachLabel(JsonObject template, WorkItemTemplateContext ctx, string each)
+    {
+        return template["ask"] is JsonArray asks && asks.OfType<JsonObject>().Any(IsEnvironmentsAsk)
+            ? ValidationEnvironments.LabelOf(ctx.Environments, each)
+            : each;
     }
 
     /// <summary>
@@ -431,6 +474,9 @@ public static partial class WorkItemTemplateRenderer
     {
         public Func<string, string?>? MissingAsk { get; init; }
         public Func<string, string?>? MissingSuffix { get; init; }
+        /// <summary>0092: valor da sub-tarefa repetida (<c>{each}</c>) e o rótulo (<c>{eachLabel}</c>).</summary>
+        public string? Each { get; init; }
+        public string? EachLabel { get; init; }
     }
 
     public static RenderVars Vars(WorkItemTemplateContext ctx, string? repository, IReadOnlyDictionary<string, string>? answers)
@@ -475,9 +521,21 @@ public static partial class WorkItemTemplateRenderer
                 "qabranch" => QaBranch(ctx),
                 "promotiontargets" => vars.PromotionTargets,
                 "ticketsystem" => TicketSystem(ctx),
+                "each" => vars.Each ?? m.Value,
+                "eachlabel" => vars.EachLabel ?? vars.Each ?? m.Value,
+                "validationenvironments" => string.Join(", ", ctx.Environments.Select(e => e.Key)),
+                "validationdefaults" => ValidationDefaults(ctx),
                 _ => m.Value
             };
         });
+    }
+
+    /// <summary>0092: ambientes sugeridos para o tipo do card (<c>defaults</c> da configuração; sem tipo: os do bug).</summary>
+    public static string ValidationDefaults(WorkItemTemplateContext ctx)
+    {
+        var type = ctx.Type ?? "bug";
+        return ctx.EnvironmentDefaults.TryGetValue(type, out var v) ? v
+            : ctx.EnvironmentDefaults.TryGetValue("bug", out var b) ? b : string.Empty;
     }
 
     /// <summary>Marcadores que o renderizador não conhece no texto (para conferir modelos semeados/admin).</summary>
@@ -492,7 +550,8 @@ public static partial class WorkItemTemplateRenderer
             .ToList();
     }
 
-    /// <summary>Troca os marcadores em todos os textos de um nó (objetos e listas), menos na chave <c>key</c>.</summary>
+    /// <summary>Troca os marcadores em todos os textos de um nó (objetos e listas), menos nas chaves <c>key</c> e <c>repeat</c>
+    /// (0092: o <c>repeat</c> fica cru para a tela expandir a prévia com as respostas da pessoa).</summary>
     public static void ExpandStrings(JsonNode node, Func<string, string> expand)
     {
         switch (node)
@@ -500,7 +559,7 @@ public static partial class WorkItemTemplateRenderer
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (key == "key") continue;
+                    if (key is "key" or "repeat") continue;
                     if (obj[key] is JsonValue v && v.TryGetValue<string>(out var s))
                         obj[key] = expand(s);
                     else if (obj[key] is { } child)

@@ -98,8 +98,10 @@ public static class WorkItemFileKind
     public const string Attachment = ExecutionArtifactKind.Attachment;
     /// <summary>Texto livre (texto de PR, comentário, mensagem...).</summary>
     public const string Text = "text";
+    /// <summary>0092: prints da validação em ambiente (galeria na sub-tarefa).</summary>
+    public const string Evidence = "evidence";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Script, Analysis, Ticket, Data, Attachment, Text };
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Script, Analysis, Ticket, Data, Attachment, Text, Evidence };
 
     /// <summary>Tipo informado (validado) ou inferido pelo nome; imagem vira anexo.</summary>
     public static string Normalize(string? kind, string fileName)
@@ -112,7 +114,7 @@ public static class WorkItemFileKind
         var k = kind.Trim().ToLowerInvariant();
         if (k == ExecutionArtifactKind.Image) return Attachment;
         if (!All.Contains(k))
-            throw new DomainException($"Tipo de arquivo inválido: '{kind}' (use script, analysis, ticket, data, attachment ou text).");
+            throw new DomainException($"Tipo de arquivo inválido: '{kind}' (use script, analysis, ticket, data, attachment, text ou evidence).");
         return k;
     }
 }

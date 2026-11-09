@@ -33,7 +33,9 @@ public static class ClaudeSettings
             foreach (var d in new[]
                      {
                          "Bash(gh pr merge:*)", "Bash(gh pr review:*)", "Bash(git push --force:*)", "Bash(git push -f:*)",
-                         "Bash(git push --force-with-lease:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~:*)"
+                         "Bash(git push --force-with-lease:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~:*)",
+                         // 0092: senhas dos ambientes da validação — só o navegador da skill lê (nunca o Claude).
+                         "Read(~/.claude/solvace-env-credentials.json)", "Edit(~/.claude/solvace-env-credentials.json)"
                      }.Concat(specialist
                          ? ["Read(~/.claude/prmake-token.txt)", "Edit(~/.claude/prmake-token.txt)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(gh pr create:*)"]
                          : []))
@@ -90,6 +92,10 @@ public static partial class Guard
     [GeneratedRegex(@"\brm\s+-(rf|fr)\s+(/|~|\$HOME)(\s|$)", RegexOptions.IgnoreCase)]
     private static partial Regex Wipe();
 
+    /// <summary>0092: arquivo das senhas dos ambientes (validação com prints) — só o script da skill lê.</summary>
+    [GeneratedRegex(@"solvace-env-credentials", RegexOptions.IgnoreCase)]
+    private static partial Regex EnvCredentials();
+
     /// <summary>Hook PreToolUse: lê o JSON do stdin; exit 2 + stderr bloqueia o comando e diz o motivo ao Claude.</summary>
     public static int Run()
     {
@@ -139,6 +145,8 @@ public static partial class Guard
             return "alteração no Cognito não é permitida";
         if (Wipe().IsMatch(command))
             return "comando destrutivo";
+        if (EnvCredentials().IsMatch(command))
+            return "o arquivo de senhas dos ambientes só é lido pelo navegador da validação (env.sh) — nunca abra, copie ou mostre a senha";
         return null;
     }
 }

@@ -87,7 +87,9 @@ O PRMake tem **ferramentas** (modelos de item de trabalho tirados dos cards ja t
 PRs do fluxo (os destinos do repositorio: `development` e, so onde o fluxo tem, `qa`), promover revamp (release-version + edge + master), promover legado (hotfix-version),
 resolver conflito de promocao, ajuste pos-QA, trocar mensagem por termo existente, corrigir Sonar, revisar PR,
 fechamento (code-fix / sem codigo), validar em QA, script com chamado, diagnostico do usuario, novo resumo, mover o
-card, abrir chamado, **resumo do pedido** (racional do card: o que pede/reclama, o que fazer e o estado atual). A pessoa tambem as ve no botao **Ferramentas** ao seu lado.
+card, abrir chamado, **resumo do pedido** (racional do card: o que pede/reclama, o que fazer e o estado atual), **validar em
+ambiente** (prints da validacao em dev, qa, sandbox, producao). A pessoa tambem as ve no botao **Ferramentas** ao seu lado
+e digita `/<ferramenta>` na conversa (ex.: `/validar-em-ambiente`).
 1. Pedido de acao bateu com uma ferramenta? `prmake_tools(card)` (ou `bash $CASE tools <card>`): cada uma traz
    `applicable` (+ `reason` quando nao se aplica ao card — tipo, fluxo, tipo do repositorio) e as perguntas `ask`
    (`key`, `label`, `input`, `options`, `default`, `required`). Ferramenta com `applicable: false` → nao use; diga o
@@ -111,13 +113,13 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
      (o porque, em uma frase), e explique na resposta.
 2. **Montar:** ferramenta que serve → `prmake_tool_run` (secao acima) e pule para o passo 4. Sem ferramenta:
    `bash $CASE catalog <card>` e sub-tarefas dos tipos do catalogo (`branch, cherry-pick, code, pr, pr-review,
-   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify`), com os
+   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify, env-validation`), com os
    parametros que o tipo pede e os nomes das regras.
    `ticket` = abrir chamado (modelo `abrir-chamado`; params `system?, title, description, priority?`) e `notify` = avisar
    na Timeline/Teams (param `message`); estado do `devops-state` so um dos que `GET Azure/card/<card>/states` lista.
 3. **Criar (sem ferramenta):** `prmake_work_item_create(card, title, description, tasks[{title, description, kind,
    executor, params}], type?)` — `type` = tipo do **item** (`WorkItemTypes`: `task`, `pull-request`, `review`,
-   `adjustment`, `closing`, `data`, `ticket`, `text`; padrao `task`). Se voltar `duplicate`, nao insista: mostre o item existente e siga o passo 1. Depois
+   `adjustment`, `closing`, `data`, `ticket`, `text`, `validation`; padrao `task`). Se voltar `duplicate`, nao insista: mostre o item existente e siga o passo 1. Depois
    `bash $CASE items <card> --refresh`.
 4. **Executar:** se a pessoa pediu para fazer ("abre o PR", "ja roda"), `prmake_work_item_execute(card, number)` logo
    depois de criar — o item entra na fila do executor (item do plano: retoma o plano). Se ela so pediu para montar, responda
@@ -155,6 +157,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Criar/editar item | `prmake_tool_run` / `prmake_work_item_create` / `prmake_work_item_update` (secoes acima) |
 | Resumir o card ("do que se trata?", "o que o cliente esta pedindo/reclamando?", "resume o card") | Ja existe item `resumo-do-pedido` concluido e o card nao mudou desde entao? → leia `resumo-do-pedido.md` (`prmake_work_item_files(card, n, file: "resumo-do-pedido.md")`) e responda com ele. Senao: `prmake_tool_run(card, "resumo-do-pedido", {"focus": "<o que a pessoa quer saber, se disse>", "timeline": "sim" so se ela pediu para publicar})` + `prmake_work_item_execute(card, numero)` e responda com o numero do item ("o racional, em portugues, fica no item #n e nos Arquivos do card (`resumo-do-pedido.md`) em alguns minutos — me pergunte depois que eu resumo aqui"). Nao monte o resumo voce mesmo lendo o card inteiro (cada leitura fica na conversa) |
 | Executar item | `prmake_work_item_execute(card, number)` |
+| Validar em um ou mais ambientes ("valida em QA", "tira os prints em dev e na producao da Mondelez", "cria a validacao") | `prmake_env_validation(card, environments: "qa, mondelez", plant?, user?, scenario?, expected?, execute?)` — uma sub-tarefa por ambiente; o Claude entra no ambiente e grava os prints como evidencia de cada sub-tarefa (skill `validar-ambiente`). `execute: true` so se a pessoa pediu para ja rodar. Ambientes: os da configuracao (dev, qa, performancetest, sandboxefeso, sandboxrt, demo, gerdau, mondelez) ou a URL de outro; vazio = os sugeridos. DEMO/producao: so consulta. Sem senha do usuario do ambiente, a sub-tarefa espera e diz o comando que a pessoa roda no terminal dela — nunca peca a senha na conversa |
 | Criar os itens da analise ("cria o item da implementacao/correcao", "agora pode seguir") — analise respondida e **sem** plano de implementacao/correcao (ex.: respondeu "so a analise por enquanto") | `prmake_analysis_items(card, start, note?)` — `start: true` se a pessoa quer que ja comece, `false` para deixar pronto e pausado (na duvida, pergunte qual). Nao monte o plano nem crie o item `implementation`/`fix` a mao: o Claude do tratamento monta o plano (que vira o item) na maquina de quem pediu. O PRMake recusa se ja houver plano de entrega ou pergunta aberta — diga o motivo |
 | Cancelar item | `prmake_work_item_cancel(card, number, undo?, reason)` — `undo: true` so se a pessoa pediu para desfazer o que ele fez; item espelho do plano o PRMake recusa (o plano se pausa/cancela na tela) |
 | Andamento de sub-tarefa de item avulso | `prmake_work_task(card, taskNumber, action)` — nunca de sub-tarefa que espelha etapa do plano (recusado) |
@@ -213,6 +216,7 @@ confirmar e como.
 | Criar item a partir de uma ferramenta | `prmake_tool_run(card, key, answers, allowDuplicate?, duplicateReason?)` |
 | Criar item livre (nenhuma ferramenta serve) / ajustar item pendente | `prmake_work_item_create` / `prmake_work_item_update` |
 | Executar / cancelar item (a pedido) | `prmake_work_item_execute` / `prmake_work_item_cancel` |
+| Item de validacao em ambiente (prints por ambiente) | `prmake_env_validation` |
 | Itens a partir da analise (a pedido) | `prmake_analysis_items` |
 | Timeline, horas, mover o card (a pedido) | `prmake_timeline` / `prmake_devops` (`log-hours`, `set-state`, acoes) |
 | Abrir PR de branch existente (a pedido) | `prmake_pr_open` |
