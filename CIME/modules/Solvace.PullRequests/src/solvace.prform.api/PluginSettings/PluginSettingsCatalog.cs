@@ -384,7 +384,8 @@ public static class PluginSettingsCatalog
             Label = "Ambientes de validação",
             Help = "environments: [{key, label, url, user?, kind?, readOnly?, client?, note?, database: {host = alias das credenciais da máquina, global}}]; " +
                    "plantAdminPattern (admin da planta: admin{plant}@solvacelabs.com); corporate (banco com todos os ambientes); productionReadOnly; " +
-                   "defaults por tipo do card (bug, user-story). readOnly = o navegador da validação bloqueia gravações (DEMO, produção). Senha nunca aqui: só na máquina de quem valida.",
+                   "defaults por tipo do card (bug, user-story). readOnly = o navegador da validação bloqueia gravações (DEMO, produção); " +
+                   "readOnlyAllow (geral) e allow (por ambiente) = trechos de rota que podem gravar mesmo assim porque só guardam preferência/filtro do usuário (ex.: user-report-preferences). Senha nunca aqui: só na máquina de quem valida.",
             Default = Indented(ValidationEnvironments.DefaultJson), MultilineHint = true },
 
         // ============================================================== Assistente e horas

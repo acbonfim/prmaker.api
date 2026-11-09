@@ -57,6 +57,14 @@ class ReadOnlyGuardTests(unittest.TestCase):
         self.assertEqual("abort:blockedbyclient", self.route(s, "PUT", "https://apigw.solvacelabs.com/fivew2h/Plan/12"))
         self.assertEqual(3, len(s.blocked))
 
+    def test_allowed_route_passes_and_is_recorded(self):
+        tmp = tempfile.mkdtemp()
+        s = env_browser.Session({"sid": "x", "out": tmp, "readOnly": True, "allow": ["User-Report-Preferences"]})
+        s.guard_on = True
+        self.assertEqual("continue", self.route(s, "POST", "https://lear.solvacelabs.com/sa3/user-report-preferences.asp"))
+        self.assertEqual(["POST lear.solvacelabs.com/sa3/user-report-preferences.asp"], s.allowed)
+        self.assertEqual("abort:blockedbyclient", self.route(s, "POST", "https://lear.solvacelabs.com/sa3/sa3_salvar.asp"))
+
     def test_writable_environment_and_login_are_not_blocked(self):
         self.assertEqual("continue", self.route(guarded(read_only=False), "POST", "https://qa.solvacelabs.com/api/Plan/save"))
         s = guarded()

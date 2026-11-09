@@ -30,8 +30,14 @@ validar-ambiente` e siga. **`user`/`plant` vazios sao normais**: usuario = o pad
    nao use, nao repita, diga que ficou exposta e que o certo e trocar e gravar pelo comando.
 2. **DEMO jamais tem dado alterado** e producao de cliente e **somente leitura**: so navegar, abrir e consultar. A
    sessao desses ambientes bloqueia gravacoes na rede (aparece `BLOQUEADO (ambiente somente leitura)`); nunca tente
-   contornar. Validacao que exige criar/alterar dado nesses ambientes → `wait` explicando o que a pessoa precisa
-   autorizar/fazer ou valide num ambiente de teste (dev/qa/sandbox).
+   contornar e **nunca edite os scripts da skill**. Excecoes, so rotas que guardam **preferencia/filtro do usuario** (nao
+   dado de negocio): as da configuracao (`readOnlyAllow` geral e `allow` do ambiente — ex.: `user-report-preferences`)
+   ja passam sozinhas (`LIBERADO`); outra rota assim so com **autorizacao explicita de uma pessoa para aquela rota**
+   (resposta no PRMake/"Ja resolvi" com a nota, conversa do caso) → reabra a sessao com
+   `bash $ENV browser start <amb> ... --allow '<trecho da rota>'` (ex.: `--allow user-report-preferences.asp`) e cite no
+   relatorio a rota liberada e quem autorizou; se ela vale sempre, sugira incluir em `readOnlyAllow` (Configuracoes →
+   Itens de trabalho → Validacao em ambiente). Criar/alterar dado de negocio nesses ambientes → `wait` explicando o que a
+   pessoa precisa fazer ou valide num ambiente de teste (dev/qa/sandbox do cliente).
 3. **Valide o que esta no ambiente.** Antes, confira que a mudanca chegou la (PR do destino do ambiente mesclado e
    publicado: dev ← `development`/`-dev`, qa ← `qa`/`-qa`, sandboxefeso/sandboxrt ← `release-version`/`hotfix-version`,
    producao ← `master`; `prmake_case_context`/`prmake_card`/`prmake_work_items`). Nao chegou → `wait` dizendo qual
