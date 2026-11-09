@@ -63,11 +63,11 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
 3. **Ambiente e usuario**: `bash $ENV resolve <environment>`; usuario = `params.user` → admin da planta
    (`bash $ENV admin <amb> <sigla>`) → usuario padrao do ambiente.
 4. **Abrir**: `bash $ENV browser start <amb> --user <email> [--plant <sigla>] --card <card> --task <taskNumber>`.
-   - exit 4 (**sem senha**) → `prmake_work_task(wait)` com: "Falta a senha de `<email>` em `<amb>` nesta maquina. No
-     seu terminal (fora do chat): `bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <amb> <email>`
-     e depois clique em *Ja resolvi*." — e **encerre a vez**.
-   - exit 3 (**login recusado**) → `wait` igual, pedindo para regravar a senha (expirada/errada) ou outro usuario.
-   - exit 2 (sem Chrome/Playwright) → `wait` pedindo instalar o Google Chrome (ou `PRMAKE_CHROME=<caminho>`).
+   - exit 4 (**sem senha**), 3 (**login recusado**) ou 2 (sem Chrome/Playwright): com `--task`, o proprio `env.sh` ja
+     deixa a sub-tarefa **aguardando a pessoa na ferramenta** (Bancada/Execucao) com o que falta, a maquina e o comando
+     exato (`prmake-skills.sh env-credentials set <amb> <email>`) + *Ja resolvi* — a saida diz `AVISADO NA FERRAMENTA`.
+     Entao **encerre a vez** sem chamar `wait` de novo. Se a saida disser que nao conseguiu marcar, registre voce:
+     `prmake_work_task(wait)` com a mesma orientacao. Sem `--task` (validacao fora de item): diga o comando no chat.
    - Abriu: anota a sessao (`<amb>-<email>` em minusculas, separado por `-`) e a pasta dos prints.
 5. **Executar o roteiro**, passo a passo, olhando a tela:
    - `bash $ENV browser snap <sessao>` → titulos, elementos clicaveis com o alvo sugerido e o texto; o arquivo da
