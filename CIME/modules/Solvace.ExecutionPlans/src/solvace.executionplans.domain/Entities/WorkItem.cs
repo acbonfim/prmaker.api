@@ -328,6 +328,29 @@ public class WorkItem
         return task;
     }
 
+    /// <summary>
+    /// "Já resolvi" numa sub-tarefa do Claude que parou esperando a pessoa (sem acesso, falta decisão...): ela volta a
+    /// pendente com a nota e o item volta a andar (quem chama pede a execução de novo). Sub-tarefa da própria pessoa se
+    /// conclui pelo Concluir; chamado aberto se resolve pelo status do chamado.
+    /// </summary>
+    public WorkItemTask ResolveWaitingTask(long taskNumber, string? note, string actor, DateTimeOffset now)
+    {
+        if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting)
+            throw new DomainException($"O item #{Number} está {Status} — não dá para retomar.");
+        var task = Tasks.FirstOrDefault(t => t.Number == taskNumber)
+                   ?? throw new DomainException($"Sub-tarefa #{taskNumber} não é do item #{Number}.");
+        if (task.Executor == ExecutionExecutor.User)
+            throw new DomainException($"A sub-tarefa #{taskNumber} é sua — use Concluir quando terminar.");
+        if (WorkTaskTicket.Read(task) is { } ticket && ticket.Status == ExecutionLinkStatus.Open)
+            throw new DomainException($"A sub-tarefa #{taskNumber} aguarda o chamado — marque o chamado como resolvido.");
+        task.ResolveWait(actor, note, now);
+        AddLog(task.Number, actor, WorkItemLogKind.Task, $"#{task.Number} {task.Title}: resolvido — volta para o Claude" +
+            (string.IsNullOrWhiteSpace(note) ? "." : $" — {Short(note.Trim(), 300)}"), now);
+        Recalculate(actor, now, failedUndo: false);
+        UpdatedAt = now;
+        return task;
+    }
+
     /// <summary>Resultado, saídas e "como desfazer" sem mudar o status (sub-tarefa espelho do plano: o status vem da etapa).</summary>
     public void AnnotateTask(long taskNumber, string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
     {

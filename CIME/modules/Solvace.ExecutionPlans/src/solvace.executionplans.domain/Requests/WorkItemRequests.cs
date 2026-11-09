@@ -57,6 +57,13 @@ public class WorkTaskActionRequest
     public List<WorkItemLink>? Links { get; set; }
 }
 
+/// <summary>"Já resolvi": <c>POST WorkItems/tasks/{taskNumber}/resolve</c>.</summary>
+public class WorkTaskResolveRequest
+{
+    /// <summary>O que a pessoa fez (opcional) — vai para o resultado da sub-tarefa, o Claude lê ao retomar.</summary>
+    public string? Note { get; set; }
+}
+
 /// <summary>Chamado na Bancada: <c>POST WorkItems/tasks/{taskNumber}/ticket</c>.</summary>
 public class WorkTaskTicketRequest
 {

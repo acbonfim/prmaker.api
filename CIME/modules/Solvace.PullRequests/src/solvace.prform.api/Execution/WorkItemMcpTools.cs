@@ -307,12 +307,13 @@ public class WorkItemMcpTools(
     });
 
     [McpServerTool(Name = "prmake_work_task")]
-    [Description("Registra o andamento de uma sub-tarefa de item de trabalho: action start | complete | fail | wait | skip | revert. " +
+    [Description("Registra o andamento de uma sub-tarefa de item de trabalho: action start | complete | fail | wait | skip | revert | resolve. " +
                  "result = markdown curto (em fail/wait: o motivo / o que a pessoa precisa fazer); output = fatos (pr, number, repository, " +
                  "branch, target, commit, commits, created, from); undo = {action, params} de como desfazer (ao concluir); links = " +
-                 "[{kind: pr|branch|commit|doc, title, url}] para o item.")]
+                 "[{kind: pr|branch|commit|doc, title, url}] para o item. resolve = \"Ja resolvi\" da pessoa numa sub-tarefa do Claude " +
+                 "em espera (result = o que ela fez): volta a pendente e o item e retomado.")]
     public Task<string> TaskAction(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber,
-        [Description("start | complete | fail | wait | skip | revert")] string action,
+        [Description("start | complete | fail | wait | skip | revert | resolve")] string action,
         string? result = null,
         [Description("Objeto JSON (ou o JSON em texto) com as saidas")] JsonElement? output = null,
         [Description("{action, params} (ou o JSON em texto) — como desfazer")] JsonElement? undo = null,
@@ -323,7 +324,9 @@ public class WorkItemMcpTools(
         EnsureSpecialistCard(c);
         var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
                     ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
-        if (specialist.IsSpecialist && owner.PlanId is not null && owner.Tasks.First(t => t.Number == taskNumber).StepKey is not null)
+        var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
+        // "Ja resolvi" e acao da pessoa (repassada pelo especialista), nao mudanca do plano.
+        if (verb != "resolve" && specialist.IsSpecialist && owner.PlanId is not null && owner.Tasks.First(t => t.Number == taskNumber).StepKey is not null)
             throw new McpException($"A sub-tarefa #{taskNumber} espelha uma etapa do plano — o Especialista do caso nao altera o plano. " +
                                    "Proponha a mudanca com prmake_case_propose.");
         var request = new WorkTaskActionRequest
@@ -333,10 +336,11 @@ public class WorkItemMcpTools(
             Undo = AsObject(undo) is { } u ? ParseUndo(u) : null,
             Links = AsJson(links) is { ValueKind: JsonValueKind.Array } l ? l.Deserialize<List<WorkItemLink>>(Json) : null
         };
-        var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
         return await specialist.RunAsync(c, $"Sub-tarefa #{taskNumber} do item #{owner.Number}: {verb}", result, async () =>
         {
-            var item = await items.TaskActionAsync(taskNumber, verb, request, await ActorAsync(ct), ct);
+            var item = verb == "resolve"
+                ? await items.ResolveTaskAsync(taskNumber, result, await ActorAsync(ct), ct)
+                : await items.TaskActionAsync(taskNumber, verb, request, await ActorAsync(ct), ct);
             var task = item.Tasks.FirstOrDefault(t => t.Number == taskNumber);
             return (Serialize(new
             {

@@ -123,6 +123,12 @@ public partial class WorkItemsController : ExecutionControllerBase
         RunItem<WorkItemResponse>(async () =>
             Ok(await _items.TaskActionAsync(taskNumber, verb, request ?? new WorkTaskActionRequest(), await ActorAsync(ct), ct)));
 
+    /// <summary>"Já resolvi": a sub-tarefa do Claude que esperava a pessoa volta a andar e o item é retomado.</summary>
+    [HttpPost("tasks/{taskNumber:long}/resolve")]
+    public Task<ActionResult<WorkItemResponse>> ResolveTask([FromRoute] long taskNumber,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] WorkTaskResolveRequest? request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.ResolveTaskAsync(taskNumber, request?.Note, await ActorAsync(ct), ct)));
+
     /// <summary>Chamado na Bancada: anexa o chamado à sub-tarefa de chamado (ela aguarda até o chamado ser resolvido).</summary>
     [HttpPost("tasks/{taskNumber:long}/ticket")]
     public Task<ActionResult<WorkItemResponse>> AttachTicket([FromRoute] long taskNumber, [FromBody] WorkTaskTicketRequest request, CancellationToken ct) =>

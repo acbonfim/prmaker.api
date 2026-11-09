@@ -246,6 +246,29 @@ public class WorkItemApplication : IWorkItemApplication
     }
 
     /// <summary>
+    /// "Já resolvi": a sub-tarefa do Claude parou esperando a pessoa (sem acesso ao banco, falta credencial, decisão...) e
+    /// ela resolveu. Item avulso → a sub-tarefa volta a pendente com a nota e o item entra na fila de novo; sub-tarefa
+    /// espelho → o "Já resolvi" da etapa do plano (a etapa volta a andar e o plano é retomado).
+    /// </summary>
+    public async Task<WorkItemResponse> ResolveTaskAsync(long taskNumber, string? note, ExecutionActor actor, CancellationToken ct)
+    {
+        var item = await _items.GetByTaskNumberAsync(taskNumber, ct)
+                   ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
+        var task = item.Tasks.First(t => t.Number == taskNumber);
+        if (item.PlanId is { } planId && task.StepKey is { } stepKey)
+        {
+            await PlanApp.ResolveStepAsync(planId, stepKey, note, actor, ct);
+            _items.DetachWorkItems();
+            return await GetAsync(item.Number, false, ct);
+        }
+
+        item = await MutateAsync(() => _items.GetByTaskNumberAsync(taskNumber, ct), item.Number,
+            i => i.ResolveWaitingTask(taskNumber, note, actor.Name, DateTimeOffset.UtcNow), ct);
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, taskNumber, ct);
+        return await ExecuteAsync(item.Number, actor, ct);
+    }
+
+    /// <summary>
     /// Chamado na Bancada: a pessoa anexa o chamado à sub-tarefa <c>ticket</c>. Sub-tarefa espelho → link bloqueante da etapa
     /// do plano (a etapa aguarda o chamado e conclui quando ele for resolvido); item avulso → chamado nas saídas da
     /// sub-tarefa, que passa a aguardar.
@@ -353,11 +376,12 @@ public class WorkItemApplication : IWorkItemApplication
                 }, actor, ct);
                 break;
             case WorkTaskAction.Wait:
+                // A sub-tarefa espera alguém fazer algo (o motivo diz o quê): no plano é pendência da pessoa — ganha o "Já resolvi".
                 await plans.UpdateStepAsync(planId, stepKey, new UpdateExecutionStepRequest
                 {
                     Status = ExecutionStatus.Waiting,
                     Reason = result,
-                    WaitingOn = ExecutionWaitingOn.External,
+                    WaitingOn = string.IsNullOrWhiteSpace(result) ? ExecutionWaitingOn.External : ExecutionWaitingOn.User,
                 }, actor, ct);
                 break;
         }

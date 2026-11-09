@@ -185,6 +185,23 @@ public partial class WorkItemTask
         if (undo is not null) SetUndo(undo);
     }
 
+    /// <summary>
+    /// "Já resolvi": a pessoa fez o que a sub-tarefa em espera pedia (acesso, credencial, decisão...). Ela volta a pendente
+    /// — o executor retoma dali — e o que a pessoa disse fica no fim do resultado, junto do motivo da espera.
+    /// </summary>
+    internal void ResolveWait(string actor, string? note, DateTimeOffset now)
+    {
+        if (Status != WorkTaskStatus.Waiting)
+            throw new DomainException($"A sub-tarefa #{Number} não está aguardando (está {Status}).");
+        var n = note?.Trim();
+        var line = string.IsNullOrEmpty(n) ? $"**Resolvido por {actor}.**" : $"**Resolvido por {actor}:** {n}";
+        var previous = Result ?? string.Empty;
+        var room = MaxResultLength - line.Length - 2;
+        if (previous.Length > room) previous = room > 0 ? previous[..room] : string.Empty;
+        SetResult(previous.Length == 0 ? line : $"{previous}\n\n{line}");
+        Set(WorkTaskStatus.Pending, now);
+    }
+
     internal void Annotate(string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
     {
         SetResult(result);
