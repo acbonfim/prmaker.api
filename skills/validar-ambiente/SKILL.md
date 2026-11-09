@@ -16,6 +16,13 @@ AB=~/.claude/skills/analisar-bug/scripts               # sql-query.sh (so leitur
 Rode sempre com o caminho literal (`bash ~/.claude/skills/validar-ambiente/scripts/env.sh ...`), um comando por vez —
 e assim que a permissao do Claude Code casa (`prmake-skills.sh permissions`).
 
+**O navegador e este script, pelo Bash** — nao precisa de ferramenta de navegador nem de MCP (o executor so tem Bash e
+o MCP do PRMake, e e o suficiente). Nunca conclua "a sessao nao tem navegador": rode `bash $ENV setup` (cria o venv e
+instala o Playwright uma vez; usa o Chrome da maquina) e so um **exit 2** do `setup`/`browser start` significa que falta
+o Chrome/Playwright. Skill ausente (`env.sh` nao existe) → `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet
+validar-ambiente` e siga. **`user`/`plant` vazios sao normais**: usuario = o padrao do ambiente (dev/qa:
+`admin@ewcm.com.br`, da configuracao) ou o admin da planta quando houver `plant` — nunca pare por eles.
+
 ## Regras que nao mudam
 1. **Senha nunca passa pelo chat.** Ela fica so em `~/.claude/solvace-env-credentials.json`, gravada pela **pessoa, no
    terminal dela**: `bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <ambiente> <usuario>`. Voce nao

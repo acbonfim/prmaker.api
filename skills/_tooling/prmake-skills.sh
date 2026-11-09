@@ -5,7 +5,9 @@
 # Uso:
 #   prmake-skills.sh install [skill...]            instala (todas, se nenhuma for informada) + hook de atualização
 #   prmake-skills.sh update  [--quiet] [--force] [skill...]
-#                                                  atualiza o que mudou no PRMake (--quiet: só fala se atualizou)
+#                                                  atualiza o que mudou no PRMake e instala as skills publicadas que
+#                                                  faltam (fora as de ~/.claude/skills/.prmake/skip-skills); --quiet: só
+#                                                  fala se atualizou
 #   prmake-skills.sh status                        versão instalada × publicada
 #   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
 #   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
@@ -512,6 +514,9 @@ lock() {
   return 0
 }
 
+SKIP_FILE="$TOOL_DIR/skip-skills"
+skipped_skill() { [[ -f "$SKIP_FILE" ]] && grep -qxF "$1" "$SKIP_FILE"; }
+
 selected() { # imprime os nomes do catálogo filtrados pelos argumentos
   if [[ $# -eq 0 ]]; then jq -r '.skills[].name' "$TMP/catalog.json"; return; fi
   local n; for n in "$@"; do jq -e --arg n "$n" '.skills[] | select(.name == $n)' "$TMP/catalog.json" >/dev/null && echo "$n" || warn "skill desconhecida: $n"; done
@@ -923,8 +928,10 @@ case "$cmd" in
       v="$(jq -r --arg n "$name" '.skills[] | select(.name == $n) | .version' "$TMP/catalog.json")"
       cur="$(local_version "$name")"
       [[ -d "$SKILLS_DIR/$name" && "$cur" == "$v" ]] && continue
-      # Só atualiza o que já está instalado (update não instala skill nova, a menos que seja pedida pelo nome).
-      [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && continue
+      # Skill publicada depois da instalação também entra (0092: executar-item-de-trabalho/validar-ambiente faltavam em
+      # máquinas antigas e o executor mandava ler um SKILL.md inexistente). Quem não quer uma skill põe o nome em
+      # $SKIP_FILE (uma por linha); pedida pelo nome, instala mesmo assim.
+      [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && skipped_skill "$name" && continue
       install_one "$name" "$v" update && [[ "$(local_version "$name")" == "$v" ]] && updated+=("$name ${cur:-novo} → $v")
     done
     # Skill já instalada e em dia pode ter ganhado dependência nova.

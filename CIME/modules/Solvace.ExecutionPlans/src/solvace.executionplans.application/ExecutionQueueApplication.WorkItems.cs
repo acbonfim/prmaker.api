@@ -155,12 +155,24 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
         var what = r.Kind == ExecutionRequestKind.WorkItemUndo
             ? "DESFAZER o item de trabalho: as sub-tarefas concluidas em ordem reversa, cada uma pelo 'undo' dela (fechar PR, apagar branch criada, reverter commit, voltar o estado do DevOps)"
             : "EXECUTAR o item de trabalho: as sub-tarefas pendentes em ordem, registrando cada uma (start/complete/fail) com prmake_work_task";
-        return ($"Card {r.CardNumber}, {item} — {what}. Leia as instrucoes com `cat ~/.claude/skills/{skill}/SKILL.md` (Bash) e siga-as — " +
+        return ($"Card {r.CardNumber}, {item} — {what}. Primeiro garanta as skills nesta maquina (instala as que faltam): " +
+               $"`{EnsureSkillsCommand(skill)}` (Bash). Depois leia as instrucoes com `cat ~/.claude/skills/{skill}/SKILL.md` (Bash) e siga-as — " +
+               "se o SKILL.md continuar faltando, NAO improvise: registre wait na primeira sub-tarefa pendente com \"As skills do PRMake " +
+               "nao estao instaladas nesta maquina — rode no terminal: bash ~/.claude/skills/.prmake/prmake-skills.sh update e clique em " +
+               "Ja resolvi\" e encerre. " +
                "NAO use a ferramenta Skill: o modelo desta execucao e o configurado no PRMake. " +
                $"Comece por prmake_work_item (card {r.CardNumber}, number {number?.ToString() ?? "?"}) e prmake_rules (card {r.CardNumber}): " +
                "nome de branch, base e destinos vem das regras — nunca invente. Toda gravacao passa pelo PRMake; nunca mescle PR." +
                ExecutorSuffix(r), number);
     }
+
+    /// <summary>
+    /// 0092: skills que o item usa — a do item e as que as sub-tarefas chamam (validação em ambiente). Pedidas pelo nome, o
+    /// <c>update</c> instala as que faltam (máquinas instaladas antes da skill existir não tinham executar-item-de-trabalho
+    /// nem validar-ambiente, e o Claude improvisava sem o SKILL.md).
+    /// </summary>
+    public static string EnsureSkillsCommand(string skill) =>
+        $"bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet {skill} analisar-bug validar-ambiente";
 
     private static async Task<solvace.executionplans.domain.Responses.WorkItemResponse?> SafeGetItemAsync(IWorkItemApplication items, Guid id,
         CancellationToken ct)
