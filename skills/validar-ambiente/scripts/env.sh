@@ -17,7 +17,8 @@
 #   env.sh browser go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]   (env_browser.py)
 #   env.sh browser status
 #   env.sh evidence <card> <item> <sub-tarefa> <pasta> [--report <relatorio.md>]
-#                                                sobe os prints (NN-*.jpg|png, na ordem) como evidencia da sub-tarefa
+#                                                sobe como evidencia da sub-tarefa SO os prints citados no relatorio (sem
+#                                                repetir imagem igual; ate maxShots da configuracao, padrao 8)
 #   env.sh setup                                 prepara o venv (Playwright; usa o Chrome da maquina)
 # Senha: so no arquivo local ~/.claude/solvace-env-credentials.json, gravado pela PESSOA no terminal dela:
 #   bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <ambiente> <email>
@@ -91,7 +92,8 @@ DEFAULT_ENVS='{"environments":[
  "plantAdminPattern":"admin{plant}@solvacelabs.com",
  "corporate":{"host":"corporate","database":"CORPORATE_SOLVACE_DB","table":"TB_WCM_ENVIRONMENT"},
  "productionReadOnly":true,
- "readOnlyAllow":["user-report-preferences"]}'
+ "readOnlyAllow":["user-report-preferences"],
+ "maxShots":8}'
 load_envs() {
   local refresh="${1:-}" tok code
   mkdir -p "$(dirname "$CACHE")"
@@ -379,6 +381,27 @@ case "$CMD" in
     while [[ $# -gt 0 ]]; do case "$1" in --report) REPORT="${2:?}"; shift 2 ;; *) die "argumento desconhecido: $1" ;; esac; done
     [[ -d "$SRC" ]] || die "pasta nao encontrada: $SRC"
     TOK="$(token)"; [[ -n "$TOK" ]] || die "sem token do PRMake (PRMAKE_TOKEN ou ~/.claude/prmake-token.txt)"
+    load_envs
+    MAX="$(jq -r '.maxShots // 8' "$CACHE" 2>/dev/null)"; [[ "$MAX" =~ ^[0-9]+$ ]] || MAX=8
+    # Evidencia = so os prints citados no relatorio (os de navegacao/tentativa ficam na maquina); sem relatorio, todos.
+    find "$SRC" -maxdepth 1 -type f \( -name '[0-9][0-9]-*.jpg' -o -name '[0-9][0-9]-*.png' -o -name '[0-9][0-9]-*.jpeg' \) | sort > "$TMP/all.txt"
+    if [[ -n "$REPORT" && -f "$REPORT" ]]; then
+      while IFS= read -r f; do grep -qF "$(basename "$f")" "$REPORT" && echo "$f"; done < "$TMP/all.txt" > "$TMP/pick.txt"
+      [[ -s "$TMP/pick.txt" ]] || die "o relatorio nao cita nenhum print (NN-nome.jpg) — cite no relatorio so os que provam o resultado"
+    else
+      cp "$TMP/all.txt" "$TMP/pick.txt"
+    fi
+    # Mesma imagem com outro nome (tela que nao mudou) sobe uma vez so.
+    : > "$TMP/seen.txt"; : > "$TMP/files.txt"
+    while IFS= read -r f; do
+      h="$( (shasum -a 256 "$f" 2>/dev/null || sha256sum "$f") | cut -d' ' -f1)"
+      if grep -qx "$h" "$TMP/seen.txt"; then echo "igual a outro print, nao subi: $(basename "$f")"; continue; fi
+      echo "$h" >> "$TMP/seen.txt"; echo "$f" >> "$TMP/files.txt"
+    done < "$TMP/pick.txt"
+    COUNT="$(wc -l < "$TMP/files.txt" | tr -d ' ')"
+    if [[ "$COUNT" -gt "$MAX" ]]; then
+      die "$COUNT prints para subir (limite $MAX por sub-tarefa, maxShots da configuracao): escolha so os que provam cada resultado esperado e cite apenas eles no relatorio" 1
+    fi
     N=0; FAIL=0
     while IFS= read -r f; do
       [[ -n "$f" ]] || continue
@@ -387,7 +410,7 @@ case "$CMD" in
         -H "x-api-key: $TOK" -H 'X-Execution-Client: skill' \
         -F "file=@$f" -F "name=$name" -F "kind=evidence" -F "taskNumber=$TASK" 2>/dev/null)"
       if [[ "$code" =~ ^2 ]]; then N=$((N + 1)); else FAIL=$((FAIL + 1)); echo "falhou $name: HTTP $code $(jq -r '.error // .message // empty' "$TMP/up.json" 2>/dev/null | head -c 300)"; fi
-    done < <(find "$SRC" -maxdepth 1 -type f \( -name '[0-9][0-9]-*.jpg' -o -name '[0-9][0-9]-*.png' -o -name '[0-9][0-9]-*.jpeg' \) | sort)
+    done < "$TMP/files.txt"
     if [[ -n "$REPORT" ]]; then
       [[ -f "$REPORT" ]] || die "relatorio nao encontrado: $REPORT"
       code="$(curl -s --max-time 60 -o "$TMP/up.json" -w '%{http_code}' -X POST "$BASE/WorkItems/$ITEM/files" \

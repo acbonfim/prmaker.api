@@ -81,14 +81,20 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
    - `go <sessao> <url|/caminho>` · `click <sessao> "<alvo>"` · `fill <sessao> "<alvo>" "<valor>"` ·
      `select <sessao> "<alvo>" "<opcao>"` · `press <sessao> Enter` · `wait <sessao> "<alvo>|ms"` · `text <sessao>`.
      Alvo = o do `snap` (`#id`, `[formcontrolname=...]`, `text=Salvar`, `role=button[name="Salvar"]`) ou o texto visivel.
-   - **Print** em cada marco do roteiro: `bash $ENV browser shot <sessao> "<nome-curto>" --caption "<o que mostra>"`
-     (`--full` = pagina inteira). Numera sozinho (`01-...jpg`, `02-...`). 4–10 prints: tela inicial do fluxo → acao →
-     resultado. Abra (`Read`) os que provam o resultado antes de concluir.
+   - **Print e prova, nao diario de navegacao.** Um `shot` por **resultado esperado** do roteiro — a tela onde o criterio
+     aparece (data no formato certo, mensagem de sucesso, registro na lista) —, mais no maximo um da tela de partida se
+     ajudar a entender: `bash $ENV browser shot <sessao> "<nome-curto>" --caption "<o que prova>"` (`--full` = pagina
+     inteira). Login, menus, abas, foco, tentativas e telas intermediarias: so `snap` (voce ve, nao vira evidencia).
+     Tipico: **2–5 prints**; teto `maxShots` da configuracao (8). Tela igual a um print ja tirado: o `shot` avisa
+     `IGUAL` e nao grava outro. Abra (`Read`) os que provam o resultado antes de concluir.
+   - **Rodada nova** (depois do *Ja resolvi*): nao refaca o que ja foi provado — os prints da rodada anterior estao na
+     mesma pasta; tire so os dos passos que faltavam.
    - Algo nao funciona: tire o print do erro, confira se nao e o roteiro (outro caminho na tela) e so entao conclua
      como **falha de validacao**.
 6. **Fechar**: `bash $ENV browser stop <sessao>`.
 7. **Evidencias**: escreva `validacao-<amb>.md` na pasta dos prints (ambiente, URL, usuario, planta, data, roteiro e,
-   por print, o numero + a legenda + o que ele prova; veredito **aprovado / reprovado** com o motivo) e suba tudo:
+   por criterio, o print que o prova — nome do arquivo + o que mostra; veredito **aprovado / reprovado** com o motivo). O
+   `evidence` sobe **so os prints citados no relatorio** (sem repetir imagem igual; acima do teto ele recusa — escolha):
    `bash $ENV evidence <card> <item> <taskNumber> <pasta-dos-prints> --report <pasta>/validacao-<amb>.md`.
 8. **Concluir**:
    - Aprovado → `prmake_work_task(complete, result: "<veredito em 2–5 linhas: o que foi validado, onde, como quem, prints
@@ -109,8 +115,9 @@ Params: `environment` (`cliente` = o relatado no card — padrao; ou chave/URL d
    Steps) + prints/evidencias do card quando ajudarem (`prmake_work_item_evidence`). Anote a versao/tela/usuario do relato.
 4. **Abrir** como no fluxo da validacao (sem senha / login recusado / sem navegador → o `env.sh` ja avisa na ferramenta;
    encerre a vez). Reproduza **com o perfil mais proximo do relatado** que der (admin da planta do card).
-5. **Seguir os passos** com `snap`/`click`/`fill`, um `shot` em cada passo e **no erro** (mensagem, tela quebrada, valor
-   errado, `Invalid date`...). Erro de console/rede ajuda: anote a URL e o texto do erro no relatorio.
+5. **Seguir os passos** com `snap`/`click`/`fill`; `shot` so do **ponto de partida do fluxo relatado e do erro**
+   (mensagem, tela quebrada, valor errado, `Invalid date`...) — e de um passo intermediario so se ele mudar a tela de forma
+   que importe para entender. Navegacao: `snap`. Tipico: 2–4 prints. Erro de console/rede ajuda: anote a URL e o texto do erro no relatorio.
 6. **Somente leitura (producao/DEMO)**: reproduza ate o passo que grava; se o bug so aparece ao salvar/alterar, **nao
    contorne o bloqueio** — tire o print do ponto em que parou e repita a parte que grava no **sandbox do cliente**
    (`bash $ENV resolve sandbox<cliente>`/URL do sandbox; ex.: `sandboxmondelez`) ou em `qa`, dizendo isso no relatorio.
