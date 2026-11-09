@@ -16,6 +16,7 @@ Uso (pelo env.sh):
 Saida: 0 ok · 1 erro · 2 sem navegador/Playwright · 3 login recusado · 4 sem senha · 5 sessao inexistente.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -254,9 +255,15 @@ class Session:
         shots = json.loads(index_file.read_text()) if index_file.exists() else []
         n = len(shots) + 1
         path = self.out / f"{n:02d}-{slug(name)}.jpg"
-        self.page.screenshot(path=str(path), type="jpeg", quality=82, full_page=full)
+        data = self.page.screenshot(type="jpeg", quality=82, full_page=full)
+        digest = hashlib.sha256(data).hexdigest()
+        same = next((x for x in shots if x.get("sha256") == digest), None)
+        if same:
+            # Tela igual a um print ja tirado: nao vira evidencia de novo (navegacao/retentativa).
+            return {"file": str(self.out / same["file"]), "number": shots.index(same) + 1, "duplicate": True}
+        path.write_bytes(data)
         shots.append({"file": path.name, "caption": caption or name, "url": self.page.url, "title": self.page.title(),
-                      "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                      "at": time.strftime("%Y-%m-%d %H:%M:%S"), "sha256": digest})
         index_file.write_text(json.dumps(shots, ensure_ascii=False, indent=2))
         return {"file": str(path), "number": n}
 
@@ -386,7 +393,8 @@ def report(res):
         print(f"FALHOU: {res.get('error')}")
     for k in ("file", "screenshot"):
         if res.get(k):
-            print(f"{'print' if k == 'file' else 'tela'}: {res[k]}" + (f" (#{res['number']})" if k == "file" else ""))
+            print(f"{'print' if k == 'file' else 'tela'}: {res[k]}" + (f" (#{res['number']})" if k == "file" else "")
+                  + (" — IGUAL a um print ja tirado: nao gravei outro (use o mesmo no relatorio)" if k == "file" and res.get("duplicate") else ""))
     if res.get("headings"):
         print("titulos: " + " | ".join(res["headings"]))
     if res.get("elements"):
