@@ -49,6 +49,15 @@ public class WorkDeliverableHooks(IWorkItemDeliverableApplication deliverables)
         return deliverables.RecordAutoAsync(card, taskNumber, input, actor, byClaude, ct);
     }
 
+    public Task CommentAsync(string card, string message, int commentId, long? taskNumber, bool byClaude, ExecutionActor actor, CancellationToken ct) =>
+        deliverables.RecordAutoAsync(card, taskNumber, new WorkDeliverableInput
+        {
+            Kind = WorkDeliverableKind.Comment,
+            Title = "Comentário na discussion do DevOps",
+            Text = message,
+            Data = Json(new { commentId }),
+        }, actor, byClaude, ct);
+
     public Task TimelineAsync(string card, string markdown, long? taskNumber, bool byClaude, ExecutionActor actor, CancellationToken ct) =>
         deliverables.RecordAutoAsync(card, taskNumber, new WorkDeliverableInput
         {

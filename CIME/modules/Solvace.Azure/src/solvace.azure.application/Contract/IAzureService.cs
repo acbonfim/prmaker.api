@@ -31,6 +31,12 @@ public interface IAzureService
     Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sobe um arquivo como anexo do DevOps (sem vincular a um card) e devolve a URL — vai num &lt;img&gt; do comentário,
+    /// como faz quem cola um print na discussion. Erro do DevOps: <see cref="solvace.azure.domain.Exceptions.DevOpsActionException"/> (502).
+    /// </summary>
+    Task<string> UploadAttachmentAsync(string fileName, byte[] content, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 0076: evidências do card — arquivos anexados e imagens/arquivos colados nos campos de texto e na discussion,
     /// sem repetir. Erro do DevOps: <see cref="solvace.azure.domain.Exceptions.DevOpsActionException"/> com a mensagem dele.
     /// </summary>

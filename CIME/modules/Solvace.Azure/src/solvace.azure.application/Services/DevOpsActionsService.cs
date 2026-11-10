@@ -384,8 +384,21 @@ public class DevOpsActionsService : IDevOpsActionsService
         if (request.Publish && string.IsNullOrWhiteSpace(request.Html))
             throw new DomainException("Resumo em HTML vazio: informe o html para publicar na discussion");
 
-        var register = await _pullRequestApplication.GetByCardNumber(cardNumber, cancellationToken)
-                       ?? throw new DomainException($"Salve o card {cardNumber} no PRMake antes de salvar o resumo");
+        var register = await _pullRequestApplication.GetByCardNumber(cardNumber, cancellationToken);
+        if (register is null)
+        {
+            // Card tratado só pela Bancada não tem registro (a tela de PR saiu): publica sem gravar o resumo.
+            if (!request.Publish)
+                throw new DomainException($"O card {cardNumber} não tem registro no PRMake para guardar o resumo: publique na discussion");
+            var newCommentId = await _azureService.UpsertCommentAsync(cardNumber.Trim(), request.Html!, null, cancellationToken);
+            return new PullRequestRegisterResponse
+            {
+                CardNumber = cardNumber.Trim(),
+                Summary = request.Summary,
+                SummaryCommentId = newCommentId,
+                SummaryPublishedAt = DateTimeOffset.UtcNow
+            };
+        }
 
         if (!request.Publish)
             return await _pullRequestApplication.SaveSummary(register.CardNumber, request.Summary, null, cancellationToken);
@@ -393,6 +406,52 @@ public class DevOpsActionsService : IDevOpsActionsService
         // Primeiro publica: se o DevOps falhar, nada é gravado no PRMake.
         var commentId = await _azureService.UpsertCommentAsync(register.CardNumber, request.Html!, register.SummaryCommentId, cancellationToken);
         return await _pullRequestApplication.SaveSummary(register.CardNumber, request.Summary, commentId, cancellationToken);
+    }
+
+    private const int MaxCommentImages = 10;
+    private const int MaxCommentImageBytes = 5 * 1024 * 1024;
+    private static readonly HashSet<string> CommentImageExtensions = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".webp" };
+
+    public async Task<DevOpsCommentResponse> PostCommentAsync(string cardNumber, PostCommentRequest request, CancellationToken cancellationToken = default)
+    {
+        var card = cardNumber?.Trim() ?? string.Empty;
+        var images = request.Images ?? [];
+        if (string.IsNullOrWhiteSpace(request.Html) && images.Count == 0)
+            throw new DevOpsActionException(400, "Comentário vazio: informe o html");
+        if (images.Count > MaxCommentImages)
+            throw new DevOpsActionException(400, $"No máximo {MaxCommentImages} imagens por comentário");
+
+        // Valida tudo antes de subir qualquer anexo.
+        var files = new List<(string Name, byte[] Content)>();
+        foreach (var image in images)
+        {
+            var name = Path.GetFileName(image.FileName?.Trim() ?? string.Empty);
+            if (name.Length == 0 || !CommentImageExtensions.Contains(Path.GetExtension(name)))
+                throw new DevOpsActionException(400, $"Imagem inválida: '{image.FileName}' (aceitas: {string.Join(", ", CommentImageExtensions)})");
+            byte[] content;
+            try { content = Convert.FromBase64String(image.ContentBase64 ?? string.Empty); }
+            catch (FormatException) { throw new DevOpsActionException(400, $"Imagem {name}: conteúdo não está em base64"); }
+            if (content.Length == 0 || content.Length > MaxCommentImageBytes)
+                throw new DevOpsActionException(400, $"Imagem {name}: vazia ou maior que {MaxCommentImageBytes / 1024 / 1024} MB");
+            files.Add((name, content));
+        }
+
+        var html = new System.Text.StringBuilder(request.Html?.Trim() ?? string.Empty);
+        foreach (var (name, content) in files)
+        {
+            var url = await _azureService.UploadAttachmentAsync(name, content, cancellationToken);
+            html.Append($"<p><img src=\"{WebUtility.HtmlEncode(url)}\" alt=\"{WebUtility.HtmlEncode(name)}\"></p>");
+        }
+
+        var commentId = await _azureService.UpsertCommentAsync(card, html.ToString(), null, cancellationToken);
+        return new DevOpsCommentResponse
+        {
+            CommentId = commentId,
+            Images = files.Count,
+            Message = files.Count > 0
+                ? $"Comentário publicado na discussion do card com {files.Count} imagem(ns)"
+                : "Comentário publicado na discussion do card"
+        };
     }
 
     /// <summary>
