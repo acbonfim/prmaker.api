@@ -325,6 +325,24 @@ public class AzureService : IAzureService
             : throw DevOpsActionException.Upstream("O DevOps não devolveu o id do comentário");
     }
 
+    public async Task<string> UploadAttachmentAsync(string fileName, byte[] content, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+
+        var url = $"{GetAzureBaseUrl()}/wit/attachments?fileName={Uri.EscapeDataString(fileName)}&uploadType=Simple&api-version=7.0";
+        using var body = new ByteArrayContent(content);
+        body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        var response = await CreateClient().PostAsync(url, body, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"Não foi possível anexar {fileName} no DevOps: {ExtractDevOpsError(text)}");
+
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String && u.GetString() is { Length: > 0 } link
+            ? link
+            : throw DevOpsActionException.Upstream("O DevOps não devolveu a URL do anexo");
+    }
+
     private static StringContent CommentBody(string html) =>
         new(JsonSerializer.Serialize(new { text = html }, PatchJsonOptions), Encoding.UTF8, "application/json");
 

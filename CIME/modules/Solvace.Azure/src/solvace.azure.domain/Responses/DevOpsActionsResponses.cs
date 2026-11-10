@@ -80,6 +80,13 @@ public class DevOpsActionResponse
     public string Message { get; set; } = string.Empty;
 }
 
+/// <summary>Comentário publicado na discussion do card: id no DevOps e quantas imagens foram anexadas.</summary>
+public class DevOpsCommentResponse : DevOpsActionResponse
+{
+    public int CommentId { get; set; }
+    public int Images { get; set; }
+}
+
 /// <summary>0085 r3: estado de um tipo de work item no DevOps (nome, categoria e cor do processo).</summary>
 public class WorkItemTypeState
 {

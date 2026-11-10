@@ -46,7 +46,13 @@ public interface IDevOpsActionsService
 
     /// <summary>
     /// Grava o resumo não técnico no registro do card e, com Publish, publica na discussion (cria ou
-    /// atualiza o mesmo comentário). Sem registro salvo: DomainException.
+    /// atualiza o mesmo comentário). Card sem registro (a Bancada não cria um): publica como comentário novo, sem gravar.
     /// </summary>
     Task<PullRequestRegisterResponse> SaveSummaryAsync(string cardNumber, SaveSummaryRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Comentário novo na discussion do card (sub-tarefa <c>comment</c>), sem exigir o registro do card no PRMake. As
+    /// imagens sobem como anexos do DevOps e entram no fim do texto. Dado inválido = 400; erro do DevOps = 502.
+    /// </summary>
+    Task<DevOpsCommentResponse> PostCommentAsync(string cardNumber, PostCommentRequest request, CancellationToken cancellationToken = default);
 }

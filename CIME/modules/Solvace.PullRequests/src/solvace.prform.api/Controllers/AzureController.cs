@@ -192,6 +192,33 @@ public class AzureController : ControllerBase
         RunActionAsync(id, timeline, () => _actionsService.ZeroRemainingAsync(id, cancellationToken), cancellationToken, "zero-remaining");
 
     /// <summary>
+    /// Comentário novo na discussion do card (sub-tarefa <c>comment</c> da Bancada), sem exigir o registro do card no
+    /// PRMake; imagens opcionais (base64) sobem como anexos do DevOps e entram no fim do texto. Registra na Timeline e
+    /// vira entrega da sub-tarefa (<c>?workItemTask=</c>).
+    /// </summary>
+    [HttpPost("card/{id}/comment")]
+    [RequestSizeLimit(80_000_000)] // até 10 imagens de 5 MB em base64
+    public async Task<ActionResult<DevOpsCommentResponse>> PostComment(string id, [FromBody] PostCommentRequest request,
+        [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken)
+    {
+        DevOpsCommentResponse result;
+        try
+        {
+            result = await _actionsService.PostCommentAsync(id, request, cancellationToken);
+        }
+        catch (DevOpsActionException e)
+        {
+            return StatusCode(e.StatusCode, new { error = e.Message });
+        }
+
+        await RegisterOnTimelineAsync(timeline, id, $"{result.Message} pelo CIME.", _logger, User, cancellationToken);
+        if (HttpContext.RequestServices.GetService<WorkDeliverableHooks>() is { } hooks)
+            await hooks.CommentAsync(id, result.Message, result.CommentId, WorkDeliverableHooks.TaskOf(HttpContext),
+                WorkDeliverableHooks.IsClaude(HttpContext), WorkDeliverableHooks.ActorOf(HttpContext), cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Executa a ação e registra na Timeline do card. Regra não atendida = 409, card inexistente =
     /// 404, erro do DevOps = 502 — sempre com { error } legível para o usuário.
     /// </summary>

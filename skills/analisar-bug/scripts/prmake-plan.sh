@@ -49,7 +49,9 @@
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
 #                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
-#                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate
+#                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate ·
+#                 comment <texto.md> [--image <arquivo>]... [--task <n>] (comentario NOVO na discussion, sem registro
+#                 de PR no PRMake; imagens png/jpg/gif/webp viram anexos do DevOps no fim do texto)
 #                 (tudo gravado pelo PRMake; estados, areas, estimativa, prompt do resumo e opcoes de
 #                 classificacao vem da configuracao do usuario no PRMake — `config`/`classifications`)
 #   settings    <card>                                   configuracao das skills no PRMake (Skills Configurations +
@@ -1204,7 +1206,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
+    ACTION="${1:?acao: config|rootcause|summary|comment|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -1232,6 +1234,34 @@ case "$CMD" in
         F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         jq -n --rawfile s "$F" --arg html "$(to_html "$F")" '{summary:$s, html:$html}' > "$TMP/body"
         prmake_post "PullRequest/$CARD/summary" "$TMP/body" ;;
+      comment)
+        # Comentario novo na discussion (sub-tarefa comment da Bancada): nao depende do registro de PR do card nem
+        # sobrescreve o resumo. --image anexa prints (anexo do DevOps, no fim do texto). Cria comentario: nao repete.
+        F="${2:?arquivo .md do comentario}"; [[ -s "$F" ]] || die "arquivo vazio: $F"; shift 2
+        IMAGES=(); CM_TASK=""
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --image) [[ -s "${2:-}" ]] || die "imagem nao encontrada: ${2:-}"; IMAGES+=("$2"); shift 2 ;;
+            --task) CM_TASK="${2:?numero da sub-tarefa}"; CM_TASK="${CM_TASK#\#}"; shift 2 ;;
+            *) die "argumento desconhecido: $1 (use --image <arquivo> ou --task <n>)" ;;
+          esac
+        done
+        to_html "$F" > "$TMP/comment.html"
+        python3 - "$TMP/comment.html" "$TMP/body" ${IMAGES[@]+"${IMAGES[@]}"} <<'PY'
+import base64, json, os, sys
+html_file, out, images = sys.argv[1], sys.argv[2], sys.argv[3:]
+with open(html_file, encoding="utf-8") as f:
+    body = {"html": f.read(), "images": []}
+for path in images:
+    with open(path, "rb") as f:
+        body["images"].append({"fileName": os.path.basename(path), "contentBase64": base64.b64encode(f.read()).decode()})
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(body, f)
+PY
+        prmake_post "Azure/card/$CARD/comment${CM_TASK:+?workItemTask=$CM_TASK}" "$TMP/body"
+        [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao comentar: $(resp_error)"
+        echo "OK $(jq -r '.message // "comentario publicado"' "$TMP/resp") (id $(jq -r '.commentId // "?"' "$TMP/resp"))"
+        exit 0 ;;
       classify)
         # Opcoes vem do PRMake (GET Azure/actions/classifications); quem grava no DevOps e o PRMake.
         KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications)}"
