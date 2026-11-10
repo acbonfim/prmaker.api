@@ -226,8 +226,8 @@ public class WorkItemMcpTools(
                  "prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa).")]
     public Task<string> EnvValidation(string card,
         [Description("Ambientes separados por virgula (ex.: \"dev, qa, mondelez\"); vazio = os sugeridos")] string? environments = null,
-        [Description("Sigla da planta (ex.: COR) — o usuario padrao vira o admin da planta")] string? plant = null,
-        [Description("E-mail do usuario (opcional; padrao: o do ambiente ou o admin da planta)")] string? user = null,
+        [Description("Sigla da planta (ex.: COR) — o Claude troca para ela na tela; o admin da planta so entra se nao houver outro usuario com senha na maquina")] string? plant = null,
+        [Description("E-mail do usuario (opcional; padrao: quem ja tem senha gravada na maquina que executa — ex.: admin@ewcm.com.br, que entra em qualquer planta —, senao o do ambiente ou o admin da planta). Nao pergunte a pessoa")] string? user = null,
         [Description("O que validar (roteiro curto; vazio = o que o card pede)")] string? scenario = null,
         [Description("Resultado esperado (opcional)")] string? expected = null,
         [Description("Titulo do item (opcional)")] string? title = null,
@@ -251,8 +251,8 @@ public class WorkItemMcpTools(
                  "checagem de duplicidade do prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa).")]
     public Task<string> EnvReproduction(string card,
         [Description("Ambientes separados por virgula; vazio ou \"cliente\" = o relatado pelo cliente no card")] string? environments = null,
-        [Description("Sigla da planta (ex.: COR) — vazio = a do card; o usuario padrao vira o admin da planta")] string? plant = null,
-        [Description("E-mail do usuario (opcional; padrao: o do ambiente ou o admin da planta)")] string? user = null,
+        [Description("Sigla da planta (ex.: COR) — vazio = a do card; o Claude troca para ela na tela; o admin da planta so entra se nao houver outro usuario com senha na maquina")] string? plant = null,
+        [Description("E-mail do usuario (opcional; padrao: quem ja tem senha gravada na maquina que executa — ex.: admin@ewcm.com.br, que entra em qualquer planta —, senao o do ambiente ou o admin da planta). Nao pergunte a pessoa")] string? user = null,
         [Description("Passos para reproduzir (vazio = os do card)")] string? steps = null,
         [Description("Comportamento esperado (opcional)")] string? expected = null,
         [Description("Titulo do item (opcional)")] string? title = null,

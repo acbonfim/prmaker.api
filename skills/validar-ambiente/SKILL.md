@@ -20,8 +20,41 @@ e assim que a permissao do Claude Code casa (`prmake-skills.sh permissions`).
 o MCP do PRMake, e e o suficiente). Nunca conclua "a sessao nao tem navegador": rode `bash $ENV setup` (cria o venv e
 instala o Playwright uma vez; usa o Chrome da maquina) e so um **exit 2** do `setup`/`browser start` significa que falta
 o Chrome/Playwright. Skill ausente (`env.sh` nao existe) → `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet
-validar-ambiente` e siga. **`user`/`plant` vazios sao normais**: usuario = o padrao do ambiente (dev/qa:
-`admin@ewcm.com.br`, da configuracao) ou o admin da planta quando houver `plant` — nunca pare por eles.
+validar-ambiente` e siga. **`user`/`plant` vazios sao normais**: o `env.sh` escolhe quem entra — o usuario que **ja
+tem senha gravada nesta maquina** para o ambiente (ex.: `admin@ewcm.com.br`, que entra em qualquer planta) vence o admin
+da planta — nunca pare nem pergunte por eles.
+
+## Autonomia: voce acha o caminho, a pessoa so entra com o que so ela tem
+O executor roda sozinho; cada `wait` faz a pessoa voltar a tela e clicar *Ja resolvi*. **`wait` so para**: senha que
+falta / login recusado / maquina sem navegador (o `env.sh` ja avisa), ambiente fora do ar, mudanca ainda nao publicada no
+ambiente (validacao) e dado de negocio que so uma pessoa pode criar num ambiente somente leitura. **Nunca** `wait` para
+perguntar URL, caminho ou menu de uma tela, qual usuario/planta/idioma usar, qual registro abrir, nem para "aceitar uma
+evidencia alternativa" — isso e trabalho seu (secao "Achar a tela") e decisao registrada no resultado. Vale mesmo que a
+descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/permissao, nao localizar a tela.
+- **Nao da para mostrar na tela** (opcao que o codigo configura mas a tela nao exibe — ex.: `customRangeLabel` num
+  `daterangepicker` com `singleDatePicker` e sem `ranges` —, modulo migrado para o revamp no ambiente, feature desligada):
+  tire o print do que a tela mostra no lugar, cite o codigo que explica (`repo:arquivo:linha`) e conclua com `complete`,
+  `reproduced: "parcial"` (ou `"nao"`) e uma linha **"Para decidir depois:"** no `result`. A sub-tarefa seguinte (proposta,
+  decisao) segue com isso; quem revisa o item decide sem a fila parar.
+- **Voltou do *Ja resolvi* com nota curta** (ex.: `1`): e a escolha da opcao 1 da sua ultima espera — siga por ela com o
+  melhor esforco, sem repetir a pergunta. Nunca faca a mesma pergunta duas vezes.
+
+## Achar a tela (sem perguntar)
+1. **Base Solvace primeiro**: `prmake_base_search(card, "<tela> menu rota")` (itens de tela/UC trazem menu, rota e
+   controller) e o codigo citado (`Controller`/`Action`, `.asp`). Anote o modulo e o nome da tela no menu.
+2. **Pelo menu, como a pessoa faria** (o login cai em `/myworkspace/...`):
+   - **Menu de modulos**: `snap` → botao `icone: apps` no canto superior direito → bloco do pilar (`item "Segurança e
+     Meio Ambiente"`) → modulo (`item "Incidentes"`). Nome com **"- Novo"** = revamp (Angular); sem sufixo = legado.
+   - **Legado .NET (solvace-core)**: `go /<modulo>/` (ex.: `/incident/`) abre a lista do modulo; o menu lateral sao
+     icones (`snap` mostra `icone: ... @x,y`; clique e `snap` de novo). As telas internas carregam por **POST** dentro da
+     moldura (`/incident/Report/Main`) — abrir a action direto por GET vem **em branco**: entre pelo modulo e pelo menu.
+   - **Legado ASP**: as telas abrem no iframe `#framepag` de `systems/application/default.asp`. O `snap` lista os
+     elementos de dentro como `frame=#framepag >> <alvo>` e `click`/`fill` acham sozinhos o que esta no iframe.
+3. O `snap` ja nomeia: botao so de icone (`icone: apps @1384,12`), blocos clicaveis (`item "..."`), campo pelo rotulo
+   (`textbox "Lugar"`) — use o alvo dele (`[data-pm="pmN"]` vale ate o proximo `snap`). Filtros do legado: botao
+   `icone: fas fa-filter` abre a "Busca detalhada".
+4. Tentou os tres caminhos e a tela nao existe no ambiente: registre o que tentou (menus, URLs, prints de onde chegou) e
+   conclua como "Nao da para mostrar na tela" acima — sem `wait`.
 
 ## Regras que nao mudam
 1. **Senha nunca passa pelo chat.** Ela fica so em `~/.claude/solvace-env-credentials.json`, gravada pela **pessoa, no
@@ -54,11 +87,13 @@ validar-ambiente` e siga. **`user`/`plant` vazios sao normais**: usuario = o pad
 - **Plantas e bancos**: `bash $ENV plants <ambiente> [filtro]` (`TB_WCM_SITE` do banco global: `SITE_ACRONYM`,
   `SITE_NAME`, `INSTANCE_NAME` = banco local da planta). Host do banco: o da configuracao ou o servidor das credenciais
   desta maquina que tem o banco global (regra de hosts por cliente da `analisar-bug`).
-- **Usuario**: dev/qa usam o admin do ambiente (`admin@ewcm.com.br`); nos outros, o **admin da planta** —
-  `admin<sigla minuscula>@solvacelabs.com` (ex.: `admincor@solvacelabs.com` = planta corporativa da Mondelez):
-  `bash $ENV admin <ambiente> <sigla>` confere se existe/ativo e se ha senha nesta maquina. A sub-tarefa pode trazer
-  `params.user`/`params.plant` — use-os. Bug: a planta do cliente que reportou (repro steps/discussion); US: a planta
-  que a pessoa indicar (ou pergunte).
+- **Usuario**: `params.user` quando vier; senao **deixe o `env.sh` escolher** (`resolve` mostra `com senha nesta maquina`
+  e `entrada padrao`): admin da planta se ele tiver senha aqui → usuario da configuracao com senha → **qualquer usuario
+  com senha gravada para o ambiente** (a pessoa gravou de proposito: ex. `admin@ewcm.com.br` no sandboxefeso, que entra
+  em todas as plantas) → so entao o admin da planta `admin<sigla>@solvacelabs.com` (`bash $ENV admin <ambiente> <sigla>`
+  confere se existe/ativo). Entrou com usuario de varias plantas e a sub-tarefa tem `plant`: **troque a planta no
+  seletor da tela** (topo, icone de local com o nome da planta) — nao peca o admin da planta. Bug: a planta do cliente
+  que reportou; US: a que a pessoa indicou ou a que ja vier selecionada (nao pergunte).
 
 ## Fluxo da sub-tarefa `env-validation`
 Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que validar), `expected?`.
@@ -66,9 +101,9 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
 2. **Roteiro**: `scenario`/`expected` da sub-tarefa; vazios → o que o card pede (`$CARD_DIR/dados/card-resumo.txt`,
    criterios de aceite da US, o "Como validar" da analise/plano). Escreva 3–8 passos curtos (onde ir, o que fazer, o
    que deve aparecer). Regra 3: a mudanca esta no ambiente?
-3. **Ambiente e usuario**: `bash $ENV resolve <environment>`; usuario = `params.user` → admin da planta
-   (`bash $ENV admin <amb> <sigla>`) → usuario padrao do ambiente.
-4. **Abrir**: `bash $ENV browser start <amb> --user <email> [--plant <sigla>] --card <card> --task <taskNumber>`.
+3. **Ambiente e usuario**: `bash $ENV resolve <environment>`; usuario = `params.user` ou a `entrada padrao` que o
+   `env.sh` escolhe (quem tem senha nesta maquina) — sem `--user`, o `browser start` ja usa essa.
+4. **Abrir**: `bash $ENV browser start <amb> [--user <params.user>] [--plant <sigla>] --card <card> --task <taskNumber>`.
    - exit 4 (**sem senha**), 3 (**login recusado**) ou 2 (sem Chrome/Playwright): com `--task`, o proprio `env.sh` ja
      deixa a sub-tarefa **aguardando a pessoa na ferramenta** (Bancada/Execucao) com o que falta, a maquina e o comando
      exato (`prmake-skills.sh env-credentials set <amb> <email>`) + *Ja resolvi* — a saida diz `AVISADO NA FERRAMENTA`.
@@ -110,12 +145,13 @@ Params: `environment` (`cliente` = o relatado no card — padrao; ou chave/URL d
 2. **Ambiente do cliente**: `bash $ENV card-env <card>` — le os campos `Environment`/`Site` do card (busca o card se faltar)
    e as URLs `*.solvacelabs.com` dos passos/discussion; mostra ambiente, planta (sigla) e o admin da planta. `environment`
    = `cliente` → `browser start cliente --card <card> --task <n>` ja usa isso (planta do card → `admin<sigla>`).
-   Card sem ambiente → `wait` pedindo o ambiente (ou que a pessoa edite a sub-tarefa) e pare.
+   Card sem ambiente → use `qa` (ou o ambiente que a analise/sub-tarefa citar) e diga isso no relatorio — sem `wait`.
 3. **Passos**: `params.steps`, senao os passos para reproduzir do card (`$CARD_DIR/dados/description.txt`; Bug = Repro
    Steps) + prints/evidencias do card quando ajudarem (`prmake_work_item_evidence`). Anote a versao/tela/usuario do relato.
 4. **Abrir** como no fluxo da validacao (sem senha / login recusado / sem navegador → o `env.sh` ja avisa na ferramenta;
    encerre a vez). Reproduza **com o perfil mais proximo do relatado** que der (admin da planta do card).
-5. **Seguir os passos** com `snap`/`click`/`fill`; `shot` so do **ponto de partida do fluxo relatado e do erro**
+5. **Seguir os passos** com `snap`/`click`/`fill` (tela que voce nao sabe onde fica: "Achar a tela"; nao da para
+   mostrar: "Nao da para mostrar na tela" — os dois sem `wait`); `shot` so do **ponto de partida do fluxo relatado e do erro**
    (mensagem, tela quebrada, valor errado, `Invalid date`...) — e de um passo intermediario so se ele mudar a tela de forma
    que importe para entender. Navegacao: `snap`. Tipico: 2–4 prints. Erro de console/rede ajuda: anote a URL e o texto do erro no relatorio.
 6. **Somente leitura (producao/DEMO)**: reproduza ate o passo que grava; se o bug so aparece ao salvar/alterar, **nao
@@ -153,6 +189,7 @@ este fluxo; prints e relatorio ficam na sub-tarefa (galeria "Evidencias").
    salvar com anexo; o anexo aparece na lista")` → item #120 com #121 (QA) e #122 (Producao Mondelez).
 2. #121: `resolve qa` → `browser start qa --card 77434 --task 121` (admin@ewcm.com.br) → roteiro com 6 prints →
    `evidence 77434 120 121 ~/.prmake/cards/77434/validacao/qa-121 --report .../validacao-qa.md` → `complete`.
-3. #122: `admin mondelez COR` → `admincor@solvacelabs.com`, sem senha → `wait` com o comando
+3. #122: `admin mondelez COR` → `admincor@solvacelabs.com` (nenhum outro usuario com senha para a mondelez), sem senha
+   → o `env.sh` deixa a espera com o comando
    `env-credentials set mondelez admincor@solvacelabs.com`; a pessoa grava e clica *Ja resolvi* → `browser start
    mondelez --plant COR ...` (somente leitura: so consulta o plano 12 e o anexo) → prints → `complete`.
