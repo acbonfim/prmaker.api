@@ -8,7 +8,7 @@
 | F1 | ✅ | Claude | front `feature/0072` |
 | F2 | ✅ | Claude | front `feature/0072` |
 | F3 | ✅ | Claude | front `feature/0072` |
-| Q1 | ⏳ | Claude | |
+| Q1 | ✅ deploy 23/10 (back #131 + front #66) e 2 perguntas reais | Claude | |
 
 ## Notas do back
 - Contrato: `POST Architecture/ask` aceita `attachments: [{name, mediaType, data(base64 ou data URL)}]`; resposta ganha `attachmentSeen` (o que a IA entendeu) e `attachmentNotes` (avisos); `GET Architecture/ask/status` ganha `supportsAttachments` e `limits` (a tela não repete os números).
@@ -25,7 +25,17 @@
 - 8 specs (`kb-ask-attach.spec.ts`) passam no Karma/ChromeHeadless com tsconfig temporário (os specs antigos do repo não compilam: `async` removido do Angular).
 - NÃO testado no navegador de ponta a ponta (só build + specs): conferir na Q1.
 
+## Q1 — produção (2 perguntas, ~US$ 0,0x cada)
+| | Print de erro + "o que é esse erro e como resolvo?" | `.log` sem texto de pergunta |
+|---|---|---|
+| total | 52 s (instância nova: plano 30,6 s com o índice por item frio) | 22,5 s (plano 7,5 s com anexo, itens 1,7 s, seções 1,8 s, resposta ~11 s) |
+| entrada/saída | 22.664 / 4.362 tokens (2 chamadas) | 22.664 / 3.828 |
+- Print: a IA copiou o erro literalmente ("O usuário informado não é um administrador"), reconheceu tela/usuária/planta e ligou à RN-266 — a resposta explica que o administrador exigido é **quem está logado**, com o passo a passo da tela (UC-053/RN-513/UC-095).
+- Log de 120 linhas: achou o erro no fim (`SiteId não encontrado`, PUT UserArea/transfer 400) e respondeu com a pergunta padrão registrada ("O que é isso e como resolvo?"). A causa exata (claim `LastSiteId` = 0, RN-266) não foi ligada — a resposta disse em "Não confirmado" o que a base não explica.
+- `ask/status` em produção: `supportsAttachments=true` com os limites. Não testados em produção: PDF, ditado e a tela (colar/arrastar) no navegador.
+
 ## Log
 - 2026-10-23 — spec/plano; worktrees a partir da master (back 70942f7, front 760d518). #130 (0071) mesclado e em produção.
 - 2026-10-23 — B1–B3 prontos (ClaudeService com blocos de conteúdo, AskAttachmentRules, prompts, endpoint e status).
 - 2026-10-23 — F1–F3 prontos no front; PRs abertos (back e front). Falta Q1 (deploy + 2 perguntas reais).
+- 2026-10-23 — #131 e #66 mesclados e em produção; Q1 com 2 perguntas reais.
