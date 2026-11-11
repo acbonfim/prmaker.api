@@ -14,7 +14,8 @@ namespace solvace.prform.Execution;
 /// <summary>
 /// 0085: regras do PRMake para o card e itens de trabalho pelo MCP. O Especialista do caso (token do caso) lê as regras,
 /// lista/cria/edita itens pending do próprio card (<see cref="CaseSpecialistMiddleware.AllowedTools"/>) e (r5) cancela,
-/// executa e registra o andamento de itens a pedido de uma pessoa — nunca de sub-tarefa espelho do plano. Duplicata (mesmo
+/// executa e registra o andamento de itens a pedido de uma pessoa — nunca de sub-tarefa espelho do plano (no item espelho, só
+/// acrescenta sub-tarefa nova: <c>prmake_work_item_add_task</c> vira etapa pendente do plano). Duplicata (mesmo
 /// fingerprint) volta como mensagem clara com o item existente e como forçar.
 /// </summary>
 [McpServerToolType]
@@ -330,6 +331,10 @@ public class WorkItemMcpTools(
         EnsureSpecialistCard(c);
         var current = await items.GetAsync(number, false, ct);
         EnsureSameCard(current, c);
+        if (current.PlanId is not null && current.Tasks.Any(t => t.StepKey is not null) && !current.Editable)
+            throw new McpException($"O item #{number} espelha o plano e ja comecou — para acrescentar uma sub-tarefa use " +
+                                   $"prmake_work_item_add_task(card {c}, number {number}, title, description); as etapas existentes " +
+                                   "so mudam por uma nova versao do plano (prmake_case_propose).");
         return await specialist.RunAsync(c, $"Editar o item de trabalho #{number}", title, async () =>
         {
             var updated = await items.UpdateAsync(number, new UpdateWorkItemRequest
@@ -345,6 +350,70 @@ public class WorkItemMcpTools(
             }), $"item #{updated.Number} editado");
         }, ct);
     });
+
+    [McpServerTool(Name = "prmake_work_item_add_task")]
+    [Description("Acrescenta uma sub-tarefa a um item de trabalho que ESPELHA o plano (item da analise/correcao, ja em andamento): vira " +
+                 "uma etapa nova, pendente, do plano — sem mudar nem remover as outras — e o item ganha a sub-tarefa. Entra antes da " +
+                 "etapa em andamento/espera (ou de 'before', etapa ainda nao terminada); o Claude do tratamento faz essa etapa antes de " +
+                 "seguir. execute=true ja retoma o plano. Item avulso pendente: use prmake_work_item_update. Especialista do caso: so " +
+                 "com pedido da pessoa na conversa (\"antes de continuar, verifique X\").")]
+    public Task<string> AddTask(string card, [Description("Numero do item espelho do plano (#n)")] long number,
+        [Description("Titulo curto da sub-tarefa (o que fazer)")] string title,
+        [Description("O que fazer e para que (objetivo, fontes, o que confirmar) — o Claude do tratamento segue este texto")] string description,
+        [Description("Tipo da sub-tarefa (catalogo WorkItemTaskKinds: research, sql-query, task...; sem ele o PRMake deduz)")] string? kind = null,
+        [Description("Chave da etapa antes da qual entra (opcional; padrao: a etapa em andamento/espera)")] string? before = null,
+        [Description("Retomar o plano agora (a pessoa pediu para ja fazer)")] bool execute = false,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var current = await items.GetAsync(number, false, ct);
+        EnsureSameCard(current, c);
+        if (current.PlanId is not { } planId || !current.Tasks.Any(t => t.StepKey is not null))
+            throw new McpException($"O item #{number} nao espelha um plano — item avulso pendente se edita com prmake_work_item_update; " +
+                                   "iniciado/concluido: crie um item novo.");
+        var plan = await plans.GetAsync(planId, ct);
+        var why = specialist.Via is { } via ? $"Acrescentada {via}." : null;
+        var definition = new ExecutionStepDefinition
+        {
+            Key = NewStepKey(title, plan.Steps.Select(s => s.Key)),
+            Title = title,
+            Description = why is null ? description : $"{description}\n\n{why}",
+            Executor = ExecutionExecutor.Claude,
+            TaskKind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim(),
+        };
+        return await specialist.RunAsync(c, $"Acrescentar sub-tarefa ao item #{number}", title, async () =>
+        {
+            var actor = await ActorAsync(ct);
+            var step = await plans.AddStepAsync(planId, definition, before, actor, ct);
+            var item = await items.GetAsync(number, false, ct);
+            var task = item.Tasks.FirstOrDefault(t => t.StepKey == step.Key);
+            if (execute)
+                item = await items.ExecuteAsync(number, actor, ct);
+            return (Serialize(new
+            {
+                item.Number, item.Title, item.Status, step = step.Key, taskNumber = task?.Number,
+                tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Title, t.Status })
+            }), $"sub-tarefa {(task is null ? string.Empty : $"#{task.Number} ")}acrescentada ao item #{item.Number}" +
+                $"{(execute ? " e plano retomado" : string.Empty)}");
+        }, ct);
+    });
+
+    /// <summary>Chave da etapa a partir do título (sem acento, minúsculas, '-'), única no plano.</summary>
+    public static string NewStepKey(string title, IEnumerable<string> existing)
+    {
+        var plain = new string((title ?? string.Empty).Normalize(System.Text.NormalizationForm.FormD)
+            .Where(ch => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .Select(ch => char.IsAsciiLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '-').ToArray());
+        var slug = string.Join('-', plain.Split('-', StringSplitOptions.RemoveEmptyEntries).Take(6));
+        var key = $"{ExecutionStep.RequestedKeyPrefix}{(slug.Length == 0 ? "etapa" : slug)}";
+        if (key.Length > 60) key = key[..60].TrimEnd('-');
+        var taken = existing.ToHashSet(StringComparer.Ordinal);
+        var candidate = key;
+        for (var n = 2; taken.Contains(candidate); n++)
+            candidate = $"{key}-{n}";
+        return candidate;
+    }
 
     [McpServerTool(Name = "prmake_work_item_cancel", Destructive = true)]
     [Description("Cancela um item de trabalho do card (para o pedido na fila, se houver). undo=true tambem desfaz o que ele ja fez " +

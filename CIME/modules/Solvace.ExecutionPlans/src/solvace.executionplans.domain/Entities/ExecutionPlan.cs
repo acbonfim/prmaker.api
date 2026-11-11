@@ -401,12 +401,15 @@ public class ExecutionPlan
 
     /// <summary>
     /// Define/refina as etapas (upsert pela chave), na ordem enviada. Etapas que sumiram da lista:
-    /// se ainda pendentes, saem do plano; se já começaram, ficam (histórico) depois das enviadas.
+    /// se ainda pendentes, saem do plano; se já começaram, ficam (histórico) depois das enviadas. Etapa pedida por uma
+    /// pessoa (<see cref="ExecutionStep.RequestedKeyPrefix"/>, <see cref="AddStep"/>) não sai por omissão: fica antes da
+    /// etapa que vinha depois dela.
     /// </summary>
     public void UpsertSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now)
     {
         EnsureNotCancelled();
 
+        var previous = Steps.OrderBy(s => s.Order).Select(s => s.Key).ToList();
         var seen = new HashSet<string>();
         var order = 0;
         foreach (var def in definitions)
@@ -433,9 +436,14 @@ public class ExecutionPlan
             step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn, def.TaskKind);
         }
 
+        var requested = new List<ExecutionStep>();
         foreach (var orphan in Steps.Where(s => !seen.Contains(s.Key)).OrderBy(s => s.Order).ToList())
         {
-            if (orphan.Status == ExecutionStatus.Pending)
+            if (orphan.Status == ExecutionStatus.Pending && orphan.IsRequested)
+            {
+                requested.Add(orphan);
+            }
+            else if (orphan.Status == ExecutionStatus.Pending)
             {
                 Steps.Remove(orphan);
             }
@@ -445,8 +453,65 @@ public class ExecutionPlan
                 orphan.Order = order;
             }
         }
+        if (requested.Count > 0)
+            KeepRequestedInPlace(requested, previous);
 
         Touch(now, fromExecutor: true);
+    }
+
+    /// <summary>Etapas pedidas que a skill omitiu voltam para antes da etapa que vinha depois delas (ou para o fim).</summary>
+    private void KeepRequestedInPlace(List<ExecutionStep> requested, List<string> previous)
+    {
+        var ordered = Steps.Except(requested).OrderBy(s => s.Order).ToList();
+        foreach (var step in requested)
+        {
+            var next = previous.Skip(previous.IndexOf(step.Key) + 1)
+                .Select(k => ordered.FirstOrDefault(s => s.Key == k)).FirstOrDefault(s => s is not null);
+            ordered.Insert(next is null ? ordered.Count : ordered.IndexOf(next), step);
+        }
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+    }
+
+    /// <summary>
+    /// Acrescenta uma etapa nova, pendente, a pedido de uma pessoa (Especialista do caso: "antes de continuar, verifique
+    /// X") — sem mudar nem remover as que existem. Entra antes de <paramref name="beforeKey"/> (etapa ainda não terminada)
+    /// ou, sem ele, antes da primeira etapa não terminada (a que está em andamento/espera); com tudo terminado, no fim.
+    /// </summary>
+    public ExecutionStep AddStep(ExecutionStepDefinition definition, string? beforeKey, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        if (IsFinished)
+            throw new DomainException("O plano já terminou — não dá para acrescentar etapa. Crie um item de trabalho avulso.");
+        var key = ExecutionStep.NormalizeKey(definition.Key);
+        if (FindStep(key) is not null)
+            throw new DomainException($"Já existe a etapa '{key}' no plano — escolha outra chave.");
+
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        ExecutionStep? anchor;
+        if (string.IsNullOrWhiteSpace(beforeKey))
+        {
+            anchor = ordered.FirstOrDefault(s => !ExecutionStatus.IsStepFinished(s.Status));
+        }
+        else
+        {
+            anchor = FindStep(ExecutionStep.NormalizeKey(beforeKey))
+                     ?? throw new DomainException($"Etapa '{beforeKey}' não encontrada no plano.");
+            if (ExecutionStatus.IsStepFinished(anchor.Status))
+                throw new DomainException($"A etapa '{anchor.Key}' já terminou — a etapa nova entra antes de uma etapa ainda não terminada.");
+        }
+
+        var step = new ExecutionStep(Id, key, 0, definition.Title, definition.Description, now);
+        step.SetShape(definition.Executor, definition.Kind, definition.Repository, definition.DependsOn, definition.TaskKind);
+        ordered.Insert(anchor is null ? ordered.Count : ordered.IndexOf(anchor), step);
+        Steps.Add(step);
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+
+        Touch(now, fromExecutor: false);
+        return step;
     }
 
     /// <summary>

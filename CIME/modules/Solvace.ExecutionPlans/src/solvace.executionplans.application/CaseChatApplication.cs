@@ -668,7 +668,8 @@ public class CaseChatApplication(
             sb.AppendLine(string.IsNullOrWhiteSpace(itemsText) ? "Nenhum item de trabalho no card." : itemsText.TrimEnd());
             sb.AppendLine("Antes de propor ou criar um item, confira se já existe item com o mesmo objetivo (fingerprint/status) — " +
                           "pendente igual: ajuste com prmake_work_item_update; iniciado/concluído: não repita. Duplicata só com " +
-                          "allowDuplicate + motivo, quando for de fato outro trabalho.");
+                          "allowDuplicate + motivo, quando for de fato outro trabalho. Sub-tarefa a mais pedida no item da " +
+                          "análise/correção (espelho do plano): prmake_work_item_add_task — não item novo.");
         }
 
         var chat = await cases.GetChatAsync(card, cancellationToken);

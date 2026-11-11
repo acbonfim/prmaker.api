@@ -9,6 +9,11 @@ namespace solvace.executionplans.domain.Entities;
 public partial class ExecutionStep
 {
     public const int MaxKeyLength = 80;
+
+    /// <summary>Etapa acrescentada a pedido de uma pessoa (Especialista do caso) — a skill não a remove ao refinar as etapas.</summary>
+    public const string RequestedKeyPrefix = "pedido-";
+
+    public bool IsRequested => Key.StartsWith(RequestedKeyPrefix, StringComparison.Ordinal);
     public const int MaxTitleLength = 200;
     public const int MaxTextLength = 20_000;
     public const int MaxActivityLength = 500;

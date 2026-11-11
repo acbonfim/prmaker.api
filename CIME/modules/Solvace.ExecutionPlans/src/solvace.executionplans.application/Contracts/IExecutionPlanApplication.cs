@@ -19,6 +19,8 @@ public interface IExecutionPlanApplication
     Task<ExecutionPlanResponse> GetAsync(Guid planId, CancellationToken cancellationToken);
 
     Task<ExecutionPlanResponse> UpsertStepsAsync(Guid planId, UpsertExecutionStepsRequest request, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Etapa nova, pendente, a pedido de uma pessoa — sem mexer nas outras (antes da etapa em andamento).</summary>
+    Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> CancelStepAsync(Guid planId, string stepKey, string reason, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionPlanResponse> ChangeStatusAsync(Guid planId, ChangeExecutionPlanStatusRequest request, ExecutionActor actor, CancellationToken cancellationToken);
