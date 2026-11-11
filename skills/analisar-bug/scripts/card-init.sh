@@ -3,7 +3,7 @@
 # Uso: card-init.sh <cardNumber>
 # Estrutura criada em $CARDS_DIR/<card> (default ~/.prmake/cards/<card>; 0046 — fora de ~/.claude):
 #   scripts/   -> scripts executaveis (SQL etc.). Quando a ORDEM importa,
-#                 nomeie 01_nome.sql, 02_nome.sql, ...; rollback como 99_rollback_*.sql
+#                 nomeie 01_<card>_nome.sql, 02_<card>_nome.sql, ...; rollback como 99_<card>_rollback_*.sql
 #   analises/  -> textos da analise (markdown), copias do que foi p/ a timeline
 #   dados/     -> evidencias/saidas de consulta (json/csv/txt)
 # Env: CARDS_DIR sobrescreve a raiz (ex.: um caminho dentro de um repo).

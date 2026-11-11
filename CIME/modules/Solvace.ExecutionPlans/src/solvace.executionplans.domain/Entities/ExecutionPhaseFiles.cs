@@ -12,7 +12,7 @@ public static partial class ExecutionPhaseFiles
 {
     public const string ChangesDataInAnalysis =
         "Script que altera dados vai para o plano de correção (prmake_file com phase \"correction\" e key = a etapa do chamado); " +
-        "no plano de análise ficam só as consultas somente leitura que levaram ao problema (00_consulta-<assunto>.sql).";
+        "no plano de análise ficam só as consultas somente leitura que levaram ao problema (00_<card>_consulta-<assunto>.sql).";
 
     public const string TicketInAnalysis =
         "O texto do chamado vai para o plano de correção, na etapa do chamado (prmake_file com kind \"ticket\", phase \"correction\" " +

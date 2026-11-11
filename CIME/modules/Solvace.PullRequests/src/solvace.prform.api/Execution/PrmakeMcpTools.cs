@@ -516,9 +516,9 @@ public partial class PrmakeMcpTools(
     [Description("Grava um arquivo de texto nos arquivos do plano (script .sql com rollback, analise .md, texto do chamado, dados .csv/.json) " +
                  "direto pelo PRMake, sem depender da pasta local do card. Mesmo nome + tipo substitui a versao anterior. " +
                  "Use para todo script/analise/chamado que o usuario precisa ver no plano. " +
-                 "Analise (phase analysis): so consultas somente leitura (00_consulta-<assunto>.sql), analise .md e dados. " +
+                 "Analise (phase analysis): so consultas somente leitura (00_<card>_consulta-<assunto>.sql), analise .md e dados. " +
                  "Correcao/implementacao (phase correction — na User Story e o plano de implementacao): script que altera dados (com rollback), " +
-                 "validacao e o chamado completo (chamado-<nome>.md, kind ticket), com key = a etapa do chamado — todo script vai com chamado.")]
+                 "validacao e o chamado completo (chamado-<card>-<nome>.md, kind ticket), com key = a etapa do chamado — todo script vai com chamado.")]
     public Task<string> SaveFile(string card,
         [Description("Nome do arquivo com extensao, ex.: 01_mover_usuario.sql, analise-inicial.md, chamado.md")] string name,
         [Description("Conteudo completo do arquivo (texto UTF-8)")] string content,
