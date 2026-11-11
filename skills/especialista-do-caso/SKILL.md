@@ -25,7 +25,10 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
 ## Regras que nao mudam
 1. **Voce nao altera o plano.** Nada de etapas, perguntas, status ou arquivos do plano, nem nova versao por conta
    propria. O que mudaria o plano vira **ponto combinado** (`prmake_case_point`) e, na conclusao, **proposta**
-   (`prmake_case_propose`). Quem decide e uma pessoa, na tela.
+   (`prmake_case_propose`). Quem decide e uma pessoa, na tela. **Unica excecao:** a pessoa pede uma sub-tarefa a mais
+   no item que espelha o plano ("antes de continuar, verifica os logs de acesso", "cria uma subtask no #744 para...")
+   → voce **acrescenta** com `prmake_work_item_add_task` (vira etapa pendente do plano, antes da etapa em andamento; as
+   outras etapas nao mudam). Nao ofereca item avulso nem plano v2 para isso: e o que a pessoa pediu, faca.
 2. **Acao pedida pela pessoa = voce executa** (secao "Acoes a pedido"), pela ferramenta do PRMake, sem mandar a pessoa
    copiar texto nem clicar: publicar na Timeline, lancar horas, mover o card/acao do DevOps, abrir PR de uma branch que
    ja existe, criar/editar/cancelar/executar item de trabalho, novo resumo (ferramenta `novo-resumo`/`novo-resumo-us` +
@@ -109,6 +112,8 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
    velho). Compare objetivo, tipos das sub-tarefas e parametros (repositorio, origem, destino, branch) — inclusive
    itens **concluidos**: o que ja foi feito nao se refaz; diga o numero (#12) e o resultado.
    - Ja existe **pendente** igual ou parecido → proponha ajustar esse com `prmake_work_item_update` (so `pending`).
+   - Sub-tarefa pedida **no item da analise/correcao** (espelho do plano, ja em andamento) → `prmake_work_item_add_task`
+     (secao "Acoes a pedido") — nao item novo.
    - Ja **iniciado/concluido** e a pessoa quer de novo → crie outro com `allowDuplicate: true` e `duplicateReason`
      (o porque, em uma frase), e explique na resposta.
 2. **Montar:** ferramenta que serve → `prmake_tool_run` (secao acima) e pule para o passo 4. Sem ferramenta:
@@ -155,6 +160,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Mover o card / acao configurada | `prmake_devops(card, acao)` — `dev-test-in-qa`, `test-in-production`, `zero-remaining`, `initial-estimate`, `classify` (preset), `set-state` (`state` = um dos estados de `GET Azure/card/<card>/states`, nunca inventado); `ready-for-qa` so com a validacao em QA concluida ou `authorization` = "pedido de <pessoa> na conversa em <data>" |
 | Abrir PR (branch que ja existe) | `prmake_pr_open(card, repository, source, target, title?, draft?)` — nomes das regras (`prmake_rules`); o PRMake recusa branch de outro card/sem prefixo. Branch que ainda nao existe → item (`pr-para-branch`) + `prmake_work_item_execute` |
 | Criar/editar item | `prmake_tool_run` / `prmake_work_item_create` / `prmake_work_item_update` (secoes acima) |
+| Sub-tarefa a mais no item da analise/correcao (espelho do plano: "antes de continuar, cria uma subtask no #744 para verificar X", "inclui na analise uma verificacao de Y") | `prmake_work_item_add_task(card, number, title, description, kind?, before?, execute?)` — vira etapa **pendente** do plano antes da etapa em andamento/espera (ou de `before`), sem mexer nas outras; o item ganha a sub-tarefa e o Claude do tratamento a faz antes de seguir. `description` = o que fazer e para que (fontes, o que confirmar: "logs de acesso do Cognito/CloudTrail e da aplicacao do otronnier@lindt.com para achar a falha de login e confirmar a causa raiz"); `kind` do catalogo (`research`, `sql-query`...). `execute: true` quando a pessoa disse "antes de continuar"/"ja faz" — retoma o plano. Fonte nao dita (quais logs)? Escolha as que o contexto indica e diga quais na resposta, nao trave perguntando. Plano ja concluido/cancelado → o PRMake recusa; ai sim item avulso |
 | Resumir o card ("do que se trata?", "o que o cliente esta pedindo/reclamando?", "resume o card") | Ja existe item `resumo-do-pedido` concluido e o card nao mudou desde entao? → leia `resumo-do-pedido.md` (`prmake_work_item_files(card, n, file: "resumo-do-pedido.md")`) e responda com ele. Senao: `prmake_tool_run(card, "resumo-do-pedido", {"focus": "<o que a pessoa quer saber, se disse>", "timeline": "sim" so se ela pediu para publicar})` + `prmake_work_item_execute(card, numero)` e responda com o numero do item ("o racional, em portugues, fica no item #n e nos Arquivos do card (`resumo-do-pedido.md`) em alguns minutos — me pergunte depois que eu resumo aqui"). Nao monte o resumo voce mesmo lendo o card inteiro (cada leitura fica na conversa) |
 | Executar item | `prmake_work_item_execute(card, number)` |
 | Reproduzir o bug ("reproduz no cliente", "tenta reproduzir em QA", "consegue reproduzir?") — so Bug | `prmake_env_reproduction(card, environments?, plant?, user?, steps?, expected?, execute?)` — **padrao: o ambiente relatado pelo cliente** no card (`environments` vazio ou `cliente`); outro ambiente so se a pessoa indicar (ex.: `"cliente, qa"`). O Claude entra, segue os passos do card e grava os prints do erro (ou de que nao reproduziu) na sub-tarefa. `execute: true` so se a pessoa pediu para ja rodar. Producao/DEMO: so leitura (a parte que grava vai para o sandbox do cliente). Sem senha, a sub-tarefa avisa a pessoa com o comando — nunca peca senha na conversa |

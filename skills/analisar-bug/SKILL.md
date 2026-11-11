@@ -299,6 +299,13 @@ Claude" do PRMake copia esse comando). Ao ser retomado, veja o que mudou na tela
 `answers`) — e siga de onde parou. Para o PRMake rodar e retomar sozinho (botao "Analisar com Claude", respostas
 pela tela) sem terminal: executor do PRMake — `bash ~/.claude/skills/.prmake/prmake-skills.sh agent install`.
 
+**Etapa pedida (`pedido-*`):** a pessoa pode acrescentar uma etapa pelo Especialista do caso ("antes de continuar,
+verifique os logs de acesso"); ela entra **pendente antes da etapa em que voce parou** (a em espera/andamento). Ao ser
+retomado, faca-a primeiro — `prmake_step` running, o que a descricao pede, `prmake_advance`/complete com o achado — e
+volte a etapa em que estava. Se o achado mudar a causa raiz/solucoes, atualize a analise (`prmake_file`) e revise as
+perguntas abertas (`prmake_ask` com `replaces` / `prmake_cancel_questions`). Ao refinar as etapas (`prmake_steps`),
+mantenha as `pedido-*` (o PRMake nao as apaga por omissao).
+
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
 | Quando | Comando |
 |---|---|

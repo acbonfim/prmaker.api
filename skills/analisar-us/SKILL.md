@@ -163,6 +163,10 @@ concluido → o PRMake conclui o item.
 **9. Aprender e reportar** — lacunas ja registradas; regra nova ou item da base errado → `arch.sh suggest ... --kind
 learning|divergence --card <card>`. Reporte: card, solucao, itens de trabalho (numeros), PRs, o que ficou com quem.
 
+**Etapa pedida (`pedido-*`)** — acrescentada pela pessoa via Especialista do caso ("antes de continuar, confira X"):
+entra pendente antes da etapa em que voce parou. Ao ser retomado, faca-a primeiro e volte; se o achado mudar a
+solucao, atualize a analise e as perguntas abertas. Ao refinar as etapas, mantenha as `pedido-*`.
+
 ## Referencias da analisar-bug — `bash $REF <arquivo> <secao>` (so a secao, so na hora)
 | Quando | Comando |
 |---|---|

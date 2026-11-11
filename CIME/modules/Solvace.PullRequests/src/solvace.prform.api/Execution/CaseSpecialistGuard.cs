@@ -79,7 +79,8 @@ public class CaseTokenIssuer(IConfiguration configuration)
 /// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c>, (0085) criar/editar itens de trabalho e (r5) as AÇÕES que
 /// uma pessoa pede na conversa — Timeline, ações do card no DevOps (estado, horas...), abrir PR, andamento/cancelar/executar
 /// item de trabalho (confere o corpo JSON-RPC <c>tools/call</c>). Nada que mexa no plano (etapas, perguntas, correção,
-/// arquivos do plano): essas continuam recusadas;</item>
+/// arquivos do plano): essas continuam recusadas — a única exceção é acrescentar uma etapa pendente pedida pela pessoa
+/// (<c>prmake_work_item_add_task</c>), sem mudar as outras;</item>
 /// <item>todo o resto: 403.</item>
 /// </list>
 /// r5: as ações (<see cref="ActingTools"/>) rodam com a identidade de quem pediu na conversa (claim <c>ExternalId</c> trocada
@@ -99,6 +100,8 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_case_action", "prmake_case_action_done", "prmake_case_file",
         // 0085: regras do card e itens de trabalho (criar/editar itens pending; executar sub-tarefa não).
         "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update",
+        // Sub-tarefa a pedido no item que espelha o plano: só ACRESCENTA uma etapa pendente (as outras não mudam).
+        "prmake_work_item_add_task",
         // 0085 r4: ferramentas (modelos) do card — listar e criar o item a partir de uma.
         "prmake_tools", "prmake_tool_run",
         // r5: ações pedidas na conversa (nunca o plano): Timeline, card no DevOps (estado, horas, ações), PR, itens.
@@ -121,7 +124,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     public static readonly IReadOnlySet<string> ActingTools = new HashSet<string>(StringComparer.Ordinal)
     {
         "prmake_timeline", "prmake_devops", "prmake_pr_open",
-        "prmake_work_item_create", "prmake_work_item_update", "prmake_tool_run",
+        "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_tool_run",
         "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction"
     };
 

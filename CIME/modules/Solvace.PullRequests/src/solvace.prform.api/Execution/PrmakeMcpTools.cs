@@ -61,7 +61,8 @@ public partial class PrmakeMcpTools(
         "Tipo do item = WorkItemTypes (task, pull-request, review, fix, implementation, adjustment, closing, data, ticket, text, analysis); " +
         "nunca bug/user-story (tipo do card no DevOps). " +
         "0085 r5: abrir PR de branch existente com prmake_pr_open (nome pelas regras); cancelar/executar item com " +
-        "prmake_work_item_cancel/prmake_work_item_execute; horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
+        "prmake_work_item_cancel/prmake_work_item_execute; sub-tarefa a mais no item espelho do plano com prmake_work_item_add_task " +
+        "(etapa pedido-* pendente antes da etapa atual: o tratamento a faz primeiro e nunca a remove); horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
         "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados). " +
         "Analise respondida sem plano de implementacao/correcao ('so a analise por enquanto'): a pessoa pede os itens depois com " +
         "prmake_analysis_items(card, start) — o Claude do tratamento monta o plano (start=false: deixa pausado ate o Executar do item).";
