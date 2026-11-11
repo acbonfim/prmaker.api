@@ -16,9 +16,10 @@ locals {
       max_instances    = var.max_instances
       timeout_seconds  = 300
       session_affinity = false
-      # 1 GiB: com a Base Solvace (~29 milhões de caracteres) o cache da busca + a remontagem numa instância nova
-      # estouravam 512 MiB e a instância reiniciava em loop (buscas de 50–80 s).
-      memory = "1Gi"
+      # 2 GiB: com a Base Solvace (~29 milhões de caracteres) o cache da busca + a remontagem numa instância nova
+      # estouravam 512 MiB e depois 1 GiB (OutOfMemory em ReverseSearch/EF JSON, 10–23 s até o 500). Paliativo até a
+      # busca sair da memória da API (feature 0073).
+      memory = "2Gi"
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
         RealTime__Mode         = "Relay"
