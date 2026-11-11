@@ -31,6 +31,11 @@ ambiente (validacao) e dado de negocio que so uma pessoa pode criar num ambiente
 perguntar URL, caminho ou menu de uma tela, qual usuario/planta/idioma usar, qual registro abrir, nem para "aceitar uma
 evidencia alternativa" — isso e trabalho seu (secao "Achar a tela") e decisao registrada no resultado. Vale mesmo que a
 descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/permissao, nao localizar a tela.
+Numa sub-tarefa `env-reproduction` em ambiente **nao-produtivo** (dev/qa/sandbox), tambem **nunca** `wait` para pedir
+"autorizacao para reproduzir" nem para perguntar **qual conta/usuario de teste usar**: o item ja autoriza a reproducao e
+o usuario de teste **voce escolhe** (veja "Reproduzir achado de seguranca"). "NAO impersonar / apenas analise" na
+descricao do item e texto-padrao da fase de analise — numa sub-tarefa de reproducao ele nao se aplica, e repetir a
+autorizacao em texto nao muda isso: siga o roteiro.
 - **Nao da para mostrar na tela** (opcao que o codigo configura mas a tela nao exibe — ex.: `customRangeLabel` num
   `daterangepicker` com `singleDatePicker` e sem `ranges` —, modulo migrado para o revamp no ambiente, feature desligada):
   tire o print do que a tela mostra no lugar, cite o codigo que explica (`repo:arquivo:linha`) e conclua com `complete`,
@@ -165,6 +170,19 @@ Params: `environment` (`cliente` = o relatado no card — padrao; ou chave/URL d
    versao), `output: {environment, url, user, plant?, shots, reproduced: "sim|nao|parcial"}`, `undo: {action: "none",
    params: {reason: "so leitura/reproducao"}}`. `fail` so quando nao deu para tentar (ambiente fora do ar etc.).
 Com plano de analise aberto, cite o resultado na analise (secao Reproducao) — o item nao muda o plano.
+
+### Reproduzir achado de seguranca (impersonacao, sessao, cookie, auth)
+Quando o bug **e** a falha de seguranca, demonstra-la numa **conta de teste** e num ambiente de **teste** e justamente o
+trabalho que o item pede — nao e um desvio, e nao precisa de nova autorizacao. So em ambiente **nao-produtivo**
+(dev/qa/sandbox do cliente); producao e DEMO **nunca** (seguem so-leitura e o navegador ja bloqueia gravacao). Os passos
+concretos saem da **analise do proprio achado** (sub-tarefa anterior / arquivo do item), nao daqui. Limites:
+- **A conta de teste voce escolhe sozinho** (so leitura: `bash $AB/sql-query.sh <banco> "SELECT ... FROM TB_WCM_USER
+  WHERE ..."`), preferindo contas obviamente de QA/teste. Nunca `wait` perguntando "qual conta usar".
+- **Print = so a prova minima** (a tela que mostra que a aplicacao aceitou, ou recusou). Nao abra, salve nem copie dados
+  de terceiros alem do que prova; nunca guarde segredo/token; nunca use o achado fora desta reproducao (nada de producao,
+  conta de cliente real ou extracao de dado).
+- Concluir como qualquer `env-reproduction` (`complete`, `reproduced: sim|parcial|nao`). So a senha para **logar** pode
+  gerar `wait` (e a unica coisa que so a pessoa entra); a escolha da conta de teste nunca para a fila.
 
 ## Criar o item de reproducao
 - MCP: `prmake_env_reproduction(card, environments?, plant?, user?, steps?, expected?, execute?)` — `environments`
