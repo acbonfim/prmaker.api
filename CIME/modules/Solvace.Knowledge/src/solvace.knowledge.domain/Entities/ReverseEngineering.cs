@@ -645,6 +645,18 @@ public class ReverseIndexEntry
         return copy;
     }
 
+    /// <summary>
+    /// 0073: item lido do índice sem o que a consulta não usa (o texto, inteiro ou não, e as evidências, conforme o caso). Não grave com ele.
+    /// </summary>
+    public static ReverseIndexEntry Light(Guid id, string moduleKey, string docType, string itemId, string kind, string title, int level, int order,
+        string body, List<string> tags, List<string> tables, List<string> refs, List<string> evidence, List<string> modules, List<string> synonyms,
+        bool removed, int sectionVersion, DateTimeOffset updatedAt) => new()
+    {
+        Id = id, ModuleKey = moduleKey, DocType = docType, ItemId = itemId, Kind = kind, Title = title, Level = level, Order = order, Body = body,
+        Tags = tags, Tables = tables, Refs = refs, Evidence = evidence, Modules = modules, Synonyms = synonyms, Removed = removed,
+        SectionVersion = sectionVersion, UpdatedAt = updatedAt
+    };
+
     /// <summary>0070: item lido sem o texto (sumário do documento). Não grave com ele.</summary>
     public static ReverseIndexEntry Head(string moduleKey, string docType, string itemId, string kind, string title, int level, int order, bool removed,
         List<string>? tags = null, List<string>? tables = null, List<string>? modules = null) => new()

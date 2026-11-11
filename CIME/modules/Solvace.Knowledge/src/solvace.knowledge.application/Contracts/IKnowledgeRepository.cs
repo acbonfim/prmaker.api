@@ -62,14 +62,6 @@ public interface IKnowledgeRepository
     void AddAsset(ReverseAsset asset);
     /// <summary>Itens publicados (todos, ou de um módulo), sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesAsync(string? moduleKey, CancellationToken cancellationToken);
-    /// <summary>
-    /// Itens publicados de todos os módulos, um a um (0070): quem monta o cache da busca não precisa ter todos os textos na
-    /// memória ao mesmo tempo. A versão padrão lê tudo de uma vez; o repositório real lê em fluxo.
-    /// </summary>
-    async IAsyncEnumerable<ReverseIndexEntry> StreamIndexEntriesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        foreach (var entry in await GetIndexEntriesAsync(null, cancellationToken)) yield return entry;
-    }
     /// <summary>Itens do índice de um tipo (ex.: INT), de todos os módulos, sem rastreamento.</summary>
     Task<List<ReverseIndexEntry>> GetIndexEntriesByKindAsync(string kind, CancellationToken cancellationToken);
     /// <summary>Marca barata para saber se o índice mudou (quantidade + última atualização).</summary>
@@ -129,6 +121,69 @@ public interface IKnowledgeRepository
     /// <summary>Texto inteiro dos itens pedidos (id → texto).</summary>
     async Task<Dictionary<Guid, string>> GetIndexBodiesAsync(IReadOnlyCollection<Guid> entryIds, CancellationToken cancellationToken) =>
         (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => entryIds.Contains(e.Id)).ToDictionary(e => e.Id, e => e.Body);
+
+    // ── 0073: consultas ao índice da ER feitas no banco (o padrão serve o repositório em memória dos testes) ──
+
+    /// <summary>Itens do índice filtrados no banco, na ordem módulo → documento → ordem no documento.</summary>
+    async Task<List<ReverseIndexEntry>> QueryIndexAsync(ReverseIndexQuery query, CancellationToken cancellationToken)
+    {
+        var items = (await GetIndexEntriesAsync(null, cancellationToken)).Where(e =>
+                (query.Modules is not { Count: > 0 } || query.Modules.Contains(e.ModuleKey))
+                && (query.Kinds is not { Count: > 0 } || query.Kinds.Contains(e.Kind))
+                && (query.ExcludeKinds is not { Count: > 0 } || !query.ExcludeKinds.Contains(e.Kind))
+                && (query.DocType is null || e.DocType == query.DocType) && (query.NotDocType is null || e.DocType != query.NotDocType)
+                && (query.IncludeRemoved || !e.Removed))
+            .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).AsEnumerable();
+        return (query.Limit is { } limit ? items.Take(limit) : items).ToList();
+    }
+
+    /// <summary>Candidatos da busca (ver <see cref="ReverseSearchCandidates"/>), com o texto inteiro, um a um.</summary>
+    async IAsyncEnumerable<ReverseIndexEntry> StreamSearchCandidatesAsync(ReverseSearchCandidates candidates,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        foreach (var e in await GetIndexEntriesAsync(null, cancellationToken))
+            if ((candidates.Modules is not { Count: > 0 } || candidates.Modules.Contains(e.ModuleKey))
+                && (candidates.Kinds is not { Count: > 0 } || candidates.Kinds.Contains(e.Kind))
+                && (candidates.DocType is null || e.DocType == candidates.DocType) && (candidates.IncludeRemoved || !e.Removed))
+                yield return e;
+    }
+
+    /// <summary>Itens pelas referências <c>módulo#ID</c>, com o quanto do texto que <paramref name="body"/> pedir.</summary>
+    async Task<List<ReverseIndexEntry>> GetIndexItemsByRefsAsync(IReadOnlyCollection<string> refs, ReverseBodyMode body, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => refs.Contains(e.Ref)).ToList();
+
+    /// <summary>Itens com esse ID (num módulo, ou em todos) — para resolver uma referência sem módulo.</summary>
+    async Task<List<ReverseIndexEntry>> FindIndexItemsAsync(string itemId, string? moduleKey, ReverseBodyMode body, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => e.ItemId == itemId).ToList();
+
+    /// <summary>Itens que citam <paramref name="moduleKey"/>#<paramref name="itemId"/> (ou só o ID, dentro do mesmo módulo).</summary>
+    async Task<List<ReverseIndexEntry>> GetIndexReferrersAsync(string moduleKey, string itemId, int limit, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken))
+            .Where(x => !(x.ModuleKey == moduleKey && x.ItemId == itemId) && (x.Refs.Contains($"{moduleKey}#{itemId}") || (x.ModuleKey == moduleKey && x.Refs.Contains(itemId))))
+            .Take(limit).ToList();
+
+    /// <summary>Itens (sem os removidos) de qualquer módulo que citam uma tabela, um item, um módulo ou uma tag — ver <c>ImpactAsync</c>.</summary>
+    async Task<List<ReverseIndexEntry>> GetIndexImpactAsync(string value, (string? Module, string Id)? item, int limit, CancellationToken cancellationToken)
+    {
+        var lower = value.ToLowerInvariant();
+        var upper = value.ToUpperInvariant();
+        var all = await GetIndexEntriesAsync(null, cancellationToken);
+        var hits = item is { } p
+            ? all.Where(e => e.Refs.Contains(p.Module is null ? p.Id : $"{p.Module}#{p.Id}") || (p.Module is not null && e.ModuleKey == p.Module && e.Refs.Contains(p.Id)))
+            : all.Where(e => e.Tables.Contains(upper) || e.Modules.Contains(lower) || e.Refs.Any(r => r.StartsWith(lower + "#", StringComparison.Ordinal))
+                             || e.Tags.Any(t => t.Equals(value, StringComparison.OrdinalIgnoreCase)));
+        return hits.Where(e => !e.Removed).OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId).Take(limit).ToList();
+    }
+
+    /// <summary>Itens de outros módulos que citam <paramref name="moduleKey"/> (módulo nas lista de módulos ou referência <c>módulo#ID</c>), sem removidos.</summary>
+    async Task<List<ReverseIndexEntry>> GetIndexCitingModuleAsync(string moduleKey, int limit, CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => !e.Removed && e.ModuleKey != moduleKey
+                && (e.Modules.Contains(moduleKey) || e.Refs.Any(r => r.StartsWith(moduleKey + "#", StringComparison.Ordinal))))
+            .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).Take(limit).ToList();
+
+    /// <summary>Módulos que têm algum item publicado (sem removidos).</summary>
+    async Task<HashSet<string>> GetIndexModuleKeysAsync(CancellationToken cancellationToken) =>
+        (await GetIndexEntriesAsync(null, cancellationToken)).Where(e => !e.Removed).Select(e => e.ModuleKey).ToHashSet();
 
     /// <summary>Sugestões pendentes com seção, contadas por (projeto, seção).</summary>
     async Task<Dictionary<(string ProjectKey, string SectionKey), int>> CountPendingSuggestionsAsync(string? projectKey, CancellationToken cancellationToken) =>
