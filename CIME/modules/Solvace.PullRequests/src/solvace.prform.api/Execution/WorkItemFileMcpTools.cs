@@ -32,7 +32,7 @@ public class WorkItemFileMcpTools(
 
     [McpServerTool(Name = "prmake_work_item_file")]
     [Description("Grava um arquivo de texto no ITEM de trabalho (secao 'Arquivos' do item): script .sql com rollback, texto do chamado " +
-                 "(chamado-<nome>.md, kind ticket), analise .md, dados .csv/.json ou texto livre (kind text). Mesmo nome + tipo substitui a " +
+                 "(chamado-<card>-<nome>.md, kind ticket), analise .md, dados .csv/.json ou texto livre (kind text). Mesmo nome + tipo substitui a " +
                  "versao anterior. taskNumber = a sub-tarefa do item a que o arquivo pertence (opcional). Arquivo do plano continua em prmake_file; " +
                  "use este para o que e da entrega (item avulso, chamado do item, script que o item executa).")]
     public Task<string> SaveFile(string card,

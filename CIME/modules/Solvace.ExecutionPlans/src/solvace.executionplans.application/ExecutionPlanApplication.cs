@@ -99,8 +99,42 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 Status = ExecutionStatus.Cancelled,
                 Reason = $"Versão sem análise: a correção partiu da análise v{emptyAnalysis.VersionNumber}"
             }, actor, cancellationToken);
+        if (plan.ParentPlanId is { } analysisId)
+            await CloseAnalysisAsync(analysisId, plan.Kind, actor, cancellationToken);
         return plan.ToResponse([], 0, now);
     }
+
+    /// <summary>
+    /// Card 78262: com o plano de entrega criado a solução está decidida — a análise de origem fecha ("propor-solucoes"
+    /// concluída e plano concluído). A skill deveria concluir antes de criar a correção, mas quando não conclui o item da
+    /// análise ficava "em andamento" para sempre na Bancada. Best-effort: nunca quebra a criação do plano.
+    /// </summary>
+    private async Task CloseAnalysisAsync(Guid analysisId, string? kind, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reason = $"Solução decidida: {PlanTerms.DeliveryPlan(kind)} criado";
+            var analysis = await MutateAsync(analysisId, p =>
+            {
+                if (p.Phase == ExecutionPhase.Analysis && !p.IsFinished)
+                    p.CompleteStep(AnalysisDelivery.ProposeSolutionsStep, reason, actor.Name, DateTimeOffset.UtcNow, actor.IsExecutor);
+            }, cancellationToken, actor);
+            if (analysis.Phase != ExecutionPhase.Analysis || analysis.IsFinished)
+                return;
+            await ChangeStatusAsync(analysisId, new ChangeExecutionPlanStatusRequest { Status = ExecutionStatus.Completed, Reason = reason },
+                actor, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _repository.ClearTracking();
+        }
+    }
+
+    /// <summary>A análise já tem plano de entrega (não cancelado) nascido dela.</summary>
+    private async Task<bool> HasDeliveryPlanAsync(ExecutionPlan analysis, CancellationToken cancellationToken) =>
+        analysis.Phase == ExecutionPhase.Analysis
+        && (await _repository.GetSummariesByCardAsync(analysis.CardNumber, cancellationToken))
+            .Any(s => s.Phase == ExecutionPhase.Correction && s.ParentPlanId == analysis.Id && s.Status != ExecutionStatus.Cancelled);
 
     /// <summary>
     /// 0082: correção pedida sobre uma análise sem etapa concluída nem arquivo (a proposta aceita era de correção e a análise anterior
@@ -183,8 +217,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             if (artifacts is not null && TicketStepsMissingFiles(p, artifacts).FirstOrDefault(k => !missingBefore.Contains(k)) is { } missing)
                 throw new DomainException(
                     $"A etapa de chamado '{missing}' ficaria com o usuário sem os arquivos: anexe antes o script (.sql com rollback) e o texto do chamado " +
-                    $"com prmake_file(card, \"01_<nome>.sql\", conteudo, \"script\", \"{missing}\", phase: \"correction\") e " +
-                    $"prmake_file(card, \"chamado-<nome>.md\", texto, \"ticket\", \"{missing}\", phase: \"correction\").");
+                    $"com prmake_file(card, \"01_<card>_<nome>.sql\", conteudo, \"script\", \"{missing}\", phase: \"correction\") e " +
+                    $"prmake_file(card, \"chamado-<card>-<nome>.md\", texto, \"ticket\", \"{missing}\", phase: \"correction\").");
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
@@ -301,6 +335,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     /// <summary>"Já resolvi" (0037): o usuário fez o que a etapa travada esperava; a skill tenta de novo.</summary>
     public async Task<ExecutionStepResponse> ResolveStepAsync(Guid planId, string stepKey, string? note, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78262: análise que já virou plano de entrega não tem mais o que esperar — "Já resolvi" fecha a análise.
+        var current = await LoadAsync(planId, cancellationToken);
+        if (!current.IsFinished && await HasDeliveryPlanAsync(current, cancellationToken))
+        {
+            await CloseAnalysisAsync(planId, current.Kind, actor, cancellationToken);
+            var closed = await LoadAsync(planId, cancellationToken);
+            return (closed.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(stepKey))
+                    ?? throw new DomainException("Etapa não encontrada.")).ToResponse();
+        }
         ExecutionStep? step = null;
         var plan = await MutateAsync(planId, p => { step = p.ResolveStepByUser(stepKey, note, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);

@@ -9,7 +9,7 @@ a analise e os scripts na pasta do card, rode `sync <card> montar-analise` — o
 `.sql` direto na tela do card.
 Monte a analise em `$CARD_DIR/analises/analise-inicial.md` (a pasta do passo 1b) seguindo esta
 estrutura (Markdown, em portugues). Na analise, os scripts sao so as **consultas somente
-leitura** que levaram ao problema: `$CARD_DIR/scripts/00_consulta-<assunto>.sql`, com um comentario no topo dizendo
+leitura** que levaram ao problema: `$CARD_DIR/scripts/00_<card>_consulta-<assunto>.sql`, com um comentario no topo dizendo
 o que cada uma mostrou (0050). **Script que altera dados (SQL de correcao) nao e da analise** — ele e o texto do
 chamado vao no plano de correcao, na etapa do chamado (`ref.sh correcao 7`); aqui so descreva o que ele fara.
 Evidencias/saidas de consulta vao em `$CARD_DIR/dados/`.
@@ -72,7 +72,7 @@ ajuda; video/compactado: "nao aberto (motivo)"; card sem evidencias: diga isso. 
 - **Codigo:** mundo/repositorio (legado `edv-solvace` ou `revamp-<modulo>`), commit da master lido; os trechos sao as refs acima
 - **Base Solvace:** itens usados (`<modulo>#RN-012`) e lacunas registradas
 - **Regras de negocio (Knowledge Center):** ART-n usados (ou "sem artigo — lacuna")
-- **Banco de dados** *(obrigatorio)*: **consultado** (host/banco e o que confirmou; consultas `00_consulta-*.sql`) ·
+- **Banco de dados** *(obrigatorio)*: **consultado** (host/banco e o que confirmou; consultas `00_<card>_consulta-*.sql`) ·
   **nao necessario** (por que) · **nao consultado — o usuario pediu para seguir sem o banco** (resposta #n)
 - **Cognito** *(so se consultado)*: achados sem PII desnecessaria
 

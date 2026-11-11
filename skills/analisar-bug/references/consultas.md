@@ -111,7 +111,7 @@ permissao: a autorizacao dada no PRMake nao vale para o Claude Code. Em qualquer
 `bash $PLAN block <card> consultar-ambiente "<o que fazer>"` — ex.: "Ligar a VPN e clicar em *Ja resolvi*", "Liberar
 no Claude Code a regra `Bash(bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh:*)` (ou rodar
 `bash ~/.claude/skills/.prmake/prmake-skills.sh permissions`) e clicar em *Ja resolvi*", sempre com a alternativa
-"ou rode `scripts/00_consulta.sql` e cole o resultado num comentario do plano". Diga o mesmo no chat e rode o vigia.
+"ou rode `scripts/00_<card>_consulta.sql` e cole o resultado num comentario do plano". Diga o mesmo no chat e rode o vigia.
 
 **Sem credencial (exit 4) — diga claramente e oriente com seguranca.** No chat, sem rodeios: "**Estou sem acesso ao
 banco do cliente <cliente>** (nao ha credencial de leitura para o servidor <alias> nesta maquina) — sem isso a analise
@@ -128,13 +128,13 @@ que o certo e trocar e cadastrar pelo comando acima. Para ver o que esta configu
 
 **2. Consulte** — sempre com o **caminho literal** e **num comando so** (sem pipe, `&&`, `;` ou variavel antes): e
 assim que a regra de permissao do Claude Code casa e a consulta roda sem prompt. SQL com mais de uma linha vai em
-arquivo (`-f`), salvo em `$CARD_DIR/scripts/00_consulta-<assunto>.sql` (o usuario tambem consegue rodar e colar o
+arquivo (`-f`), salvo em `$CARD_DIR/scripts/00_<card>_consulta-<assunto>.sql` (o usuario tambem consegue rodar e colar o
 resultado). Essas consultas **somente leitura** sao os scripts do plano de **analise** (0050) — com um comentario no
 topo dizendo o que mostraram; script que altera dados vai so no plano de correcao:
 ```bash
 # aliases de host: prod | prod3 | prod4 (ou o hostname RDS completo)
 bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod3 -d <database> -q "SELECT TOP 20 Id, Name, Status FROM dbo.SomeTable WHERE ..."
-bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> -f <card-dir>/scripts/00_consulta_somente_leitura.sql
+bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host prod -d <database> -f <card-dir>/scripts/00_<card>_consulta_somente_leitura.sql
 ```
 
 Opcoes: `-d/--database` (default `master`), `--max-rows` (default 1000), `--timeout` (s), `--json`, `--ping`.
