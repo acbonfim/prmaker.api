@@ -102,6 +102,8 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update",
         // Sub-tarefa a pedido no item que espelha o plano: só ACRESCENTA uma etapa pendente (as outras não mudam).
         "prmake_work_item_add_task",
+        // Item avulso já começado/fechado: reabrir (refazendo sub-tarefas) e editar sub-tarefa pendente — nunca o plano.
+        "prmake_work_item_reopen", "prmake_work_task_update",
         // 0085 r4: ferramentas (modelos) do card — listar e criar o item a partir de uma.
         "prmake_tools", "prmake_tool_run",
         // r5: ações pedidas na conversa (nunca o plano): Timeline, card no DevOps (estado, horas, ações), PR, itens.
@@ -124,7 +126,8 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     public static readonly IReadOnlySet<string> ActingTools = new HashSet<string>(StringComparer.Ordinal)
     {
         "prmake_timeline", "prmake_devops", "prmake_pr_open",
-        "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_tool_run",
+        "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_work_item_reopen",
+        "prmake_work_task_update", "prmake_tool_run",
         "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction"
     };
 

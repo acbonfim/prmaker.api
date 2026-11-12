@@ -357,6 +357,51 @@ public class WorkItemApplication : IWorkItemApplication
         return (await ToResponsesAsync([copy], ct))[0];
     }
 
+    // ================================================================ reabrir / sub-tarefa a mais
+
+    public async Task<WorkItemResponse> ReopenAsync(long number, ReopenWorkItemRequest req, ExecutionActor actor, CancellationToken ct)
+    {
+        req ??= new ReopenWorkItemRequest();
+        IReadOnlyList<WorkItemTask> reopened = [];
+        var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
+            i => reopened = i.Reopen(req.Redo, req.Reason, actor.Name, DateTimeOffset.UtcNow), ct);
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Status, null, ct);
+        var redo = reopened.Count == 0 ? string.Empty
+            : $" — refazer {string.Join(", ", reopened.OrderBy(t => t.Order).Select(t => $"#{t.Number}"))}";
+        var why = string.IsNullOrWhiteSpace(req.Reason) ? "." : $": {req.Reason.Trim()}";
+        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** reaberto por {actor.Name}{redo}{why}", actor, ct);
+        if (req.Execute)
+            return await ExecuteAsync(item.Number, actor, ct);
+        return (await ToResponsesAsync([item], ct))[0];
+    }
+
+    public async Task<WorkItemResponse> AddTasksAsync(long number, AddWorkTasksRequest req, ExecutionActor actor, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+        var settings = TypeSource is { } source ? await source.GetAsync(ct) : null;
+        // Como na criação: sub-tarefa de script ganha as do chamado (gerar o arquivo + abrir no sistema de chamados).
+        var tasks = WorkItemTicketRule.Apply(req.Tasks ?? [], settings?.TicketSystem);
+        var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
+            i => i.AddTasks(tasks, req.Before, actor.Name, DateTimeOffset.UtcNow), ct);
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
+        await CaptureItemRefAsync(item.CardNumber, item.Number, null, tasks.Select(t => t.Description), actor, ct);
+        if (req.Execute)
+            return await ExecuteAsync(item.Number, actor, ct);
+        return (await ToResponsesAsync([item], ct))[0];
+    }
+
+    public async Task<WorkItemResponse> UpdateTaskAsync(long taskNumber, WorkTaskInput req, ExecutionActor actor, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+        var owner = await _items.GetByTaskNumberAsync(taskNumber, ct)
+                    ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
+        var item = await MutateAsync(() => _items.GetByTaskNumberAsync(taskNumber, ct), owner.Number,
+            i => i.EditTask(taskNumber, req, actor.Name, DateTimeOffset.UtcNow), ct);
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, taskNumber, ct);
+        await CaptureItemRefAsync(item.CardNumber, item.Number, null, [req.Description], actor, ct);
+        return (await ToResponsesAsync([item], ct))[0];
+    }
+
     // ================================================================ sub-tarefas
 
     public async Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct)
@@ -554,6 +599,9 @@ public class WorkItemApplication : IWorkItemApplication
             throw new DomainException($"O item #{item.Number} está {item.Status} — não dá para executar. Crie um novo a partir dele.");
         if (item.Tasks.Count == 0)
             throw new DomainException($"O item #{item.Number} não tem sub-tarefas.");
+        // Item reaberto sem nada a refazer: sem sub-tarefa aberta o executor não teria o que fazer (e o item cairia em falha).
+        if (item.PlanId is null && !item.Tasks.Any(t => WorkTaskStatus.IsOpen(t.Status) || t.Status == WorkTaskStatus.Failed))
+            throw new DomainException($"O item #{item.Number} não tem sub-tarefa pendente — acrescente uma ou reabra informando quais refazer.");
 
         Guid? requestId = null;
         if (item.PlanId is { } planId)

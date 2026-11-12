@@ -435,6 +435,146 @@ public class WorkItem
         SetStatus(WorkItemStatus.Cancelled, actor, r is null ? "Item cancelado." : $"Item cancelado: {r}", now);
     }
 
+    // ---------------------------------------------------------------- reabrir / sub-tarefa a mais (item avulso)
+
+    /// <summary>Ligado ao plano (roda retomando o plano): reabrir/acrescentar é pelo plano, não pelo item.</summary>
+    private bool FollowsPlan => PlanId is not null || MirrorsPlan;
+
+    /// <summary>Sub-tarefa que dá para refazer ao reabrir o item (já saiu de pendente e não está rodando).</summary>
+    private static bool CanRedo(string status) =>
+        status is WorkTaskStatus.Completed or WorkTaskStatus.Skipped or WorkTaskStatus.Failed or WorkTaskStatus.Cancelled
+            or WorkTaskStatus.Waiting;
+
+    /// <summary>
+    /// Reabre o item para refazer ou acrescentar trabalho. As sub-tarefas de <paramref name="redo"/> voltam a pendente (o
+    /// motivo vai para o fim do resultado; arquivos e prints já gravados ficam no item) e, no item cancelado, as canceladas
+    /// também. O item fica pendente (ou aguardando, se alguma sub-tarefa espera alguém) até ser executado de novo. Item que
+    /// espelha o plano muda pelo plano; rodando, desfazendo ou desfeito não reabre. Devolve as sub-tarefas reabertas.
+    /// </summary>
+    public IReadOnlyList<WorkItemTask> Reopen(IReadOnlyCollection<long>? redo, string? reason, string actor, DateTimeOffset now)
+    {
+        if (FollowsPlan)
+            throw new DomainException($"O item #{Number} é do plano — ele muda pelo plano (nova versão ou etapa a mais), não reabrindo o item.");
+        if (Status is WorkItemStatus.Queued or WorkItemStatus.Running)
+            throw new DomainException($"O item #{Number} está rodando — espere terminar (ou cancele) para reabrir.");
+        if (Status is WorkItemStatus.Reverting or WorkItemStatus.Reverted)
+            throw new DomainException($"O item #{Number} foi desfeito — não dá para reabrir. Crie um novo a partir dele.");
+
+        var numbers = (redo ?? []).Distinct().ToList();
+        var targets = new List<WorkItemTask>();
+        foreach (var n in numbers)
+        {
+            var task = Tasks.FirstOrDefault(t => t.Number == n)
+                       ?? throw new DomainException($"Sub-tarefa #{n} não é do item #{Number}.");
+            if (task.Status == WorkTaskStatus.Pending) continue;
+            if (!CanRedo(task.Status))
+                throw new DomainException($"A sub-tarefa #{n} está {task.Status} — não dá para refazer.");
+            targets.Add(task);
+        }
+        var cancelled = Status == WorkItemStatus.Cancelled;
+        if (cancelled)
+            targets.AddRange(Tasks.Where(t => t.Status == WorkTaskStatus.Cancelled && !targets.Contains(t)));
+        if (!cancelled && Status != WorkItemStatus.Completed && targets.Count == 0)
+            throw new DomainException($"O item #{Number} já está aberto ({Status}) — acrescente a sub-tarefa direto ou informe as sub-tarefas a refazer.");
+
+        var r = Clean(reason, MaxReasonLength);
+        foreach (var t in targets.OrderBy(t => t.Order))
+        {
+            t.Reopen(actor, r, now);
+            AddLog(t.Number, actor, WorkItemLogKind.Task, $"#{t.Number} {t.Title}: reaberta — volta a pendente.", now);
+        }
+        CancelReason = null;
+        ActiveRequestId = null;
+        var redone = targets.Count == 0 ? string.Empty : $" Refazer: {string.Join(", ", targets.OrderBy(t => t.Order).Select(t => $"#{t.Number}"))}.";
+        var text = $"Item reaberto{(r is null ? "." : $": {r}.")}{redone}";
+        var next = Tasks.Any(t => t.Status == WorkTaskStatus.Waiting) ? WorkItemStatus.Waiting : WorkItemStatus.Pending;
+        if (Status == next)
+            AddLog(null, actor, WorkItemLogKind.Status, text, now);
+        else
+            SetStatus(next, actor, text, now);
+        CompletedAt = null;
+        UpdatedAt = now;
+        return targets;
+    }
+
+    /// <summary>
+    /// Acrescenta sub-tarefas a um item avulso ainda aberto (pendente, em espera ou com falha — concluído/cancelado: reabra
+    /// antes). Entram antes da sub-tarefa pendente <paramref name="beforeTask"/> ou no fim. Item que espelha o plano ganha
+    /// sub-tarefa pela etapa nova do plano. Devolve as criadas (o número vem do banco ao salvar).
+    /// </summary>
+    public IReadOnlyList<WorkItemTask> AddTasks(IReadOnlyList<WorkTaskInput> inputs, long? beforeTask, string actor, DateTimeOffset now)
+    {
+        if (FollowsPlan)
+            throw new DomainException($"O item #{Number} é do plano — a sub-tarefa a mais entra como etapa nova do plano.");
+        if (Status is WorkItemStatus.Completed or WorkItemStatus.Cancelled)
+            throw new DomainException($"O item #{Number} está {Status} — reabra o item antes de acrescentar sub-tarefa.");
+        if (Status is WorkItemStatus.Reverting or WorkItemStatus.Reverted)
+            throw new DomainException($"O item #{Number} foi desfeito — não dá para acrescentar sub-tarefa. Crie um novo a partir dele.");
+        if (inputs.Count == 0)
+            throw new DomainException("Informe a sub-tarefa a acrescentar.");
+        if (Tasks.Count + inputs.Count > MaxTasks)
+            throw new DomainException($"Um item pode ter no máximo {MaxTasks} sub-tarefas.");
+
+        int order;
+        if (beforeTask is { } b)
+        {
+            var anchor = Tasks.FirstOrDefault(t => t.Number == b)
+                         ?? throw new DomainException($"Sub-tarefa #{b} não é do item #{Number}.");
+            if (anchor.Status != WorkTaskStatus.Pending)
+                throw new DomainException($"A sub-tarefa #{b} está {anchor.Status} — só dá para acrescentar antes de uma pendente.");
+            order = anchor.Order;
+            foreach (var t in Tasks.Where(t => t.Order >= order))
+                t.Order += inputs.Count;
+        }
+        else
+        {
+            order = Tasks.Count == 0 ? 1 : Tasks.Max(t => t.Order) + 1;
+        }
+
+        var added = new List<WorkItemTask>();
+        foreach (var input in inputs)
+        {
+            input.Number = null;
+            input.StepKey = null;
+            var task = new WorkItemTask(Id, order++, input, now);
+            Tasks.Add(task);
+            added.Add(task);
+            AddLog(null, actor, WorkItemLogKind.Updated, $"Sub-tarefa acrescentada: {task.Title}.", now);
+        }
+        Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        UpdatedAt = now;
+        return added;
+    }
+
+    /// <summary>
+    /// Edita uma sub-tarefa ainda pendente de um item aberto (o item pode já ter começado). Campos null ficam como estão.
+    /// Sub-tarefa espelho do plano muda pelo plano.
+    /// </summary>
+    public WorkItemTask EditTask(long taskNumber, WorkTaskInput change, string actor, DateTimeOffset now)
+    {
+        if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting)
+            throw new DomainException($"O item #{Number} está {Status} — reabra o item antes de editar a sub-tarefa.");
+        var task = Tasks.FirstOrDefault(t => t.Number == taskNumber)
+                   ?? throw new DomainException($"Sub-tarefa #{taskNumber} não é do item #{Number}.");
+        if (task.StepKey is not null)
+            throw new DomainException($"A sub-tarefa #{taskNumber} espelha uma etapa do plano — ela muda pelo plano.");
+        if (task.Status != WorkTaskStatus.Pending)
+            throw new DomainException($"A sub-tarefa #{taskNumber} está {task.Status} — só edita pendente (para refazer, reabra o item com ela).");
+        task.Reshape(task.Order, new WorkTaskInput
+        {
+            Title = change.Title ?? task.Title,
+            Description = change.Description ?? task.Description,
+            Kind = change.Kind ?? task.Kind,
+            Executor = change.Executor ?? task.Executor,
+            Params = change.Params ?? task.Params,
+        });
+        task.Touch(now);
+        Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        UpdatedAt = now;
+        AddLog(task.Number, actor, WorkItemLogKind.Updated, $"#{task.Number} {task.Title}: sub-tarefa editada.", now);
+        return task;
+    }
+
     /// <summary>Sub-tarefas concluídas que serão desfeitas (ordem reversa).</summary>
     public IReadOnlyList<WorkItemTask> TasksToUndo =>
         OrderedTasks.Where(t => t.Status == WorkTaskStatus.Completed).Reverse().ToList();

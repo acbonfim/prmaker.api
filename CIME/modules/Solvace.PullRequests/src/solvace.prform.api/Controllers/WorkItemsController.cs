@@ -119,6 +119,33 @@ public partial class WorkItemsController : ExecutionControllerBase
     public Task<ActionResult<WorkItemResponse>> Duplicate([FromRoute] long number, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () => Ok(await _items.DuplicateAsync(number, await ActorAsync(ct), ct)));
 
+    /// <summary>
+    /// Reabre item avulso concluído/cancelado/com falha: <c>redo</c> = sub-tarefas que voltam a pendente para refazer (vazio =
+    /// só reabrir, para acrescentar sub-tarefa); <c>execute</c> já põe na fila.
+    /// </summary>
+    [HttpPost("{number:long}/reopen")]
+    public Task<ActionResult<WorkItemResponse>> Reopen([FromRoute] long number,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ReopenWorkItemRequest? request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () =>
+        {
+            await EnsureSpecialistItemAsync(number, ct);
+            return Ok(await _items.ReopenAsync(number, request ?? new ReopenWorkItemRequest(), await ActorAsync(ct), ct));
+        });
+
+    /// <summary>Sub-tarefas a mais num item avulso aberto (antes da pendente <c>before</c> ou no fim).</summary>
+    [HttpPost("{number:long}/tasks")]
+    public Task<ActionResult<WorkItemResponse>> AddTasks([FromRoute] long number, [FromBody] AddWorkTasksRequest request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () =>
+        {
+            await EnsureSpecialistItemAsync(number, ct);
+            return Ok(await _items.AddTasksAsync(number, request, await ActorAsync(ct), ct));
+        });
+
+    /// <summary>Edita uma sub-tarefa pendente (o item pode já ter começado); campos ausentes ficam como estão.</summary>
+    [HttpPut("tasks/{taskNumber:long}")]
+    public Task<ActionResult<WorkItemResponse>> UpdateTask([FromRoute] long taskNumber, [FromBody] WorkTaskInput request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.UpdateTaskAsync(taskNumber, request, await ActorAsync(ct), ct)));
+
     /// <summary>Executa: item avulso entra na fila (pista própria); item de plano retoma o plano.</summary>
     [HttpPost("{number:long}/execute")]
     public Task<ActionResult<WorkItemExecuteResponse>> Execute([FromRoute] long number, CancellationToken ct) =>

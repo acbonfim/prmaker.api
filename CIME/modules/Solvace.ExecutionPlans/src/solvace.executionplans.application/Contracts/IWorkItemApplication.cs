@@ -28,6 +28,15 @@ public interface IWorkItemApplication
     Task<WorkItemResponse> CreateAsync(string card, CreateWorkItemRequest req, string origin, ExecutionActor actor, CancellationToken ct);
     Task<WorkItemResponse> UpdateAsync(long number, UpdateWorkItemRequest req, ExecutionActor actor, CancellationToken ct);
     Task<WorkItemResponse> DuplicateAsync(long number, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// Reabre item avulso concluído/cancelado/com falha: as sub-tarefas de <see cref="ReopenWorkItemRequest.Redo"/> voltam a
+    /// pendente; <see cref="ReopenWorkItemRequest.Execute"/> já põe na fila.
+    /// </summary>
+    Task<WorkItemResponse> ReopenAsync(long number, ReopenWorkItemRequest req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Sub-tarefas a mais num item avulso aberto (antes de uma pendente ou no fim); script ganha as do chamado.</summary>
+    Task<WorkItemResponse> AddTasksAsync(long number, AddWorkTasksRequest req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Edita uma sub-tarefa pendente (item aberto, mesmo já começado). Campos null ficam.</summary>
+    Task<WorkItemResponse> UpdateTaskAsync(long taskNumber, WorkTaskInput req, ExecutionActor actor, CancellationToken ct);
     /// <param name="action">start | complete | fail | wait | skip | revert | cancel (ver <see cref="WorkTaskAction"/>).</param>
     Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>"Já resolvi" na sub-tarefa que espera a pessoa: volta a andar e o item é retomado (item de plano: pelo plano).</summary>
