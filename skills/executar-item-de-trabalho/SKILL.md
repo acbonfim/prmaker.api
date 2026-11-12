@@ -122,9 +122,13 @@ Push sempre explicito: `git -C "$WT" push -u origin <branch>` (o worktree nasce 
 | `env-reproduction` | **Reproduzir o bug no ambiente com prints** — leia `cat ~/.claude/skills/validar-ambiente/SKILL.md` (secao "Reproduzir o bug") e siga: `params.environment` = `cliente` (padrao: o relatado no card, `env.sh card-env <card>`) ou outro; `browser start <amb|cliente> --card <card> --task <n>` → passos (`params.steps` ou os do card) com `shot` so do inicio do fluxo e do erro → `browser stop` → `evidence ... --report reproducao-<amb>.md`. Sem senha/login recusado/sem navegador: o `env.sh` ja avisa na ferramenta, so pare. Producao/DEMO: o que grava vai para o sandbox do cliente ou qa. **Sem `wait` para achar tela/URL/menu, usuario, planta ou "aceitar evidencia alternativa"** (secoes "Autonomia" e "Achar a tela" da skill): nao deu para mostrar → print do que aparece + codigo que explica + `reproduced: parcial` com "Para decidir depois:" e siga para a proxima sub-tarefa. **Conclua com `complete` mesmo sem reproduzir** (o resultado e a informacao) | `{environment, url, user, plant?, shots, reproduced:"sim\|nao\|parcial"}` | `none {reason:"so leitura/reproducao"}` |
 | `notify` | Aviso curto no card com `params.message` (pt-BR; sem segredo nem dado de cliente alem do card): Timeline sempre — `prmake_timeline(card, markdown)`. Teams: o PRMake so envia pelo Teams o **pedido de aprovacao de PR** (Workflow pessoal em Minhas integracoes, botao "Pedir aprovacao" / `POST Teams/approval`); aviso que e isso e tem PR aberto → use-o; outro aviso → so Timeline e diga no `result` que o Teams nao tem envio livre | `{where:"timeline\|timeline+teams"}` | `none` (aviso nao se apaga) |
 
-**Visao geral do item de pesquisa/analise** (sub-tarefas `research`): ao concluir a **ultima** sub-tarefa `research`
-do item, grave tambem no item `00-visao-geral-<id>.md` (`prmake_work_item_file(..., kind: "analysis")`, `<id>` = id do
-achado/item, ex.: `00-visao-geral-gs-096.md`) — o resumo executivo que a Visao geral mostra no topo, pt-BR com acentos,
+**Visao geral do item de pesquisa/analise** (sub-tarefas `research`): o item tem (ou ganha, se faltar) o arquivo
+`00-visao-geral-<id>.md` (`prmake_work_item_file(..., kind: "analysis")`, `<id>` = codigo do achado/item, ex.:
+`00-visao-geral-GS-002.md`; sem codigo, `item-<numero>`) desde a criacao — a pessoa le, copia, baixa e **edita** esse
+arquivo na Visao geral. **Atualize-o ao concluir cada sub-tarefa `research`** (o que ja foi confirmado entra com o selo;
+o que falta continua como hipotese/a confirmar) e, na **ultima**, deixe o resumo executivo final. **Antes de regravar,
+leia a versao atual** (`prmake_work_item_files(card, number, file: "00-visao-geral-<id>.md")`): o que a pessoa escreveu ou
+corrigiu nele fica (incorpore, nao apague). O resumo final que a Visao geral mostra no topo, pt-BR com acentos,
 no **mesmo formato visual da `analise-inicial.md`** (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh analise 4` e
 `4b`: selos, callouts, fotografias):
 - `> [!SUMMARY]` com `**Problema:**`, `**Causa (confirmada):**` (ou `(provável)`) e `**Decisão:**`;
