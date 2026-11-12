@@ -390,7 +390,7 @@ case "$CMD" in
       while IFS= read -r route; do [[ -n "$route" ]] && ALLOW+=(--allow "$route"); done \
         < <( { jq -r '(.readOnlyAllow // [])[]' "$CACHE"; jq -r '(.allow // [])[]' <<<"$ENV"; } 2>/dev/null )
       "$PY" "$DIR/env_browser.py" start --env "$KEY" --url "$(jq -r .url <<<"$ENV")" --user "$USER_ARG" --out "$OUT" \
-        --label "$(jq -r .label <<<"$ENV")" ${RO[@]+"${RO[@]}"} ${ALLOW[@]+"${ALLOW[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
+        --label "$(jq -r .label <<<"$ENV")" ${CARD:+--card "$CARD"} ${TASK:+--task "$TASK"} ${RO[@]+"${RO[@]}"} ${ALLOW[@]+"${ALLOW[@]}"} ${HEADED[@]+"${HEADED[@]}"} | tee "$TMP/start.out"
       RC=${PIPESTATUS[0]}
       # A pessoa fica sabendo na ferramenta (Bancada/Execução: "aguardando você" + "Já resolvi"), sem depender do Claude.
       [[ $RC -eq 2 || $RC -eq 3 || $RC -eq 4 ]] && [[ -n "$TASK" ]] && notify_wait "$TASK" "$RC" "$(env_ref "$ENV")" "$(jq -r .label <<<"$ENV")" "$(jq -r .url <<<"$ENV")" "$USER_ARG" "$TMP/start.out"

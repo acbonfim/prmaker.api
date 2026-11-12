@@ -130,6 +130,20 @@ public class WorkItemAnalysisLiveTests
     }
 
     [Fact]
+    public void Mine_only_for_the_owner_of_the_request_never_falling_back_to_the_viewer()
+    {
+        var request = Request(ExecutionRequestStatus.Running, Guid.NewGuid(), Now);
+        Assert.True(WorkItemLive.Build(Head(), request, null, [], [], Now, request.OwnerUserId).Mine);
+        Assert.False(WorkItemLive.Build(Head(), request, null, [], [], Now, Guid.NewGuid()).Mine);
+        Assert.False(WorkItemLive.Build(Head(), request, null, [], [], Now).Mine);
+
+        // Sem pedido: o dono é quem criou o item (nunca "quem está vendo", que faria todo mundo procurar o executor local).
+        var head = Head();
+        Assert.True(WorkItemLive.Build(head, null, null, [], [], Now, head.CreatedBy).Mine);
+        Assert.False(WorkItemLive.Build(head, null, null, [], [], Now, Guid.NewGuid()).Mine);
+    }
+
+    [Fact]
     public void No_request_means_null_request_and_no_activity()
     {
         var live = WorkItemLive.Build(Head(WorkItemStatus.Pending), null, null, [], [], Now);

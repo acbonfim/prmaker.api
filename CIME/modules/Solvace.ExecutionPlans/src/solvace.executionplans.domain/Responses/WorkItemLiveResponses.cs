@@ -24,6 +24,11 @@ public class WorkItemLiveResponse
     /// de plano ativo, a skill deu sinal no plano nos últimos 5 min (o mesmo critério do "sem sinal do Claude" da tela).
     /// </summary>
     public bool ExecutorOnline { get; set; }
+    /// <summary>
+    /// 0095: a execução é de quem está vendo (o dono do pedido, senão do plano, senão quem criou o item) — só então a
+    /// Bancada procura o executor desta máquina para o "Ver tela ao vivo" (os outros nem tocam no 127.0.0.1).
+    /// </summary>
+    public bool Mine { get; set; }
 }
 
 public class WorkItemLiveRequest
@@ -82,7 +87,7 @@ public static class WorkItemLive
     }
 
     public static WorkItemLiveResponse Build(WorkItemLiveHead head, WorkItemLiveRequestRow? request, string? waitCode,
-        IReadOnlyCollection<WorkItemLog> logs, IReadOnlyCollection<WorkItemLiveWorker> workers, DateTimeOffset now) => new()
+        IReadOnlyCollection<WorkItemLog> logs, IReadOnlyCollection<WorkItemLiveWorker> workers, DateTimeOffset now, Guid? viewer = null) => new()
     {
         Number = head.Number,
         Status = head.Status,
@@ -106,5 +111,6 @@ public static class WorkItemLive
                 .Select(a => new ExecutionActivityResponse { Label = a.Label, Tool = a.Tool, At = a.At }).ToList(),
         Logs = logs.OrderBy(l => l.At).ThenBy(l => l.Id).TakeLast(MaxLogs).Select(WorkItemLogResponse.From).ToList(),
         ExecutorOnline = IsExecutorOnline(head, request, workers, now),
+        Mine = viewer is { } v && OwnerOf(head, request, null) == v,
     };
 }
