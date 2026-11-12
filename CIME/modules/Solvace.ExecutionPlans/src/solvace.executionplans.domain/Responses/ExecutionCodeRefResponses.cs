@@ -6,7 +6,8 @@ namespace solvace.executionplans.domain.Responses;
 public class ExecutionCodeRefHeadResponse
 {
     public Guid Id { get; set; }
-    public Guid PlanId { get; set; }
+    /// <summary>Plano dono; null = fotografia do card sem plano (itens de trabalho avulsos).</summary>
+    public Guid? PlanId { get; set; }
     public string Ref { get; set; } = string.Empty;
     public string? Repository { get; set; }
     public string Path { get; set; } = string.Empty;

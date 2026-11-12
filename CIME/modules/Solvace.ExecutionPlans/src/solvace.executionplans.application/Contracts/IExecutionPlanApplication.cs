@@ -67,6 +67,10 @@ public interface IExecutionPlanApplication
     Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionCodeRefResponse> PatchCodeRefAsync(Guid planId, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteCodeRefAsync(Guid planId, string reference, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Grava pelo card: no plano do card ou, sem plano, como fotografia do card (PlanId nulo).</summary>
+    Task<ExecutionCodeRefResponse> SaveCardCodeRefAsync(string cardNumber, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Ajusta pelo card: no plano do card (ou outra ref do card) ou, sem plano, a fotografia do card.</summary>
+    Task<ExecutionCodeRefResponse> PatchCardCodeRefAsync(string cardNumber, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);
     Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(Guid planId, CancellationToken cancellationToken);
     Task<List<ExecutionCodeRefHeadResponse>> GetCardCodeRefHeadsAsync(string cardNumber, CancellationToken cancellationToken);
     Task<ExecutionCodeRefResponse> GetCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken);

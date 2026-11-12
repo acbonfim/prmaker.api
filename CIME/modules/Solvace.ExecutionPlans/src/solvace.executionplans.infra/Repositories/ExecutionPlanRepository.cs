@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using solvace.executionplans.application.Contracts;
 using solvace.executionplans.domain.Entities;
 using solvace.executionplans.domain.Responses;
@@ -345,6 +346,33 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
     public Task<ExecutionCodeRef?> GetCodeRefAsync(Guid id, CancellationToken cancellationToken) =>
         _context.CodeRefs.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
 
+    public async Task<List<(Guid Id, string Status)>> GetCardPlanStatusesAsync(string cardNumber, CancellationToken cancellationToken) =>
+        (await _context.Plans.AsNoTracking()
+            .Where(p => p.CardNumber == cardNumber)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => new { p.Id, p.Status })
+            .ToListAsync(cancellationToken))
+        .Select(p => (p.Id, p.Status)).ToList();
+
+    public Task<ExecutionCodeRef?> FindCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken) =>
+        _context.CodeRefs.FirstOrDefaultAsync(r => r.PlanId == null && r.CardNumber == cardNumber && r.Ref == reference, cancellationToken);
+
+    public Task<int> CountCardCodeRefsAsync(string cardNumber, CancellationToken cancellationToken) =>
+        _context.CodeRefs.CountAsync(r => r.PlanId == null && r.CardNumber == cardNumber, cancellationToken);
+
+    public Task<List<WorkItemFile>> GetCardWorkItemFilesByNameAsync(string cardNumber, string name, CancellationToken cancellationToken)
+    {
+        var wanted = name.ToLower();
+        // Sem o conteúdo (Content não é carregado): só quem for escolhido tem os bytes lidos.
+        return (from f in _context.WorkItemFiles.AsNoTracking()
+                join i in _context.WorkItems.AsNoTracking() on f.WorkItemId equals i.Id
+                where i.CardNumber == cardNumber && f.Name.ToLower() == wanted
+                select f).ToListAsync(cancellationToken);
+    }
+
+    public Task<byte[]?> GetWorkItemFileContentAsync(Guid fileId, CancellationToken cancellationToken) =>
+        _context.WorkItemFileContents.AsNoTracking().Where(c => c.FileId == fileId).Select(c => c.Data).FirstOrDefaultAsync(cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try
@@ -353,6 +381,12 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
         }
         catch (DbUpdateConcurrencyException e)
         {
+            throw new ExecutionPlanConcurrencyException(e);
+        }
+        catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
+                                          && pg.ConstraintName == ExecutionPlanContext.CardCodeRefIndex)
+        {
+            // Mesma fotografia do card sem plano gravada ao mesmo tempo: quem chama relê e tenta de novo.
             throw new ExecutionPlanConcurrencyException(e);
         }
     }

@@ -429,12 +429,34 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCardCodeRefs([FromRoute] string cardNumber, CancellationToken ct) =>
         Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCardCodeRefHeadsAsync(cardNumber, ct)));
 
+    /// <summary>
+    /// Grava pelo card: com plano, no plano do card (o aberto mais recente, senão o mais recente); sem plano (itens de
+    /// trabalho avulsos), como fotografia do card (<c>planId</c> nulo). O <c>coderef</c> da skill usa quando não há plano.
+    /// </summary>
+    [HttpPut("card/{cardNumber}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> SaveCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference,
+        [FromBody] SaveExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.SaveCardCodeRefAsync(cardNumber, reference, request.ToCapture(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Ajusta pelo card (mesma regra do PUT): por quê, notas, proposta ou o diff feito, sem nova fotografia.</summary>
+    [HttpPatch("card/{cardNumber}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> PatchCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference,
+        [FromBody] PatchExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.PatchCardCodeRefAsync(cardNumber, reference, request.ToPatch(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
     /// <summary>Uma fotografia completa (código, proposta, notas) — o popover.</summary>
     [HttpGet("card/{cardNumber}/code-refs/{reference}")]
     public Task<ActionResult<ExecutionCodeRefResponse>> GetCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference, CancellationToken ct) =>
         Run<ExecutionCodeRefResponse>(async () => Ok(await _application.GetCardCodeRefAsync(cardNumber, reference, ct)));
 
-    /// <summary>0075: arquivo do card pelo nome (qualquer plano) — imagens <c>anexo:&lt;nome&gt;</c> do texto da análise.</summary>
+    /// <summary>
+    /// 0075: arquivo do card pelo nome (qualquer plano; sem nenhum, os arquivos dos itens de trabalho do card) — imagens
+    /// <c>anexo:&lt;nome&gt;</c> do texto da análise e da Visão geral do item.
+    /// </summary>
     [HttpGet("card/{cardNumber}/artifacts/by-name/{name}/content")]
     public Task<ActionResult> GetCardArtifactByName([FromRoute] string cardNumber, [FromRoute] string name, CancellationToken ct) =>
         RunPlain(async () =>
