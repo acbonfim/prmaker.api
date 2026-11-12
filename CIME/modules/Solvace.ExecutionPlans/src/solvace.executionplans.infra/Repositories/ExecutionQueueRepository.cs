@@ -1,3 +1,4 @@
+using solvace.executionplans.domain.Responses;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using solvace.executionplans.application.Contracts;
@@ -40,6 +41,33 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .Where(r => r.CardNumber == cardNumber && r.Kind == Specialist)
             .OrderByDescending(r => r.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken)
+    {
+        var query = _context.Requests.AsNoTracking().Where(r => r.CardNumber == cardNumber && r.Kind == Specialist);
+        if (since is { } s) query = query.Where(r => r.CreatedAt > s);
+        var sum = await query.GroupBy(_ => 1).Select(g => new
+        {
+            Responses = g.Count(r => r.InputTokens != null),
+            Input = g.Sum(r => r.InputTokens ?? 0),
+            Output = g.Sum(r => r.OutputTokens ?? 0),
+            Fresh = g.Sum(r => r.FreshInputTokens ?? 0),
+            CacheRead = g.Sum(r => r.CacheReadTokens ?? 0),
+            CacheWrite = g.Sum(r => r.CacheWriteTokens ?? 0),
+            Cost = g.Sum(r => r.CostUsd ?? 0)
+        }).FirstOrDefaultAsync(cancellationToken);
+        return new CaseUsageResponse
+        {
+            Since = since,
+            Responses = sum?.Responses ?? 0,
+            InputTokens = sum?.Input ?? 0,
+            OutputTokens = sum?.Output ?? 0,
+            FreshInputTokens = sum?.Fresh ?? 0,
+            CacheReadTokens = sum?.CacheRead ?? 0,
+            CacheWriteTokens = sum?.CacheWrite ?? 0,
+            CostUsd = sum?.Cost ?? 0
+        };
+    }
 
     public Task<List<ExecutionRequest>> GetActiveRequestsForCardsAsync(IReadOnlyCollection<string> cardNumbers, CancellationToken cancellationToken) =>
         _context.Requests.AsNoTracking()

@@ -56,7 +56,9 @@ public interface IWorkItemApplication
     Task SyncFromPlanAsync(Guid planId, CancellationToken ct);
     Task<IReadOnlyList<WorkItemResponse>> CancelByPlanAsync(Guid planId, bool undo, string? reason, ExecutionActor actor, CancellationToken ct);
     /// <summary>Markdown dos itens do card para o contexto do especialista (número, tipo, título, status, origem, fingerprint, sub-tarefas e saídas).</summary>
-    Task<string> SummaryMarkdownAsync(string card, CancellationToken ct);
+    /// <param name="compact">Versão curta para o contexto do especialista (relido a cada resposta): sub-tarefas só dos itens em
+    /// andamento, uma linha por item pendente/fechado e só os mais recentes — o resto vem contado (detalhe por prmake_work_item).</param>
+    Task<string> SummaryMarkdownAsync(string card, CancellationToken ct, bool compact = false);
 
     // 0094: relatados do card (aba "Relatado", somente leitura; também entram no contexto da IA).
     /// <summary>Itens relatados ao card (menção/manual), resolvidos com sub-tarefas — mais recentes primeiro.</summary>

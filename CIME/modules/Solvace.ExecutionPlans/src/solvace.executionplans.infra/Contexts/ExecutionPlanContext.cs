@@ -31,6 +31,7 @@ public class ExecutionPlanContext : DbContext
     public DbSet<CasePoint> CasePoints { get; set; }
     public DbSet<CaseProposal> CaseProposals { get; set; }
     public DbSet<CaseAction> CaseActions { get; set; }
+    public DbSet<CaseReader> CaseReaders { get; set; }
     // 0085: itens de trabalho do card.
     public DbSet<WorkItem> WorkItems { get; set; }
     public DbSet<WorkItemTask> WorkItemTasks { get; set; }
@@ -365,6 +366,14 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.SessionCwd).HasMaxLength(ExecutionSession.MaxCwdLength);
             entity.Property(e => e.CostUsd).HasPrecision(12, 4);
             entity.Property(e => e.Version).IsRowVersion();
+        });
+
+        modelBuilder.Entity<CaseReader>(entity =>
+        {
+            entity.ToTable("CaseReaders");
+            entity.HasKey(e => new { e.CardNumber, e.UserId });
+            entity.Property(e => e.CardNumber).HasMaxLength(100);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(CaseReader.MaxNameLength);
         });
 
         modelBuilder.Entity<CaseMessage>(entity =>

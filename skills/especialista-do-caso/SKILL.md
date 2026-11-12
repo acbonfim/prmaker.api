@@ -50,12 +50,15 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
 7. Se a pergunta for de outra pessoa para outra pessoa e nao precisar de voce, nao responda.
 
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
-1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens e dos **relatados** —
-   itens de outros cards relacionados a este por mencao `#n`/`##n` ou a mao; use-os como contexto, detalhe de um deles com
-   `prmake_work_item(card, n)`) e
-   `bash $CASE rules <card>` + `bash $CASE items <card>` (cache em `~/.prmake/cards/<card>/dados/regras.md` e
-   `itens.json`, 10 min). Depois disso, so `prmake_case_messages` (as novas); o script devolve o cache sem ir ao
-   servidor.
+1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens — **compacto**: itens em
+   andamento com as sub-tarefas abertas, pendentes e fechados numa linha, o resto so contado — e dos **relatados**, itens de
+   outros cards relacionados a este por mencao `#n`/`##n` ou a mao; use-os como contexto) e `bash $CASE rules <card>`
+   (cache em `~/.prmake/cards/<card>/dados/regras.md`, 10 min). **Nao** liste os itens de novo no inicio: o contexto ja
+   traz. Depois disso, so `prmake_case_messages` (as novas).
+   **Economia (custo):** tudo o que voce le fica na sessao e e relido em TODA chamada seguinte. Leia so o que a pergunta
+   pede: o detalhe de UM item e `prmake_work_item(card, n)`; a lista inteira (`prmake_work_items` ou
+   `bash $CASE items <card>`, cache em `itens.json`) so quando for criar/conferir item ou a pessoa pedir a lista. Nao releia
+   arquivo grande inteiro (use trechos), nao repita leitura que ja esta na sessao.
    Recarregue com `--refresh` quando a mensagem/contexto indicar mudanca (item criado, executado ou cancelado, PR
    aberto, nova versao do plano, card mudou de estado/area) e logo apos criar/editar um item. Sem cache (script falhou):
    `prmake_rules(card)` e `prmake_work_items(card)` sao a fonte.

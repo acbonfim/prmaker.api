@@ -23,6 +23,11 @@ public interface ICaseChatRepository
     /// <summary>Pessoas que já escreveram na conversa (id, nome, quantas mensagens).</summary>
     Task<List<CaseParticipant>> GetParticipantsAsync(string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>Quem já viu a conversa e até que mensagem.</summary>
+    Task<List<CaseReader>> GetReadersAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>A pessoa viu até <paramref name="number"/> (só avança). True = avançou (vale avisar a tela).</summary>
+    Task<bool> MarkSeenAsync(CaseReader seen, CancellationToken cancellationToken);
+
     Task<int> GetMaxFileNumberAsync(string cardNumber, CancellationToken cancellationToken);
     Task<long> GetFilesSizeAsync(string cardNumber, CancellationToken cancellationToken);
     void AddFile(CaseFile file);

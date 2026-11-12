@@ -61,6 +61,21 @@ public class CaseChatRepository(ExecutionPlanContext context) : ICaseChatReposit
         .OrderByDescending(p => p.LastAt)
         .ToList();
 
+    public Task<List<CaseReader>> GetReadersAsync(string cardNumber, CancellationToken cancellationToken) =>
+        context.CaseReaders.AsNoTracking().Where(r => r.CardNumber == cardNumber).ToListAsync(cancellationToken);
+
+    // O schema não pode ir como parâmetro: vai no texto (constante); os valores vão como parâmetros.
+    private const string MarkSeenSql = $$"""
+        INSERT INTO {{ExecutionPlanContext.Schema}}."CaseReaders" ("CardNumber", "UserId", "Name", "LastSeenNumber", "SeenAt")
+        VALUES ({0}, {1}, {2}, {3}, {4})
+        ON CONFLICT ("CardNumber", "UserId") DO UPDATE
+           SET "LastSeenNumber" = EXCLUDED."LastSeenNumber", "Name" = EXCLUDED."Name", "SeenAt" = EXCLUDED."SeenAt"
+         WHERE "CaseReaders"."LastSeenNumber" < EXCLUDED."LastSeenNumber"
+        """;
+
+    public async Task<bool> MarkSeenAsync(CaseReader seen, CancellationToken cancellationToken) =>
+        await context.Database.ExecuteSqlRawAsync(MarkSeenSql, [seen.CardNumber, seen.UserId, seen.Name, seen.LastSeenNumber, seen.SeenAt], cancellationToken) > 0;
+
     public async Task<int> GetMaxFileNumberAsync(string cardNumber, CancellationToken cancellationToken) =>
         await context.CaseFiles.AsNoTracking().Where(f => f.CardNumber == cardNumber).MaxAsync(f => (int?)f.Number, cancellationToken) ?? 0;
 

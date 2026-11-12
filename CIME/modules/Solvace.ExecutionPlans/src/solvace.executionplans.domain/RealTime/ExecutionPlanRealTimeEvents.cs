@@ -72,6 +72,8 @@ public static class ExecutionPlanRealTimeEvents
         /// <summary>0090: alguém limpou a conversa (<c>/clear</c>).</summary>
         public const string Cleared = "cleared";
         public const string Typing = "typing";
+        /// <summary>Alguém (ou o especialista) leu até a mensagem <c>number</c> — o ✓✓ de quem escreveu.</summary>
+        public const string Seen = "seen";
         /// <summary>Pedido do especialista mudou (na fila, rodando, terminou).</summary>
         public const string Run = "run";
         /// <summary>O que o especialista está fazendo agora (payload com activity/recent).</summary>
