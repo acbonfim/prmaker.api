@@ -39,6 +39,8 @@ public class ExecutionPlanContext : DbContext
     public DbSet<WorkItemFileContent> WorkItemFileContents { get; set; }
     public DbSet<WorkItemDeliverable> WorkItemDeliverables { get; set; }
     public DbSet<WorkItemDeliverableContent> WorkItemDeliverableContents { get; set; }
+    // 0094: itens de trabalho relatados ao card (menção/manual).
+    public DbSet<WorkItemRelated> WorkItemRelateds { get; set; }
 
     /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
     public const string WorkItemNumberSequence = "work_item_number_seq";
@@ -584,6 +586,21 @@ public class ExecutionPlanContext : DbContext
             entity.ToTable("WorkItemDeliverableContents");
             entity.HasKey(e => e.DeliverableId);
             entity.Property(e => e.Data).IsRequired().HasColumnType("bytea");
+        });
+
+        // 0094: itens de trabalho relatados ao card (menção em conversa/plano/Timeline/item ou manual) — um por item relatado.
+        modelBuilder.Entity<WorkItemRelated>(entity =>
+        {
+            entity.ToTable("WorkItemRelated");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CardNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Context).HasMaxLength(WorkItemRelated.MaxContextLength);
+            entity.Property(e => e.CreatedByName).IsRequired().HasMaxLength(200);
+
+            entity.HasIndex(e => new { e.CardNumber, e.RelatedItemNumber }).IsUnique();
+            entity.HasIndex(e => e.CardNumber);
         });
 
         modelBuilder.Entity<ExecutionWorker>(entity =>

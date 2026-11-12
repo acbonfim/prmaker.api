@@ -67,6 +67,10 @@ public partial class ExecutionPlanApplication
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Note, note!.StepKey, cancellationToken);
         await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Note, cancellationToken);
+        // 0094: menções (#n/##n) no comentário do plano viram relatados do card (best-effort, só item de outro card).
+        if (_workItems is not null && !string.IsNullOrWhiteSpace(text))
+            try { await _workItems.CaptureMentionsAsync(note.CardNumber, text, WorkItemRelatedSource.Plan, $"comentário #{note.Number} do plano", actor, cancellationToken); }
+            catch (Exception e) when (e is not OperationCanceledException) { /* best-effort */ }
         return note.ToResponse(plan.Phase, attachments);
     }
 

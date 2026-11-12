@@ -137,6 +137,159 @@ public class WorkItemApplication : IWorkItemApplication
         return sb.ToString();
     }
 
+    // ================================================================ relatados (0094)
+
+    /// <summary>Menção a item de trabalho num texto: <c>#n</c> ou <c>##n</c> (o número é o do item ou da sub-tarefa).</summary>
+    private static readonly System.Text.RegularExpressions.Regex MentionRegex =
+        new(@"#+(\d{1,9})", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public async Task<IReadOnlyList<WorkItemRelatedResponse>> ListRelatedAsync(string card, CancellationToken ct)
+    {
+        var cardNumber = NormalizeCard(card);
+        var relations = await _items.ListRelatedAsync(cardNumber, ct);
+        if (relations.Count == 0) return [];
+
+        var numbers = relations.Select(r => r.RelatedItemNumber).Distinct().ToList();
+        var items = await _items.ListByNumbersAsync(numbers, ct);
+        var responses = (await ToResponsesAsync(items, ct)).ToDictionary(r => r.Number);
+
+        var list = new List<WorkItemRelatedResponse>();
+        foreach (var relation in relations) // já vem mais recente primeiro
+            if (responses.TryGetValue(relation.RelatedItemNumber, out var item))
+                list.Add(WorkItemRelatedResponse.From(relation, item));
+        return list;
+    }
+
+    public async Task<WorkItemRelatedResponse> AddRelatedManualAsync(string card, long number, ExecutionActor actor, CancellationToken ct)
+    {
+        var cardNumber = NormalizeCard(card);
+        var resolved = await _items.ResolveNumberAsync(number, ct) ?? throw NotFound(number);
+        await UpsertRelatedAsync(cardNumber, resolved.ItemNumber, resolved.TaskNumber,
+            WorkItemRelatedSource.Manual, context: null, actor, ct);
+        await NotifyRelatedAsync(cardNumber, resolved.ItemNumber, ct);
+
+        var relation = await _items.GetRelatedAsync(cardNumber, resolved.ItemNumber, ct) ?? throw NotFound(number);
+        var items = await _items.ListByNumbersAsync([resolved.ItemNumber], ct);
+        var item = (await ToResponsesAsync(items, ct)).FirstOrDefault() ?? throw NotFound(resolved.ItemNumber);
+        return WorkItemRelatedResponse.From(relation, item);
+    }
+
+    public async Task RemoveRelatedAsync(string card, long number, ExecutionActor actor, CancellationToken ct)
+    {
+        var cardNumber = NormalizeCard(card);
+        // O número removido é o do item relatado; se vier um número de sub-tarefa, resolve para o item dono.
+        var relation = await _items.GetRelatedAsync(cardNumber, number, ct);
+        if (relation is null && await _items.ResolveNumberAsync(number, ct) is { } resolved)
+            relation = await _items.GetRelatedAsync(cardNumber, resolved.ItemNumber, ct);
+        if (relation is null) return; // idempotente
+        _items.RemoveRelated(relation);
+        await _items.SaveChangesAsync(ct);
+        await NotifyRelatedAsync(cardNumber, relation.RelatedItemNumber, ct);
+    }
+
+    public async Task<int> CaptureMentionsAsync(string card, string? text, string source, string? context, ExecutionActor actor, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+        var cardNumber = NormalizeCard(card);
+        var numbers = MentionRegex.Matches(text)
+            .Select(m => long.TryParse(m.Groups[1].Value, out var n) ? n : 0L)
+            .Where(n => n > 0).Distinct().ToList();
+        if (numbers.Count == 0) return 0;
+
+        var changed = 0;
+        var seenItems = new HashSet<long>(); // duas sub-tarefas do mesmo item resolvem para o mesmo item dono: uma relação só.
+        foreach (var n in numbers)
+        {
+            var resolved = await _items.ResolveNumberAsync(n, ct);
+            // Só item de OUTRO card vira relatado automático (o do próprio card já está na aba Itens).
+            if (resolved is not { } r || string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal)) continue;
+            if (!seenItems.Add(r.ItemNumber)) continue;
+            if (await UpsertRelatedAsync(cardNumber, r.ItemNumber, r.TaskNumber, source, context, actor, ct, save: false))
+                changed++;
+        }
+        if (changed == 0) return 0;
+        await _items.SaveChangesAsync(ct);
+        await NotifyRelatedAsync(cardNumber, null, ct);
+        return changed;
+    }
+
+    /// <summary>Cria a relação ou reafirma a existente (manual nunca é rebaixado por auto). Devolve se criou/mudou.</summary>
+    private async Task<bool> UpsertRelatedAsync(string cardNumber, long relatedItemNumber, long? relatedTaskNumber, string source,
+        string? context, ExecutionActor actor, CancellationToken ct, bool save = true)
+    {
+        var existing = await _items.GetRelatedAsync(cardNumber, relatedItemNumber, ct);
+        bool changed;
+        if (existing is null)
+        {
+            _items.AddRelated(new WorkItemRelated(cardNumber, relatedItemNumber, relatedTaskNumber, source, context,
+                actor.UserId, actor.Name, DateTimeOffset.UtcNow));
+            changed = true;
+        }
+        else
+        {
+            changed = existing.Touch(source, context, relatedTaskNumber);
+        }
+        if (changed && save)
+            await _items.SaveChangesAsync(ct);
+        return changed;
+    }
+
+    public async Task<string> RelatedSummaryMarkdownAsync(string card, CancellationToken ct)
+    {
+        var relations = await ListRelatedAsync(card, ct);
+        if (relations.Count == 0) return string.Empty;
+        var sb = new StringBuilder();
+        sb.AppendLine($"## Relatados ({relations.Count})");
+        sb.AppendLine("Itens de trabalho de outros cards relatados a este (menção ou manual). Para o detalhe, leia com `prmake_work_item(card, n)`.");
+        foreach (var rel in relations)
+        {
+            var i = rel.Item;
+            var progress = $"{i.Progress.Done}/{i.Progress.Total}";
+            var where = SourceLabel(rel.Source);
+            sb.AppendLine();
+            sb.AppendLine($"- **#{i.Number}** (card {i.CardNumber}) [{i.Type}] {i.Title} — **{i.Status}** ({progress}) · relatado {where}" +
+                          (rel.MatchedTaskNumber is { } mt ? $" · citada a sub-tarefa #{mt}" : string.Empty));
+            foreach (var t in i.Tasks)
+            {
+                var line = $"  - #{t.Number} `{t.Kind}` {t.Title} — {t.Status}";
+                if (!string.IsNullOrWhiteSpace(t.Result))
+                    line += $" · {ShortLine(t.Result!, 160)}";
+                sb.AppendLine(line);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string SourceLabel(string source) => source switch
+    {
+        WorkItemRelatedSource.Specialist => "por menção na conversa do especialista",
+        WorkItemRelatedSource.Plan => "por menção no plano/análise",
+        WorkItemRelatedSource.Timeline => "por menção na Timeline/comentário",
+        WorkItemRelatedSource.ItemRef => "por menção num item do card",
+        _ => "manualmente",
+    };
+
+    private static string ShortLine(string s, int max)
+    {
+        var t = s.Trim().ReplaceLineEndings(" ");
+        return t.Length <= max ? t : t[..max] + "…";
+    }
+
+    private Task NotifyRelatedAsync(string cardNumber, long? number, CancellationToken ct) =>
+        NotifyAsync(cardNumber, number ?? 0, WorkItemStatus.Pending, ExecutionPlanRealTimeEvents.WorkItemActions.Related, null, ct);
+
+    /// <summary>Captura best-effort (nunca quebra a operação que a originou).</summary>
+    private Task CaptureAsync(string card, string? text, string source, string? context, ExecutionActor actor, CancellationToken ct) =>
+        TryAsync(() => CaptureMentionsAsync(card, text, source, context, actor, ct));
+
+    /// <summary>Captura as menções de um item (descrição + sub-tarefas) como relatados (source item-ref).</summary>
+    private Task CaptureItemRefAsync(string card, long itemNumber, string? description, IEnumerable<string?>? taskTexts,
+        ExecutionActor actor, CancellationToken ct)
+    {
+        var text = string.Join('\n', new[] { description }.Concat(taskTexts ?? []).Where(s => !string.IsNullOrWhiteSpace(s)));
+        return CaptureAsync(card, text, WorkItemRelatedSource.ItemRef, $"item #{itemNumber}", actor, ct);
+    }
+
     // ================================================================ criar / editar
 
     public async Task<WorkItemResponse> CreateAsync(string card, CreateWorkItemRequest req, string origin, ExecutionActor actor, CancellationToken ct)
@@ -179,6 +332,7 @@ public class WorkItemApplication : IWorkItemApplication
         await _items.SaveChangesAsync(ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Created, null, ct);
         await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado ({OriginText(item.Origin)}): {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
+        await CaptureItemRefAsync(cardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -188,6 +342,7 @@ public class WorkItemApplication : IWorkItemApplication
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
             i => i.Update(req.Title ?? i.Title, req.Description, req.Tasks, actor.Name, DateTimeOffset.UtcNow), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
+        await CaptureItemRefAsync(item.CardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -242,6 +397,9 @@ public class WorkItemApplication : IWorkItemApplication
         await AfterStatusChangeAsync(item, before, actor, ct);
         if (a == WorkTaskAction.Complete && task.Kind == WorkTaskKind.CardBrief && !string.IsNullOrWhiteSpace(req.Result))
             await EnsureCardBriefFileAsync(item, taskNumber, req.Result, actor, ct);
+        // 0094: o resultado de uma sub-tarefa pode citar itens de outros cards → relatados do card.
+        if (!string.IsNullOrWhiteSpace(req.Result))
+            await CaptureAsync(item.CardNumber, req.Result, WorkItemRelatedSource.ItemRef, $"sub-tarefa #{taskNumber}", actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 

@@ -554,6 +554,7 @@ public class CaseChatApplication(
                     await cases.AttachFilesAsync(attached.Select(f => f.Id).ToList(), message.Id, cancellationToken);
                 }
                 await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number }, cancellationToken);
+                await CaptureRelatedAsync(message, cancellationToken);
                 return message.ToResponse(await cases.GetFilesAsync(card, [message.Id], cancellationToken));
             }
             catch (CaseNumberConflictException) when (attempt < Retries)
@@ -670,6 +671,17 @@ public class CaseChatApplication(
                           "pendente igual: ajuste com prmake_work_item_update; iniciado/concluído: não repita. Duplicata só com " +
                           "allowDuplicate + motivo, quando for de fato outro trabalho. Sub-tarefa a mais pedida no item da " +
                           "análise/correção (espelho do plano): prmake_work_item_add_task — não item novo.");
+
+            // 0094: relatados do card (itens de outros cards relacionados por menção ou à mão) — resumo compacto.
+            try
+            {
+                if (await workItems.RelatedSummaryMarkdownAsync(card, cancellationToken) is { Length: > 0 } relatedText)
+                {
+                    sb.AppendLine().Append(relatedText.TrimEnd()).AppendLine();
+                    sb.AppendLine("Use os relatados como contexto (itens de outros cards ligados a este); o detalhe de um deles é prmake_work_item(card, n).");
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException) { /* contexto best-effort */ }
         }
 
         var chat = await cases.GetChatAsync(card, cancellationToken);
@@ -781,6 +793,7 @@ public class CaseChatApplication(
                 if (await cases.GetChatAsync(card, cancellationToken) is null)
                     cases.AddChat(new CaseChat(card, now));
                 await cases.SaveChangesAsync(cancellationToken);
+                await CaptureRelatedAsync(message, cancellationToken);
                 return (message, files);
             }
             catch (CaseNumberConflictException) when (attempt < Retries)
@@ -788,6 +801,19 @@ public class CaseChatApplication(
                 await Task.Delay(Random.Shared.Next(10, 50) * attempt, cancellationToken);
             }
         }
+    }
+
+    /// <summary>0094: menções (<c>#n</c>/<c>##n</c>) na mensagem viram relatados do card (best-effort, só item de outro card).</summary>
+    private async Task CaptureRelatedAsync(CaseMessage message, CancellationToken cancellationToken)
+    {
+        if (workItems is null || message.AuthorKind == CaseAuthorKind.System || string.IsNullOrWhiteSpace(message.Text)) return;
+        try
+        {
+            await workItems.CaptureMentionsAsync(message.CardNumber, message.Text, WorkItemRelatedSource.Specialist,
+                $"conversa do especialista, msg #{message.Number}",
+                new ExecutionActor(message.AuthorUserId, message.AuthorName, false), cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { /* best-effort */ }
     }
 
     private async Task<CaseMessage> NewSpecialistMessageAsync(string card, string kind, string text, CaseActor actor, DateTimeOffset now,

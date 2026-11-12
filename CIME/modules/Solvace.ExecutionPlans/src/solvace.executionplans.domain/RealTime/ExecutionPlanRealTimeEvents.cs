@@ -60,6 +60,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string File = "file";
         /// <summary>0091: entrega gravada (PR, código, chamado...) — a tela recarrega o item aberto.</summary>
         public const string Deliverable = "deliverable";
+        /// <summary>0094: relatado do card mudou (menção automática ou inserção/remoção manual) — a aba Relatado recarrega.</summary>
+        public const string Related = "related";
     }
 
     public static class CaseActions

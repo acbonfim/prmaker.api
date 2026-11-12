@@ -51,6 +51,30 @@ public partial class WorkItemsController : ExecutionControllerBase
         [FromQuery] int limit = 10, CancellationToken ct = default) =>
         RunItem<IReadOnlyList<WorkItemSearchHit>>(async () => Ok(await _items.SearchAsync(q, exceptCard, limit, ct)));
 
+    /// <summary>0094: itens relatados ao card (menção ou manual), resolvidos com sub-tarefas — a aba "Relatado" (somente leitura).</summary>
+    [HttpGet("card/{card}/related")]
+    public Task<ActionResult<IReadOnlyList<WorkItemRelatedResponse>>> ListRelated([FromRoute] string card, CancellationToken ct) =>
+        RunItem<IReadOnlyList<WorkItemRelatedResponse>>(async () => Ok(await _items.ListRelatedAsync(card, ct)));
+
+    /// <summary>0094: relaciona um item (número de item ou sub-tarefa) ao card, à mão. 404 se não existe.</summary>
+    [HttpPost("card/{card}/related")]
+    public Task<ActionResult<WorkItemRelatedResponse>> AddRelated([FromRoute] string card, [FromBody] AddRelatedRequest request, CancellationToken ct) =>
+        RunItem<WorkItemRelatedResponse>(async () =>
+        {
+            EnsureSpecialistCard(card);
+            return Ok(await _items.AddRelatedManualAsync(card, request.Number, await ActorAsync(ct), ct));
+        });
+
+    /// <summary>0094: remove o relatado (pelo número do item relatado). Idempotente.</summary>
+    [HttpDelete("card/{card}/related/{number:long}")]
+    public Task<ActionResult<object>> RemoveRelated([FromRoute] string card, [FromRoute] long number, CancellationToken ct) =>
+        RunItem<object>(async () =>
+        {
+            EnsureSpecialistCard(card);
+            await _items.RemoveRelatedAsync(card, number, await ActorAsync(ct), ct);
+            return NoContent();
+        });
+
     /// <summary>
     /// Ajustes 0085: sessão de execução ao vivo do item — pedido ativo (do item ou, no item de plano, da pista principal do
     /// plano), atividade agora, últimas atividades, últimos 50 registros (o mais novo por último) e sinal do executor.

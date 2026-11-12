@@ -75,6 +75,44 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
             .OrderBy(i => i.Number)
             .ToListAsync(cancellationToken);
 
+    public Task<List<WorkItem>> ListByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken cancellationToken) =>
+        numbers.Count == 0
+            ? Task.FromResult(new List<WorkItem>())
+            : context.WorkItems.AsNoTracking()
+                .Include(i => i.Tasks)
+                .Where(i => numbers.Contains(i.Number))
+                .ToListAsync(cancellationToken);
+
+    public async Task<(long ItemNumber, string CardNumber, long? TaskNumber)?> ResolveNumberAsync(long number, CancellationToken cancellationToken)
+    {
+        var item = await context.WorkItems.AsNoTracking()
+            .Where(i => i.Number == number)
+            .Select(i => new { i.Number, i.CardNumber })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (item is not null) return (item.Number, item.CardNumber, null);
+
+        var byTask = await context.WorkItemTasks.AsNoTracking()
+            .Where(t => t.Number == number)
+            .Join(context.WorkItems.AsNoTracking(), t => t.WorkItemId, i => i.Id, (t, i) => new { i.Number, i.CardNumber })
+            .FirstOrDefaultAsync(cancellationToken);
+        return byTask is null ? null : (byTask.Number, byTask.CardNumber, number);
+    }
+
+    // 0094: relatados do card.
+    public void AddRelated(WorkItemRelated related) => context.WorkItemRelateds.Add(related);
+
+    public void RemoveRelated(WorkItemRelated related) => context.WorkItemRelateds.Remove(related);
+
+    public Task<List<WorkItemRelated>> ListRelatedAsync(string cardNumber, CancellationToken cancellationToken) =>
+        context.WorkItemRelateds.AsNoTracking()
+            .Where(r => r.CardNumber == cardNumber)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+    public Task<WorkItemRelated?> GetRelatedAsync(string cardNumber, long relatedItemNumber, CancellationToken cancellationToken) =>
+        context.WorkItemRelateds
+            .FirstOrDefaultAsync(r => r.CardNumber == cardNumber && r.RelatedItemNumber == relatedItemNumber, cancellationToken);
+
     public Task<WorkItem?> FindDuplicateAsync(string cardNumber, string fingerprint, Guid? exceptId, CancellationToken cancellationToken) =>
         context.WorkItems.AsNoTracking()
             .Where(i => i.CardNumber == cardNumber && i.Fingerprint == fingerprint
