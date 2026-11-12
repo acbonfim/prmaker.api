@@ -275,7 +275,10 @@ cada alteracao**. Por isso, ao montar o plano de do caso e os itens, **antes** d
    > <so se houver regra do item — ex.: somente análise, nao alterar código>
    ```
    No callout, troque os rotulos pelo equivalente do tipo de item quando nao for problema (ex.: `**Pedido:**`/`**Entrega:**`).
-   Item de pesquisa/analise (sub-tarefas `research`): o `executar-item-de-trabalho` grava no fim o `00-visao-geral-<id>.md`.
+   **Visao geral desde a criacao:** logo depois de criar o item, grave nele `00-visao-geral-<id>.md` (`prmake_work_item_file(card,
+   number, "00-visao-geral-<id>.md", texto, kind: "analysis")`, `<id>` = codigo do item/achado, ex. `GS-002`; sem codigo,
+   `item-<numero>`) com o titulo em negrito e a mesma descricao — a pessoa le, copia, baixa e edita esse arquivo na Visao
+   geral. Item de pesquisa/analise (sub-tarefas `research`): o `executar-item-de-trabalho` atualiza esse arquivo a cada etapa.
 3. **Cada sub-tarefa/etapa de codigo (`kind=code`)**: descricao com o arquivo e a linha (`[caminho:linhas](ref:id)`), o que muda **nessa** linha, o porque e a regra da
    Base que ela cumpre. O PRMake **recusa** etapa/sub-tarefa `code` sem nenhuma citacao e citacao sem fotografia — corrija e crie de novo.
    Sub-tarefa nao-codigo (PR, chamado, script, validacao): diga exatamente o que entregar (branch/destino, titulo, arquivo, criterio).
