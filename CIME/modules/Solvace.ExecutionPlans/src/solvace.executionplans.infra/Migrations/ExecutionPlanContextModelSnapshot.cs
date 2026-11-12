@@ -1875,6 +1875,52 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("WorkItemLogs", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemRelated", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CardNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Context")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("RelatedItemNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("RelatedTaskNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardNumber");
+
+                    b.HasIndex("CardNumber", "RelatedItemNumber")
+                        .IsUnique();
+
+                    b.ToTable("WorkItemRelated", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.WorkItemTask", b =>
                 {
                     b.Property<Guid>("Id")

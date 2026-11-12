@@ -48,6 +48,21 @@ public interface IWorkItemApplication
     Task<IReadOnlyList<WorkItemResponse>> CancelByPlanAsync(Guid planId, bool undo, string? reason, ExecutionActor actor, CancellationToken ct);
     /// <summary>Markdown dos itens do card para o contexto do especialista (número, tipo, título, status, origem, fingerprint, sub-tarefas e saídas).</summary>
     Task<string> SummaryMarkdownAsync(string card, CancellationToken ct);
+
+    // 0094: relatados do card (aba "Relatado", somente leitura; também entram no contexto da IA).
+    /// <summary>Itens relatados ao card (menção/manual), resolvidos com sub-tarefas — mais recentes primeiro.</summary>
+    Task<IReadOnlyList<WorkItemRelatedResponse>> ListRelatedAsync(string card, CancellationToken ct);
+    /// <summary>Adiciona um relatado à mão (número de item ou sub-tarefa). 404 se não existe.</summary>
+    Task<WorkItemRelatedResponse> AddRelatedManualAsync(string card, long number, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Remove um relatado (pelo número do item relatado). Idempotente.</summary>
+    Task RemoveRelatedAsync(string card, long number, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// Captura as menções (<c>#n</c>/<c>##n</c>) de um texto como relatados do card (upsert, só itens de **outro** card).
+    /// Devolve quantos relatados foram criados/atualizados. Best-effort: não quebra a operação que o originou.
+    /// </summary>
+    Task<int> CaptureMentionsAsync(string card, string? text, string source, string? context, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Resumo compacto dos relatados do card para o contexto da IA (vazio quando não há). Detalhe fica sob demanda.</summary>
+    Task<string> RelatedSummaryMarkdownAsync(string card, CancellationToken ct);
     /// <summary>O pedido de execução do item mudou (a fila chama ao criar/pegar/terminar o pedido).</summary>
     Task AttachRequestAsync(Guid workItemId, Guid requestId, string status, CancellationToken ct);
 
@@ -99,6 +114,19 @@ public interface IWorkItemRepository
     Task<List<WorkItemSearchHit>> SearchAsync(string? query, string? exceptCard, int limit, CancellationToken cancellationToken);
     /// <summary>Itens ligados ao plano, rastreados.</summary>
     Task<List<WorkItem>> GetByPlanAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>Itens com esses números (com sub-tarefas, sem rastrear) — para montar os relatados do card (0094).</summary>
+    Task<List<WorkItem>> ListByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken cancellationToken);
+    /// <summary>
+    /// 0094: resolve um número citado (<c>#n</c>) para o item dono: item → o próprio; sub-tarefa → o item dono com o número
+    /// da sub-tarefa; null = não existe. Projeção leve (sem carregar o item).
+    /// </summary>
+    Task<(long ItemNumber, string CardNumber, long? TaskNumber)?> ResolveNumberAsync(long number, CancellationToken cancellationToken);
+    // 0094: relatados do card.
+    void AddRelated(WorkItemRelated related);
+    void RemoveRelated(WorkItemRelated related);
+    Task<List<WorkItemRelated>> ListRelatedAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Relação existente (rastreada) de um item relatado a um card, ou null.</summary>
+    Task<WorkItemRelated?> GetRelatedAsync(string cardNumber, long relatedItemNumber, CancellationToken cancellationToken);
     /// <summary>Item não cancelado/desfeito do card com o mesmo fingerprint (sem rastrear) — o item da análise não conta.</summary>
     Task<WorkItem?> FindDuplicateAsync(string cardNumber, string fingerprint, Guid? exceptId, CancellationToken cancellationToken);
     Task<List<WorkItemLog>> GetLogsAsync(Guid workItemId, int limit, CancellationToken cancellationToken);

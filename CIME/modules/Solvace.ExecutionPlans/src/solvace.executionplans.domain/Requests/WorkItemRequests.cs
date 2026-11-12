@@ -35,6 +35,12 @@ public class CreateWorkItemRequest
     public Guid? PlanId { get; set; }
 }
 
+/// <summary>0094: <c>POST WorkItems/card/{card}/related</c> — adiciona um relatado à mão (número de item ou sub-tarefa).</summary>
+public class AddRelatedRequest
+{
+    public long Number { get; set; }
+}
+
 /// <summary>0085: <c>PUT WorkItems/{number}</c> (só item pendente).</summary>
 public class UpdateWorkItemRequest
 {

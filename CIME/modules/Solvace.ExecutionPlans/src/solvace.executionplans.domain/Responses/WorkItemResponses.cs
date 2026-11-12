@@ -155,6 +155,32 @@ public class WorkTaskLinkResponse
     };
 }
 
+/// <summary>
+/// 0094: um item relatado ao card (aba "Relatado", somente leitura) — a origem/contexto da relação mais o item resolvido
+/// (em geral de outro card), com as sub-tarefas, como a aba "Itens de trabalho" mostra.
+/// </summary>
+public class WorkItemRelatedResponse
+{
+    /// <summary>specialist | plan | timeline | item-ref | manual.</summary>
+    public string Source { get; set; } = WorkItemRelatedSource.Manual;
+    public string? Context { get; set; }
+    /// <summary>Sub-tarefa citada (quando a menção foi a um <c>#n</c> de sub-tarefa), para destacar.</summary>
+    public long? MatchedTaskNumber { get; set; }
+    public DateTimeOffset RelatedAt { get; set; }
+    public string AddedByName { get; set; } = string.Empty;
+    public WorkItemResponse Item { get; set; } = new();
+
+    public static WorkItemRelatedResponse From(WorkItemRelated r, WorkItemResponse item) => new()
+    {
+        Source = r.Source,
+        Context = r.Context,
+        MatchedTaskNumber = r.RelatedTaskNumber,
+        RelatedAt = r.CreatedAt,
+        AddedByName = r.CreatedByName,
+        Item = item,
+    };
+}
+
 public class WorkItemLogResponse
 {
     public long Id { get; set; }
