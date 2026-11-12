@@ -123,9 +123,14 @@ public class AzureController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<DevOpsClassificationPreset>>> GetClassifications(CancellationToken cancellationToken) =>
         Ok(await _actionsService.GetClassificationPresetsAsync(cancellationToken));
 
+    /// <summary>Valores do picklist Bug Type do Bug, lidos do DevOps (o que o classify aceita em bugType).</summary>
+    [HttpGet("actions/bug-types")]
+    public async Task<ActionResult<IReadOnlyList<string>>> GetBugTypes(CancellationToken cancellationToken) =>
+        Ok(await _actionsService.GetBugTypesAsync(cancellationToken));
+
     /// <summary>
     /// Classifica o card (Resolution Type · General Classification · Classification) pela integração do Azure do
-    /// usuário e registra na Timeline — body { preset } ou os três valores (feature 0028).
+    /// usuário e registra na Timeline — body { preset } ou os três valores, e/ou { bugType } (feature 0028).
     /// </summary>
     [HttpPost("card/{id}/actions/classify")]
     public Task<ActionResult<DevOpsActionResponse>> Classify(string id, [FromBody] ClassifyCardRequest request, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>

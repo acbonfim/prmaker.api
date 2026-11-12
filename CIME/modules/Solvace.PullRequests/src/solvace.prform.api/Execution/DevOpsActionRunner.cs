@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using solvace.azure.application.Contract;
+using solvace.azure.domain.Exceptions;
 using solvace.azure.domain.Models;
 using solvace.prform.Controllers;
 using solvace.timeline.application.Contracts;
@@ -31,4 +32,11 @@ public class DevOpsActionRunner(IDevOpsActionsService actions, ITimelineApplicat
 
     public Task<IReadOnlyList<DevOpsClassificationPreset>> ClassificationsAsync(CancellationToken cancellationToken) =>
         actions.GetClassificationPresetsAsync(cancellationToken);
+
+    /// <summary>Picklist do Bug Type; falha do DevOps não derruba o resto da configuração (vai no erro).</summary>
+    public async Task<(IReadOnlyList<string> Values, string? Error)> BugTypesAsync(CancellationToken cancellationToken)
+    {
+        try { return (await actions.GetBugTypesAsync(cancellationToken), null); }
+        catch (DevOpsActionException e) { return ([], e.Message); }
+    }
 }

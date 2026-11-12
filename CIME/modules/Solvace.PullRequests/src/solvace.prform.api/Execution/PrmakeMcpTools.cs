@@ -290,13 +290,14 @@ public partial class PrmakeMcpTools(
     private WorkDeliverableHooks? Hooks => http.HttpContext?.RequestServices.GetService<WorkDeliverableHooks>();
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
-    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior) | log-hours (r5: 'hours' trabalhadas — soma no Completed Work e tira do Remaining). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores. Especialista do caso: so com pedido explicito da pessoa (usa a integracao de quem pediu).")]
+    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior) | log-hours (r5: 'hours' trabalhadas — soma no Completed Work e tira do Remaining). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores e, nos Bugs, 'bugType' (um valor de bugTypes do prmake_devops_config, pela area/funcionalidade afetada; pode ir sozinho). Especialista do caso: so com pedido explicito da pessoa (usa a integracao de quem pediu).")]
     public Task<string> DevOps(string card, string action,
         [Description("Autorizacao explicita do usuario para ready-for-qa")] string? authorization = null,
         [Description("classify: chave da classificacao pronta")] string? preset = null,
         [Description("classify: Resolution Type")] string? resolutionType = null,
         [Description("classify: General Classification")] string? generalClassification = null,
         [Description("classify: Classification")] string? classification = null,
+        [Description("classify: Bug Type (um valor de bugTypes do prmake_devops_config)")] string? bugType = null,
         [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
         [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
         [Description("log-hours: horas trabalhadas (ex.: 1.5)")] decimal? hours = null,
@@ -316,7 +317,8 @@ public partial class PrmakeMcpTools(
             "ready-for-qa" => a => a.MoveToReadyForQaAsync(id, ct),
             "classify" => a => a.ClassifyAsync(id, new ClassifyCardRequest
             {
-                Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification
+                Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification,
+                BugType = bugType
             }, ct),
             "set-state" => a => a.SetStateAsync(id, state ?? throw new McpException("set-state: informe 'state'."), reason, ct),
             _ => throw new McpException($"Acao desconhecida: {action}")
@@ -340,9 +342,12 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_devops_config", ReadOnly = true)]
-    [Description("Regras das acoes do DevOps configuradas no PRMake (estados/colunas de cada acao, area exigida, comentarios) e as classificacoes prontas (presets).")]
+    [Description("Regras das acoes do DevOps configuradas no PRMake (estados/colunas de cada acao, area exigida, comentarios), as classificacoes prontas (presets) e os valores do Bug Type (bugTypes, picklist do DevOps).")]
     public Task<string> DevOpsConfig(CancellationToken ct = default) => Safe(async () =>
-        Serialize(new { actions = await devops.ConfigAsync(ct), classifications = await devops.ClassificationsAsync(ct) }));
+    {
+        var (bugTypes, bugTypesError) = await devops.BugTypesAsync(ct);
+        return Serialize(new { actions = await devops.ConfigAsync(ct), classifications = await devops.ClassificationsAsync(ct), bugTypes, bugTypesError });
+    });
 
     [McpServerTool(Name = "prmake_config", ReadOnly = true)]
     [Description("Configuracao das skills no PRMake (Skills Configurations: fluxo de branches, padroes de nome/commit/titulo, repositorio padrao...), quais prompts existem e os nomes dos campos do DevOps. Nunca escreva essas regras de memoria.")]

@@ -49,7 +49,8 @@
 #   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
-#                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
+#                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · bug-types ·
+#                 classify <opcao|-> [bug type] (Bug Type = um valor de bug-types; '-' grava so o Bug Type) ·
 #                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate ·
 #                 comment <texto.md> [--image <arquivo>]... [--task <n>] (comentario NOVO na discussion, sem registro
 #                 de PR no PRMake; imagens png/jpg/gif/webp viram anexos do DevOps no fim do texto)
@@ -1216,7 +1217,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|comment|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
+    ACTION="${1:?acao: config|rootcause|summary|comment|classifications|bug-types|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -1273,9 +1274,11 @@ PY
         echo "OK $(jq -r '.message // "comentario publicado"' "$TMP/resp") (id $(jq -r '.commentId // "?"' "$TMP/resp"))"
         exit 0 ;;
       classify)
-        # Opcoes vem do PRMake (GET Azure/actions/classifications); quem grava no DevOps e o PRMake.
-        KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications)}"
-        jq -n --arg p "$KIND" '{preset:$p}' > "$TMP/body"
+        # Opcoes vem do PRMake (GET Azure/actions/classifications e bug-types, o picklist do DevOps); quem grava no
+        # DevOps e o PRMake. classify <opcao|-> [bug type]: '-' = so o Bug Type.
+        KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications) ou - para gravar so o Bug Type}"
+        jq -n --arg p "$KIND" --arg b "${3:-}" \
+          '{preset:(if $p == "-" then null else $p end), bugType:(if $b == "" then null else $b end)}' > "$TMP/body"
         prmake_post_retry "Azure/card/$CARD/actions/classify" "$TMP/body"
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao classificar: $(resp_error)"
         echo "OK $(jq -r '.message // "classificado"' "$TMP/resp")"
@@ -1309,6 +1312,12 @@ PY
         CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/actions/classifications" 2>/dev/null)"
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao listar as opcoes: $(resp_error)"
         jq -r '.[] | "\(.key)\t[\(.pattern // "-")] \(.label) — \(.resolutionType) | \(.generalClassification) | \(.classification)"' "$TMP/resp"
+        exit 0 ;;
+      bug-types)
+        # Valores do Bug Type (picklist do Bug no DevOps), um por linha — o classify so aceita um deles.
+        CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/actions/bug-types" 2>/dev/null)"
+        [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao listar os Bug Types: $(resp_error)"
+        jq -r '.[]' "$TMP/resp"
         exit 0 ;;
       zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate)
         prmake_post_retry "Azure/card/$CARD/actions/$ACTION" ;;

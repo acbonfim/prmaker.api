@@ -13,6 +13,7 @@ public static class AzureDevOpsFieldKeys
     public const string OriginalEstimate = "FieldOriginalEstimate";
     public const string CompletedWork = "FieldCompletedWork";
     public const string RootCauseFieldPath = "RootCauseFieldPath";
+    public const string BugType = "FieldBugType";
 
     public static readonly IReadOnlyDictionary<string, string> Defaults = new Dictionary<string, string>
     {
@@ -22,7 +23,8 @@ public static class AzureDevOpsFieldKeys
         [RemainingWork] = "Microsoft.VSTS.Scheduling.RemainingWork",
         [OriginalEstimate] = "Microsoft.VSTS.Scheduling.OriginalEstimate",
         [CompletedWork] = "Microsoft.VSTS.Scheduling.CompletedWork",
-        [RootCauseFieldPath] = "/fields/Custom.RCATechnicalCategorytext"
+        [RootCauseFieldPath] = "/fields/Custom.RCATechnicalCategorytext",
+        [BugType] = "Custom.BugType"
     };
 }
 
@@ -34,4 +36,5 @@ public record AzureDevOpsFieldNames(
     string RemainingWork,
     string OriginalEstimate,
     string CompletedWork,
-    string RootCause);
+    string RootCause,
+    string BugType);

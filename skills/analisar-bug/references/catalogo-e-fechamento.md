@@ -49,9 +49,11 @@ pelo PRMake (`bug-fetch.sh` → `state`/`area`).
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
 1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
-2. classificacao: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
-   `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e
-   grave com `bash $PLAN devops <card> classify <opcao>`;
+2. classificacao + **Bug Type**: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
+   `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e o
+   Bug Type entre os valores do picklist do DevOps em `devops <card> bug-types` (a area/funcionalidade afetada pelo
+   bug — nunca invente valor fora da lista; o card ja preenchido mantem o valor, salvo se estiver errado) e grave
+   os dois juntos com `bash $PLAN devops <card> classify <opcao> "<bug type>"` (so o Bug Type: `classify - "<bug type>"`);
 3. resumo nao tecnico PT/EN na discussion: se o `config` trouxe `summary-prompt`, **siga esse prompt** (arquivo
    `analises/summary-prompt.txt` da pasta do card; mesmos placeholders da `gerar-prmake`) mantendo o formato
    `**PT**` `---` texto `**EN**` `---` texto; senao use esse formato direto. Sem codigo, nao diga que houve
@@ -88,7 +90,7 @@ dev validando a correcao em QA):
   `validar-qa` depende dele; o `fechar-card` tem `dependsOn: ["validar-qa"]` e so confere (`prmake_card`) e move para
   Ready for QA se o card ainda nao estiver la. Assim, quando o usuario conclui *Validar em QA* e escolhe "Mover para
   Ready for QA agora", o card nao tem pendencias (o DevOps recusa com 409 se faltar Root Cause, Resolution Type,
-  classificacoes ou Remaining zerado — card 77698).
+  classificacoes, Bug Type ou Remaining zerado — card 77698).
 
 ## Mover o card (permissao, DevOps fora do ar, 409)
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e

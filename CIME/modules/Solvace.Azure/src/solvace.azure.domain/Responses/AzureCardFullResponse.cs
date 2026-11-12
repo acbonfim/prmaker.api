@@ -55,5 +55,7 @@ public class AzureCardAlerts
     public bool MissingResolutionType { get; set; }
     public bool MissingGeneralClassification { get; set; }
     public bool MissingClassification { get; set; }
+    /// <summary>Bug sem Bug Type (picklist do DevOps). Sempre false em User Story.</summary>
+    public bool MissingBugType { get; set; }
     public bool RemainingNotZero { get; set; }
 }
