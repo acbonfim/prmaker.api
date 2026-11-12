@@ -100,6 +100,33 @@ public class CaseChat
     private static string Cut(string value, int max) => value.Length <= max ? value : value[..max];
 }
 
+/// <summary>
+/// Confirmação de leitura: até que mensagem cada pessoa já viu a conversa (o ✓✓ de quem escreveu). Gravada por
+/// upsert que só avança (<c>GREATEST</c>) — nunca disputa a versão de <see cref="CaseChat"/> com o executor.
+/// </summary>
+public class CaseReader
+{
+    public const int MaxNameLength = 200;
+
+    public string CardNumber { get; private set; } = string.Empty;
+    public Guid UserId { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+    public int LastSeenNumber { get; private set; }
+    public DateTimeOffset SeenAt { get; private set; }
+
+    protected CaseReader() { }
+
+    public CaseReader(string cardNumber, Guid userId, string? name, int lastSeenNumber, DateTimeOffset seenAt)
+    {
+        CardNumber = CaseChat.NormalizeCard(cardNumber);
+        UserId = userId;
+        var n = (name ?? string.Empty).Trim();
+        Name = n.Length == 0 ? "Usuário" : n.Length <= MaxNameLength ? n : n[..MaxNameLength];
+        LastSeenNumber = Math.Max(0, lastSeenNumber);
+        SeenAt = seenAt;
+    }
+}
+
 public static class CaseAuthorKind
 {
     public const string Person = "person";

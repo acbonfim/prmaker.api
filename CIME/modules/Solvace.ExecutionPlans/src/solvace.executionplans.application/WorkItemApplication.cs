@@ -99,7 +99,7 @@ public class WorkItemApplication : IWorkItemApplication
         return item is null ? null : (await ToResponsesAsync([item], ct))[0];
     }
 
-    public async Task<string> SummaryMarkdownAsync(string card, CancellationToken ct)
+    public async Task<string> SummaryMarkdownAsync(string card, CancellationToken ct, bool compact = false)
     {
         var items = await _items.ListByCardAsync(NormalizeCard(card), ct);
         var sb = new StringBuilder();
@@ -107,6 +107,11 @@ public class WorkItemApplication : IWorkItemApplication
         if (items.Count == 0)
         {
             sb.AppendLine("Nenhum item de trabalho ainda. Antes de criar um, confira que não repete o que o plano já faz.");
+            return sb.ToString();
+        }
+        if (compact)
+        {
+            WorkItemSummary.AppendCompact(sb, items);
             return sb.ToString();
         }
         sb.AppendLine("Não crie item igual a um destes (mesmo tipo, sub-tarefas e repositório/origem/destino/branch = mesmo fingerprint).");

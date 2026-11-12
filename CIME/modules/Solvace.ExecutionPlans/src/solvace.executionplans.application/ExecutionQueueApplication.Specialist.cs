@@ -50,7 +50,7 @@ public partial class ExecutionQueueApplication
         var chat = _cases is null ? null : await _cases.GetChatAsync(card, cancellationToken);
         ExecutionSession? session = null;
         Guid? target = null;
-        if (chat?.SessionId is { Length: > 0 } sid)
+        if (chat?.SessionId is { Length: > 0 } sid && !await SpecialistSessionTooLongAsync(card, sid, cancellationToken))
         {
             var workers = (await _queue.GetWorkersByOwnerAsync(owner.UserId, cancellationToken)).Where(w => !w.IsRevoked).ToList();
             var home = chat.SessionHost is { } host
@@ -80,6 +80,25 @@ public partial class ExecutionQueueApplication
             return await RespondAsync(active, cancellationToken);
         return (await _queue.GetLastSpecialistForCardAsync(card, cancellationToken))?.ToResponse();
     }
+
+    /// <summary>
+    /// Contexto médio por chamada (tokens) a partir do qual a próxima resposta abre sessão nova em vez de retomar: cada
+    /// chamada da sessão relê o contexto inteiro (cache lido), e a sessão longa do card 78161 chegou a 70 mil por chamada.
+    /// A sessão nova lê o contexto do caso (últimas mensagens, pontos, itens) — a conversa não se perde.
+    /// </summary>
+    public const long SpecialistSessionContextLimit = 70_000;
+
+    private async Task<bool> SpecialistSessionTooLongAsync(string card, string sessionId, CancellationToken cancellationToken)
+    {
+        var last = await _queue.GetLastSpecialistForCardAsync(card, cancellationToken);
+        if (last is null || !string.Equals(last.SessionId, sessionId, StringComparison.Ordinal) || last.Turns is not > 0) return false;
+        var context = (last.FreshInputTokens ?? 0) + (last.CacheReadTokens ?? 0) + (last.CacheWriteTokens ?? 0);
+        if (context == 0) context = last.InputTokens ?? 0;
+        return context / last.Turns.Value > SpecialistSessionContextLimit;
+    }
+
+    public Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken) =>
+        _queue.GetSpecialistUsageAsync(CaseChat.NormalizeCard(cardNumber), since, cancellationToken);
 
     public async Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken) =>
         await _queue.GetRequestAsync(requestId, cancellationToken) is { Kind: ExecutionRequestKind.Specialist } r

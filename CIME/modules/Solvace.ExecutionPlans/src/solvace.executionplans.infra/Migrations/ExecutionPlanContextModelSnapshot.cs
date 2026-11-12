@@ -414,6 +414,31 @@ namespace solvace.executionplans.infra.Migrations
                     b.ToTable("CaseProposals", "execution");
                 });
 
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.CaseReader", b =>
+                {
+                    b.Property<string>("CardNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LastSeenNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CardNumber", "UserId");
+
+                    b.ToTable("CaseReaders", "execution");
+                });
+
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>
                 {
                     b.Property<Guid>("Id")

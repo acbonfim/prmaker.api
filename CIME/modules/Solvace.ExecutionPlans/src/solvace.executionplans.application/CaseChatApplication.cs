@@ -82,9 +82,13 @@ public class CaseChatApplication(
             Knows = await KnowsAsync(card, cancellationToken),
             Run = await queue.GetSpecialistRunAsync(card, cancellationToken),
             SessionHost = chat?.SessionHost,
+            SpecialistReadNumber = chat?.LastReadNumber ?? 0,
+            Readers = (await cases.GetReadersAsync(card, cancellationToken))
+                .Select(r => new CaseReaderResponse { UserId = r.UserId, Name = r.Name, Number = r.LastSeenNumber, At = r.SeenAt }).ToList(),
             InputTokens = chat?.InputTokens ?? 0,
             OutputTokens = chat?.OutputTokens ?? 0,
             CostUsd = chat?.CostUsd ?? 0,
+            Usage = await queue.GetSpecialistUsageAsync(card, chat?.ClearedAt, cancellationToken),
             CanDecide = CanDecide(viewer, currentPlan),
             HasPlan = currentPlan is not null,
             ServerTime = DateTimeOffset.UtcNow
@@ -250,6 +254,19 @@ public class CaseChatApplication(
         NotifyAsync(CaseChat.NormalizeCard(cardNumber),
             new { cardNumber = CaseChat.NormalizeCard(cardNumber), action = ExecutionPlanRealTimeEvents.CaseActions.Typing, by = actor.Name, userId = actor.UserId },
             cancellationToken);
+
+    /// <summary>A pessoa viu a conversa até <paramref name="number"/>: grava (só avança) e avisa quem escreveu (✓✓).</summary>
+    public async Task SeenAsync(string cardNumber, int number, CaseActor actor, CancellationToken cancellationToken)
+    {
+        if (actor.IsSpecialist || actor.UserId is not { } userId || number <= 0) return;
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var max = await cases.GetMaxMessageNumberAsync(card, cancellationToken);
+        var seen = Math.Min(number, max);
+        if (seen <= 0) return;
+        if (await cases.MarkSeenAsync(new CaseReader(card, userId, actor.Name, seen, DateTimeOffset.UtcNow), cancellationToken))
+            await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Seen, number = seen, by = actor.Name, userId },
+                cancellationToken);
+    }
 
     /// <summary>Pede ao especialista para responder agora (ex.: "Tentar de novo", atalhos sem texto).</summary>
     public async Task<ExecutionRequestResponse?> AskAsync(string cardNumber, bool deep, CaseActor actor, CancellationToken cancellationToken)
@@ -509,9 +526,13 @@ public class CaseChatApplication(
                 cases.AddChat(chat);
             }
             chat.MarkRead(messages.Max(m => m.Number), now);
+            var read = chat.LastReadNumber;
             try
             {
                 await cases.SaveChangesAsync(cancellationToken);
+                // ✓✓ nas mensagens de quem escreveu: o especialista leu.
+                await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Seen, number = read, by = SpecialistName, specialist = true },
+                    cancellationToken);
             }
             catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException)
             {
@@ -660,7 +681,7 @@ public class CaseChatApplication(
             string? itemsText = null;
             try
             {
-                itemsText = await workItems.SummaryMarkdownAsync(card, cancellationToken);
+                itemsText = await workItems.SummaryMarkdownAsync(card, cancellationToken, compact: true);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

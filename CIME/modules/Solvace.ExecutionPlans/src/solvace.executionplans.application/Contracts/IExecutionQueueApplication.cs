@@ -55,6 +55,8 @@ public interface IExecutionQueueApplication
         bool deep, CancellationToken cancellationToken);
     /// <summary>Pedido do especialista no card (o ativo, senão o último), com o motivo de espera.</summary>
     Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Consumo do especialista no card desde <paramref name="since"/> (o último /clear; null = desde sempre).</summary>
+    Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken);
     /// <summary>O token do caso ainda vale (o pedido do especialista deste card está ativo)?</summary>
     Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
     /// <summary>

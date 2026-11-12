@@ -1,3 +1,4 @@
+using solvace.executionplans.domain.Responses;
 using solvace.executionplans.domain.Entities;
 
 namespace solvace.executionplans.application.Contracts;
@@ -13,6 +14,8 @@ public interface IExecutionQueueRepository
     Task<ExecutionRequest?> GetActiveSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
     /// <summary>0080: último pedido do especialista no card (qualquer status), sem rastrear.</summary>
     Task<ExecutionRequest?> GetLastSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Consumo somado dos pedidos do especialista no card criados depois de <paramref name="since"/> (null = todos).</summary>
+    Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken);
     /// <summary>Pedidos ativos dos cards informados, sem rastrear.</summary>
     Task<List<ExecutionRequest>> GetActiveRequestsForCardsAsync(IReadOnlyCollection<string> cardNumbers, CancellationToken cancellationToken);
     Task<List<ExecutionRequest>> GetRecentRequestsForCardAsync(string cardNumber, int limit, CancellationToken cancellationToken);

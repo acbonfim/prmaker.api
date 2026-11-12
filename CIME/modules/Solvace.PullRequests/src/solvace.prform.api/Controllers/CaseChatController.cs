@@ -86,6 +86,15 @@ public class CaseChatController(CaseChatApplication chat, IExecutionQueueApplica
             return NoContent();
         });
 
+    /// <summary>Viu a conversa até a mensagem <c>number</c> (confirmação de leitura, o ✓✓ de quem escreveu).</summary>
+    [HttpPost("{card}/seen")]
+    public Task<ActionResult> Seen([FromRoute] string card, [FromBody] CaseSeenRequest request, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await chat.SeenAsync(card, request?.Number ?? 0, await ActorAsync(ct), ct);
+            return NoContent();
+        });
+
     /// <summary>Chama o especialista agora (tentar de novo, investigar a fundo).</summary>
     [HttpPost("{card}/ask")]
     public Task<ActionResult<ExecutionRequestResponse?>> Ask([FromRoute] string card, [FromQuery] bool deep, CancellationToken ct) =>

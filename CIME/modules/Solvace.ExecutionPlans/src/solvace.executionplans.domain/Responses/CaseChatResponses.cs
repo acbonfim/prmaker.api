@@ -21,9 +21,16 @@ public class CaseChatResponse
     /// <summary>Pedido do especialista (o ativo, senão o último).</summary>
     public ExecutionRequestResponse? Run { get; set; }
     public string? SessionHost { get; set; }
+    /// <summary>Última mensagem que o especialista leu (✓✓ nas mensagens para ele).</summary>
+    public int SpecialistReadNumber { get; set; }
+    /// <summary>Até onde cada pessoa já viu a conversa (✓✓ de quem escreveu).</summary>
+    public List<CaseReaderResponse> Readers { get; set; } = [];
+    /// <summary>Acumulado desde que a conversa existe (inclui as limpezas; a entrada soma o cache lido).</summary>
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public decimal CostUsd { get; set; }
+    /// <summary>Consumo desde o último /clear, com a entrada separada em nova, cache lido e cache escrito.</summary>
+    public CaseUsageResponse? Usage { get; set; }
     /// <summary>Quem está vendo pode aceitar propostas (dono do plano, admin, gestor).</summary>
     public bool CanDecide { get; set; }
     /// <summary>O card tem plano (proposta aceita e "Levar para o plano" precisam dele).</summary>
@@ -226,4 +233,31 @@ public static class CaseChatMappings
         MessageId = a.MessageId,
         CreatedAt = a.CreatedAt
     };
+}
+
+public class CaseReaderResponse
+{
+    public Guid UserId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int Number { get; set; }
+    public DateTimeOffset At { get; set; }
+}
+
+public class CaseSeenRequest
+{
+    public int Number { get; set; }
+}
+
+/// <summary>Consumo do especialista (soma dos pedidos do executor) — a entrada separada nas partes que custam diferente.</summary>
+public class CaseUsageResponse
+{
+    public DateTimeOffset? Since { get; set; }
+    public int Responses { get; set; }
+    /// <summary>Entrada total (nova + cache lido + cache escrito), como o Claude Code soma.</summary>
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long FreshInputTokens { get; set; }
+    public long CacheReadTokens { get; set; }
+    public long CacheWriteTokens { get; set; }
+    public decimal CostUsd { get; set; }
 }
