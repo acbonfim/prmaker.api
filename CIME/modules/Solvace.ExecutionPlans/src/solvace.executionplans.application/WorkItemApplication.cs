@@ -197,11 +197,13 @@ public class WorkItemApplication : IWorkItemApplication
         if (numbers.Count == 0) return 0;
 
         var changed = 0;
+        var seenItems = new HashSet<long>(); // duas sub-tarefas do mesmo item resolvem para o mesmo item dono: uma relação só.
         foreach (var n in numbers)
         {
             var resolved = await _items.ResolveNumberAsync(n, ct);
             // Só item de OUTRO card vira relatado automático (o do próprio card já está na aba Itens).
             if (resolved is not { } r || string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal)) continue;
+            if (!seenItems.Add(r.ItemNumber)) continue;
             if (await UpsertRelatedAsync(cardNumber, r.ItemNumber, r.TaskNumber, source, context, actor, ct, save: false))
                 changed++;
         }
