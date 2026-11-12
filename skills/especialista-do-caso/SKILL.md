@@ -50,7 +50,9 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
 7. Se a pergunta for de outra pessoa para outra pessoa e nao precisar de voce, nao responda.
 
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
-1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras e dos itens) e
+1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens e dos **relatados** —
+   itens de outros cards relacionados a este por mencao `#n`/`##n` ou a mao; use-os como contexto, detalhe de um deles com
+   `prmake_work_item(card, n)`) e
    `bash $CASE rules <card>` + `bash $CASE items <card>` (cache em `~/.prmake/cards/<card>/dados/regras.md` e
    `itens.json`, 10 min). Depois disso, so `prmake_case_messages` (as novas); o script devolve o cache sem ir ao
    servidor.

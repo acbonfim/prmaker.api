@@ -41,6 +41,17 @@ public class TimelineController : ControllerBase
         try
         {
             var result = await _timelineApplication.CreateAsync(request, userId, cancellationToken);
+            // 0094: menções (#n/##n) na entrada da Timeline viram relatados do card (best-effort, só item de outro card).
+            if (!string.IsNullOrWhiteSpace(request.Description)
+                && HttpContext.RequestServices.GetService<solvace.executionplans.application.Contracts.IWorkItemApplication>() is { } relatedItems)
+                try
+                {
+                    await relatedItems.CaptureMentionsAsync(request.CardNumber, request.Description,
+                        solvace.executionplans.domain.Entities.WorkItemRelatedSource.Timeline, "Timeline",
+                        new solvace.executionplans.application.Contracts.ExecutionActor(userId,
+                            string.IsNullOrWhiteSpace(request.UserName) ? "Usuário" : request.UserName!, false), cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { /* best-effort */ }
             // 0091: publicado pela skill (ou com ?workItemTask=) → entrega da sub-tarefa em andamento. Pela tela, não.
             var task = solvace.prform.Execution.WorkDeliverableHooks.TaskOf(HttpContext);
             if ((task is not null || solvace.prform.Execution.WorkDeliverableHooks.IsClaude(HttpContext))

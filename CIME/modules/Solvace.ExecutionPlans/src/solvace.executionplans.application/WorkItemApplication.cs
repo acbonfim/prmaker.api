@@ -276,6 +276,18 @@ public class WorkItemApplication : IWorkItemApplication
     private Task NotifyRelatedAsync(string cardNumber, long? number, CancellationToken ct) =>
         NotifyAsync(cardNumber, number ?? 0, WorkItemStatus.Pending, ExecutionPlanRealTimeEvents.WorkItemActions.Related, null, ct);
 
+    /// <summary>Captura best-effort (nunca quebra a operação que a originou).</summary>
+    private Task CaptureAsync(string card, string? text, string source, string? context, ExecutionActor actor, CancellationToken ct) =>
+        TryAsync(() => CaptureMentionsAsync(card, text, source, context, actor, ct));
+
+    /// <summary>Captura as menções de um item (descrição + sub-tarefas) como relatados (source item-ref).</summary>
+    private Task CaptureItemRefAsync(string card, long itemNumber, string? description, IEnumerable<string?>? taskTexts,
+        ExecutionActor actor, CancellationToken ct)
+    {
+        var text = string.Join('\n', new[] { description }.Concat(taskTexts ?? []).Where(s => !string.IsNullOrWhiteSpace(s)));
+        return CaptureAsync(card, text, WorkItemRelatedSource.ItemRef, $"item #{itemNumber}", actor, ct);
+    }
+
     // ================================================================ criar / editar
 
     public async Task<WorkItemResponse> CreateAsync(string card, CreateWorkItemRequest req, string origin, ExecutionActor actor, CancellationToken ct)
@@ -318,6 +330,7 @@ public class WorkItemApplication : IWorkItemApplication
         await _items.SaveChangesAsync(ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Created, null, ct);
         await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado ({OriginText(item.Origin)}): {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
+        await CaptureItemRefAsync(cardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -327,6 +340,7 @@ public class WorkItemApplication : IWorkItemApplication
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
             i => i.Update(req.Title ?? i.Title, req.Description, req.Tasks, actor.Name, DateTimeOffset.UtcNow), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
+        await CaptureItemRefAsync(item.CardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -381,6 +395,9 @@ public class WorkItemApplication : IWorkItemApplication
         await AfterStatusChangeAsync(item, before, actor, ct);
         if (a == WorkTaskAction.Complete && task.Kind == WorkTaskKind.CardBrief && !string.IsNullOrWhiteSpace(req.Result))
             await EnsureCardBriefFileAsync(item, taskNumber, req.Result, actor, ct);
+        // 0094: o resultado de uma sub-tarefa pode citar itens de outros cards → relatados do card.
+        if (!string.IsNullOrWhiteSpace(req.Result))
+            await CaptureAsync(item.CardNumber, req.Result, WorkItemRelatedSource.ItemRef, $"sub-tarefa #{taskNumber}", actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 

@@ -59,6 +59,8 @@ Carregue uma vez, no inicio:
 
 **1. Carregar (uma vez)** — `prmake_work_item(card, number)` + `prmake_rules(card)` (ou `bash $PLAN rules <card>`:
 usa o cache do card). Contexto minimo do card: `$CARD_DIR/dados/card-resumo.txt` se existir; senao `prmake_card(card)`.
+0094: se o card tiver **relatados** (itens de outros cards ligados a este — vem no `prmake_case_context`, secao "Relatados"),
+leia o resumo e inclua no contexto da analise quando for relevante (detalhe sob demanda: `prmake_work_item(card, n)`).
 Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o arquivo que a sub-tarefa citar.
 - `planId` presente → regra 4. Status `completed`/`cancelled`/`reverted` → nada a fazer, encerre.
 - Sub-tarefas: siga `order`; pule as `completed`/`skipped`; retome a `running`/`waiting` (o executor te chamou de novo
