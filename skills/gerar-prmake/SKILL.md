@@ -178,10 +178,15 @@ Ele imprime os HTTP codes, o `id` do registro do card, o número/URL do PR no Gi
 > - `Custom.ResolutionType` (**Resolution Type**) = `Code Fix`
 > - `Custom.GeneralClassification` (**General Classification**) = `Code`
 > - `Custom.Classification` (**Classification**) = `Code Required - Code Defect`
+> - `Custom.BugType` (**Bug Type**, só no Bug) = `BUG_TYPE` — **escolha você** o valor entre os do picklist do
+>   DevOps (`GET /Azure/actions/bug-types` no PRMake, mesmo token/host dos outros scripts) pela
+>   área/funcionalidade afetada pelo bug; nunca invente valor fora da lista (o PRMake recusa com 400 e mostra as
+>   opções). Card que já tem Bug Type correto: pode omitir. Bug sem Bug Type fica com pendência e não vai para
+>   Ready for QA / Test in Production.
 >
 > Sobrescreva por env (`RESOLUTION_TYPE`, `GENERAL_CLASSIFICATION`, `CLASSIFICATION`) ou use uma opção pronta
 > do PRMake com `CLASSIFICATION_PRESET` (ex.: `user-education`, `script-defect` — lista em
-> `GET /Azure/actions/classifications`); `SKIP_FIELDS=1` pula a etapa. Os valores precisam existir na picklist.
+> `GET /Azure/actions/classifications`) e passe `BUG_TYPE="<valor>"`; `SKIP_FIELDS=1` pula a etapa. Os valores precisam existir na picklist.
 
 > **Textos enviados ao DevOps vão em HTML5.** Tanto o root cause quanto o comentário da discussion
 > são convertidos de Markdown para HTML5 por `scripts/md2html.py` antes do POST (com estilos inline:
@@ -194,7 +199,7 @@ Ele imprime os HTTP codes, o `id` do registro do card, o número/URL do PR no Gi
 ### 7. Reportar
 Informe: card, tipo (Bug/US), branch, `id` do registro no PRMake, o link do PR no GitHub (se aberto), se o RCA foi gravado no DevOps, se o
 comentário PT/EN foi postado na discussion (`commentId`) e se os campos custom de classificação
-foram preenchidos (Resolution Type / General Classification / Classification). Em caso de HTTP 401 no PRMake, o token
+foram preenchidos (Resolution Type / General Classification / Classification / Bug Type). Em caso de HTTP 401 no PRMake, o token
 PRMake expirou (`~/.claude/prmake-token.txt` ou `PRMAKE_TOKEN`); HTTP 403 com `PERSONAL_INTEGRATION_REQUIRED`
 nas chamadas de GitHub/Azure = o usuário precisa salvar a própria chave em **Minhas integrações** no app;
 HTTP 500 no `POST /PullRequest` = confira se está usando o host novo (`api.softhouse.app.br`); erro do Azure nas

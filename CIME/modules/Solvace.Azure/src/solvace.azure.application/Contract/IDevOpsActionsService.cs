@@ -41,7 +41,10 @@ public interface IDevOpsActionsService
     /// <summary>Opções de classificação (padrão ou as do "AI Configurations") — feature 0028.</summary>
     Task<IReadOnlyList<DevOpsClassificationPreset>> GetClassificationPresetsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Grava Resolution Type · General Classification · Classification no card (feature 0028).</summary>
+    /// <summary>Valores do picklist Bug Type do Bug no DevOps (campo configurável, padrão Custom.BugType); vazio sem o campo.</summary>
+    Task<IReadOnlyList<string>> GetBugTypesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Grava Resolution Type · General Classification · Classification e/ou o Bug Type no card (feature 0028).</summary>
     Task<DevOpsActionResponse> ClassifyAsync(string cardNumber, ClassifyCardRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -351,9 +351,16 @@ public class DevOpsActionsService : IDevOpsActionsService
         return DefaultClassificationPresets;
     }
 
+    public async Task<IReadOnlyList<string>> GetBugTypesAsync(CancellationToken cancellationToken = default)
+    {
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        return await _azureService.GetFieldAllowedValuesAsync("Bug", names.BugType, cancellationToken) ?? [];
+    }
+
     public async Task<DevOpsActionResponse> ClassifyAsync(string cardNumber, ClassifyCardRequest request, CancellationToken cancellationToken = default)
     {
         string? resolution = request.ResolutionType?.Trim(), general = request.GeneralClassification?.Trim(), classification = request.Classification?.Trim();
+        var bugType = request.BugType?.Trim();
         if (!string.IsNullOrWhiteSpace(request.Preset))
         {
             var presets = await GetClassificationPresetsAsync(cancellationToken);
@@ -363,18 +370,36 @@ public class DevOpsActionsService : IDevOpsActionsService
             general = preset.GeneralClassification;
             classification = preset.Classification;
         }
-        if (string.IsNullOrWhiteSpace(resolution) || string.IsNullOrWhiteSpace(general) || string.IsNullOrWhiteSpace(classification))
-            throw new DevOpsActionException(400, "Informe o preset ou os três valores: resolutionType, generalClassification e classification");
+        var anyClassification = !string.IsNullOrWhiteSpace(resolution) || !string.IsNullOrWhiteSpace(general) || !string.IsNullOrWhiteSpace(classification);
+        var fullClassification = !string.IsNullOrWhiteSpace(resolution) && !string.IsNullOrWhiteSpace(general) && !string.IsNullOrWhiteSpace(classification);
+        if (anyClassification ? !fullClassification : string.IsNullOrWhiteSpace(bugType))
+            throw new DevOpsActionException(400, "Informe o preset ou os três valores (resolutionType, generalClassification e classification) e/ou o bugType");
 
         await LoadBugAsync(cardNumber, cancellationToken);
         var names = await _azureService.GetFieldNamesAsync(cancellationToken);
-        var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object>
+        var fields = new Dictionary<string, object>();
+        if (fullClassification)
         {
-            [names.ResolutionType] = resolution,
-            [names.GeneralClassification] = general,
-            [names.Classification] = classification
-        }, cancellationToken);
-        return new DevOpsActionResponse { Rev = rev, Message = $"Classificação do card: {resolution} · {general} · {classification}" };
+            fields[names.ResolutionType] = resolution!;
+            fields[names.GeneralClassification] = general!;
+            fields[names.Classification] = classification!;
+        }
+        if (!string.IsNullOrWhiteSpace(bugType))
+        {
+            // Bug Type é picklist do DevOps: só aceita um valor da lista (com a grafia de lá).
+            var options = await _azureService.GetFieldAllowedValuesAsync("Bug", names.BugType, cancellationToken)
+                          ?? throw new DevOpsActionException(400, $"O Bug do DevOps não tem o campo {names.BugType} (Bug Type)");
+            bugType = options.FirstOrDefault(o => string.Equals(o, bugType, StringComparison.OrdinalIgnoreCase))
+                      ?? (options.Count == 0 ? bugType
+                          : throw new DevOpsActionException(400, $"Bug Type desconhecido: '{bugType}'. Opções: {string.Join(" | ", options)}"));
+            fields[names.BugType] = bugType;
+        }
+
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
+        var parts = new List<string>();
+        if (fullClassification) parts.Add($"Classificação do card: {resolution} · {general} · {classification}");
+        if (!string.IsNullOrWhiteSpace(bugType)) parts.Add($"Bug Type: {bugType}");
+        return new DevOpsActionResponse { Rev = rev, Message = string.Join(" · ", parts) };
     }
 
     public async Task<PullRequestRegisterResponse> SaveSummaryAsync(string cardNumber, SaveSummaryRequest request, CancellationToken cancellationToken = default)
@@ -486,6 +511,7 @@ public class DevOpsActionsService : IDevOpsActionsService
         if (a.MissingResolutionType) pending.Add("Resolution Type");
         if (a.MissingGeneralClassification) pending.Add("General Classification");
         if (a.MissingClassification) pending.Add("Classification");
+        if (a.MissingBugType) pending.Add("Bug Type");
         if (a.RemainingNotZero) pending.Add("Remaining não zerado");
 
         if (pending.Count > 0)

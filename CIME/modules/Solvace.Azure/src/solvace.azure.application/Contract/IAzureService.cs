@@ -25,6 +25,12 @@ public interface IAzureService
     Task<IReadOnlyList<WorkItemTypeState>> GetWorkItemTypeStateInfosAsync(string workItemType, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Valores do picklist de um campo no tipo de work item (ex.: Custom.BugType do Bug), na ordem do DevOps. Null quando
+    /// o tipo não tem o campo; lista vazia quando o campo não é picklist. Cache curto por tipo/campo.
+    /// </summary>
+    Task<IReadOnlyList<string>?> GetFieldAllowedValuesAsync(string workItemType, string field, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Cria (commentId null) ou atualiza um comentário HTML na discussion do card e devolve o id.
     /// Comentário apagado no DevOps (404 ao atualizar) = cria outro.
     /// </summary>

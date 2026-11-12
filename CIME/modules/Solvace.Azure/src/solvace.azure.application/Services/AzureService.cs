@@ -67,7 +67,8 @@ public class AzureService : IAzureService
                 Field(AzureDevOpsFieldKeys.RemainingWork),
                 Field(AzureDevOpsFieldKeys.OriginalEstimate),
                 Field(AzureDevOpsFieldKeys.CompletedWork),
-                Field(AzureDevOpsFieldKeys.RootCauseFieldPath).Replace("/fields/", string.Empty).Trim('/'));
+                Field(AzureDevOpsFieldKeys.RootCauseFieldPath).Replace("/fields/", string.Empty).Trim('/'),
+                Field(AzureDevOpsFieldKeys.BugType));
         }
     }
 
@@ -293,6 +294,42 @@ public class AzureService : IAzureService
         throw DevOpsActionException.Upstream($"O DevOps não listou os estados de {workItemType}.");
     }
 
+    /// <summary>Picklists por organização/projeto/tipo/campo — mudam raramente (processo do DevOps).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, IReadOnlyList<string>? Values)> AllowedValuesCache = new();
+
+    public async Task<IReadOnlyList<string>?> GetFieldAllowedValuesAsync(string workItemType, string field, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var baseUrl = GetAzureBaseUrl();
+        var key = $"{baseUrl}|{workItemType}|{field}".ToLowerInvariant();
+        if (AllowedValuesCache.TryGetValue(key, out var hit) && DateTime.UtcNow - hit.At < StatesCacheFor)
+            return hit.Values;
+
+        var configured = Config.GetConfigurationValue("ApiVersion");
+        var version = string.IsNullOrWhiteSpace(configured) ? "7.1" : configured;
+        var url = $"{baseUrl}/wit/workitemtypes/{Uri.EscapeDataString(workItemType)}/fields/{Uri.EscapeDataString(field)}?$expand=allowedValues&api-version={version}";
+        var response = await CreateClient().GetAsync(url, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        IReadOnlyList<string>? values;
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            values = null; // o tipo não tem o campo neste processo
+        else if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"O DevOps não listou os valores de {field} em {workItemType}: {ExtractDevOpsError(body)}");
+        else
+        {
+            using var doc = JsonDocument.Parse(body);
+            values = doc.RootElement.TryGetProperty("allowedValues", out var allowed) && allowed.ValueKind == JsonValueKind.Array
+                ? allowed.EnumerateArray()
+                    .Where(v => v.ValueKind == JsonValueKind.String)
+                    .Select(v => v.GetString()!.Trim())
+                    .Where(v => v.Length > 0)
+                    .ToList()
+                : [];
+        }
+        AllowedValuesCache[key] = (DateTime.UtcNow, values);
+        return values;
+    }
+
     private static string? StringProp(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
@@ -498,9 +535,15 @@ public class AzureService : IAzureService
             MissingResolutionType = IsEmpty(fields, names.ResolutionType),
             MissingGeneralClassification = IsEmpty(fields, names.GeneralClassification),
             MissingClassification = IsEmpty(fields, names.Classification),
+            // Bug Type só existe no Bug (User Story não tem o campo).
+            MissingBugType = IsBug(fields) && IsEmpty(fields, names.BugType),
             RemainingNotZero = RemainingNotZero(fields, names.RemainingWork)
         };
     }
+
+    private static bool IsBug(Dictionary<string, JsonElement> fields) =>
+        fields.TryGetValue("System.WorkItemType", out var el) && el.ValueKind == JsonValueKind.String
+        && string.Equals(el.GetString(), "Bug", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsEmpty(Dictionary<string, JsonElement> fields, string key)
     {
