@@ -73,7 +73,8 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
 3. `prmake_work_task(action: start)`.
 4. Faca, pelo guia do `kind` abaixo.
 5. `prmake_work_task(action: complete, result, output, undo)`:
-   - `result`: markdown curto (2–6 linhas) — o que foi feito, nomes reais (branch, PR, commit), avisos.
+   - `result`: markdown curto (2–6 linhas) — **comeca por uma manchete curta em negrito** (ex.: `**Legado: persiste.**`;
+     a tela mostra essa frase na lista de etapas), depois o que foi feito, nomes reais (branch, PR, commit), avisos.
    - `output`: so fatos para a tela e para o desfazer — `{"pr": url, "number": "n", "repository", "branch", "target",
      "commit": sha, "commits": [...], "created": "true|false", "from": "<estado anterior>"}` (o que se aplicar).
    - `undo`: `{"action": "...", "params": {...}}` do catalogo abaixo — **sempre** que a sub-tarefa mudou algo fora;
@@ -120,6 +121,18 @@ Push sempre explicito: `git -C "$WT" push -u origin <branch>` (o worktree nasce 
 | `env-validation` | **Validar no ambiente com prints** — leia `cat ~/.claude/skills/validar-ambiente/SKILL.md` (faltando: `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet validar-ambiente`) e siga o fluxo da sub-tarefa `env-validation`. O navegador e o script `env.sh` pelo Bash (nao e ferramenta/MCP): rode `env.sh setup` antes de concluir que falta navegador; `params.user`/`plant` vazios = o `env.sh` escolhe (quem ja tem senha nesta maquina vence o admin da planta; planta diferente → troque no seletor da tela). Fluxo: `bash ~/.claude/skills/validar-ambiente/scripts/env.sh resolve <params.environment>` → `browser start <amb> [--user <params.user>] --card <card> --task <n>` → roteiro (`params.scenario`/`expected` ou o que o card pede) com `snap`/`click`/`fill` (navegacao) e `shot` so da tela que prova cada resultado esperado (2–5 prints) → `browser stop` → `evidence <card> <item> <n> <pasta> --report validacao-<amb>.md`. **Sem senha** (exit 4), login recusado (exit 3) ou sem navegador (exit 2) → o `env.sh` (com `--task`) ja deixa a sub-tarefa aguardando a pessoa na ferramenta com o comando (`prmake-skills.sh env-credentials set <amb> <email>`) e o *Ja resolvi*: so pare (saida `AVISADO NA FERRAMENTA`; senao, `wait` voce mesmo com a orientacao). Mudanca ainda nao publicada no ambiente → `wait` dizendo o PR/deploy que falta. DEMO/producao: so leitura. Reprovado → `fail` (nao siga para os outros ambientes) | `{environment, url, user, plant?, shots, verdict:"ok"}` | `none {reason:"so leitura/validacao"}` |
 | `env-reproduction` | **Reproduzir o bug no ambiente com prints** — leia `cat ~/.claude/skills/validar-ambiente/SKILL.md` (secao "Reproduzir o bug") e siga: `params.environment` = `cliente` (padrao: o relatado no card, `env.sh card-env <card>`) ou outro; `browser start <amb|cliente> --card <card> --task <n>` → passos (`params.steps` ou os do card) com `shot` so do inicio do fluxo e do erro → `browser stop` → `evidence ... --report reproducao-<amb>.md`. Sem senha/login recusado/sem navegador: o `env.sh` ja avisa na ferramenta, so pare. Producao/DEMO: o que grava vai para o sandbox do cliente ou qa. **Sem `wait` para achar tela/URL/menu, usuario, planta ou "aceitar evidencia alternativa"** (secoes "Autonomia" e "Achar a tela" da skill): nao deu para mostrar → print do que aparece + codigo que explica + `reproduced: parcial` com "Para decidir depois:" e siga para a proxima sub-tarefa. **Conclua com `complete` mesmo sem reproduzir** (o resultado e a informacao) | `{environment, url, user, plant?, shots, reproduced:"sim\|nao\|parcial"}` | `none {reason:"so leitura/reproducao"}` |
 | `notify` | Aviso curto no card com `params.message` (pt-BR; sem segredo nem dado de cliente alem do card): Timeline sempre — `prmake_timeline(card, markdown)`. Teams: o PRMake so envia pelo Teams o **pedido de aprovacao de PR** (Workflow pessoal em Minhas integracoes, botao "Pedir aprovacao" / `POST Teams/approval`); aviso que e isso e tem PR aberto → use-o; outro aviso → so Timeline e diga no `result` que o Teams nao tem envio livre | `{where:"timeline\|timeline+teams"}` | `none` (aviso nao se apaga) |
+
+**Visao geral do item de pesquisa/analise** (sub-tarefas `research`): ao concluir a **ultima** sub-tarefa `research`
+do item, grave tambem no item `00-visao-geral-<id>.md` (`prmake_work_item_file(..., kind: "analysis")`, `<id>` = id do
+achado/item, ex.: `00-visao-geral-gs-096.md`) — o resumo executivo que a Visao geral mostra no topo, pt-BR com acentos,
+no **mesmo formato visual da `analise-inicial.md`** (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh analise 4` e
+`4b`: selos, callouts, fotografias):
+- `> [!SUMMARY]` com `**Problema:**`, `**Causa (confirmada):**` (ou `(provável)`) e `**Decisão:**`;
+- `### O que vai ser feito` — tabela `| # | Onde | Mudança | Por quê |` com os selos `**Alterar**`, `**Criar**`,
+  `**Remover**`, `**Só leitura**`;
+- `### Evidências` — cada uma com `**Confirmado:**` ou `**Hipótese:**`;
+- codigo citado = `[caminho:linhas](ref:<id>)` com fotografia (`bash $PLAN coderef <card> <ref> ...` — funciona em card
+  sem plano) e prints da reproducao como `![legenda](anexo:<nome>)` (o nome do arquivo do item/plano).
 
 Catalogo do `undo` (o `desfazer-item-de-trabalho` le exatamente isto): `close-pr {repo, number}` ·
 `delete-branch {repo, branch}` · `revert-commit {repo, branch, sha, createdByItem}` · `devops-state {from, action?}` ·

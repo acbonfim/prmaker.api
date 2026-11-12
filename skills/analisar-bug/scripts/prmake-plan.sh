@@ -22,7 +22,8 @@
 #                                                        0075: FOTOGRAFIA do codigo citado (o link [texto](ref:<ref>) e as
 #                                                        citacoes caminho:linha abrem o popover com o codigo real, o diff
 #                                                        proposto e as notas). Le na copia da master (ou --dir); --after =
-#                                                        so as linhas novas que substituem A-B (o script faz o diff)
+#                                                        so as linhas novas que substituem A-B (o script faz o diff).
+#                                                        Card sem plano (itens avulsos): grava a fotografia no card
 #   evidencias  <card> [--skip "motivo"]               0076: importa para o plano as EVIDENCIAS do card no DevOps (anexos, prints
 #                                                        da descricao e da discussion) e lista (#n, origem, aberta?); abra
 #                                                        cada uma com `attachment <card> "#n"` + Read. --skip = seguir sem
@@ -662,7 +663,16 @@ case "$CMD" in
 
   coderef)
     # 0075: fotografia do codigo citado — o Claude indica arquivo/linhas/trecho novo, o script le e faz o diff.
-    require_plan; REF="${1:?ref (ex.: sa3-init)}"; shift
+    # Card sem plano (itens de trabalho avulsos, sem .prmake-plan.json ou com o plano indisponivel): grava pelo card
+    # (PUT/PATCH ExecutionPlan/card/<card>/code-refs/<ref>) — o PRMake usa o plano do card se houver, senao a
+    # fotografia fica no card. Com plano: a rota do plano, como sempre.
+    PLAN="$(plan_id)"
+    if [[ -n "$PLAN" ]] && ! { [[ -f "$STATE" ]] && jq -e '.offline == true' "$STATE" >/dev/null 2>&1; }; then
+      register_session; CR_ROUTE="/$PLAN"
+    else
+      CR_ROUTE="/card/$CARD"
+    fi
+    REF="${1:?ref (ex.: sa3-init)}"; shift
     CR_REPO=""; CR_DIR=""; CR_FILE=""; CR_SHA=""; CR_CTX=""; CR_ARGS=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -684,7 +694,7 @@ case "$CMD" in
     [[ -n "$CR_REPO" ]] || CR_REPO="$(basename "$(git -C "$CR_DIR" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null)"
     if [[ -n "$CR_SHA" ]]; then
       python3 "$(dirname "$0")/coderef.py" implemented --dir "$CR_DIR" --file "$CR_FILE" --sha "$CR_SHA" > "$TMP/body" || exit 1
-      api PATCH "/$PLAN/code-refs/$REF" "$TMP/body"
+      api PATCH "$CR_ROUTE/code-refs/$REF" "$TMP/body"
     else
       if [[ -z "$CR_CTX" ]]; then
         [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
@@ -693,7 +703,7 @@ case "$CMD" in
       [[ "$CR_CTX" =~ ^[0-9]+$ ]] || CR_CTX=30
       python3 "$(dirname "$0")/coderef.py" snapshot --dir "$CR_DIR" --file "$CR_FILE" --repo "$CR_REPO" --context "$CR_CTX" \
         ${CR_ARGS[@]+"${CR_ARGS[@]}"} > "$TMP/body" || exit 1
-      api PUT "/$PLAN/code-refs/$REF" "$TMP/body"
+      api PUT "$CR_ROUTE/code-refs/$REF" "$TMP/body"
     fi
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em coderef $REF: $(resp_error)"
     jq -r '"OK coderef \(.ref) \(.change) \(.path):\(.startLine)-\(.endLine)\(if .hasProposal then " +proposta" else "" end)\(if .hasImplemented then " +feito" else "" end) — cite com [texto](ref:\(.ref))"' "$TMP/resp"
