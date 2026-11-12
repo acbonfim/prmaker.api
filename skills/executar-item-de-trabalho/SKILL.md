@@ -67,6 +67,10 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
   porque a pessoa agiu — confira o que mudou antes de seguir). Sub-tarefa que voltou de uma espera pelo **"Já resolvi"**
   fica `pending` com `**Resolvido por <pessoa>:** <nota>` no fim do `result`: e o que a pessoa fez (ex.: "adicionei o
   alias X") — use isso e tente de novo; ainda sem saida → `wait` de novo dizendo o que continua faltando.
+  Sub-tarefa **reaberta** (item reaberto para refazer) fica `pending` com `**Reaberta por <pessoa> — refazer:** <motivo>`
+  no fim do `result`: **refaca do zero** atendendo o motivo (ex.: "reproduzir com prints do antes e depois") — o
+  resultado anterior e so contexto, nao conta como feito; os arquivos ja gravados no item continuam la. O `result` novo
+  substitui o anterior.
 
 **2. Para cada sub-tarefa, na ordem** (uma por vez):
 1. Checagem do item (regra 5).

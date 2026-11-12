@@ -194,12 +194,30 @@ public partial class WorkItemTask
         if (Status != WorkTaskStatus.Waiting)
             throw new DomainException($"A sub-tarefa #{Number} não está aguardando (está {Status}).");
         var n = note?.Trim();
-        var line = string.IsNullOrEmpty(n) ? $"**Resolvido por {actor}.**" : $"**Resolvido por {actor}:** {n}";
+        AppendResult(string.IsNullOrEmpty(n) ? $"**Resolvido por {actor}.**" : $"**Resolvido por {actor}:** {n}");
+        Set(WorkTaskStatus.Pending, now);
+    }
+
+    /// <summary>
+    /// Item reaberto: a sub-tarefa volta a pendente para ser refeita. O resultado anterior fica, com o motivo no fim
+    /// (o Claude lê ao refazer); saídas e "como desfazer" anteriores também ficam.
+    /// </summary>
+    internal void Reopen(string actor, string? reason, DateTimeOffset now)
+    {
+        var r = reason?.Trim();
+        AppendResult(string.IsNullOrEmpty(r) ? $"**Reaberta por {actor}** — refazer." : $"**Reaberta por {actor} — refazer:** {r}");
+        Set(WorkTaskStatus.Pending, now);
+        CompletedAt = null;
+    }
+
+    internal void Touch(DateTimeOffset now) => UpdatedAt = now;
+
+    private void AppendResult(string line)
+    {
         var previous = Result ?? string.Empty;
         var room = MaxResultLength - line.Length - 2;
         if (previous.Length > room) previous = room > 0 ? previous[..room] : string.Empty;
         SetResult(previous.Length == 0 ? line : $"{previous}\n\n{line}");
-        Set(WorkTaskStatus.Pending, now);
     }
 
     internal void Annotate(string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)

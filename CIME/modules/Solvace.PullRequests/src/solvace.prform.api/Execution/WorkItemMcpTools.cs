@@ -15,8 +15,10 @@ namespace solvace.prform.Execution;
 /// 0085: regras do PRMake para o card e itens de trabalho pelo MCP. O Especialista do caso (token do caso) lê as regras,
 /// lista/cria/edita itens pending do próprio card (<see cref="CaseSpecialistMiddleware.AllowedTools"/>) e (r5) cancela,
 /// executa e registra o andamento de itens a pedido de uma pessoa — nunca de sub-tarefa espelho do plano (no item espelho, só
-/// acrescenta sub-tarefa nova: <c>prmake_work_item_add_task</c> vira etapa pendente do plano). Duplicata (mesmo
-/// fingerprint) volta como mensagem clara com o item existente e como forçar.
+/// acrescenta sub-tarefa nova: <c>prmake_work_item_add_task</c> vira etapa pendente do plano). Item avulso já começado ou
+/// fechado: reabre (<c>prmake_work_item_reopen</c>, refazendo sub-tarefas), acrescenta sub-tarefa e edita sub-tarefa
+/// pendente (<c>prmake_work_task_update</c>). Duplicata (mesmo fingerprint) volta como mensagem clara com o item existente
+/// e como forçar.
 /// </summary>
 [McpServerToolType]
 public class WorkItemMcpTools(
@@ -321,8 +323,9 @@ public class WorkItemMcpTools(
 
     [McpServerTool(Name = "prmake_work_item_update")]
     [Description("Edita um item de trabalho AINDA pendente (todas as sub-tarefas pending): titulo, descricao e/ou sub-tarefas " +
-                 "(tasks substitui a lista; mande 'number' de uma sub-tarefa existente para mante-la). Item iniciado/concluido nao edita: " +
-                 "crie um novo.")]
+                 "(tasks substitui a lista; mande 'number' de uma sub-tarefa existente para mante-la). Item avulso ja iniciado: sub-tarefa a " +
+                 "mais com prmake_work_item_add_task, sub-tarefa pendente com prmake_work_task_update; concluido/cancelado: " +
+                 "prmake_work_item_reopen antes.")]
     public Task<string> Update(string card, [Description("Numero do item (#n)")] long number, string? title = null, string? description = null,
         [Description("Nova lista de sub-tarefas (opcional): [{number?, title, kind, description?, executor?, params?}]")] JsonElement? tasks = null,
         CancellationToken ct = default) => Safe(async () =>
@@ -335,6 +338,10 @@ public class WorkItemMcpTools(
             throw new McpException($"O item #{number} espelha o plano e ja comecou — para acrescentar uma sub-tarefa use " +
                                    $"prmake_work_item_add_task(card {c}, number {number}, title, description); as etapas existentes " +
                                    "so mudam por uma nova versao do plano (prmake_case_propose).");
+        if (current.PlanId is null && !current.Editable)
+            throw new McpException($"O item #{number} ja comecou ou terminou ({current.Status}) — nao se edita inteiro. Sub-tarefa a mais: " +
+                                   $"prmake_work_item_add_task(card {c}, number {number}, ...); sub-tarefa pendente: prmake_work_task_update; " +
+                                   "item concluido/cancelado: prmake_work_item_reopen antes (redo = sub-tarefas a refazer).");
         return await specialist.RunAsync(c, $"Editar o item de trabalho #{number}", title, async () =>
         {
             var updated = await items.UpdateAsync(number, new UpdateWorkItemRequest
@@ -352,33 +359,68 @@ public class WorkItemMcpTools(
     });
 
     [McpServerTool(Name = "prmake_work_item_add_task")]
-    [Description("Acrescenta uma sub-tarefa a um item de trabalho que ESPELHA o plano (item da analise/correcao, ja em andamento): vira " +
-                 "uma etapa nova, pendente, do plano — sem mudar nem remover as outras — e o item ganha a sub-tarefa. Entra antes da " +
-                 "etapa em andamento/espera (ou de 'before', etapa ainda nao terminada); o Claude do tratamento faz essa etapa antes de " +
-                 "seguir. execute=true ja retoma o plano. Item avulso pendente: use prmake_work_item_update. Especialista do caso: so " +
-                 "com pedido da pessoa na conversa (\"antes de continuar, verifique X\").")]
-    public Task<string> AddTask(string card, [Description("Numero do item espelho do plano (#n)")] long number,
+    [Description("Acrescenta uma sub-tarefa a um item de trabalho ja existente. Item que ESPELHA o plano (analise/correcao em " +
+                 "andamento): vira etapa nova, pendente, do plano — sem mudar as outras — antes da etapa em andamento/espera (ou de " +
+                 "'before', chave de etapa ainda nao terminada); o Claude do tratamento a faz antes de seguir. Item AVULSO aberto " +
+                 "(pendente, em espera ou com falha, mesmo ja comecado): a sub-tarefa entra no fim (ou antes da sub-tarefa pendente " +
+                 "'before' = #n). Item avulso concluido/cancelado: reabra antes com prmake_work_item_reopen. execute=true ja executa " +
+                 "(retoma o plano / poe o item na fila). Especialista do caso: so com pedido da pessoa na conversa.")]
+    public Task<string> AddTask(string card, [Description("Numero do item (#n)")] long number,
         [Description("Titulo curto da sub-tarefa (o que fazer)")] string title,
-        [Description("O que fazer e para que (objetivo, fontes, o que confirmar) — o Claude do tratamento segue este texto")] string description,
-        [Description("Tipo da sub-tarefa (catalogo WorkItemTaskKinds: research, sql-query, task...; sem ele o PRMake deduz)")] string? kind = null,
-        [Description("Chave da etapa antes da qual entra (opcional; padrao: a etapa em andamento/espera)")] string? before = null,
-        [Description("Retomar o plano agora (a pessoa pediu para ja fazer)")] bool execute = false,
+        [Description("O que fazer e para que (objetivo, fontes, o que confirmar, evidencias exigidas) — o Claude que executa segue este texto")] string description,
+        [Description("Tipo da sub-tarefa (catalogo WorkItemTaskKinds: research, sql-query, env-reproduction, env-validation, code, pr, task...; no plano, sem ele o PRMake deduz)")] string? kind = null,
+        [Description("Item espelho do plano: chave da etapa antes da qual entra (padrao: a em andamento/espera). Item avulso: numero da sub-tarefa pendente antes da qual entra (padrao: no fim)")] string? before = null,
+        [Description("Item avulso: claude (padrao) ou user")] string? executor = null,
+        [Description("Item avulso: parametros da sub-tarefa {repository, branch, environment, steps, expected, ...} (objeto ou JSON em texto)")] JsonElement? @params = null,
+        [Description("Executar agora (a pessoa pediu para ja fazer)")] bool execute = false,
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
         EnsureSpecialistCard(c);
         var current = await items.GetAsync(number, false, ct);
         EnsureSameCard(current, c);
-        if (current.PlanId is not { } planId || !current.Tasks.Any(t => t.StepKey is not null))
-            throw new McpException($"O item #{number} nao espelha um plano — item avulso pendente se edita com prmake_work_item_update; " +
-                                   "iniciado/concluido: crie um item novo.");
-        var plan = await plans.GetAsync(planId, ct);
         var why = specialist.Via is { } via ? $"Acrescentada {via}." : null;
+        var text = why is null ? description : $"{description}\n\n{why}";
+        if (current.PlanId is not { } planId || !current.Tasks.Any(t => t.StepKey is not null))
+        {
+            if (current.PlanId is not null)
+                throw new McpException($"O item #{number} esta ligado ao plano sem espelhar as etapas — a mudanca vai por uma nova versao do " +
+                                       "plano (prmake_case_propose).");
+            if (current.Status is WorkItemStatus.Completed or WorkItemStatus.Cancelled)
+                throw new McpException($"O item #{number} esta {current.Status} — reabra antes com prmake_work_item_reopen(card {c}, number " +
+                                       $"{number}, reason) e chame de novo (ou, para refazer sub-tarefas ja feitas, informe redo no reopen).");
+            long? beforeTask = null;
+            if (!string.IsNullOrWhiteSpace(before))
+                beforeTask = long.TryParse(before.Trim().TrimStart('#'), out var b) ? b
+                    : throw new McpException("Item avulso: 'before' e o numero (#n) da sub-tarefa pendente antes da qual entra.");
+            var input = new WorkTaskInput
+            {
+                Title = title, Description = text, Kind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim(),
+                Executor = executor, Params = AsObject(@params) is { } po ? ToStringMap(po) : null
+            };
+            if (await citations.CheckWorkAsync(c, [input.Description], [(input.Title, input.Kind, input.Description)], ct) is { } incomplete)
+                throw new McpException(incomplete);
+            return await specialist.RunAsync(c, $"Acrescentar sub-tarefa ao item #{number}", title, async () =>
+            {
+                var item = await items.AddTasksAsync(number, new AddWorkTasksRequest { Tasks = [input], Before = beforeTask, Execute = execute },
+                    await ActorAsync(ct), ct);
+                var known = current.Tasks.Select(t => t.Number).ToHashSet();
+                var added = item.Tasks.Where(t => !known.Contains(t.Number)).OrderBy(t => t.Order).ToList();
+                return (Serialize(new
+                {
+                    item.Number, item.Title, item.Status, taskNumbers = added.Select(t => t.Number),
+                    tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Status })
+                }), $"sub-tarefa {string.Join(", ", added.Select(t => $"#{t.Number}"))} acrescentada ao item #{item.Number}" +
+                    $"{(execute ? " e item na fila" : string.Empty)}");
+            }, ct);
+        }
+
+        var plan = await plans.GetAsync(planId, ct);
         var definition = new ExecutionStepDefinition
         {
             Key = NewStepKey(title, plan.Steps.Select(s => s.Key)),
             Title = title,
-            Description = why is null ? description : $"{description}\n\n{why}",
+            Description = text,
             Executor = ExecutionExecutor.Claude,
             TaskKind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim(),
         };
@@ -396,6 +438,81 @@ public class WorkItemMcpTools(
                 tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Title, t.Status })
             }), $"sub-tarefa {(task is null ? string.Empty : $"#{task.Number} ")}acrescentada ao item #{item.Number}" +
                 $"{(execute ? " e plano retomado" : string.Empty)}");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_item_reopen")]
+    [Description("Reabre um item de trabalho AVULSO concluido, cancelado ou com falha para refazer ou acrescentar trabalho. redo = " +
+                 "sub-tarefas (#n) que voltam a pendente para serem refeitas (o resultado anterior fica, com o motivo no fim; arquivos e " +
+                 "prints ja gravados ficam no item) — inclua as que dependem delas (ex.: refazer a reproducao e a proposta que a usa). " +
+                 "Sem redo: so reabre, para acrescentar sub-tarefa com prmake_work_item_add_task. Item cancelado: as sub-tarefas " +
+                 "canceladas voltam a pendente. execute=true ja poe na fila (precisa de sub-tarefa pendente). Item do plano (analise/" +
+                 "correcao) nao reabre: muda pelo plano. Especialista do caso: so com pedido da pessoa na conversa.")]
+    public Task<string> Reopen(string card, [Description("Numero do item (#n)")] long number,
+        [Description("Motivo (vai para o item, as sub-tarefas refeitas e a Timeline)")] string? reason = null,
+        [Description("Sub-tarefas a refazer: lista de numeros [232, 233] (ou o JSON em texto)")] JsonElement? redo = null,
+        [Description("Executar logo depois de reabrir")] bool execute = false,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var current = await items.GetAsync(number, false, ct);
+        EnsureSameCard(current, c);
+        var numbers = new List<long>();
+        if (AsJson(redo) is { } r)
+        {
+            if (r.ValueKind == JsonValueKind.Number) numbers.Add(r.GetInt64());
+            else if (r.ValueKind == JsonValueKind.Array)
+                foreach (var n in r.EnumerateArray())
+                    numbers.Add(n.ValueKind == JsonValueKind.Number ? n.GetInt64()
+                        : long.TryParse(n.GetString()?.Trim().TrimStart('#'), out var v) ? v
+                        : throw new McpException("redo: lista de numeros de sub-tarefa, ex.: [232, 233]."));
+            else throw new McpException("redo: lista de numeros de sub-tarefa, ex.: [232, 233].");
+        }
+        var why = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (specialist.Via is { } via) why = why is null ? via : $"{why} ({via})";
+        return await specialist.RunAsync(c, $"Reabrir o item de trabalho #{number}", why, async () =>
+        {
+            var item = await items.ReopenAsync(number, new ReopenWorkItemRequest { Redo = numbers, Reason = why, Execute = execute },
+                await ActorAsync(ct), ct);
+            return (Serialize(new
+            {
+                item.Number, item.Title, item.Status,
+                tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Status })
+            }), $"item #{item.Number} reaberto{(numbers.Count == 0 ? string.Empty : $" (refazer {string.Join(", ", numbers.Select(n => $"#{n}"))})")}" +
+                $"{(execute ? " e na fila" : string.Empty)}");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_work_task_update")]
+    [Description("Edita uma sub-tarefa AINDA pendente de um item avulso aberto (o item pode ja ter comecado): titulo, descricao, kind, " +
+                 "executor e/ou params (o que nao for informado fica). Ja feita: para refazer com outra instrucao, reabra o item com ela " +
+                 "em redo (prmake_work_item_reopen) e edite em seguida. Sub-tarefa espelho do plano muda pelo plano. Especialista do " +
+                 "caso: so com pedido da pessoa na conversa.")]
+    public Task<string> UpdateTask(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber,
+        string? title = null, string? description = null, string? kind = null,
+        [Description("claude | user")] string? executor = null,
+        [Description("Parametros (substitui todos): objeto ou JSON em texto")] JsonElement? @params = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        EnsureSpecialistCard(c);
+        var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
+                    ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        var input = new WorkTaskInput
+        {
+            Title = title, Description = description, Kind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim(), Executor = executor,
+            Params = AsObject(@params) is { } po ? ToStringMap(po) : null
+        };
+        if (description is not null
+            && await citations.CheckWorkAsync(c, [description], [(title ?? string.Empty, input.Kind ?? string.Empty, description)], ct) is { } incomplete)
+            throw new McpException(incomplete);
+        return await specialist.RunAsync(c, $"Editar a sub-tarefa #{taskNumber} do item #{owner.Number}", title ?? description, async () =>
+        {
+            var item = await items.UpdateTaskAsync(taskNumber, input, await ActorAsync(ct), ct);
+            var task = item.Tasks.First(t => t.Number == taskNumber);
+            return (Serialize(new { item = new { item.Number, item.Status }, task = new { task.Number, task.Order, task.Kind, task.Title, task.Status, task.Executor } }),
+                $"sub-tarefa #{taskNumber} editada");
         }, ct);
     });
 
@@ -671,7 +788,13 @@ public class WorkItemMcpTools(
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         if (!e.TryGetProperty(name, out var p)) return map;
         if (p.ValueKind == JsonValueKind.String && AsJson(p) is { ValueKind: JsonValueKind.Object } parsed) p = parsed;
-        if (p.ValueKind != JsonValueKind.Object) return map;
+        return p.ValueKind == JsonValueKind.Object ? ToStringMap(p) : map;
+    }
+
+    /// <summary>Objeto JSON → parâmetros em texto (listas viram "a,b").</summary>
+    private static Dictionary<string, string> ToStringMap(JsonElement p)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var prop in p.EnumerateObject())
             map[prop.Name] = prop.Value.ValueKind switch
             {

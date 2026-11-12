@@ -670,7 +670,9 @@ public class CaseChatApplication(
             sb.AppendLine("Antes de propor ou criar um item, confira se já existe item com o mesmo objetivo (fingerprint/status) — " +
                           "pendente igual: ajuste com prmake_work_item_update; iniciado/concluído: não repita. Duplicata só com " +
                           "allowDuplicate + motivo, quando for de fato outro trabalho. Sub-tarefa a mais pedida no item da " +
-                          "análise/correção (espelho do plano): prmake_work_item_add_task — não item novo.");
+                          "análise/correção (espelho do plano): prmake_work_item_add_task — não item novo. Item avulso já " +
+                          "concluído/cancelado que a pessoa quer refazer ou completar: prmake_work_item_reopen (redo = " +
+                          "sub-tarefas a refazer) e depois prmake_work_item_add_task / prmake_work_task_update.");
 
             // 0094: relatados do card (itens de outros cards relacionados por menção ou à mão) — resumo compacto.
             try

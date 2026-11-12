@@ -93,3 +93,24 @@ public class CancelWorkItemRequest
     public string? Reason { get; set; }
     public bool Undo { get; set; }
 }
+
+/// <summary><c>POST WorkItems/{number}/reopen</c> — reabre item avulso concluído/cancelado/com falha para refazer ou acrescentar.</summary>
+public class ReopenWorkItemRequest
+{
+    /// <summary>Sub-tarefas que voltam a pendente para serem refeitas (vazio = só reabrir, para acrescentar sub-tarefa).</summary>
+    public List<long>? Redo { get; set; }
+    /// <summary>Motivo (vai para o item, para o resultado das sub-tarefas refeitas e para a Timeline).</summary>
+    public string? Reason { get; set; }
+    /// <summary>Já executar o item depois de reabrir.</summary>
+    public bool Execute { get; set; }
+}
+
+/// <summary><c>POST WorkItems/{number}/tasks</c> — sub-tarefas a mais num item avulso aberto.</summary>
+public class AddWorkTasksRequest
+{
+    public List<WorkTaskInput> Tasks { get; set; } = [];
+    /// <summary>Número da sub-tarefa pendente antes da qual entram (vazio = no fim).</summary>
+    public long? Before { get; set; }
+    /// <summary>Já executar o item depois de acrescentar.</summary>
+    public bool Execute { get; set; }
+}
