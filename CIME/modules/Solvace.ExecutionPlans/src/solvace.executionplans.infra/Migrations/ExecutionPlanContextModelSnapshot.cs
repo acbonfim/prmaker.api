@@ -554,7 +554,7 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<Guid>("PlanId")
+                    b.Property<Guid?>("PlanId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Proposal")
@@ -592,6 +592,10 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.HasIndex("PlanId", "Ref")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "CardNumber", "Ref" }, "IX_ExecutionCodeRefs_CardNumber_Ref_NoPlan")
+                        .IsUnique()
+                        .HasFilter("\"PlanId\" IS NULL");
 
                     b.ToTable("ExecutionCodeRefs", "execution");
                 });
@@ -2020,8 +2024,7 @@ namespace solvace.executionplans.infra.Migrations
                     b.HasOne("solvace.executionplans.domain.Entities.ExecutionPlan", null)
                         .WithMany()
                         .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.OwnsMany("solvace.executionplans.domain.Entities.ExecutionCodeAnnotation", "Annotations", b1 =>
                         {

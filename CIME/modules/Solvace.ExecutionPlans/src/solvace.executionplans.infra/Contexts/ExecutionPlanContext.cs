@@ -43,6 +43,9 @@ public class ExecutionPlanContext : DbContext
     /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
     public const string WorkItemNumberSequence = "work_item_number_seq";
 
+    /// <summary>Índice único parcial das fotografias do card sem plano (<c>PlanId IS NULL</c>).</summary>
+    public const string CardCodeRefIndex = "IX_ExecutionCodeRefs_CardNumber_Ref_NoPlan";
+
     /// <summary>Schema do PostgreSQL deste módulo (feature 0023).</summary>
     public const string Schema = "execution";
 
@@ -269,9 +272,12 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.OwnsMany(e => e.Annotations, a => a.ToJson());
 
-            entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.Cascade);
+            // PlanId nulo = fotografia do card sem plano (itens de trabalho avulsos): a FK segue, opcional.
+            entity.HasOne<ExecutionPlan>().WithMany().HasForeignKey(e => e.PlanId).IsRequired(false).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.PlanId, e.Ref }).IsUnique();
             entity.HasIndex(e => new { e.CardNumber, e.Ref });
+            // Única por (card, ref) entre as do card sem plano (o índice acima não vale para PlanId nulo).
+            entity.HasIndex(e => new { e.CardNumber, e.Ref }, CardCodeRefIndex).IsUnique().HasFilter("\"PlanId\" IS NULL");
         });
 
         // 0078: assistente do card (sugestões que não travam o plano).

@@ -5,8 +5,8 @@ namespace solvace.executionplans.domain.Entities;
 /// <summary>
 /// 0075: fotografia de um trecho de código citado na análise/correção — o código real de um commit, o foco
 /// (<see cref="StartLine"/>–<see cref="EndLine"/>), a mudança proposta em diff unificado e as notas que explicam cada
-/// trecho. Quem tira a fotografia é a skill (o servidor não tem os repositórios). Única por (plano, <see cref="Ref"/>);
-/// o texto cita <c>[...](ref:&lt;ref&gt;)</c> ou <c>caminho:linha</c>, que a tela liga a ela.
+/// trecho. Quem tira a fotografia é a skill (o servidor não tem os repositórios). Única por (plano, <see cref="Ref"/>) —
+/// ou, no card sem plano (item de trabalho avulso), por (card, <see cref="Ref"/>) com <see cref="PlanId"/> nulo; o texto cita <c>[...](ref:&lt;ref&gt;)</c> ou <c>caminho:linha</c>, que a tela liga a ela.
 /// </summary>
 public partial class ExecutionCodeRef
 {
@@ -23,11 +23,12 @@ public partial class ExecutionCodeRef
     public const int MaxAnnotations = 30;
     public const int MaxAnnotationLength = 1_000;
 
-    /// <summary>Refs por plano (fotografias são pequenas, mas a lista vai inteira para a tela).</summary>
+    /// <summary>Refs por plano — e por card, nas fotografias sem plano (são pequenas, mas a lista vai inteira para a tela).</summary>
     public const int MaxPerPlan = 80;
 
     public Guid Id { get; private set; }
-    public Guid PlanId { get; private set; }
+    /// <summary>Plano dono da fotografia; null = fotografia do card sem plano (itens de trabalho avulsos).</summary>
+    public Guid? PlanId { get; private set; }
     public string CardNumber { get; private set; } = string.Empty;
     public string Ref { get; private set; } = string.Empty;
 
@@ -68,7 +69,7 @@ public partial class ExecutionCodeRef
 
     protected ExecutionCodeRef() { }
 
-    public ExecutionCodeRef(Guid planId, string cardNumber, string reference, string createdBy, DateTimeOffset now)
+    public ExecutionCodeRef(Guid? planId, string cardNumber, string reference, string createdBy, DateTimeOffset now)
     {
         Id = Guid.NewGuid();
         PlanId = planId;
@@ -76,6 +77,20 @@ public partial class ExecutionCodeRef
         Ref = NormalizeRef(reference);
         CreatedBy = createdBy;
         CreatedAt = now;
+    }
+
+    /// <summary>
+    /// Plano que recebe a fotografia gravada pelo card (<c>PUT ExecutionPlan/card/{card}/code-refs/{ref}</c>): o aberto mais
+    /// recente, senão o mais recente — o mesmo critério do MCP (<c>phase</c> ausente). Sem plano = null (fotografia do card).
+    /// </summary>
+    /// <param name="plansNewestFirst">Planos do card, do mais novo para o mais antigo.</param>
+    public static Guid? PlanForCard(IReadOnlyList<(Guid Id, string Status)> plansNewestFirst)
+    {
+        if (plansNewestFirst.Count == 0) return null;
+        foreach (var (id, status) in plansNewestFirst)
+            if (status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled))
+                return id;
+        return plansNewestFirst[0].Id;
     }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]*$")]

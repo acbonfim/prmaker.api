@@ -140,4 +140,27 @@ public class CodeRefTests
         r.Capture(Capture(), Now);
         Assert.Equal(expected, r.Matches(path, start, end));
     }
+
+    [Fact]
+    public void Card_level_ref_has_no_plan()
+    {
+        var r = new ExecutionCodeRef(null, "78161", "gs-096-legado", "claude", Now);
+        r.Capture(Capture(ExecutionCodeChange.Read, why: null, proposal: null), Now);
+
+        var response = r.ToResponse();
+        Assert.Null(response.PlanId);
+        Assert.Equal("78161", response.CardNumber);
+        Assert.Equal("gs-096-legado", response.Ref);
+    }
+
+    [Fact]
+    public void Card_without_plan_writes_the_card_level_ref() => Assert.Null(ExecutionCodeRef.PlanForCard([]));
+
+    [Fact]
+    public void Card_plan_is_the_newest_open_one_or_else_the_newest()
+    {
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid();
+        Assert.Equal(b, ExecutionCodeRef.PlanForCard([(a, ExecutionStatus.Completed), (b, ExecutionStatus.Paused), (c, ExecutionStatus.Running)]));
+        Assert.Equal(a, ExecutionCodeRef.PlanForCard([(a, ExecutionStatus.Completed), (b, ExecutionStatus.Cancelled)]));
+    }
 }

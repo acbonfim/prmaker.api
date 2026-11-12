@@ -116,8 +116,23 @@ public interface IExecutionPlanRepository
     Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(string cardNumber, Guid? planId, CancellationToken cancellationToken);
     /// <summary>Ref completa, sem rastrear.</summary>
     Task<ExecutionCodeRef?> GetCodeRefAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>Planos do card (id + status), do mais novo para o mais antigo — escolher o dono de uma fotografia pelo card.</summary>
+    Task<List<(Guid Id, string Status)>> GetCardPlanStatusesAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Fotografia do card sem plano (<c>PlanId</c> nulo), rastreada (upsert).</summary>
+    Task<ExecutionCodeRef?> FindCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken);
+    Task<int> CountCardCodeRefsAsync(string cardNumber, CancellationToken cancellationToken);
 
-    /// <summary>Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/>.</summary>
+    /// <summary>
+    /// Imagem <c>anexo:&lt;nome&gt;</c> sem arquivo de plano: arquivos dos itens de trabalho do card com esse nome (sem
+    /// diferenciar maiúsculas), sem o conteúdo.
+    /// </summary>
+    Task<List<WorkItemFile>> GetCardWorkItemFilesByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
+    Task<byte[]?> GetWorkItemFileContentAsync(Guid fileId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/> — também a mesma fotografia do
+    /// card sem plano gravada ao mesmo tempo (índice único parcial), para quem chama tentar de novo.
+    /// </summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 
     /// <summary>Descarta o que está rastreado (antes de tentar de novo após um conflito).</summary>

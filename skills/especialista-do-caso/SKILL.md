@@ -250,9 +250,32 @@ cada alteracao**. Por isso, ao montar o plano de do caso e os itens, **antes** d
 `prmake_work_item_create` / `prmake_tool_run`:
 1. **Fotografe todo codigo que muda ou que explica a mudanca** (`prmake_code_ref`/`$PLAN coderef <card> <ref> --repo <repo> --file <caminho> --lines A-B`,
    com `--change alterar|criar|remover`, `--why` e `--after` quando muda). O link `[caminho:linhas](ref:<ref>)` abre o popover com o codigo
-   atual e o diff — o mesmo da analise. Reaproveite as fotografias da analise (mesmo id).
-2. **Descricao do item** (markdown): *O que sera feito* (2–4 frases), *Por que* (causa/criterio), *Onde* (lista `[caminho:linhas](ref:id)` — **Alterar/Criar/Remover**),
-   *Regras da Base Solvace* (`modulo#RN-012`, `UC-003`: viram link para o item da engenharia reversa), *Como validar*.
+   atual e o diff — o mesmo da analise. Reaproveite as fotografias da analise (mesmo id). **Card sem plano** (itens avulsos):
+   funciona igual — o `coderef`/`prmake_code_ref` grava a fotografia no card.
+2. **Descricao do item** (markdown, **pt-BR com acentos**): a Visao geral da Bancada le estas partes, nesta ordem e com estes titulos:
+   ```markdown
+   ## Para que serve
+   <1–2 frases: o que o item faz e o que entrega no fim>
+
+   > [!SUMMARY]
+   > **Problema:** <o que acontece, em uma frase>
+   > **Impacto:** <quem/o que sofre>
+   > **Proposta inicial (a validar):** <o que se pretende fazer>
+
+   ## Onde
+   - [caminho:linhas](ref:<id>) — **Alterar**: <1 linha>   (sem fotografia ainda: `repo:caminho:linhas`)
+
+   ## Base Solvace
+   - `modulo#RN-012` — <o que a regra diz que importa aqui>
+
+   ## Critérios de aceite
+   - [ ] <verificavel>
+
+   > [!WARNING]
+   > <so se houver regra do item — ex.: somente análise, nao alterar código>
+   ```
+   No callout, troque os rotulos pelo equivalente do tipo de item quando nao for problema (ex.: `**Pedido:**`/`**Entrega:**`).
+   Item de pesquisa/analise (sub-tarefas `research`): o `executar-item-de-trabalho` grava no fim o `00-visao-geral-<id>.md`.
 3. **Cada sub-tarefa/etapa de codigo (`kind=code`)**: descricao com o arquivo e a linha (`[caminho:linhas](ref:id)`), o que muda **nessa** linha, o porque e a regra da
    Base que ela cumpre. O PRMake **recusa** etapa/sub-tarefa `code` sem nenhuma citacao e citacao sem fotografia — corrija e crie de novo.
    Sub-tarefa nao-codigo (PR, chamado, script, validacao): diga exatamente o que entregar (branch/destino, titulo, arquivo, criterio).
@@ -260,4 +283,4 @@ cada alteracao**. Por isso, ao montar o plano de do caso e os itens, **antes** d
    Texto: `prmake_work_item_file(card, number, name, content, kind, taskNumber?)` (vincule a sub-tarefa com `taskNumber`). Imagem/binario: grave no
    **plano** (`bash $PLAN upload <card> <arquivo> ...` ou `prmake_file`) — o item ligado ao plano mostra os arquivos do plano na aba Arquivos; item avulso,
    so texto. **Cite cada arquivo na descricao** (nome do arquivo) para a pessoa saber o que abrir.
-5. Nada de "ver analise": a descricao se basta. Texto curto, em pt-BR, sem jargao desnecessario.
+5. Nada de "ver analise"/"ver anexo": a descricao se basta. Texto curto, em pt-BR, sem jargao desnecessario.

@@ -541,7 +541,8 @@ public partial class PrmakeMcpTools(
     [Description("0075: fotografia de um trecho de codigo citado na analise/correcao (o popover do link ref:<id> e das citacoes caminho:linha). " +
                  "A fotografia (codigo real) se grava pelo script: prmake-plan.sh coderef (le o arquivo local, nao cole codigo aqui). " +
                  "Aqui: ajuste why/notas/proposta/change de uma ref existente (do plano ou de outro plano do card), ou crie uma 'create' (arquivo novo) " +
-                 "informando path + linhas + proposal. Notas: [{side: old|new, from, to, text}] — por que este codigo, por que faz sentido.")]
+                 "informando path + linhas + proposal. Notas: [{side: old|new, from, to, text}] — por que este codigo, por que faz sentido. " +
+                 "Card sem plano (itens de trabalho avulsos): funciona igual — a fotografia fica no card.")]
     public Task<string> CodeRef(string card,
         [Description("Id da ref (slug: sa3-init); o texto cita [texto](ref:sa3-init)")] string reference,
         [Description("change | create | remove | suspect | read")] string? change = null,
@@ -553,20 +554,27 @@ public partial class PrmakeMcpTools(
         string? repository = null, int? startLine = null, int? endLine = null,
         string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
-        var planId = await PlanIdAsync(card, phase, ct);
+        // Sem 'phase': pelo card — o plano aberto mais recente (senao o mais recente), como o PlanIdAsync; card sem plano
+        // (itens de trabalho avulsos) = fotografia do card. Com 'phase': o plano daquela fase.
+        Guid? planId = string.IsNullOrWhiteSpace(phase) ? null : await PlanIdAsync(card, phase, ct);
         var actor = await ActorAsync(ct);
         ExecutionCodeRefResponse saved;
         if (!string.IsNullOrWhiteSpace(path))
         {
             if (!string.Equals(change?.Trim(), ExecutionCodeChange.Create, StringComparison.OrdinalIgnoreCase))
                 throw new McpException("Fotografia de codigo existente so pelo script (prmake-plan.sh coderef); aqui, path so para change=create.");
-            saved = await plans.SaveCodeRefAsync(planId, reference, new ExecutionCodeCapture(repository, path, null, null, null,
-                startLine ?? 1, endLine, null, null, change, title, why, proposal, annotations), actor, ct);
+            var capture = new ExecutionCodeCapture(repository, path, null, null, null,
+                startLine ?? 1, endLine, null, null, change, title, why, proposal, annotations);
+            saved = planId is { } id
+                ? await plans.SaveCodeRefAsync(id, reference, capture, actor, ct)
+                : await plans.SaveCardCodeRefAsync(card, reference, capture, actor, ct);
         }
         else
         {
-            saved = await plans.PatchCodeRefAsync(planId, reference,
-                new ExecutionCodeRefPatch(change, title, why, proposal, annotations), actor, ct);
+            var patch = new ExecutionCodeRefPatch(change, title, why, proposal, annotations);
+            saved = planId is { } id
+                ? await plans.PatchCodeRefAsync(id, reference, patch, actor, ct)
+                : await plans.PatchCardCodeRefAsync(card, reference, patch, actor, ct);
         }
         return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
     });
