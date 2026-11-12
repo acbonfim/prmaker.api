@@ -19,6 +19,10 @@ public sealed class AgentConfig
     public int WorktreeRetentionDays { get; set; } = 7;
     public bool AutoUpdate { get; set; } = true;
     public bool Notifications { get; set; } = true;
+    /// <summary>0095: porta da tela ao vivo (só 127.0.0.1) — a Bancada procura nesta porta; 0 desliga.</summary>
+    public int LiveViewPort { get; set; } = 47615;
+    /// <summary>0095: origens do PRMake que podem listar as sessões do navegador desta máquina.</summary>
+    public List<string> LiveViewOrigins { get; set; } = ["https://app.softhouse.app.br", "http://localhost:4200"];
 }
 
 public sealed class RegisterRequest

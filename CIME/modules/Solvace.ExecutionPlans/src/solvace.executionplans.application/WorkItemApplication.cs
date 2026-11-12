@@ -867,7 +867,7 @@ public class WorkItemApplication : IWorkItemApplication
         var logs = await _items.GetLogsAsync(head.Id, WorkItemLive.MaxLogs, ct);
         var owner = WorkItemLive.OwnerOf(head, request, viewerUserId);
         var workers = owner is { } o ? await _items.GetLiveWorkersAsync(o, ct) : [];
-        return WorkItemLive.Build(head, request, waitCode, logs, workers, DateTimeOffset.UtcNow);
+        return WorkItemLive.Build(head, request, waitCode, logs, workers, DateTimeOffset.UtcNow, viewerUserId);
     }
 
     public async Task NotifyActivityAsync(Guid workItemId, CancellationToken ct)

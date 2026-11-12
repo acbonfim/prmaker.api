@@ -8,9 +8,13 @@ Ambiente somente leitura (DEMO, producao): toda gravacao na rede (POST/PUT/PATCH
 bloqueada enquanto a sessao existir — menos as rotas de --allow (configuracao readOnlyAllow, ex.: preferencia/filtro do
 usuario, ou uma rota que a pessoa autorizou), que passam e ficam registradas.
 
+Tela ao vivo (0095): o Chrome abre tambem uma porta de depuracao so em 127.0.0.1 (DevToolsActivePort do perfil); a
+sessao grava a porta, a aba e o card/sub-tarefa. O executor (prmake-agent) le isso e mostra a tela na Bancada da propria
+maquina ("Ver tela ao vivo") — nada sai da maquina nem e gravado.
+
 Uso (pelo env.sh):
   env_browser.py start --env <key> --url <url> --user <email> --out <pasta> [--read-only] [--allow <trecho-da-rota>]...
-                       [--headed] [--label <nome>]
+                       [--headed] [--label <nome>] [--card <card>] [--task <n>]
   env_browser.py go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]
   env_browser.py status
 Saida: 0 ok · 1 erro · 2 sem navegador/Playwright · 3 login recusado · 4 sem senha · 5 sessao inexistente.
@@ -190,7 +194,9 @@ class Session:
                 (profile / lock).unlink()
             except OSError:
                 pass
-        opts = dict(headless=not self.meta.get("headed"), viewport=VIEWPORT, locale="pt-BR", accept_downloads=False)
+        # 0095: porta de depuracao (so loopback) para o executor mostrar a tela ao vivo na Bancada desta maquina.
+        opts = dict(headless=not self.meta.get("headed"), viewport=VIEWPORT, locale="pt-BR", accept_downloads=False,
+                    args=["--remote-debugging-port=0"])
         exe = os.environ.get("PRMAKE_CHROME")
         tries = [dict(executable_path=exe)] if exe else []
         tries += [dict(channel="chrome"), dict(channel="msedge"), {}]
@@ -206,6 +212,16 @@ class Session:
         self.guard_on = False
         self.ctx.route("**/*", self.route)
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+        self.live = self.live_target(profile)
+
+    # 0095: porta de depuracao + aba que o Playwright controla (o executor transmite a tela dela). Sem isso, segue sem ao vivo.
+    def live_target(self, profile):
+        try:
+            port = int((profile / "DevToolsActivePort").read_text().splitlines()[0])
+            info = self.ctx.new_cdp_session(self.page).send("Target.getTargetInfo")
+            return {"cdpPort": port, "targetId": info["targetInfo"]["targetId"]}
+        except Exception:  # noqa: BLE001
+            return {}
 
     def settle(self, ms=600):
         try:
@@ -464,13 +480,13 @@ def serve(sid):
         server.timeout = 30
         s.stop = False
         meta.update(status="ready", pid=os.getpid(), port=server.server_address[1], token=token, message=result,
-                    landed=s.page.url)
+                    landed=s.page.url, **s.live)
         write_meta(meta)
         while not s.stop and time.time() - s.last < IDLE_SECONDS:
             server.handle_request()
         server.server_close()
         s.ctx.close()
-    meta.update(status="stopped", pid=None, port=None, token=None)
+    meta.update(status="stopped", pid=None, port=None, token=None, cdpPort=None, targetId=None)
     write_meta(meta)
 
 
@@ -521,6 +537,9 @@ def start(a):
         meta = json.loads(f.read_text())
         if meta.get("status") == "ready" and alive(meta.get("pid")):
             if sorted(meta.get("allow") or []) == sorted(a.allow or []):
+                # 0095: a mesma sessao serve outro card/sub-tarefa — a tela ao vivo aparece na Bancada do card atual.
+                meta.update(card=a.card, task=a.task)
+                write_meta(meta)
                 print(f"sessao {sid} ja aberta ({meta['url']} como {meta['user']}) — pagina: {meta.get('landed', '')}")
                 return 0
             # Rotas liberadas mudaram: a guarda e montada ao abrir — reabre a sessao (o login fica no perfil).
@@ -531,6 +550,7 @@ def start(a):
         return 4
     meta = {"sid": sid, "env": a.env, "label": a.label or a.env, "url": a.url, "user": a.user, "readOnly": a.read_only,
             "allow": sorted(set(a.allow or [])), "headed": a.headed, "out": str(Path(a.out).expanduser().resolve()), "status": "starting",
+            "card": a.card, "task": a.task,
             "started": time.strftime("%Y-%m-%d %H:%M:%S")}
     write_meta(meta)
     log = open(ROOT / f"{sid}.log", "ab")
@@ -572,7 +592,7 @@ def stop(sid):
                 os.kill(int(meta["pid"]), signal.SIGTERM)
             except OSError:
                 pass
-    meta.update(status="stopped", pid=None, port=None, token=None)
+    meta.update(status="stopped", pid=None, port=None, token=None, cdpPort=None, targetId=None)
     write_meta(meta)
     print(f"sessao {sid} encerrada")
     return 0
@@ -610,6 +630,8 @@ def main():
         ap.add_argument("--read-only", action="store_true")
         ap.add_argument("--headed", action="store_true")
         ap.add_argument("--allow", action="append", default=[])
+        ap.add_argument("--card")
+        ap.add_argument("--task")
         return start(ap.parse_args(argv[1:]))
     if len(argv) < 2:
         die(f"uso: env_browser.py {cmd} <sessao> ...")

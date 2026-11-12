@@ -57,6 +57,7 @@ public sealed class Runner(AgentConfig config)
         _relay = new RelayListener(client, Wake);
         var background = Task.WhenAll(
             _relay.RunAsync(stopping),
+            new LiveView(config).RunAsync(stopping),
             Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
             Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)),

@@ -104,6 +104,8 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
 3. **Ambiente e usuario**: `bash $ENV resolve <environment>`; usuario = `params.user` ou a `entrada padrao` que o
    `env.sh` escolhe (quem tem senha nesta maquina) — sem `--user`, o `browser start` ja usa essa.
 4. **Abrir**: `bash $ENV browser start <amb> [--user <params.user>] [--plant <sigla>] --card <card> --task <taskNumber>`.
+   Sempre com `--card`/`--task`: e o que liga a sessao ao item na Bancada — quem executa ve a tela ao vivo pelo botao
+   "Ver tela ao vivo" (0095, so na maquina do executor, nada gravado). Nao abra com `--headed` para isso.
    - exit 4 (**sem senha**), 3 (**login recusado**) ou 2 (sem Chrome/Playwright): com `--task`, o proprio `env.sh` ja
      deixa a sub-tarefa **aguardando a pessoa na ferramenta** (Bancada/Execucao) com o que falta, a maquina e o comando
      exato (`prmake-skills.sh env-credentials set <amb> <email>`) + *Ja resolvi* — a saida diz `AVISADO NA FERRAMENTA`.
