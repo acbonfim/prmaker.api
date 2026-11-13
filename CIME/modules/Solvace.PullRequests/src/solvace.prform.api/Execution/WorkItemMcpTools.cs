@@ -617,8 +617,8 @@ public class WorkItemMcpTools(
         var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
         // "Ja resolvi" e acao da pessoa (repassada pelo especialista), nao mudanca do plano.
         if (verb != "resolve" && specialist.IsSpecialist && owner.PlanId is not null && owner.Tasks.First(t => t.Number == taskNumber).StepKey is not null)
-            throw new McpException($"A sub-tarefa #{taskNumber} espelha uma etapa do plano — o Especialista do caso nao altera o plano. " +
-                                   "Proponha a mudanca com prmake_case_propose.");
+            throw new McpException($"A sub-tarefa #{taskNumber} espelha a etapa '{owner.Tasks.First(t => t.Number == taskNumber).StepKey}' do plano " +
+                                   "— mude pela etapa (prmake_advance conclui; prmake_step muda status/motivo; prmake_steps ajusta titulo/descricao).");
         var request = new WorkTaskActionRequest
         {
             Result = result,

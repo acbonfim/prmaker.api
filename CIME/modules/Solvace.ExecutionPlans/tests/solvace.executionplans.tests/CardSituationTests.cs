@@ -130,7 +130,7 @@ public class CardSituationTests
         plan.CompleteStep("pr-edv-solvace", "ok", "PRMake", Now, false);
         plan.RecordDevTestInQa("sem integração", Now);
         var s = CardSituation.Build(plan, [Pr(plan, "pr-edv-solvace", 11, "qa", ExecutionLinkStatus.Merged)], [], [], IsQa, plan.CardNumber);
-        Assert.StartsWith("Mover o card para Dev Test in QA", s.Next);
+        Assert.StartsWith("Movo o card para Dev Test in QA", s.Next);
         Assert.Contains("Não foi possível mover o card para Dev Test in QA automaticamente (sem integração)", s.Markdown);
     }
 

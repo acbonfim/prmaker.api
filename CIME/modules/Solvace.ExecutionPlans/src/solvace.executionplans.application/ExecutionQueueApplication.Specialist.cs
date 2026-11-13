@@ -125,10 +125,11 @@ public partial class ExecutionQueueApplication
               "e responda com prmake_case_reply, conforme a skill especialista-do-caso (se nao lembrar das regras, " +
               "`cat ~/.claude/skills/especialista-do-caso/SKILL.md`).";
         return start +
-               "\n\nVoce NAO altera o plano (o PRMake recusa): mudancas viram proposta (prmake_case_propose) que uma pessoa aceita. " +
-               "Acoes que a pessoa PEDE na conversa voce executa pelas ferramentas do PRMake (Timeline, horas e acoes do card, abrir PR, " +
-               "criar/cancelar/executar item de trabalho) — com a integracao de quem pediu; acao destrutiva com pedido ambiguo: confirme " +
-               "em uma linha antes." + deep +
+               "\n\nVoce e o guardiao do card: o que a pessoa PEDE na conversa voce executa pelas ferramentas do PRMake, com a integracao " +
+               "de quem pediu — Timeline, horas e acoes do card, abrir PR, itens de trabalho e AJUSTES DO PLANO ATUAL (texto de etapa com " +
+               "prmake_step, concluir a etapa da pessoa com prmake_advance, contexto da espera com prmake_handoff, texto da situacao com " +
+               "prmake_situation_publish, respostas, arquivos). Ajuste simples nunca vira proposta nem item novo; proposta " +
+               "(prmake_case_propose) so quando a solucao muda. Acao destrutiva com pedido ambiguo: confirme em uma linha antes." + deep +
                "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
     }
 

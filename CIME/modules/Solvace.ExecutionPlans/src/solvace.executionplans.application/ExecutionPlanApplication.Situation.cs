@@ -108,8 +108,9 @@ public partial class ExecutionPlanApplication
             var own = card is null && plan.CreatedByUserId is { } owner ? await _repository.GetSituationAutoPostAsync(owner, cancellationToken) : null;
             situation.AutoPost = card ?? own ?? settings.PostSituationToDevOps;
             situation.AutoPostSource = card is not null ? "card" : own is not null ? "user" : "global";
+            var hasComment = plan.SituationCommentId is not null || await _repository.GetSituationCommentIdAsync(planId, cancellationToken) is not null;
             situation.PublishPending = situation.Markdown != situation.PublishedMarkdown
-                                       && CardSituationKind.PostToDevOps(situation, plan.SituationCommentId is not null);
+                                       && CardSituationKind.PostToDevOps(situation, hasComment);
         }
         return situation;
     }
@@ -124,6 +125,9 @@ public partial class ExecutionPlanApplication
         if (_devOps is null) return;
         try
         {
+            // 0096: um comentário por card — só o plano atual do card escreve nele (a versão substituída ou a análise já
+            // fechada não voltam o texto para trás).
+            if (await _repository.GetCurrentPlanIdAsync(cardNumber, cancellationToken) != planId) return;
             var commentId = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
             var situation = await BuildSituationAsync(planId, true, cancellationToken);
             // Manual (preferência do dono ou padrão): fica pendente na tela, com o botão Publicar.

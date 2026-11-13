@@ -93,7 +93,9 @@ builder.Services.AddMcpServer(o =>
     // 0085 r5: arquivos do item de trabalho (gravar/listar/ler).
     .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
     // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
-    .WithTools<solvace.prform.Execution.PullRequestMcpTools>();
+    .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
+    .WithRequestFilters(f => f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter));
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
 builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
@@ -210,7 +212,7 @@ app.UseHttpsRedirection()
     .UseMiddleware<ExceptionHandlerMiddleware>()
     // 0039: credencial do executor só na fila/plano/skills/MCP e revogável na hora.
     .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>()
-    // 0080: o token do Especialista do caso só lê e conversa — nunca altera o plano.
+    // 0080: o que o token do Especialista do caso pode fazer (0096: inclusive ajustar o plano atual a pedido).
     .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>();
 
 // Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware

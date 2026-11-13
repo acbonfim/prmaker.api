@@ -107,6 +107,18 @@ public partial class WorkItemTask
         ParamsJson = SerializeParams(input.Params);
     }
 
+    /// <summary>0096: título/descrição da sub-tarefa pendente ou em espera acompanhando a etapa (o plano foi ajustado no lugar).</summary>
+    internal bool FollowStepText(string title, string? description, DateTimeOffset now)
+    {
+        var t = title.Trim();
+        var d = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (Status is not (WorkTaskStatus.Pending or WorkTaskStatus.Waiting) || t.Length == 0 || (Title == t && Description == d)) return false;
+        Title = t.Length <= MaxTitleLength ? t : t[..MaxTitleLength];
+        Description = d is { Length: > MaxTextLength } ? d[..MaxTextLength] : d;
+        UpdatedAt = now;
+        return true;
+    }
+
     /// <summary>Tipo da sub-tarefa do plano acompanhando a etapa (só pendente; quem chama confere que não foi a pessoa que escolheu).</summary>
     internal bool FollowStepKind(string kind, DateTimeOffset now)
     {

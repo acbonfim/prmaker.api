@@ -54,6 +54,11 @@ public interface IWorkItemApplication
     Task<WorkItemResponse> FromPlanAsync(string card, Guid planId, ExecutionActor actor, CancellationToken ct);
     /// <summary>Etapas → sub-tarefas (por StepKey); plano concluído → item completed; cancelado → cancelled.</summary>
     Task SyncFromPlanAsync(Guid planId, CancellationToken ct);
+    /// <summary>
+    /// 0096: versão nova do plano de correção — os itens abertos que espelham a versão anterior passam a espelhar a nova
+    /// (devolve quantos). Chamar antes de criar o item da versão nova e de encerrar a anterior.
+    /// </summary>
+    Task<int> AdoptPlanItemsAsync(Guid fromPlanId, Guid toPlanId, string version, ExecutionActor actor, CancellationToken ct);
     Task<IReadOnlyList<WorkItemResponse>> CancelByPlanAsync(Guid planId, bool undo, string? reason, ExecutionActor actor, CancellationToken ct);
     /// <summary>Markdown dos itens do card para o contexto do especialista (número, tipo, título, status, origem, fingerprint, sub-tarefas e saídas).</summary>
     /// <param name="compact">Versão curta para o contexto do especialista (relido a cada resposta): sub-tarefas só dos itens em

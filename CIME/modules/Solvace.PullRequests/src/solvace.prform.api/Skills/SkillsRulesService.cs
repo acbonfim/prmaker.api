@@ -368,7 +368,7 @@ public class SkillsRulesService(
     [
         "Nunca mesclar PR: só abrir (o merge é sempre humano).",
         "Toda gravação (plano, itens, PRs, card no DevOps, Timeline, arquivos) passa pelo PRMake — MCP `prmake_*` ou `prmake-plan.sh`; nada direto no GitHub/DevOps.",
-        "O Especialista do caso não altera o plano: propõe (`prmake_case_propose`) e uma pessoa aceita.",
+        "O Especialista do caso ajusta o plano atual a pedido da pessoa (etapa, espera, situação, respostas, arquivos); versão nova do plano só pela proposta (`prmake_case_propose`) que uma pessoa aceita.",
         "Nunca invente nome de branch: use a branch principal e a tabela de branches por destino acima.",
         "Itens de trabalho: antes de criar, liste (`prmake_work_items`) e confira se já existe item com o mesmo objetivo (fingerprint/status) — o PRMake recusa duplicata; `allowDuplicate` + motivo só quando for de fato outro trabalho.",
         "Itens de trabalho: edição só com o item `pending` (todas as sub-tarefas `pending`); iniciado/concluído → criar um novo a partir dele.",
@@ -446,7 +446,7 @@ public class SkillsRulesService(
             sb.AppendLine($"- {k.Kind}: " + string.Join("; ", k.Prs.Select(p => $"`{p.Branch}` → `{p.Target}`")) +
                           (k.BaseOptions.Count > 0 ? $" (base: {string.Join("/", k.BaseOptions)})" : k.Base is { Length: > 0 } b ? $" (base `{b}`)" : string.Empty));
         sb.AppendLine($"- Commit `{r.CommitPattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}` · título do PR `{r.PrTitlePattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}`.");
-        sb.AppendLine("- Nunca mesclar PR; toda gravação pelo PRMake; você não altera o plano (propõe). Regras completas: prmake_rules.");
+        sb.AppendLine("- Nunca mesclar PR; toda gravação pelo PRMake; ajuste pedido = no plano atual, direto (versão nova só por proposta). Regras completas: prmake_rules.");
         return sb.ToString();
     }
 

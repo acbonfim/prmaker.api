@@ -284,15 +284,15 @@ public static class CardSituation
 
     private static string? NextText(CardSituationResponse r, ExecutionPlan plan) => r.Kind switch
     {
-        CardSituationKind.Ticket => $"Quando o chamado for atendido, marcar como resolvido no PRMake para a {r.Delivery} seguir.",
-        CardSituationKind.TicketToOpen => $"Abrir o chamado e anexá-lo à etapa no PRMake (Anexar chamado); a {r.Delivery} segue quando ele for atendido.",
-        CardSituationKind.PullRequestReview => $"Revisar e mesclar os PRs. Com o merge em QA, a {r.Delivery} segue para validação.",
+        CardSituationKind.Ticket => $"Quando o chamado for atendido, marco como resolvido no PRMake para a {r.Delivery} seguir.",
+        CardSituationKind.TicketToOpen => $"Abro o chamado e anexo à etapa no PRMake (Anexar chamado); a {r.Delivery} segue quando ele for atendido.",
+        CardSituationKind.PullRequestReview => $"Com a revisão e o merge dos PRs em QA, a {r.Delivery} segue para validação.",
         CardSituationKind.QaValidation => r.DevTestInQaAt is null
-            ? $"Mover o card para Dev Test in QA, validar a {r.Delivery} em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA."
-            : $"Validar a {r.Delivery} em QA e concluir a etapa no PRMake. Em seguida o card vai para Ready for QA.",
-        CardSituationKind.Answer => "Responder as perguntas no PRMake para a análise seguir.",
-        CardSituationKind.User when r.PlannedTask => "Fazer o que a etapa pede (o passo a passo está nos arquivos do plano) e concluí-la no PRMake; em seguida vem o fechamento do card.",
-        CardSituationKind.User => "Concluir no PRMake o que a etapa pede.",
+            ? $"Movo o card para Dev Test in QA, valido a {r.Delivery} em QA e concluo a etapa no PRMake. Em seguida o card vai para Ready for QA."
+            : $"Valido a {r.Delivery} em QA e concluo a etapa no PRMake. Em seguida o card vai para Ready for QA.",
+        CardSituationKind.Answer => "Respondo as perguntas no PRMake para a análise seguir.",
+        CardSituationKind.User when r.PlannedTask => "Faço o que a etapa pede (o passo a passo está nos arquivos do plano) e concluo no PRMake; em seguida vem o fechamento do card.",
+        CardSituationKind.User => "Concluo no PRMake o que a etapa pede.",
         _ => null
     };
 
@@ -376,7 +376,7 @@ public static class CardSituation
                 foreach (var q in r.Questions) sb.AppendLine($"- {q}");
                 break;
             case CardSituationKind.User when r.PlannedTask:
-                sb.AppendLine($"A {r.Delivery} depende desta etapa, feita por quem trata o card (fora do código), antes do fechamento.");
+                sb.AppendLine($"A {r.Delivery} depende desta etapa, que eu faço fora do código, antes do fechamento.");
                 if (r.UserSteps.Count > 1)
                 {
                     sb.AppendLine().AppendLine("Também pendente:");

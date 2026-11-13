@@ -27,7 +27,7 @@ public static class ExecutionRequestKind
 
     /// <summary>
     /// 0080: o Especialista do caso responde às mensagens da conversa do card — pista própria no executor (não conta no
-    /// "um pedido ativo por card" nem no limite de execuções da máquina) e nunca altera o plano.
+    /// "um pedido ativo por card" nem no limite de execuções da máquina); ajusta o plano atual só a pedido (0096).
     /// </summary>
     public const string Specialist = "specialist";
 

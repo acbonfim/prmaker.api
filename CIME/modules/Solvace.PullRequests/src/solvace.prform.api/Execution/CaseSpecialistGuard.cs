@@ -40,7 +40,7 @@ public static class CaseClaims
 /// <summary>
 /// 0080: token do Especialista do caso — as claims do dono (as mesmas da credencial do executor, sem as do executor) +
 /// o card e o pedido. Emitido no claim do pedido do especialista; vale só enquanto o pedido estiver ativo
-/// (<see cref="CaseSpecialistMiddleware"/>) e só lê ou conversa: nunca altera o plano.
+/// (<see cref="CaseSpecialistMiddleware"/>) e só usa o que o middleware deixa (0096: inclusive mudar o plano atual a pedido).
 /// </summary>
 public class CaseTokenIssuer(IConfiguration configuration)
 {
@@ -71,16 +71,17 @@ public class CaseTokenIssuer(IConfiguration configuration)
 }
 
 /// <summary>
-/// 0080: o Especialista do caso NÃO altera o plano — garantido aqui, não na skill. Com o token do caso:
+/// 0080: o que o Especialista do caso pode fazer — garantido aqui, não na skill. Com o token do caso:
 /// <list type="bullet">
 /// <item>só vale enquanto o pedido do especialista do card estiver ativo (cache de 15 s);</item>
 /// <item>REST: <c>GET</c> em qualquer lugar (sem o header da skill, que marca comentários como lidos) e qualquer método
 /// em <c>CaseChat/{card}</c> do próprio card;</item>
 /// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c>, (0085) criar/editar itens de trabalho e (r5) as AÇÕES que
 /// uma pessoa pede na conversa — Timeline, ações do card no DevOps (estado, horas...), abrir PR, andamento/cancelar/executar
-/// item de trabalho (confere o corpo JSON-RPC <c>tools/call</c>). Nada que mexa no plano (etapas, perguntas, correção,
-/// arquivos do plano): essas continuam recusadas — a única exceção é acrescentar uma etapa pendente pedida pela pessoa
-/// (<c>prmake_work_item_add_task</c>), sem mudar as outras;</item>
+/// item de trabalho (confere o corpo JSON-RPC <c>tools/call</c>) e (0096) as mudanças do PLANO ATUAL pedidas pela pessoa —
+/// etapas, espera, situação publicada, respostas, arquivos, links, evidências, status (<see cref="SpecialistPlanEdits"/>
+/// pausa/retoma o tratamento e registra o cartão). Ficam recusadas as do tratamento: versão nova (pela proposta aceita),
+/// perguntas novas, travas, andamento interno e ler os comentários do plano;</item>
 /// <item>todo o resto: 403.</item>
 /// </list>
 /// r5: as ações (<see cref="ActingTools"/>) rodam com a identidade de quem pediu na conversa (claim <c>ExternalId</c> trocada
@@ -116,7 +117,17 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         // 0092: item de validação em ambiente (uma sub-tarefa por ambiente, prints como evidência).
         "prmake_env_validation",
         // 0093: item de reprodução do bug no ambiente (por padrão o do cliente).
-        "prmake_env_reproduction"
+        "prmake_env_reproduction",
+        // 0091/0089: entregas e evidências do item de trabalho.
+        "prmake_work_deliverable", "prmake_work_item_evidence",
+        // 0096: guardião do caso — muda o plano atual a pedido da pessoa (SpecialistPlanEdits: pausa/retoma o tratamento,
+        // cartão da ação). Ficam só com o tratamento: versão nova (prmake_correction, pela proposta aceita), perguntas novas e
+        // travas (prmake_ask/prmake_block), o andamento interno (prmake_checkpoint/prmake_control) e ler comentários do
+        // plano (prmake_notes marca como lidos — o tratamento perderia a instrução); prmake_steps reescreve a lista inteira (as
+        // pendentes que ficam de fora somem) — o especialista ajusta UMA etapa com prmake_step (title/description).
+        "prmake_situation", "prmake_step", "prmake_advance", "prmake_unblock", "prmake_plan_status",
+        "prmake_answer", "prmake_cancel_questions", "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link",
+        "prmake_evidence", "prmake_log", "prmake_code_ref"
     };
 
     /// <summary>
@@ -128,7 +139,11 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_timeline", "prmake_devops", "prmake_pr_open",
         "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_work_item_reopen",
         "prmake_work_task_update", "prmake_tool_run",
-        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction"
+        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction",
+        "prmake_work_deliverable", "prmake_work_item_evidence",
+        // 0096: mudanças do plano a pedido da pessoa.
+        "prmake_step", "prmake_advance", "prmake_unblock", "prmake_plan_status", "prmake_answer", "prmake_cancel_questions",
+        "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link", "prmake_evidence", "prmake_log", "prmake_code_ref"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]
@@ -184,8 +199,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
             if (denied is { } tool)
             {
                 await DenyAsync(context, StatusCodes.Status403Forbidden,
-                    $"O Especialista do caso não altera o plano ({tool} recusada). Proponha a mudança com prmake_case_propose; " +
-                    "ações pedidas na conversa (Timeline, horas, card, PR, itens de trabalho) têm ferramentas próprias.");
+                    $"{tool} fica com o Claude do tratamento (versão nova do plano, perguntas novas, travas, andamento interno). " +
+                    "Ajuste o plano atual com prmake_step (texto/status de uma etapa)/prmake_advance/prmake_handoff/prmake_situation_publish; versão nova " +
+                    "(a solução mudou) com prmake_case_propose.");
                 return;
             }
             if (acting)
@@ -195,7 +211,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         }
 
         await DenyAsync(context, StatusCodes.Status403Forbidden,
-            "O Especialista do caso só lê e conversa — o plano muda só quando uma pessoa aceita a proposta.");
+            "O Especialista do caso usa o REST só para ler e para a conversa do card — o resto vai pelas ferramentas do PRMake (MCP).");
     }
 
     /// <summary>

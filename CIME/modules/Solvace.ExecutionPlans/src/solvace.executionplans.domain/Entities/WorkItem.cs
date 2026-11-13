@@ -401,6 +401,32 @@ public class WorkItem
         return true;
     }
 
+    /// <summary>0096: texto da sub-tarefa (pendente/em espera) da etapa acompanhando o plano ajustado. Devolve se mudou.</summary>
+    public bool SyncStepText(string stepKey, string title, string? description, DateTimeOffset now)
+    {
+        if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting) return false;
+        var task = Tasks.FirstOrDefault(t => t.StepKey == stepKey);
+        if (task is null || !task.FollowStepText(title, description, now)) return false;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// 0096: versão nova do plano de correção — o item da versão anterior passa a espelhar a nova (nada de item igual ao
+    /// lado). Sub-tarefas abertas de etapas que saíram do plano ficam puladas; as que seguem acompanham as etapas novas.
+    /// </summary>
+    public void AdoptPlan(Guid planId, IReadOnlyCollection<string> stepKeys, string version, string actor, DateTimeOffset now)
+    {
+        if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting)
+            throw new DomainException($"O item #{Number} está {Status} — não segue a versão nova do plano.");
+        PlanId = planId;
+        foreach (var t in Tasks.Where(t => t.StepKey is not null && !stepKeys.Contains(t.StepKey) && WorkTaskStatus.IsOpen(t.Status)))
+            t.Force(WorkTaskStatus.Skipped, "A etapa saiu do plano na versão nova", now);
+        AddLog(null, actor, WorkItemLogKind.Updated, $"O item segue a {version} do plano (sem item novo).", now);
+        Recalculate(actor, now, failedUndo: false);
+        UpdatedAt = now;
+    }
+
     /// <summary>Plano concluído/cancelado: fecha o item.</summary>
     public bool ClosePlan(string planStatus, string? reason, string actor, DateTimeOffset now)
     {

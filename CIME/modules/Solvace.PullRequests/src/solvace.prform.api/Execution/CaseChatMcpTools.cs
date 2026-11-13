@@ -79,7 +79,8 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
         });
 
     [McpServerTool(Name = "prmake_case_propose")]
-    [Description("Propoe uma NOVA VERSAO do plano com a solucao discutida (vira um cartao na conversa; nada muda ate alguem com permissao aceitar). " +
+    [Description("Propoe uma NOVA VERSAO do plano quando a SOLUCAO mudou (vira um cartao na conversa; nada muda ate alguem com permissao aceitar). " +
+                 "0096: ajuste do plano atual (texto de etapa, espera, situacao, concluir etapa) nao e proposta — faca direto (prmake_step, prmake_handoff...). " +
                  "changes: [{kind: add|change|remove|decision|keep, title, detail?, fromMessage?}]; phase: correction (padrao) ou analysis; " +
                  "message: o texto do cartao ('Chegamos a uma conclusao...').")]
     public Task<string> Propose(string card, string title, CaseProposalChange[] changes, string? summary = null, string? phase = null, string? message = null,

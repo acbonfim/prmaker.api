@@ -815,6 +815,33 @@ public class WorkItemApplication : IWorkItemApplication
         }
     }
 
+    public async Task<int> AdoptPlanItemsAsync(Guid fromPlanId, Guid toPlanId, string version, ExecutionActor actor, CancellationToken ct)
+    {
+        var plan = await _plans.GetPlanWithStepsAsync(toPlanId, ct) ?? throw new ExecutionPlanNotFoundException("Plano não encontrado.");
+        var items = (await _items.GetByPlanAsync(fromPlanId, ct))
+            .Where(i => IsMirror(i) && !WorkItemStatus.IsClosed(i.Status) && i.Status != WorkItemStatus.Reverting).ToList();
+        if (items.Count == 0) return 0;
+        var now = DateTimeOffset.UtcNow;
+        var keys = plan.Steps.Select(s => s.Key).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            foreach (var item in items)
+            {
+                item.AdoptPlan(toPlanId, keys, version, actor.Name, now);
+                SyncItem(item, plan, "Plano", now);
+            }
+            await _items.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            _items.DetachWorkItems();
+            throw;
+        }
+        foreach (var item in items)
+            await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, null, ct);
+        return items.Count;
+    }
+
     /// <summary>Etapas → sub-tarefas (as novas entram no item espelho), status das etapas, plano concluído/cancelado.</summary>
     private static void SyncItem(WorkItem item, ExecutionPlan plan, string actor, DateTimeOffset now)
     {
@@ -839,7 +866,11 @@ public class WorkItemApplication : IWorkItemApplication
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
         {
             if (IsMirror(item))
+            {
                 item.SyncStepKind(step.Key, StepTaskKind(step), ServerKinds(step), now);
+                // 0096: etapa ajustada no lugar (especialista/tratamento) — a sub-tarefa pendente acompanha o texto.
+                item.SyncStepText(step.Key, step.Title, step.Description, now);
+            }
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
         }
     }

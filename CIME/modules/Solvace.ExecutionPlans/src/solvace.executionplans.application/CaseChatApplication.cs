@@ -17,8 +17,8 @@ public record CaseActor(Guid? UserId, string Name, bool IsManager = false, Guid?
 
 /// <summary>
 /// 0080: Especialista do caso — a conversa do card entre as pessoas e um agente próprio (pista do especialista no
-/// executor). A conversa nunca altera o plano: a proposta aceita por quem pode decidir vira uma instrução no plano atual
-/// (o executor principal monta a nova versão); "Levar para o plano" faz o mesmo com uma mensagem.
+/// executor). Ajuste pedido na conversa o especialista faz direto no plano atual (0096); versão nova só pela proposta
+/// aceita por quem pode decidir, que vira uma instrução no plano atual (o executor principal monta a nova versão); "Levar para o plano" faz o mesmo com uma mensagem.
 /// </summary>
 public class CaseChatApplication(
     ICaseChatRepository cases,
