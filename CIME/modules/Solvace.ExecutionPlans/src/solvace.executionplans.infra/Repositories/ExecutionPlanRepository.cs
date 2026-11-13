@@ -255,6 +255,14 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
          orderby a.Number
          select a).ToListAsync(cancellationToken);
 
+    public async Task<Guid?> GetSituationPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
+        await _context.Plans.AsNoTracking()
+            .Where(p => p.CardNumber == cardNumber && p.Status != ExecutionStatus.Cancelled)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? await GetCurrentPlanIdAsync(cardNumber, cancellationToken);
+
     public async Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken)
     {
         var plan = await _context.Plans.AsNoTracking().Where(p => p.Id == planId)
