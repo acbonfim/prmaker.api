@@ -668,7 +668,7 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_correction")]
-    [Description("Cria o plano de correcao (Bug) ou de implementacao (User Story, Kind analisar-us — titulo 'Implementacao <card>: ...'; nunca 'correcao' na US) do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. Depois, o 'phase' padrao das ferramentas passa a ser 'correction'; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
+    [Description("Cria o plano de correcao (Bug) ou de implementacao (User Story, Kind analisar-us — titulo 'Implementacao <card>: ...'; nunca 'correcao' na US) do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. O plano nao tem versoes: com um plano de correcao aberto no card, ajusta esse mesmo (etapas pela chave; as feitas ficam). Depois, o 'phase' padrao das ferramentas passa a ser 'correction'; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
     public Task<string> Correction(string card, string title,
         [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         CancellationToken ct = default) => Safe(async () =>
@@ -722,8 +722,11 @@ public partial class PrmakeMcpTools(
         var candidates = string.IsNullOrEmpty(p) ? summaries : summaries.Where(s => s.Phase == p).ToList();
         if (candidates.Count == 0)
             throw new McpException($"O card {card} nao tem plano de {p}.");
-        var open = candidates.FirstOrDefault(s => s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled));
-        return (open ?? candidates[0]).Id;
+        var open = candidates.Where(s => s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled)).ToList();
+        // Card 78344: duas versões abertas — vale o plano que o executor foi chamado a retomar (o do item), não o mais novo.
+        if (open.Count > 1 && await queue.ActivePlanIdAsync(card, ct) is { } active && open.Any(s => s.Id == active))
+            return active;
+        return (open.FirstOrDefault() ?? candidates[0]).Id;
     }
 
     private async Task<ExecutionActor> ActorAsync(CancellationToken ct)

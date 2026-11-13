@@ -337,7 +337,7 @@ public class WorkItemMcpTools(
         if (current.PlanId is not null && current.Tasks.Any(t => t.StepKey is not null) && !current.Editable)
             throw new McpException($"O item #{number} espelha o plano e ja comecou — para acrescentar uma sub-tarefa use " +
                                    $"prmake_work_item_add_task(card {c}, number {number}, title, description); as etapas existentes " +
-                                   "so mudam por uma nova versao do plano (prmake_case_propose).");
+                                   "so mudam por proposta (prmake_case_propose), que ajusta o mesmo plano.");
         if (current.PlanId is null && !current.Editable)
             throw new McpException($"O item #{number} ja comecou ou terminou ({current.Status}) — nao se edita inteiro. Sub-tarefa a mais: " +
                                    $"prmake_work_item_add_task(card {c}, number {number}, ...); sub-tarefa pendente: prmake_work_task_update; " +
@@ -384,8 +384,8 @@ public class WorkItemMcpTools(
         if (current.PlanId is not { } planId || !current.Tasks.Any(t => t.StepKey is not null))
         {
             if (current.PlanId is not null)
-                throw new McpException($"O item #{number} esta ligado ao plano sem espelhar as etapas — a mudanca vai por uma nova versao do " +
-                                       "plano (prmake_case_propose).");
+                throw new McpException($"O item #{number} esta ligado ao plano sem espelhar as etapas — a mudanca vai por proposta (ajusta o mesmo " +
+                                       "plano, prmake_case_propose).");
             if (current.Status is WorkItemStatus.Completed or WorkItemStatus.Cancelled)
                 throw new McpException($"O item #{number} esta {current.Status} — reabra antes com prmake_work_item_reopen(card {c}, number " +
                                        $"{number}, reason) e chame de novo (ou, para refazer sub-tarefas ja feitas, informe redo no reopen).");

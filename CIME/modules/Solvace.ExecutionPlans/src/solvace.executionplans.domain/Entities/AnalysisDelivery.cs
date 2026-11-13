@@ -34,7 +34,7 @@ public static class AnalysisDelivery
             return "O card ainda não tem análise — analise primeiro.";
         if (current.Phase == ExecutionPhase.Correction)
             return current.Status == ExecutionStatus.Cancelled
-                ? $"O {PlanTerms.DeliveryPlan(current.Kind)} foi cancelado — peça uma nova versão pelo Especialista do caso."
+                ? $"O {PlanTerms.DeliveryPlan(current.Kind)} foi cancelado — peça ao Especialista do caso um item de trabalho novo."
                 : $"O card já tem {PlanTerms.DeliveryPlan(current.Kind)} — o item de trabalho dele está na Bancada.";
         if (current.Status == ExecutionStatus.Cancelled)
             return "A análise foi cancelada — analise de novo.";

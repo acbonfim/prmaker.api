@@ -184,9 +184,10 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   pessoas acontecem na conversa do caso (outro agente). Comentario novo no plano agora e uma **instrucao explicita**
   (veio de "Levar para o plano" ou de proposta aceita): siga. **Nunca responda pergunta no andamento de uma etapa**
   (`log`) — se precisar de decisao, `prmake_ask`; se for so duvida, ela e do Especialista. Comentario que comeca com
-  **"Proposta do Especialista aceita"**: e a nova versao do plano decidida pela pessoa — monte-a (correcao:
-  `prmake_correction` com as mudancas listadas, citando a proposta no resumo; analise: refaca so o que mudou) e
-  respeite a ultima linha: "NAO execute" = monte as etapas e pare com o plano pronto; "Pode executar" = siga.
+  **"Proposta do Especialista aceita"**: e a mudanca do plano decidida pela pessoa — **ajuste o MESMO plano, sem versao
+  nova** (card 78344: o plano nao tem v2/v3; correcao: `prmake_steps` no plano de correcao atual com as mudancas listadas
+  — as etapas feitas ficam —, citando a proposta no `prmake_log`; analise: refaca so o que mudou no mesmo plano) e
+  respeite a ultima linha: "NAO execute" = ajuste as etapas e pare; "Pode executar" = siga.
 - **0080 — divergencia entre a analise e a base real** (a branch/repositorio onde a correcao vai partir ja tem outro
   fix, o codigo citado mudou, o ambiente roda outra versao): antes de seguir, `prmake_log(card, kind: "divergence",
   stepKey: <etapa>, message: "<o que a analise assumiu> x <o que a base real tem> — <o que muda na correcao>")`. O PRMake

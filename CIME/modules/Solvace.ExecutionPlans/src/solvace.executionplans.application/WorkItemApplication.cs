@@ -633,6 +633,7 @@ public class WorkItemApplication : IWorkItemApplication
         var plan = await _plans.GetPlanWithStepsAsync(planId, ct) ?? throw new ExecutionPlanNotFoundException("Plano do item não encontrado.");
         if (plan.Status is ExecutionStatus.Cancelled or ExecutionStatus.Completed)
             throw new DomainException($"O plano do item está {plan.Status} — crie um novo item a partir deste.");
+        await CloseStaleDeliveryVersionsAsync(plan, actor, ct);
         if (plan.Status == ExecutionStatus.Paused || plan.Status == ExecutionStatus.Failed)
         {
             // "Continuar" o plano: a mudança de status já pede a retomada ao executor do dono.
@@ -644,6 +645,26 @@ public class WorkItemApplication : IWorkItemApplication
             : null;
         if (request is null && QueueRepository is { } queue && await queue.GetActiveRequestForCardAsync(plan.CardNumber, ct) is null)
             throw new DomainException("Não deu para retomar o plano: o dono do plano não tem executor ligado (ou o plano acabou de rodar). Tente de novo em instantes.");
+    }
+
+    /// <summary>
+    /// Card 78344: o plano de entrega não tem versões. Cards de antes disso podem ter outra "versão" aberta ao lado do plano
+    /// do item — a retomada caía nela (etapa em espera) e o item ficava parado. Executar o item fecha as outras abertas.
+    /// </summary>
+    private async Task CloseStaleDeliveryVersionsAsync(ExecutionPlan plan, ExecutionActor actor, CancellationToken ct)
+    {
+        if (plan.Phase != ExecutionPhase.Correction) return;
+        var stale = (await _plans.GetSummariesByCardAsync(plan.CardNumber, ct))
+            .Where(s => s.Id != plan.Id && s.Phase == ExecutionPhase.Correction
+                        && s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled))
+            .ToList();
+        foreach (var s in stale)
+            await PlanApp.ChangeStatusAsync(s.Id, new ChangeExecutionPlanStatusRequest
+            {
+                Status = ExecutionStatus.Cancelled,
+                Reason = $"{PlanTerms.SupersededReason}: o card segue um plano de entrega só (sem versões)"
+            }, actor, ct);
+        if (stale.Count > 0) _plans.ClearTracking();
     }
 
     public async Task<WorkItemResponse> CancelAsync(long number, bool undo, string? reason, ExecutionActor actor, CancellationToken ct)

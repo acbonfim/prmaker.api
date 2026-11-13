@@ -535,6 +535,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
     private static string GatheringText(DateTimeOffset until) =>
         $"Esperando mais comentários para retomar uma vez só — o Claude começa às {LocalTime(until)} (\"Continuar\" começa já)";
 
+    public async Task<Guid?> ActivePlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
+        (await _queue.GetActiveRequestForCardAsync(cardNumber.Trim(), cancellationToken))?.PlanId;
+
     public async Task<ExecutionSession?> RunningSessionAsync(string cardNumber, CancellationToken cancellationToken)
     {
         if (await _queue.GetActiveRequestForCardAsync(cardNumber.Trim(), cancellationToken) is not { Status: ExecutionRequestStatus.Running } r
