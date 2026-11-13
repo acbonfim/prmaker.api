@@ -284,15 +284,15 @@ public static class CardSituation
 
     private static string? NextText(CardSituationResponse r, ExecutionPlan plan) => r.Kind switch
     {
-        CardSituationKind.Ticket => $"Quando o chamado for atendido, marco como resolvido no PRMake para a {r.Delivery} seguir.",
-        CardSituationKind.TicketToOpen => $"Abro o chamado e anexo à etapa no PRMake (Anexar chamado); a {r.Delivery} segue quando ele for atendido.",
+        CardSituationKind.Ticket => $"Quando o chamado for atendido, a {r.Delivery} segue.",
+        CardSituationKind.TicketToOpen => $"Abro o chamado; a {r.Delivery} segue quando ele for atendido.",
         CardSituationKind.PullRequestReview => $"Com a revisão e o merge dos PRs em QA, a {r.Delivery} segue para validação.",
         CardSituationKind.QaValidation => r.DevTestInQaAt is null
-            ? $"Movo o card para Dev Test in QA, valido a {r.Delivery} em QA e concluo a etapa no PRMake. Em seguida o card vai para Ready for QA."
-            : $"Valido a {r.Delivery} em QA e concluo a etapa no PRMake. Em seguida o card vai para Ready for QA.",
-        CardSituationKind.Answer => "Respondo as perguntas no PRMake para a análise seguir.",
-        CardSituationKind.User when r.PlannedTask => "Faço o que a etapa pede (o passo a passo está nos arquivos do plano) e concluo no PRMake; em seguida vem o fechamento do card.",
-        CardSituationKind.User => "Concluo no PRMake o que a etapa pede.",
+            ? $"Movo o card para Dev Test in QA e valido a {r.Delivery} em QA. Em seguida o card vai para Ready for QA."
+            : $"Valido a {r.Delivery} em QA. Em seguida o card vai para Ready for QA.",
+        CardSituationKind.Answer => "Respondo as perguntas para a análise seguir.",
+        CardSituationKind.User when r.PlannedTask => "Faço o que a etapa pede; em seguida vem o fechamento do card.",
+        CardSituationKind.User => "Faço o que a etapa pede.",
         _ => null
     };
 
@@ -312,7 +312,7 @@ public static class CardSituation
         CardSituationKind.PullRequestReview => "Aguardando revisão e merge dos PRs",
         CardSituationKind.QaValidation => "Aguardando validação em QA",
         CardSituationKind.Answer => "Aguardando resposta",
-        CardSituationKind.User => "Aguardando uma ação no PRMake",
+        CardSituationKind.User => "Aguardando uma ação",
         _ => "Sem pendências no momento"
     };
 
@@ -372,7 +372,7 @@ public static class CardSituation
                 break;
             }
             case CardSituationKind.Answer:
-                sb.AppendLine(r.Questions.Count == 1 ? "Há uma pergunta aguardando resposta no PRMake:" : "Há perguntas aguardando resposta no PRMake:");
+                sb.AppendLine(r.Questions.Count == 1 ? "Há uma pergunta aguardando resposta:" : "Há perguntas aguardando resposta:");
                 foreach (var q in r.Questions) sb.AppendLine($"- {q}");
                 break;
             case CardSituationKind.User when r.PlannedTask:
@@ -384,7 +384,7 @@ public static class CardSituation
                 }
                 break;
             case CardSituationKind.User:
-                sb.AppendLine("Pendente no PRMake:");
+                sb.AppendLine("Pendente:");
                 foreach (var u in r.UserSteps) sb.AppendLine($"- {u}");
                 break;
             default:

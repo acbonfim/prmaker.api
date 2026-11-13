@@ -624,7 +624,8 @@ public partial class PrmakeMcpTools(
                  "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
                  "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card, na discussion do DevOps e no handover. " +
                  "0096: escreva em PRIMEIRA PESSOA, como quem trata o card (o comentario sai no nome dele): 'Abri o chamado...', 'Vou validar em QA...', " +
-                 "com a espera como status ('Aguardando o merge do PR #489') — nunca 'voce'/'quem trata o card'. Texto vazio limpa.")]
+                 "com a espera como status ('Aguardando o merge do PR #489') — nunca 'voce'/'quem trata o card' nem o PRMake ('no PRMake', 'conclua a etapa'): " +
+                 "o comentario parece escrito pela pessoa. Texto vazio limpa.")]
     public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
@@ -643,7 +644,7 @@ public partial class PrmakeMcpTools(
     [McpServerTool(Name = "prmake_situation_publish")]
     [Description("0096: publica a 'Situacao atual' na discussion do DevOps ATUALIZANDO o mesmo comentario do card (nunca cria outro " +
                  "quando ja existe). Sem markdown = o texto que o PRMake monta; com markdown = o texto ajustado como a pessoa pediu " +
-                 "(primeira pessoa, como quem trata o card). Para mudar so o contexto da espera prefira prmake_handoff (o comentario " +
+                 "(primeira pessoa, como quem trata o card, sem citar o PRMake). Para mudar so o contexto da espera prefira prmake_handoff (o comentario " +
                  "acompanha sozinho). O texto ajustado vale ate a situacao mudar — ai o PRMake atualiza o comentario de novo.")]
     public Task<string> SituationPublish(string card, [Description("Texto (markdown) ajustado; vazio = o montado pelo PRMake")] string? markdown = null,
         CancellationToken ct = default) => Safe(async () =>
