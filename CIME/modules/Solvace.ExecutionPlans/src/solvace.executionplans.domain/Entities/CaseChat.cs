@@ -479,8 +479,8 @@ public class CaseProposalChange
 }
 
 /// <summary>
-/// Proposta do especialista para uma nova versão do plano. Nada muda no plano até alguém com permissão aceitar; aceita,
-/// vira uma instrução no plano atual (o executor principal monta a nova versão).
+/// Proposta do especialista para mudar a solução do plano. Nada muda no plano até alguém com permissão aceitar; aceita,
+/// vira uma instrução no plano atual (card 78344: o executor principal ajusta esse mesmo plano — sem versão nova).
 /// </summary>
 public class CaseProposal
 {
@@ -589,8 +589,8 @@ public class CaseProposal
             $"**Proposta do Especialista aceita** (#{Number}, por {acceptedBy}): {Title}",
             string.Empty,
             Phase == ExecutionPhase.Correction
-                ? $"Gere uma NOVA VERSÃO do {PlanTerms.DeliveryPlan(planKind)} (prmake_correction) com estas mudanças:"
-                : "Refaça a análise (nova versão do plano de análise) com estas mudanças:"
+                ? $"Ajuste o {PlanTerms.DeliveryPlan(planKind)} ATUAL, no lugar (prmake_steps no mesmo plano — sem plano novo nem versão nova; etapas já feitas ficam), com estas mudanças:"
+                : "Ajuste a análise atual, no lugar (mesmo plano, sem versão nova; refaça só o que mudou), com estas mudanças:"
         };
         foreach (var c in Changes)
         {
@@ -612,8 +612,8 @@ public class CaseProposal
         }
         lines.Add(string.Empty);
         lines.Add(Execute
-            ? "Pode executar a nova versão em seguida (sem merge)."
-            : $"Só monte a nova versão e pare: NÃO execute a {PlanTerms.Delivery(planKind)} até a pessoa pedir.");
+            ? "Pode executar o plano ajustado em seguida (sem merge)."
+            : $"Só ajuste as etapas e pare: NÃO execute a {PlanTerms.Delivery(planKind)} até a pessoa pedir.");
         return string.Join("\n", lines);
     }
 }

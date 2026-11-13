@@ -480,7 +480,7 @@ public class WorkItem
     public IReadOnlyList<WorkItemTask> Reopen(IReadOnlyCollection<long>? redo, string? reason, string actor, DateTimeOffset now)
     {
         if (FollowsPlan)
-            throw new DomainException($"O item #{Number} é do plano — ele muda pelo plano (nova versão ou etapa a mais), não reabrindo o item.");
+            throw new DomainException($"O item #{Number} é do plano — ele muda pelo plano (ajuste das etapas ou etapa a mais), não reabrindo o item.");
         if (Status is WorkItemStatus.Queued or WorkItemStatus.Running)
             throw new DomainException($"O item #{Number} está rodando — espere terminar (ou cancele) para reabrir.");
         if (Status is WorkItemStatus.Reverting or WorkItemStatus.Reverted)

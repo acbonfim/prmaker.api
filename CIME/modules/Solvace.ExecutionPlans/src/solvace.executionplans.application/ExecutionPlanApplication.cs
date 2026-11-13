@@ -46,6 +46,10 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionPlanResponse> CreateAsync(CreateExecutionPlanRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78344: o plano de entrega não tem versões — com um aberto no card, o pedido de plano novo ajusta esse mesmo.
+        if (request.Phase == ExecutionPhase.Correction && await OpenDeliveryPlanAsync(request.CardNumber, cancellationToken) is { } open)
+            return await AdjustDeliveryInPlaceAsync(open, request, actor, cancellationToken);
+
         var now = DateTimeOffset.UtcNow;
         ExecutionSession? parentSession = null;
         var parentPlanId = request.ParentPlanId;
@@ -110,6 +114,41 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (plan.ParentPlanId is { } analysisId)
             await CloseAnalysisAsync(analysisId, plan.Kind, actor, cancellationToken);
         return plan.ToResponse([], 0, now);
+    }
+
+    /// <summary>Plano de entrega (correção/implementação) ainda aberto do card — o único que vale (sem versões).</summary>
+    private async Task<ExecutionPlanSummaryResponse?> OpenDeliveryPlanAsync(string? cardNumber, CancellationToken cancellationToken)
+    {
+        var card = cardNumber?.Trim();
+        if (string.IsNullOrEmpty(card)) return null;
+        return (await _repository.GetSummariesByCardAsync(card, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Correction && s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled))
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Card 78344: proposta aceita ou prmake_correction de novo com o plano de entrega aberto — as etapas entram no mesmo
+    /// plano (upsert pela chave: as já feitas ficam, as pendentes omitidas saem) e o item espelho segue junto, sem versão
+    /// nova, item igual nem outro comentário na discussion.
+    /// </summary>
+    private async Task<ExecutionPlanResponse> AdjustDeliveryInPlaceAsync(ExecutionPlanSummaryResponse open, CreateExecutionPlanRequest request,
+        ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (request.Steps.Count > 0)
+            await UpsertStepsAsync(open.Id, new UpsertExecutionStepsRequest { Steps = request.Steps }, actor, cancellationToken);
+        await AppendLogsAsync(open.Id, new AppendExecutionLogsRequest
+        {
+            Logs = [new ExecutionLogItem
+            {
+                Kind = "info",
+                Message = $"Plano ajustado no lugar (sem versão nova): {request.Title?.Trim()}".TrimEnd(' ', ':')
+            }]
+        }, cancellationToken);
+        _repository.ClearTracking();
+        var plan = await _repository.GetPlanWithStepsAsync(open.Id, cancellationToken)
+                   ?? throw new ExecutionPlanNotFoundException("Plano de entrega não encontrado.");
+        return await BuildResponseAsync(plan, cancellationToken);
     }
 
     /// <summary>

@@ -68,6 +68,9 @@ public interface IExecutionQueueApplication
     // Configurações do usuário
     Task<ExecutionUserSettingsResponse> GetSettingsAsync(Guid userId, CancellationToken cancellationToken);
     Task<ExecutionUserSettingsResponse> UpdateSettingsAsync(Guid userId, UpdateExecutionUserSettingsRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Card 78344: plano do pedido ativo da pista principal do card (o que o executor foi chamado a retomar).</summary>
+    Task<Guid?> ActivePlanIdAsync(string cardNumber, CancellationToken cancellationToken);
 }
 
 /// <summary>

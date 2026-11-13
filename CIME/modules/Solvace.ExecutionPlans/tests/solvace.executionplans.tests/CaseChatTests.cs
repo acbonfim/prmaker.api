@@ -75,10 +75,23 @@ public class CaseChatTests
         p.Accept(false, "Bruno Ferreira", Now);
         var text = p.InstructionText("Bruno Ferreira");
         Assert.Contains("Proposta do Especialista aceita", text);
-        Assert.Contains("prmake_correction", text);
+        Assert.Contains("prmake_steps", text);
+        Assert.DoesNotContain("prmake_correction", text);
         Assert.Contains("(mensagem 4 da conversa)", text);
         Assert.Contains("NÃO execute", text);
         Assert.Contains("Pode executar", Proposal(execute: true).InstructionText("Bruno"));
+    }
+
+    [Fact]
+    public void Accepted_proposal_adjusts_the_same_plan_without_a_new_version()
+    {
+        // Card 78344: proposta aceita virava v2 do plano (item igual, comentário duplicado) — o plano não tem versões.
+        var correction = Proposal().InstructionText("Alex");
+        Assert.Contains("ATUAL, no lugar", correction);
+        Assert.DoesNotContain("NOVA VERSÃO", correction);
+        var analysis = new CaseProposal("78344", 2, "Outra causa", null, ExecutionPhase.Analysis,
+            [new() { Kind = "change", Title = "causa" }], Now).InstructionText("Alex");
+        Assert.Contains("sem versão nova", analysis);
     }
 
     [Fact]

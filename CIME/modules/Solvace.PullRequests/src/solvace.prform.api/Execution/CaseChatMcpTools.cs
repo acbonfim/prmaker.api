@@ -67,7 +67,7 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
 
     [McpServerTool(Name = "prmake_case_point")]
     [Description("Fixa (ou atualiza, com id) um ponto combinado na conversa: status agreed (combinado), discussing (em discussao) ou dropped " +
-                 "(descartado). Os pontos sao a base da proposta de nova versao do plano.")]
+                 "(descartado). Os pontos sao a base da proposta de mudanca do plano.")]
     public Task<string> Point(string card, string? text = null, string? status = null, int? messageNumber = null, string? id = null, CancellationToken ct = default) =>
         Safe(async () =>
         {
@@ -79,7 +79,9 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
         });
 
     [McpServerTool(Name = "prmake_case_propose")]
-    [Description("Propoe uma NOVA VERSAO do plano quando a SOLUCAO mudou (vira um cartao na conversa; nada muda ate alguem com permissao aceitar). " +
+    [Description("Propoe mudar a SOLUCAO do plano atual (vira um cartao na conversa; nada muda ate alguem com permissao aceitar; aceita, o " +
+                 "tratamento ajusta o MESMO plano — nao existe versao nova do plano). Outra entrega/outra solucao a parte = item de trabalho novo " +
+                 "(prmake_work_item_create), nao proposta. " +
                  "0096: ajuste do plano atual (texto de etapa, espera, situacao, concluir etapa) nao e proposta — faca direto (prmake_step, prmake_handoff...). " +
                  "changes: [{kind: add|change|remove|decision|keep, title, detail?, fromMessage?}]; phase: correction (padrao) ou analysis; " +
                  "message: o texto do cartao ('Chegamos a uma conclusao...').")]

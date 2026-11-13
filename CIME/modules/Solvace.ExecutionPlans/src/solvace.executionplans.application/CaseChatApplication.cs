@@ -356,7 +356,7 @@ public class CaseChatApplication(
                     request.Summary, request.Phase, request.Changes ?? [], now);
                 cases.AddProposal(proposal);
                 var message = await NewSpecialistMessageAsync(card, CaseMessageKind.Proposal,
-                    string.IsNullOrWhiteSpace(request.Message) ? $"Chegamos a uma conclusão. Quer que eu gere a nova versão do plano? **{proposal.Title}**" : request.Message,
+                    string.IsNullOrWhiteSpace(request.Message) ? $"Chegamos a uma conclusão. Quer que eu ajuste o plano com isso? **{proposal.Title}**" : request.Message,
                     actor, now, cancellationToken);
                 message.LinkProposal(proposal.Id);
                 proposal.LinkMessage(message.Id);
@@ -405,7 +405,7 @@ public class CaseChatApplication(
         await RequestWhenPlanStoppedAsync(card, plan, ExecutionRequestSource.CaseProposal, instruction, actor, cancellationToken);
         await SystemMessageAsync(card,
             $"{actor.Name} aceitou a proposta #{saved.Number}{(saved.Execute ? " para já executar" : string.Empty)} — virou o comentário #{note.Number} do plano e o " +
-            "Claude do tratamento monta a nova versão.", cancellationToken);
+            "Claude do tratamento ajusta o mesmo plano.", cancellationToken);
         return saved.ToResponse();
     }
 

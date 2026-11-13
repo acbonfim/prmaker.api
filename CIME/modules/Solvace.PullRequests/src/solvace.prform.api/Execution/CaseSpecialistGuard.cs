@@ -199,9 +199,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
             if (denied is { } tool)
             {
                 await DenyAsync(context, StatusCodes.Status403Forbidden,
-                    $"{tool} fica com o Claude do tratamento (versão nova do plano, perguntas novas, travas, andamento interno). " +
-                    "Ajuste o plano atual com prmake_step (texto/status de uma etapa)/prmake_advance/prmake_handoff/prmake_situation_publish; versão nova " +
-                    "(a solução mudou) com prmake_case_propose.");
+                    $"{tool} fica com o Claude do tratamento (montar as etapas do plano, perguntas novas, travas, andamento interno). " +
+                    "Ajuste o plano atual com prmake_step (texto/status de uma etapa)/prmake_advance/prmake_handoff/prmake_situation_publish; a solução " +
+                    "mudou: prmake_case_propose (ajusta o mesmo plano — não existe versão nova); outra entrega: prmake_work_item_create.");
                 return;
             }
             if (acting)
