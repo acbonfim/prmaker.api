@@ -206,7 +206,7 @@ tratamento rodando, pausa → aplica → retoma sozinho (o tratamento segue lend
 | Etapa travada que a pessoa destravou ("liberei a VPN") | `prmake_unblock(card, key)` |
 | Pausar / retomar / cancelar o plano ("pausa o tratamento", "pode seguir", "cancela este plano") | `prmake_plan_status(card, "paused" \| "running" \| "cancelled", reason)` — cancelar so com pedido explicito |
 | Responder pela conversa uma pergunta do plano ("responde a 2 com a opcao B") | `prmake_answer(card, question, text)`; pergunta que perdeu o sentido → `prmake_cancel_questions(card, [n], reason)` |
-| Contexto da espera (o que aparece em "Aguardando..." na discussion) | `prmake_handoff(card, text)` — **primeira pessoa**, como quem trata o card ("Vou excluir...", "Abri o chamado..."); o comentario da discussion **atualiza sozinho** (o mesmo) |
+| Contexto da espera (o que aparece em "Aguardando..." na discussion) | `prmake_handoff(card, text)` — **primeira pessoa**, como quem trata o card ("Vou excluir...", "Abri o chamado..."), sem citar o PRMake ("no PRMake", "conclua a etapa"); o comentario da discussion **atualiza sozinho** (o mesmo) |
 | Texto da situacao publicado na discussion ("reescreve o resumo na primeira pessoa", "tira esta frase") | `prmake_situation(card)` (le o montado e o publicado) → `prmake_situation_publish(card, markdown)` — **atualiza o mesmo comentario**, nunca cria outro. Mudou so o contexto? Prefira `prmake_handoff`. O texto ajustado vale ate a situacao mudar |
 | Arquivo do plano (script, analise, texto do chamado), link/chamado na etapa, evidencias do card | `prmake_file` / `prmake_link` / `prmake_evidence` |
 | Registrar algo no plano (decisao, achado, divergencia) | `prmake_log(card, message, kind)` |

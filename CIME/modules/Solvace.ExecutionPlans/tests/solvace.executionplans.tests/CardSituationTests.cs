@@ -69,7 +69,8 @@ public class CardSituationTests
 
         Assert.Equal(CardSituationKind.Ticket, s.Kind);
         Assert.Equal(["01_ajuste.sql", "chamado-ajuste.md"], s.Tickets.Single().Files);
-        Assert.Contains("resolvido", s.Next);
+        Assert.Contains("quando o chamado for atendido", s.Next, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PRMake", s.Next);
         Assert.Contains("com os arquivos `01_ajuste.sql` e `chamado-ajuste.md`", s.Markdown);
     }
 
@@ -269,5 +270,14 @@ public class CardSituationTests
         var fresh = CardSituation.Build(plan, links, [], [], IsQa, plan.CardNumber);
         Assert.NotNull(fresh.Handoff);
         Assert.Contains("**Contexto**", fresh.Markdown);
+    }
+
+    [Fact]
+    public void Discussion_comment_reads_as_written_by_the_person()
+    {
+        var html = SituationHtml.Build("**Aguardando: Excluir os posts**\n\nFaço o que a etapa pede.", Now, CardSituation.Brasilia);
+
+        Assert.DoesNotContain("PRMake", html);
+        Assert.DoesNotContain("automaticamente", html);
     }
 }
