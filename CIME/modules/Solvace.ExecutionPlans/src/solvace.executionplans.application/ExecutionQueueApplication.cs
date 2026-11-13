@@ -248,7 +248,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             return new ExecutionHeartbeatResponse { Action = "continue", RequestStatus = r.Status };
 
         var plan = await FindPlanAsync(r, cancellationToken);
-        if (plan is not null && plan.Status == ExecutionStatus.Cancelled && plan.UpdatedAt >= (r.StartedAt ?? r.CreatedAt))
+        if (plan is not null && plan.Status == ExecutionStatus.Cancelled && plan.UpdatedAt >= (r.StartedAt ?? r.CreatedAt)
+            // 0096: versão substituída pela nova (que o próprio tratamento acabou de criar) — o Claude segue.
+            && !PlanTerms.IsSuperseded(plan.StatusReason))
         {
             r = await MutateRequestAsync(requestId, x => x.Cancel(plan.StatusChangedBy ?? "PRMake", "Plano cancelado pela tela", now), cancellationToken);
             await NotifyAsync(r, cancellationToken);

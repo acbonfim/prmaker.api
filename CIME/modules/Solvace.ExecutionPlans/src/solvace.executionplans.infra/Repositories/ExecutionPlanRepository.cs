@@ -255,8 +255,26 @@ public class ExecutionPlanRepository : IExecutionPlanRepository
          orderby a.Number
          select a).ToListAsync(cancellationToken);
 
-    public Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken) =>
-        _context.Plans.AsNoTracking().Where(p => p.Id == planId).Select(p => p.SituationCommentId).FirstOrDefaultAsync(cancellationToken);
+    public async Task<Guid?> GetSituationPlanIdAsync(string cardNumber, CancellationToken cancellationToken) =>
+        await _context.Plans.AsNoTracking()
+            .Where(p => p.CardNumber == cardNumber && p.Status != ExecutionStatus.Cancelled)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? await GetCurrentPlanIdAsync(cardNumber, cancellationToken);
+
+    public async Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken)
+    {
+        var plan = await _context.Plans.AsNoTracking().Where(p => p.Id == planId)
+            .Select(p => new { p.CardNumber, p.SituationCommentId }).FirstOrDefaultAsync(cancellationToken);
+        if (plan is null || plan.SituationCommentId is not null)
+            return plan?.SituationCommentId;
+        return await _context.Plans.AsNoTracking()
+            .Where(p => p.CardNumber == plan.CardNumber && p.SituationCommentId != null)
+            .OrderByDescending(p => p.SituationPostedAt)
+            .Select(p => p.SituationCommentId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     public async Task SetSituationPostedAsync(Guid planId, int commentId, string markdown, string by, DateTimeOffset at, CancellationToken cancellationToken) =>
         await _context.Plans.Where(p => p.Id == planId)

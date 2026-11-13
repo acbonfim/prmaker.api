@@ -24,7 +24,7 @@ public partial class ExecutionPlanApplication
     public async Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken)
     {
         var card = cardNumber.Trim();
-        var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken);
+        var planId = await _repository.GetSituationPlanIdAsync(card, cancellationToken);
         var situation = planId is { } id ? await BuildSituationAsync(id, true, cancellationToken) : CardSituation.Build(null, [], [], [], _ => false, card);
         if (withDevOps && _devOps is not null)
         {
@@ -56,7 +56,7 @@ public partial class ExecutionPlanApplication
         if (_devOps is null)
             throw new DomainException("Integração com o DevOps indisponível.");
         var card = cardNumber.Trim();
-        var planId = await _repository.GetCurrentPlanIdAsync(card, cancellationToken)
+        var planId = await _repository.GetSituationPlanIdAsync(card, cancellationToken)
                      ?? throw new ExecutionPlanNotFoundException("O card não tem plano.");
         var situation = await GetSituationAsync(card, true, cancellationToken);
         // 0078: texto editado pela pessoa vale como está (o PRMake só converte para o HTML da discussion).
@@ -108,8 +108,9 @@ public partial class ExecutionPlanApplication
             var own = card is null && plan.CreatedByUserId is { } owner ? await _repository.GetSituationAutoPostAsync(owner, cancellationToken) : null;
             situation.AutoPost = card ?? own ?? settings.PostSituationToDevOps;
             situation.AutoPostSource = card is not null ? "card" : own is not null ? "user" : "global";
+            var hasComment = plan.SituationCommentId is not null || await _repository.GetSituationCommentIdAsync(planId, cancellationToken) is not null;
             situation.PublishPending = situation.Markdown != situation.PublishedMarkdown
-                                       && CardSituationKind.PostToDevOps(situation, plan.SituationCommentId is not null);
+                                       && CardSituationKind.PostToDevOps(situation, hasComment);
         }
         return situation;
     }
@@ -124,6 +125,9 @@ public partial class ExecutionPlanApplication
         if (_devOps is null) return;
         try
         {
+            // 0096: um comentário por card — só o plano da situação do card (o mais recente não cancelado) escreve nele: a
+            // versão substituída/cancelada ou a análise já fechada não voltam o texto para trás.
+            if (await _repository.GetSituationPlanIdAsync(cardNumber, cancellationToken) != planId) return;
             var commentId = await _repository.GetSituationCommentIdAsync(planId, cancellationToken);
             var situation = await BuildSituationAsync(planId, true, cancellationToken);
             // Manual (preferência do dono ou padrão): fica pendente na tela, com o botão Publicar.

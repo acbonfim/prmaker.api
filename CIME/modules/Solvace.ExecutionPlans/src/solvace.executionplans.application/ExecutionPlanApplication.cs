@@ -88,6 +88,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
         // 0085: o plano vira um item de trabalho (uma sub-tarefa por etapa), salvo se a skill já criou itens dele — a correção
         // (a entrega) e, nos ajustes, a análise ("Análise inicial do bug/da US #card"; cada versão da análise = item novo).
+        // 0096: versão nova da entrega — o item da versão anterior segue a nova (sem item igual) e a anterior se encerra.
+        var superseded = plan.Phase == ExecutionPhase.Correction ? await AdoptPreviousDeliveryAsync(plan, actor, cancellationToken) : [];
         await CreateWorkItemFromPlanAsync(plan, actor, cancellationToken);
         // 0078: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
         await SuggestOnCreateAsync(plan, cancellationToken);
@@ -99,9 +101,44 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 Status = ExecutionStatus.Cancelled,
                 Reason = $"Versão sem análise: a correção partiu da análise v{emptyAnalysis.VersionNumber}"
             }, actor, cancellationToken);
+        foreach (var previous in superseded)
+            await ChangeStatusAsync(previous.Id, new ChangeExecutionPlanStatusRequest
+            {
+                Status = ExecutionStatus.Cancelled,
+                Reason = $"{PlanTerms.SupersededReason} do {PlanTerms.DeliveryPlan(plan.Kind)} (v{superseded.Max(p => p.VersionNumber) + 1})"
+            }, actor, cancellationToken);
         if (plan.ParentPlanId is { } analysisId)
             await CloseAnalysisAsync(analysisId, plan.Kind, actor, cancellationToken);
         return plan.ToResponse([], 0, now);
+    }
+
+    /// <summary>
+    /// 0096 (card 78344): a proposta aceita virava uma versão nova do plano de entrega ao lado da anterior — item igual
+    /// (#803 ao lado do #800) e as duas versões abertas. Agora os itens abertos da versão anterior passam a espelhar a nova
+    /// e quem chama encerra a anterior (cancelada como substituída, depois de criar o item da nova). Best-effort.
+    /// </summary>
+    private async Task<IReadOnlyList<ExecutionPlanSummaryResponse>> AdoptPreviousDeliveryAsync(ExecutionPlan plan, ExecutionActor actor,
+        CancellationToken cancellationToken)
+    {
+        var previous = (await _repository.GetSummariesByCardAsync(plan.CardNumber, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Correction && s.Id != plan.Id && s.CreatedAt <= plan.CreatedAt
+                        && s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled or ExecutionStatus.Failed))
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+        if (previous.Count == 0 || _workItems is null) return previous;
+        var version = $"v{previous.Max(p => p.VersionNumber) + 1}";
+        foreach (var p in previous)
+        {
+            try
+            {
+                await _workItems.AdoptPlanItemsAsync(p.Id, plan.Id, version, actor, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Sem adotar, o item da versão nova nasce do jeito antigo (FromPlanAsync).
+            }
+        }
+        return previous;
     }
 
     /// <summary>

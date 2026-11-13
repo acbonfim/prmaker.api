@@ -131,7 +131,7 @@ public class ExecutionClaimResponse
     public string Phase { get; set; } = ExecutionPhase.Analysis;
     public string? Model { get; set; }
     /// <summary>
-    /// 0080: pedido do Especialista do caso — token restrito ao caso (só leitura + conversa; nunca altera o plano), que o
+    /// 0080: pedido do Especialista do caso — token restrito ao caso (leitura, conversa e o que a pessoa pede — CaseSpecialistMiddleware), que o
     /// executor passa ao MCP (<c>--mcp-config --strict-mcp-config</c>) e aos scripts (<c>PRMAKE_TOKEN</c>). Vale só
     /// enquanto o pedido estiver ativo.
     /// </summary>

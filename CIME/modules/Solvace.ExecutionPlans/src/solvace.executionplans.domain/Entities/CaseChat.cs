@@ -5,7 +5,7 @@ namespace solvace.executionplans.domain.Entities;
 /// <summary>
 /// 0080: Especialista do caso — a conversa do card (não do plano: atravessa análise, correção e versões) entre as
 /// pessoas que tratam o card e um agente próprio, que roda numa pista separada do executor (pedido
-/// <see cref="ExecutionRequestKind.Specialist"/>) e nunca altera o plano. Aqui ficam a sessão do Claude do especialista
+/// <see cref="ExecutionRequestKind.Specialist"/>) e ajusta o plano atual só a pedido (0096). Aqui ficam a sessão do Claude do especialista
 /// (retomada a cada mensagem) e até onde ele leu.
 /// </summary>
 public class CaseChat

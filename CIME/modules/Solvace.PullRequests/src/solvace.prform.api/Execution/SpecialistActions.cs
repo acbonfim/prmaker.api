@@ -73,7 +73,8 @@ public class SpecialistActions(CaseChatApplication chat, IHttpContextAccessor ht
     private static bool IsIntegrationError(Exception e) =>
         e is PersonalIntegrationRequiredException || e.Message.Contains("Plugin", StringComparison.OrdinalIgnoreCase);
 
-    private async Task RecordAsync(string card, string title, string? detail, bool ok, string? result, CancellationToken ct)
+    /// <summary>Cartão da ação na conversa (0096: também as mudanças do plano, pelo filtro <see cref="SpecialistPlanEdits"/>).</summary>
+    public async Task RecordAsync(string card, string title, string? detail, bool ok, string? result, CancellationToken ct)
     {
         if (CaseClaims.SpecialistOf(User) is not { } actor) return;
         try

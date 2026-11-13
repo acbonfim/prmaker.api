@@ -125,7 +125,8 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_step")]
-    [Description("Atualiza uma etapa: status (pending|running|waiting|completed|failed|cancelled), motivo, atividade (o que esta fazendo agora), checkpoint (onde retomar), waitingOn (answer|user|external).")]
+    [Description("Atualiza uma etapa: status (pending|running|waiting|completed|failed|cancelled), motivo, atividade (o que esta fazendo agora), checkpoint (onde retomar), waitingOn (answer|user|external). " +
+                 "0096: title/description ajustam o texto da etapa no lugar (so ela; as outras nao mudam) — a sub-tarefa pendente/em espera do item acompanha.")]
     public Task<string> Step(
         string card,
         [Description("Chave da etapa")] string key,
@@ -135,11 +136,18 @@ public partial class PrmakeMcpTools(
         string? checkpoint = null,
         string? waitingOn = null,
         string? phase = null,
+        [Description("Titulo novo da etapa (opcional)")] string? title = null,
+        [Description("Descricao/instrucao nova da etapa (opcional)")] string? description = null,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var step = await plans.UpdateStepAsync(await PlanIdAsync(card, phase, ct), key, new UpdateExecutionStepRequest
+        var planId = await PlanIdAsync(card, phase, ct);
+        // 0096: o especialista ajusta etapa que existe — chave errada criaria uma etapa nova sem querer.
+        if (specialist.IsSpecialist && (await plans.GetAsync(planId, ct)).Steps.All(s => s.Key != key.Trim().ToLowerInvariant()))
+            throw new McpException($"Etapa '{key}' nao existe no plano — confira as chaves com prmake_plan (etapa nova: prmake_work_item_add_task).");
+        var step = await plans.UpdateStepAsync(planId, key, new UpdateExecutionStepRequest
         {
-            Status = status, Reason = reason, Activity = activity, Checkpoint = checkpoint, WaitingOn = waitingOn
+            Status = status, Reason = reason, Activity = activity, Checkpoint = checkpoint, WaitingOn = waitingOn,
+            Title = title, Description = description
         }, await ActorAsync(ct), ct);
         return Serialize(new { step.Key, step.Status, step.WaitingOn, reason = step.StatusReason });
     });
@@ -615,11 +623,33 @@ public partial class PrmakeMcpTools(
     [Description("0075: contexto da passagem (handoff) ao entrar em ESPERA (chamado aberto, PR aguardando aprovacao/merge, validacao em QA): " +
                  "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
                  "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card, na discussion do DevOps e no handover. " +
-                 "Escreva em terceira pessoa, com a espera como status ('Aguardando abrir chamado', 'Aguardando o merge do PR #489') — nunca 'voce'/'falta voce...'. Texto vazio limpa.")]
+                 "0096: escreva em PRIMEIRA PESSOA, como quem trata o card (o comentario sai no nome dele): 'Abri o chamado...', 'Vou validar em QA...', " +
+                 "com a espera como status ('Aguardando o merge do PR #489') — nunca 'voce'/'quem trata o card'. Texto vazio limpa.")]
     public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
         return Serialize(new { situation.Kind, situation.Title, situation.Since, situation.Next });
+    });
+
+    [McpServerTool(Name = "prmake_situation")]
+    [Description("0096: 'Situacao atual' do card como o PRMake monta (markdown) e o que esta publicado na discussion do DevOps " +
+                 "(publishedMarkdown, quando e por quem; autoPost = publica sozinho a cada mudanca). Leia antes de ajustar o texto.")]
+    public Task<string> Situation(string card, CancellationToken ct = default) => Safe(async () =>
+    {
+        var s = await plans.GetSituationAsync(card.Trim(), false, ct);
+        return Serialize(new { s.Kind, s.Title, s.Markdown, s.PublishedMarkdown, s.PublishedAt, s.PublishedBy, s.AutoPost, s.PublishPending });
+    });
+
+    [McpServerTool(Name = "prmake_situation_publish")]
+    [Description("0096: publica a 'Situacao atual' na discussion do DevOps ATUALIZANDO o mesmo comentario do card (nunca cria outro " +
+                 "quando ja existe). Sem markdown = o texto que o PRMake monta; com markdown = o texto ajustado como a pessoa pediu " +
+                 "(primeira pessoa, como quem trata o card). Para mudar so o contexto da espera prefira prmake_handoff (o comentario " +
+                 "acompanha sozinho). O texto ajustado vale ate a situacao mudar — ai o PRMake atualiza o comentario de novo.")]
+    public Task<string> SituationPublish(string card, [Description("Texto (markdown) ajustado; vazio = o montado pelo PRMake")] string? markdown = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var commentId = await plans.PublishSituationAsync(card.Trim(), null, await ActorAsync(ct), ct, markdown);
+        return Serialize(new { commentId, updated = true });
     });
 
     [McpServerTool(Name = "prmake_link")]
@@ -697,6 +727,10 @@ public partial class PrmakeMcpTools(
 
     private async Task<ExecutionActor> ActorAsync(CancellationToken ct)
     {
+        // 0096: mudança do plano pelo especialista — grava como "Especialista do caso, a pedido de X" e, como não é o
+        // executor, a mudança acorda o tratamento quando há trabalho para ele (ex.: a pessoa concluiu a etapa dela).
+        if (http.HttpContext?.Items.ContainsKey(SpecialistPlanEdits.ItemKey) == true && specialist.Actor() is { } asked)
+            return asked;
         var user = http.HttpContext?.User ?? new ClaimsPrincipal();
         Guid? userId = Guid.TryParse(user.FindFirst("ExternalId")?.Value, out var id) ? id : null;
         string? name = userId.HasValue ? await users.GetFullNameAsync(userId.Value, ct) : null;

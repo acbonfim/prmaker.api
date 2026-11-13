@@ -157,7 +157,7 @@ tambem. `scenario` = os criterios de aceite como roteiro (CA → passo → esper
 implementacao estiver no ambiente (skill `validar-ambiente`: login, prints e evidencias na sub-tarefa).
 
 **8. Executar** — como a analisar-bug (`$REF correcao 8`): `control` entre etapas, worktree do card, PRs com
-`open-pr`, espera com `prmake_handoff` (terceira pessoa, espera como status: "Aguardando abrir chamado"), nova rodada no mesmo plano se a validacao falhar (`$REF correcao 8b`). Plano
+`open-pr`, espera com `prmake_handoff` (primeira pessoa, como quem trata o card; espera como status: "Aguardando abrir chamado"), nova rodada no mesmo plano se a validacao falhar (`$REF correcao 8b`). Plano
 concluido → o PRMake conclui o item.
 
 **9. Aprender e reportar** — lacunas ja registradas; regra nova ou item da base errado → `arch.sh suggest ... --kind

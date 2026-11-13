@@ -9,6 +9,13 @@ namespace solvace.executionplans.domain.Entities;
 /// </summary>
 public static partial class PlanTerms
 {
+    /// <summary>0096: começo do motivo de cancelamento da versão de entrega substituída por uma versão nova.</summary>
+    public const string SupersededReason = "Substituída pela versão nova";
+
+    /// <summary>0096: o plano foi encerrado por ter sido substituído (não pela tela) — o tratamento que o criou segue.</summary>
+    public static bool IsSuperseded(string? statusReason) =>
+        statusReason?.StartsWith(SupersededReason, StringComparison.Ordinal) == true;
+
     /// <summary>"implementação" (US) ou "correção" (Bug).</summary>
     public static string Delivery(string? planKind) => WorkItem.IsUserStoryPlan(planKind) ? "implementação" : "correção";
 

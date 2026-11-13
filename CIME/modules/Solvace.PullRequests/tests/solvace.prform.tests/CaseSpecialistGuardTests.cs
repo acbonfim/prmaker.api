@@ -39,31 +39,40 @@ public class CaseSpecialistGuardTests
     [InlineData("prmake_work_item_files")]
     [InlineData("prmake_case_reply")]
     [InlineData("prmake_plan")]
+    // 0096: guardião do caso — muda o plano atual a pedido da pessoa.
+    [InlineData("prmake_step")]
+    [InlineData("prmake_advance")]
+    [InlineData("prmake_unblock")]
+    [InlineData("prmake_plan_status")]
+    [InlineData("prmake_answer")]
+    [InlineData("prmake_cancel_questions")]
+    [InlineData("prmake_handoff")]
+    [InlineData("prmake_situation")]
+    [InlineData("prmake_situation_publish")]
+    [InlineData("prmake_file")]
+    [InlineData("prmake_link")]
+    [InlineData("prmake_evidence")]
+    [InlineData("prmake_log")]
+    [InlineData("prmake_code_ref")]
+    [InlineData("prmake_work_deliverable")]
+    [InlineData("prmake_work_item_evidence")]
     public void Actions_asked_in_the_conversation_are_allowed(string tool) =>
         Assert.True(CaseSpecialistMiddleware.IsAllowed(tool));
 
     [Theory]
-    [InlineData("prmake_advance")]
-    [InlineData("prmake_step")]
-    [InlineData("prmake_steps")]
     [InlineData("prmake_correction")]
-    [InlineData("prmake_answer")]
+    [InlineData("prmake_steps")]
     [InlineData("prmake_ask")]
-    [InlineData("prmake_cancel_questions")]
     [InlineData("prmake_block")]
-    [InlineData("prmake_unblock")]
     [InlineData("prmake_checkpoint")]
-    [InlineData("prmake_file")]
     [InlineData("prmake_control")]
-    [InlineData("prmake_plan_status")]
-    [InlineData("prmake_log")]
     [InlineData("prmake_notes")]
-    [InlineData("prmake_link")]
-    [InlineData("prmake_handoff")]
-    [InlineData("prmake_code_ref")]
-    [InlineData("prmake_evidence")]
-    public void What_changes_the_plan_stays_blocked(string tool) =>
+    public void What_belongs_to_the_treatment_stays_blocked(string tool) =>
         Assert.False(CaseSpecialistMiddleware.IsAllowed(tool));
+
+    [Fact]
+    public void Every_plan_edit_runs_as_who_asked() =>
+        Assert.All(SpecialistPlanEdits.Titles.Keys, t => Assert.Contains(t, CaseSpecialistMiddleware.ActingTools));
 
     [Fact]
     public void Every_allowed_tool_exists_and_every_acting_tool_is_allowed()
@@ -79,9 +88,9 @@ public class CaseSpecialistGuardTests
     }
 
     [Fact]
-    public async Task Plan_tool_is_refused_with_403()
+    public async Task New_plan_version_is_refused_with_403()
     {
-        var (context, nextCalled) = await RunAsync("prmake_advance");
+        var (context, nextCalled) = await RunAsync("prmake_correction");
         Assert.False(nextCalled());
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }

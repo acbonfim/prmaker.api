@@ -295,9 +295,11 @@ Regras:
   Os fatos (PRs, aprovacoes, CI, chamado, estado no DevOps, desde quando) o PRMake ja junta sozinho no resumo
   *Situacao atual* do card — nao repita links/status, explique o contexto. Atualize quando a espera mudar (chamado
   resolvido → PR; PR mesclado → QA); o PRMake tira do resumo o contexto gravado antes da espera atual.
-  **Escrita do contexto (vai para a discussion do DevOps):** em terceira pessoa e no formato de status — a espera e
+  **Escrita do contexto (vai para a discussion do DevOps, no nome de quem trata o card):** em primeira pessoa (0096:
+  "Abri o chamado de limpeza...", "Vou conferir...") e no formato de status — a espera e
   "Aguardando abrir chamado", "Aguardando o atendimento do chamado", "Aguardando o merge do PR #489", "Aguardando
-  validacao em QA"; **nunca** "voce", "falta voce abrir...", "conclua a etapa" nem instrucoes de tela do PRMake.
+  validacao em QA"; **nunca** "voce", "quem trata o card", "falta voce abrir...", "conclua a etapa" nem instrucoes de tela
+  do PRMake.
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
