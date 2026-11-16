@@ -63,6 +63,18 @@ USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/
 
 RCA_CONTENT=""
 [[ -n "$RCA_FILE" && -f "$RCA_FILE" ]] && RCA_CONTENT="$(cat "$RCA_FILE")"
+# RCA no padrao: o "Modelo do RCA" do prompt de Bug configurado no PRMake (RCA_CHECK=0 pula, so com o usuario pedindo).
+if [[ -n "$RCA_CONTENT" && "${RCA_CHECK:-1}" != "0" ]]; then
+  RCA_PROMPT="$(mktemp)"
+  curl -s --max-time 30 -H "x-api-key: $TOKEN" "$BASE/Skills/config" | jq -r '.prompts.bug // empty' > "$RCA_PROMPT" 2>/dev/null || true
+  if [[ -s "$RCA_PROMPT" ]]; then
+    python3 "$(dirname "$0")/rca_check.py" "$RCA_PROMPT" "$RCA_FILE" "$CARD" \
+      || { rm -f "$RCA_PROMPT"; echo "ERRO: RCA fora do padrao do prompt de Bug — corrija $RCA_FILE e publique de novo" >&2; exit 1; }
+  else
+    echo "AVISO: prompt de Bug indisponivel — formato do RCA nao conferido" >&2
+  fi
+  rm -f "$RCA_PROMPT"
+fi
 
 # --- registro do card (um por card): so dados do card; branch/repo pertencem ao PR do GitHub ---
 jq -n --rawfile desc "$DESC_FILE" --arg rca "$RCA_CONTENT" --arg uid "$USER_ID" \
