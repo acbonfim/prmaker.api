@@ -334,6 +334,20 @@ load_settings() {
     die "configuracao das skills indisponivel (HTTP ${code:-000}; plugin 'Skills Configurations' ausente?) — avise o usuario"
   fi
 }
+# RCA no padrao da aplicacao: o "Modelo do RCA" do prompt de Bug configurado no PRMake (o mesmo da gerar-prmake),
+# conferido antes de gravar — com ou sem codigo. RCA_CHECK=0 pula (so com o usuario pedindo).
+check_rca() { # <rca.md>
+  [[ "${RCA_CHECK:-1}" == "0" ]] && return 0
+  local checker prompt="$CARD_DIR/analises/rca-prompt.txt"
+  checker="$(cd "$(dirname "$0")/../.." && pwd)/gerar-prmake/scripts/rca_check.py"
+  [[ -f "$checker" ]] || checker="$HOME/.claude/skills/gerar-prmake/scripts/rca_check.py"
+  [[ -f "$checker" ]] || { warn "rca_check.py ausente (skill gerar-prmake): formato do RCA nao conferido"; return 0; }
+  (load_settings) >/dev/null 2>&1 || true
+  mkdir -p "$CARD_DIR/analises"
+  jq -r '.prompts.bug // empty' "$SETTINGS" 2>/dev/null > "$prompt" || true
+  [[ -s "$prompt" ]] || { warn "prompt de Bug nao configurado no PRMake: formato do RCA nao conferido"; return 0; }
+  python3 "$checker" "$prompt" "$1" "$CARD" || die "RCA fora do padrao — reescreva $1 seguindo o Modelo do RCA de $prompt (ingles, um titulo por secao) e grave de novo"
+}
 setting() { jq -r --arg k "$1" '.settings[$k] // empty | if type == "string" then . else tojson end' "$SETTINGS"; }
 # 0085: sufixo da branch por destino (Skills Configurations -> BranchSuffixByTarget, ex.: {"release-version":"-rv"}).
 target_suffix() { # <destino>
@@ -1196,6 +1210,7 @@ case "$CMD" in
     USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | sed -n 's/.*"ExternalId":"\([^"]*\)".*/\1/p')"
     [[ -n "$USER_ID" ]] || die "nao consegui extrair o ExternalId do token"
     RCA=""; [[ -n "$RCA_FILE" && -f "$RCA_FILE" ]] && RCA="$(cat "$RCA_FILE")"
+    [[ -n "$RCA" ]] && check_rca "$RCA_FILE"
     jq -n --rawfile desc "$DESC_FILE" --arg rca "$RCA" --arg uid "$USER_ID" --arg card "$CARD" --argjson form "${FORM_ID:-1}" \
       '{description:$desc, cardNumber:$card, userId:$uid, formId:$form, rootCause:$rca}' > "$TMP/reg.json"
     CODE="$(curl -s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest" \
@@ -1239,6 +1254,7 @@ case "$CMD" in
     case "$ACTION" in
       rootcause)
         F="${2:?arquivo .md do root cause}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        check_rca "$F"
         jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
         prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body" ;;
       summary)

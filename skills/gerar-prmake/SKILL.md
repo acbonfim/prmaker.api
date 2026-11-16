@@ -153,6 +153,8 @@ COMMENT_FILE=/tmp/prmake/comment.md \
 #   OPEN_GITHUB_PR=1 TARGET_BRANCH=qa COMMENT_FILE=... bash .../prmake-publish.sh ...
 ```
 O script:
+0. confere o RCA (Bug) pelo "Modelo do RCA" do prompt de Bug do PRMake (`scripts/rca_check.py`: titulos do modelo,
+   texto em ingles, Ticket com o card) e **nao publica nada** se estiver fora do padrao — corrija e rode de novo;
 1. faz `POST /PullRequest` com **só os dados do card** (`cardNumber`, `userId`, `formId`, `description`,
    `rootCause`) — desde a feature 0001 há **um registro por card**; branch e repositório pertencem a cada PR
    do GitHub, não ao registro;

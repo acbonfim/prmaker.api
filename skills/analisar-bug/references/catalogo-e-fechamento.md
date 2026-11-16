@@ -48,7 +48,13 @@ pelo PRMake (`bug-fetch.sh` → `state`/`area`).
 ## Fechamento do card (devops)
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
-1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
+1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz). **Com ou
+   sem codigo, o RCA segue o "Modelo do RCA" do prompt de Bug do PRMake** — o mesmo da `gerar-prmake`: em **ingles**,
+   um titulo em negrito por secao (hoje `**Main Cause:**`, `**Contributing Factors:**`, `**Impact:**`,
+   `**Applied Solution:**`, `**Action/Prevention Plan:**`, `**Modified files/Modified code/Altered data in the
+   database:**`, `**Ticket:** <card>`), linha em branco entre elas, so o caso do card. Sem codigo, a secao de arquivos diz
+   "No code changes" e quais dados foram alterados (tabela/registros). Nunca texto livre nem em portugues: o
+   `rootcause` (e o `save-pr-text`) conferem pelo prompt configurado (`analises/rca-prompt.txt`) e recusam fora do padrao;
 2. classificacao + **Bug Type**: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
    `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e o
    Bug Type entre os valores do picklist do DevOps em `devops <card> bug-types` (a area/funcionalidade afetada pelo
