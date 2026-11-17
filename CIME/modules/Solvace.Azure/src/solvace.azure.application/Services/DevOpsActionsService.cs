@@ -483,6 +483,74 @@ public class DevOpsActionsService : IDevOpsActionsService
     /// Relê o card no DevOps, de qualquer tipo — horas (Original/Completed/Remaining) e lançamento valem para Bug e
     /// User Story (0085: a Bancada mostra as horas da US).
     /// </summary>
+    public async Task<IReadOnlyList<SpecSectionResponse>> GetSpecAsync(string cardNumber, CancellationToken cancellationToken = default)
+    {
+        var card = await LoadUserStoryAsync(cardNumber, cancellationToken);
+        var map = await _azureService.GetUserStorySpecFieldsAsync(cancellationToken);
+        return map.Select(m => new SpecSectionResponse { Section = m.Section, Field = m.Field, Text = PlainText(GetString(card, m.Field)) }).ToList();
+    }
+
+    public async Task<DevOpsActionResponse> WriteSpecAsync(string cardNumber, WriteSpecRequest request, CancellationToken cancellationToken = default)
+    {
+        await LoadUserStoryAsync(cardNumber, cancellationToken);
+        var map = await _azureService.GetUserStorySpecFieldsAsync(cancellationToken);
+        if (map.Count == 0)
+            throw DevOpsActionException.Conflict("Nenhuma seção da especificação configurada (Azure DevOps → Campos do card → Especificação da User Story).");
+
+        var sections = new List<string>();
+        var fields = new Dictionary<string, object>(StringComparer.Ordinal);
+        void Put(string section, string field, string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return;
+            fields[field] = UserStorySpec.ToHtml(markdown);
+            sections.Add(section);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Document))
+            foreach (var (section, text) in UserStorySpec.Split(request.Document, map))
+                Put(section, map.First(m => m.Section == section).Field, text);
+
+        foreach (var (key, value) in request.Fields ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(key) || value is null) continue;
+            var bySection = UserStorySpec.MatchSection(key, map);
+            var byField = map.FirstOrDefault(m => string.Equals(m.Field, key.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (bySection is not null)
+                Put(bySection, map.First(m => m.Section == bySection).Field, value);
+            else if (byField.Field is not null)
+                Put(byField.Section, byField.Field, value);
+            else if (key.Contains('.') && !key.Trim().Contains(' '))
+            {
+                fields[key.Trim()] = value.Trim(); // outro campo do card (ex.: picklist): vai como veio
+                sections.Add(key.Trim());
+            }
+            else
+                throw DevOpsActionException.Conflict($"\"{key}\" não é seção da especificação nem campo do card. Seções: {string.Join(", ", map.Select(m => m.Section))}.");
+        }
+
+        if (fields.Count == 0)
+            throw DevOpsActionException.Conflict("Nada para gravar: o documento precisa de uma linha de título por seção (" +
+                                                 string.Join(", ", map.Select(m => m.Section)) + ") com o texto embaixo.");
+        var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
+        return new DevOpsActionResponse { Rev = rev, Message = $"Especificação da US gravada no card: {string.Join(", ", sections.Distinct())}" };
+    }
+
+    private async Task<AzureCardFullResponse> LoadUserStoryAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
+        if (!string.Equals(GetString(card, FieldWorkItemType), "User Story", StringComparison.OrdinalIgnoreCase))
+            throw DevOpsActionException.Conflict($"A especificação é da User Story — o card {cardNumber} é {GetString(card, FieldWorkItemType) ?? "outro tipo"}.");
+        return card;
+    }
+
+    private static string? PlainText(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "<(br|/p|/li|/h[1-6]|/tr)[^>]*>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        text = WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", string.Empty));
+        return System.Text.RegularExpressions.Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
+    }
+
     private async Task<AzureCardFullResponse> LoadCardAsync(string cardNumber, CancellationToken cancellationToken)
     {
         var card = await _azureService.GetCardFullAsync(cardNumber, cancellationToken);

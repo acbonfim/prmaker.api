@@ -106,6 +106,18 @@ roda numa sessao nova que le so ele. Com as respostas, `status <card> completed 
 resposta dos itens: iniciar → passos 7 e 8; sem iniciar → passo 7 e `status <card> paused "Criado sem iniciar — use
 Executar no item da Bancada"` (fase `correction`; nenhuma etapa executada); nao criar → pare aqui.
 
+**6b. Especificacao da US no card (card 78525)** — a US de refinamento tem os campos de especificacao no DevOps
+(secoes e campos configurados no PRMake: `prmake_devops_spec(card)` sem texto le as secoes e o que ja esta preenchido;
+`prmake_card` mostra em `spec`). Com a solucao decidida, monte `$CARD_DIR/analises/especificacao.md` com **uma linha de
+titulo por secao, exatamente com os nomes das secoes** (hoje: `1. High Level Business Specification (PM)` → objetivo,
+problema, valor, escopo, fora do escopo, decisoes; `2. Detailed Business Specification (PO)` → situacao atual com os itens
+da Base, regras de negocio, cenarios de uso, criterios de aceite; `3. Specification Main Highlights` → 5-8 pontos;
+`4. Technical Specification (Tech Lead / Architect)` → estado atual no codigo com `caminho:linha`, mudancas propostas,
+impacto, seguranca, esforco/ordem, pontos a confirmar; `5. Main Validation Scenarios (QA)` → cenarios de validacao
+DADO/QUANDO/ENTAO, um por criterio de aceite + regressao do impacto) e grave com `prmake_devops_spec(card, document)`
+(script: `bash $PLAN devops <card> spec especificacao.md`). O PRMake separa as secoes, converte o markdown e grava cada
+uma no seu campo (secao vazia nao apaga o campo); registra na Timeline. Itens da Base como `modulo#ID` no texto.
+
 **7. Plano de implementacao → item de trabalho** — `prmake_correction(card, "Implementacao <card>: <resumo>", steps)`
 (script: `bash $PLAN correction <card> "Implementacao <card>: <resumo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por
 etapa** (`stepKey`), e sincroniza as sub-tarefas conforme as etapas andam (voce **nao** chama `prmake_work_task` para

@@ -44,6 +44,15 @@ public interface IDevOpsActionsService
     /// <summary>Valores do picklist Bug Type do Bug no DevOps (campo configurável, padrão Custom.BugType); vazio sem o campo.</summary>
     Task<IReadOnlyList<string>> GetBugTypesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Card 78525: especificação da User Story — as seções configuradas, o campo de cada uma e o texto atual.</summary>
+    Task<IReadOnlyList<SpecSectionResponse>> GetSpecAsync(string cardNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Card 78525: grava a especificação da User Story nos campos do card (documento separado pelas seções ou campo a
+    /// campo; markdown → HTML). Só User Story.
+    /// </summary>
+    Task<DevOpsActionResponse> WriteSpecAsync(string cardNumber, WriteSpecRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Grava Resolution Type · General Classification · Classification e/ou o Bug Type no card (feature 0028).</summary>
     Task<DevOpsActionResponse> ClassifyAsync(string cardNumber, ClassifyCardRequest request, CancellationToken cancellationToken = default);
 

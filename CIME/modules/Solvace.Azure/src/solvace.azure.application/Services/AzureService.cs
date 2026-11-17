@@ -50,6 +50,13 @@ public class AzureService : IAzureService
         return FieldNames;
     }
 
+    public async Task<IReadOnlyList<(string Section, string Field)>> GetUserStorySpecFieldsAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        return UserStorySpec.ParseMap(Config.GetConfigurationValueOrDefault(AzureDevOpsFieldKeys.UserStorySpecFields, string.Empty),
+            AzureDevOpsFieldKeys.DefaultUserStorySpecFieldsJson);
+    }
+
     private AzureDevOpsFieldNames FieldNames
     {
         get

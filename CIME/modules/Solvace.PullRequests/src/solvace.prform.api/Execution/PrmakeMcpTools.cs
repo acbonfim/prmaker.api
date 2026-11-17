@@ -352,6 +352,51 @@ public partial class PrmakeMcpTools(
         }, ct);
     });
 
+    [McpServerTool(Name = "prmake_devops_spec", Destructive = true)]
+    [Description("Card 78525: especificacao da User Story (refinamento) nos campos do card no DevOps. Sem document/fields = so le (secoes configuradas, campo de cada uma e o texto atual). " +
+                 "document = o texto inteiro em markdown com UMA LINHA DE TITULO POR SECAO, exatamente os nomes das secoes (ex.: '1. High Level Business Specification (PM)', " +
+                 "'2. Detailed Business Specification (PO)', '3. Specification Main Highlights', '4. Technical Specification (Tech Lead / Architect)', '5. Main Validation Scenarios (QA)') " +
+                 "e o texto embaixo; fields = {secao ou campo: texto} (campo que nao e secao, ex.: picklist Custom.AgreedLevelofTechnicalSpecification, vai como veio). " +
+                 "Markdown vira HTML; secao vazia nao apaga o campo. Registra na Timeline. Especialista do caso: so com pedido explicito da pessoa.")]
+    public Task<string> DevOpsSpec(string card,
+        [Description("Documento inteiro (markdown) com uma linha de titulo por secao")] string? document = null,
+        [Description("{secao ou campo: texto} (objeto JSON ou o JSON em texto)")] JsonElement? fields = null,
+        [Description("0091: sub-tarefa (#n) que fez a acao — vira entrega dela")] long? taskNumber = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var id = card.Trim();
+        var map = ParseStringMap(fields);
+        if (string.IsNullOrWhiteSpace(document) && map.Count == 0)
+            return Serialize(await devops.SpecAsync(id, ct));
+        var request = new WriteSpecRequest { Document = document, Fields = map.Count == 0 ? null : map };
+        return await specialist.RunAsync(id, "Gravar a especificação da US no card", null, async () =>
+        {
+            var result = await devops.RunAsync(id, a => a.WriteSpecAsync(id, request, ct), http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
+            if (Hooks is { } hooks)
+                await hooks.DevOpsAsync(id, "spec", result.Message, null, null, taskNumber, specialist.Via is null, await ActorAsync(ct), ct);
+            return (Serialize(result), result.Message);
+        }, ct);
+    });
+
+    private static Dictionary<string, string> ParseStringMap(JsonElement? value)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (value is not { } v) return result;
+        var element = v;
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var text = v.GetString();
+            if (string.IsNullOrWhiteSpace(text)) return result;
+            try { element = JsonDocument.Parse(text).RootElement.Clone(); }
+            catch (JsonException) { throw new McpException("fields: envie um objeto {secao: texto}."); }
+        }
+        if (element.ValueKind != JsonValueKind.Object) return result;
+        foreach (var p in element.EnumerateObject())
+            if (p.Value.ValueKind == JsonValueKind.String)
+                result[p.Name] = p.Value.GetString()!;
+        return result;
+    }
+
     [McpServerTool(Name = "prmake_devops_config", ReadOnly = true)]
     [Description("Regras das acoes do DevOps configuradas no PRMake (estados/colunas de cada acao, area exigida, comentarios), as classificacoes prontas (presets) e os valores do Bug Type (bugTypes, picklist do DevOps).")]
     public Task<string> DevOpsConfig(CancellationToken ct = default) => Safe(async () =>
@@ -411,6 +456,11 @@ public partial class PrmakeMcpTools(
             assignedTo = F("System.AssignedTo"), priority = F("Microsoft.VSTS.Common.Priority"), severity = F("Microsoft.VSTS.Common.Severity"),
             tags = F("System.Tags"), created = F("System.CreatedDate"), changed = F("System.ChangedDate"),
             description = F("System.Description"), reproSteps = F("Microsoft.VSTS.TCM.ReproSteps"),
+            // Card 78525: User Story — a especificação (seções configuradas) já preenchida no card.
+            spec = string.Equals(F("System.WorkItemType"), "User Story", StringComparison.OrdinalIgnoreCase)
+                ? (await azure.GetUserStorySpecFieldsAsync(ct)).Where(m => m.Field != "System.Description")
+                    .Select(m => new { section = m.Section, field = m.Field, text = F(m.Field) }).Where(s => s.text is not null).ToList()
+                : null,
             comments = full.Comments.OrderByDescending(x => x.CreatedDate).Take(Math.Clamp(comments, 0, 50))
                 .Select(x => new { by = x.CreatedByName, at = x.CreatedDate, text = Trim(StripHtml(x.Text), 1500) }),
             alerts = full.Alerts

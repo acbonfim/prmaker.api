@@ -25,6 +25,10 @@ public class DevOpsActionRunner(IDevOpsActionsService actions, ITimelineApplicat
         return result;
     }
 
+    /// <summary>Card 78525: especificação da User Story (só leitura).</summary>
+    public Task<IReadOnlyList<SpecSectionResponse>> SpecAsync(string cardNumber, CancellationToken cancellationToken) =>
+        actions.GetSpecAsync(cardNumber, cancellationToken);
+
     public Task<DevOpsActionsConfigResponse> ConfigAsync(CancellationToken cancellationToken) => actions.GetConfigAsync(cancellationToken);
 
     /// <summary>0078: horas do card (Original/Completed/Remaining).</summary>

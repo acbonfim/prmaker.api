@@ -68,4 +68,6 @@ public interface IAzureService
 
     /// <summary>Nomes dos campos do work item conforme o "AzureDevOps Configurations" (feature 0030).</summary>
     Task<solvace.azure.domain.Options.AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default);
+    /// <summary>Card 78525: seções da especificação da User Story → campo do work item (configuração com o padrão), na ordem.</summary>
+    Task<IReadOnlyList<(string Section, string Field)>> GetUserStorySpecFieldsAsync(CancellationToken cancellationToken = default);
 }

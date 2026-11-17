@@ -175,6 +175,7 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 |---|---|
 | Publicar/anotar na Timeline | `prmake_timeline(card, markdown)` |
 | Lancar horas | `prmake_devops(card, "log-hours", hours: 1.5)` |
+| Especificacao da User Story nos campos do card (card 78525) | `prmake_devops_spec(card)` le as secoes/campos e o que ja esta preenchido; `prmake_devops_spec(card, document)` grava — documento com uma linha de titulo por secao (os nomes que a leitura devolveu) e o texto embaixo; `fields: {secao: texto}` para uma secao so |
 | Mover o card / acao configurada | `prmake_devops(card, acao)` — `dev-test-in-qa`, `test-in-production`, `zero-remaining`, `initial-estimate`, `classify` (preset + `bugType` do Bug, um dos `bugTypes` de `prmake_devops_config`), `set-state` (`state` = um dos estados de `GET Azure/card/<card>/states`, nunca inventado); `ready-for-qa` so com a validacao em QA concluida ou `authorization` = "pedido de <pessoa> na conversa em <data>" |
 | Abrir PR (branch que ja existe) | `prmake_pr_open(card, repository, source, target, title?, draft?)` — nomes das regras (`prmake_rules`); o PRMake recusa branch de outro card/sem prefixo. Branch que ainda nao existe → item (`pr-para-branch`) + `prmake_work_item_execute` |
 | Criar/editar item | `prmake_tool_run` / `prmake_work_item_create` / `prmake_work_item_update` (secoes acima) |
