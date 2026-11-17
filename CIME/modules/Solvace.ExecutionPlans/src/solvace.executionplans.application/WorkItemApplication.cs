@@ -787,6 +787,47 @@ public class WorkItemApplication : IWorkItemApplication
         return (await ToResponsesAsync([item], ct))[0];
     }
 
+    public async Task<int> SetStepResultAsync(Guid planId, string stepKey, string result, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(result)) return 0;
+        var key = ExecutionStep.NormalizeKey(stepKey);
+        var changed = new List<(WorkItem Item, long Task)>();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                changed.Clear();
+                var now = DateTimeOffset.UtcNow;
+                foreach (var item in await _items.GetByPlanAsync(planId, ct))
+                {
+                    if (item.Tasks.FirstOrDefault(t => t.StepKey == key) is not { } task) continue;
+                    item.AnnotateTask(task.Number, result, null, null, now);
+                    changed.Add((item, task.Number));
+                }
+                if (changed.Count == 0) return 0;
+                await _items.SaveChangesAsync(ct);
+                break;
+            }
+            catch (ExecutionPlanConcurrencyException) when (attempt < ConcurrencyRetries)
+            {
+                _items.DetachWorkItems();
+            }
+            catch
+            {
+                _items.DetachWorkItems();
+                throw;
+            }
+        }
+        var actor = new ExecutionActor(null, "Plano", false);
+        foreach (var (item, task) in changed)
+        {
+            await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, task, ct);
+            // 0094: o resultado pode citar itens de outros cards → relatados do card.
+            await CaptureAsync(item.CardNumber, result, WorkItemRelatedSource.ItemRef, $"sub-tarefa #{task}", actor, ct);
+        }
+        return changed.Count;
+    }
+
     public async Task SyncFromPlanAsync(Guid planId, CancellationToken ct)
     {
         for (var attempt = 1; ; attempt++)

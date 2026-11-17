@@ -12,8 +12,11 @@
 #                                                        Claude Code, VPN, credencial, acesso — a tela mostra "Aguardando
 #                                                        voce" com o texto e o botao "Ja resolvi" (o vigia acorda)
 #   unblock     <card> <key>                             a pendencia foi resolvida: etapa volta a running
-#   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress]
-#                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada
+#   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress] [--result arquivo.md]
+#                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada.
+#                                                        --result: o RESULTADO da etapa (markdown rico) que aparece na hora
+#                                                        na sub-tarefa do item (card 78505); sem ele, vale a mensagem
+#   result      <card> <key> <arquivo.md|->            completa/troca o resultado de uma etapa (ja concluida ou nao)
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
 #   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error|divergence)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
@@ -614,8 +617,10 @@ case "$CMD" in
   step)
     require_plan; KEY="${1:?key}"; ST="${2:?status}"; REASON="${3:-}"
     # 0052: STEP_MESSAGE = resumo do advance (a trava da engenharia reversa procura os itens citados nele).
-    jq -n --arg s "$ST" --arg r "$REASON" --arg m "${STEP_MESSAGE:-}" \
-      '{status:$s} + (if $r != "" then {reason:$r} else {} end) + (if $m != "" then {message:$m} else {} end)' > "$TMP/body"
+    STEP_RESULT=""; [[ -n "${STEP_RESULT_FILE:-}" ]] && STEP_RESULT="$(cat "$STEP_RESULT_FILE")"
+    jq -n --arg s "$ST" --arg r "$REASON" --arg m "${STEP_MESSAGE:-}" --arg res "$STEP_RESULT" \
+      '{status:$s} + (if $r != "" then {reason:$r} else {} end) + (if $m != "" then {message:$m} else {} end)
+       + (if $res != "" then {result:$res} else {} end)' > "$TMP/body"
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> $ST"
     ;;
 
@@ -642,11 +647,29 @@ case "$CMD" in
 
   advance)
     # Fecha uma etapa e abre a proxima numa chamada so (menos turnos = menos contexto relido).
-    require_plan; FROM="${1:?etapa que terminou}"; TO="${2:--}"; MSG="${3:-}"; KIND="${4:-progress}"
-    STEP_MESSAGE="$MSG" bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
+    require_plan; ADV=(); RES_FILE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in --result) RES_FILE="${2:?--result sem arquivo}"; shift 2 ;; *) ADV+=("$1"); shift ;; esac
+    done
+    FROM="${ADV[0]:?etapa que terminou}"; TO="${ADV[1]:--}"; MSG="${ADV[2]:-}"; KIND="${ADV[3]:-progress}"
+    if [[ -n "$RES_FILE" ]]; then
+      [[ "$RES_FILE" == "-" ]] && { cat > "$TMP/result.md"; RES_FILE="$TMP/result.md"; }
+      [[ -s "$RES_FILE" ]] || die "resultado vazio: $RES_FILE"
+      RES_FILE="$(cd "$(dirname "$RES_FILE")" && pwd)/$(basename "$RES_FILE")"
+    fi
+    STEP_MESSAGE="$MSG" STEP_RESULT_FILE="$RES_FILE" bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
     if [[ -n "$MSG" ]]; then bash "$0" log "$CARD" "$FROM" "$KIND" "$MSG" >/dev/null || exit $?; fi
     if [[ "$TO" != "-" ]]; then bash "$0" step "$CARD" "$TO" running >/dev/null || exit $?; fi
     if [[ "$TO" != "-" ]]; then echo "OK $FROM -> completed · $TO -> running"; else echo "OK $FROM -> completed"; fi
+    ;;
+
+  result)
+    # Card 78505: o resultado da etapa na sub-tarefa do item (markdown rico). Para completar o de uma etapa ja concluida.
+    require_plan; KEY="${1:?key}"; F="${2:--}"
+    if [[ "$F" == "-" ]]; then cat > "$TMP/result.md"; F="$TMP/result.md"; fi
+    [[ -s "$F" ]] || die "resultado vazio: $F"
+    jq -n --rawfile res "$F" '{result:$res}' > "$TMP/body"
+    send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK resultado de $KEY"
     ;;
 
   activity)

@@ -55,6 +55,11 @@ public interface IWorkItemApplication
     /// <summary>Etapas → sub-tarefas (por StepKey); plano concluído → item completed; cancelado → cancelled.</summary>
     Task SyncFromPlanAsync(Guid planId, CancellationToken ct);
     /// <summary>
+    /// Card 78505: resultado da etapa (markdown) na sub-tarefa que a espelha, assim que a etapa termina — não só no fim
+    /// do item. Substitui o resultado anterior da sub-tarefa. Devolve quantas sub-tarefas mudaram.
+    /// </summary>
+    Task<int> SetStepResultAsync(Guid planId, string stepKey, string result, CancellationToken ct);
+    /// <summary>
     /// 0096: versão nova do plano de correção — os itens abertos que espelham a versão anterior passam a espelhar a nova
     /// (devolve quantos). Chamar antes de criar o item da versão nova e de encerrar a anterior.
     /// </summary>

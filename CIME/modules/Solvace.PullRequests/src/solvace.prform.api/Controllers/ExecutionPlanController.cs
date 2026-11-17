@@ -91,7 +91,7 @@ public class ExecutionPlanController : ControllerBase
             if (string.Equals(request.Status, ExecutionStatus.Completed, StringComparison.OrdinalIgnoreCase) && IsExecutorRequest())
             {
                 var plan = await _application.GetAsync(id, ct);
-                if (await reverse.CheckGateAsync(plan.CardNumber, key, request.Message ?? request.Reason, ct) is { } gate)
+                if (await reverse.CheckGateAsync(plan.CardNumber, key, string.Join("\n", new[] { request.Message ?? request.Reason, request.Result }.Where(t => !string.IsNullOrWhiteSpace(t))), ct) is { } gate)
                     return BadRequest(new { error = gate });
                 // 0075: análise/soluções só concluem com toda citação de código fotografada.
                 if (await citations.CheckAsync(id, key, ct) is { } missing)

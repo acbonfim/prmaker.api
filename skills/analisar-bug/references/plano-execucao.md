@@ -24,7 +24,8 @@ bash $PLAN log <card> <key> decision "Nao vou consultar o SQL: o erro e de valid
 bash $PLAN checkpoint <card> <key> "Onde parei / o que falta nesta etapa"   # para retomar
 bash $PLAN sync <card> <key>                                          # envia arquivos novos/alterados da pasta do card
 bash $PLAN step <card> <key> completed                                # terminou
-bash $PLAN advance <card> <key> <proxima> "resumo curto"              # terminou + log + comecou a proxima (1 chamada)
+bash $PLAN advance <card> <key> <proxima> "resumo curto" --result r.md # terminou + resultado na sub-tarefa + log + comecou a proxima
+bash $PLAN result <card> <key> r.md                                    # completa/troca o resultado de uma etapa (card 78505)
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN block <card> <key> "Ligar a VPN e clicar em Ja resolvi (ou colar o resultado de scripts/00_x.sql)"  # travada esperando o usuario
 bash $PLAN unblock <card> <key>                                       # o usuario resolveu pelo chat: volta a running
