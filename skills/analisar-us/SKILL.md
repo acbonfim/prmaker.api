@@ -115,8 +115,12 @@ da Base, regras de negocio, cenarios de uso, criterios de aceite; `3. Specificat
 `4. Technical Specification (Tech Lead / Architect)` → estado atual no codigo com `caminho:linha`, mudancas propostas,
 impacto, seguranca, esforco/ordem, pontos a confirmar; `5. Main Validation Scenarios (QA)` → cenarios de validacao
 DADO/QUANDO/ENTAO, um por criterio de aceite + regressao do impacto) e grave com `prmake_devops_spec(card, document)`
-(script: `bash $PLAN devops <card> spec especificacao.md`). O PRMake separa as secoes, converte o markdown e grava cada
-uma no seu campo (secao vazia nao apaga o campo); registra na Timeline. Itens da Base como `modulo#ID` no texto.
+(script: `bash $PLAN devops <card> spec especificacao.md [--files-from <card>]`). O PRMake separa as secoes, converte o
+markdown e grava cada uma no seu campo (secao vazia nao apaga o campo); registra na Timeline. Itens da Base como
+`modulo#ID` no texto. **Imagens** (prototipo, prints): grave o arquivo antes (`prmake_work_item_file`/`prmake_file`) e cite
+`![legenda](anexo:<nome-do-arquivo>)` — o PRMake acha pelo nome, sobe como anexo do DevOps e aponta para ele; arquivo
+gravado em outro card (ex.: a analise rodou no card do bug) → `filesFrom: ["<card>"]`. Nunca caminho local nem `ref:` no
+campo do DevOps. Criterios de aceite como `- [ ] ...` viram ☐ no card.
 
 **7. Plano de implementacao → item de trabalho** — `prmake_correction(card, "Implementacao <card>: <resumo>", steps)`
 (script: `bash $PLAN correction <card> "Implementacao <card>: <resumo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por

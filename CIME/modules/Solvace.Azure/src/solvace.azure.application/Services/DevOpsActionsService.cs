@@ -57,9 +57,12 @@ public class DevOpsActionsService : IDevOpsActionsService
     private readonly IPluginConfigurationResolver _configurationResolver;
     private readonly IPullRequestApplication _pullRequestApplication;
 
+    private readonly ISpecImageSource? _specImages;
+
     public DevOpsActionsService(IAzureService azureService, IPluginConfigurationResolver configurationResolver,
-        IPullRequestApplication pullRequestApplication)
+        IPullRequestApplication pullRequestApplication, ISpecImageSource? specImages = null)
     {
+        _specImages = specImages;
         _azureService = azureService;
         _configurationResolver = configurationResolver;
         _pullRequestApplication = pullRequestApplication;
@@ -531,8 +534,48 @@ public class DevOpsActionsService : IDevOpsActionsService
         if (fields.Count == 0)
             throw DevOpsActionException.Conflict("Nada para gravar: o documento precisa de uma linha de título por seção (" +
                                                  string.Join(", ", map.Select(m => m.Section)) + ") com o texto embaixo.");
+        var images = await UploadSpecImagesAsync(cardNumber, request.FilesFrom, fields, cancellationToken);
         var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
-        return new DevOpsActionResponse { Rev = rev, Message = $"Especificação da US gravada no card: {string.Join(", ", sections.Distinct())}" };
+        var message = $"Especificação da US gravada no card: {string.Join(", ", sections.Distinct())}";
+        return new DevOpsActionResponse { Rev = rev, Message = images > 0 ? $"{message} ({images} imagem(ns))" : message };
+    }
+
+    /// <summary>
+    /// Card 78525: <c>anexo:nome</c> não abre no DevOps — cada imagem é achada nos arquivos dos cards (o próprio e os de
+    /// <paramref name="filesFrom"/>), sobe como anexo do work item e o texto aponta para ela. Faltou alguma: recusa antes
+    /// de gravar (nada de imagem quebrada no card).
+    /// </summary>
+    private async Task<int> UploadSpecImagesAsync(string cardNumber, IEnumerable<string>? filesFrom, Dictionary<string, object> fields,
+        CancellationToken cancellationToken)
+    {
+        var names = fields.Values.OfType<string>().SelectMany(UserStorySpec.AttachmentImages).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 0) return 0;
+        var cards = new[] { cardNumber }.Concat(filesFrom ?? []).Select(c => c?.Trim().TrimStart('#') ?? string.Empty)
+            .Where(c => c.Length > 0).Distinct().ToList();
+        if (_specImages is null)
+            throw DevOpsActionException.Conflict("Imagens anexo: não podem ser resolvidas aqui — envie o texto sem elas.");
+
+        var found = new List<(string Name, byte[] Content)>();
+        var missing = new List<string>();
+        foreach (var name in names)
+        {
+            if (await _specImages.FindAsync(cards, name, cancellationToken) is { } file && file.Content.Length > 0)
+                found.Add((name, file.Content));
+            else
+                missing.Add(name);
+        }
+        if (missing.Count > 0)
+            throw DevOpsActionException.Conflict($"Imagem não encontrada nos arquivos do(s) card(s) {string.Join(", ", cards)}: {string.Join(", ", missing)}. " +
+                                                 "Informe em filesFrom o card onde as imagens foram gravadas (ex.: o card da análise).");
+
+        foreach (var (name, content) in found)
+        {
+            var url = await _azureService.UploadAttachmentAsync(name, content, cancellationToken);
+            foreach (var key in fields.Keys.ToList())
+                if (fields[key] is string html)
+                    fields[key] = UserStorySpec.ReplaceAttachment(html, name, url);
+        }
+        return found.Count;
     }
 
     private async Task<AzureCardFullResponse> LoadUserStoryAsync(string cardNumber, CancellationToken cancellationToken)

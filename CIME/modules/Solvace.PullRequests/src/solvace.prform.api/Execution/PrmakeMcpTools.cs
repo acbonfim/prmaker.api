@@ -357,18 +357,21 @@ public partial class PrmakeMcpTools(
                  "document = o texto inteiro em markdown com UMA LINHA DE TITULO POR SECAO, exatamente os nomes das secoes (ex.: '1. High Level Business Specification (PM)', " +
                  "'2. Detailed Business Specification (PO)', '3. Specification Main Highlights', '4. Technical Specification (Tech Lead / Architect)', '5. Main Validation Scenarios (QA)') " +
                  "e o texto embaixo; fields = {secao ou campo: texto} (campo que nao e secao, ex.: picklist Custom.AgreedLevelofTechnicalSpecification, vai como veio). " +
-                 "Markdown vira HTML; secao vazia nao apaga o campo. Registra na Timeline. Especialista do caso: so com pedido explicito da pessoa.")]
+                 "Markdown vira HTML; secao vazia nao apaga o campo; [ ] / [x] viram ☐ / ☑. Imagens: ![legenda](anexo:<nome do arquivo>) — o PRMake acha o arquivo pelo nome nos arquivos do card " +
+                 "(e dos cards em filesFrom, ex.: o card onde a analise gravou os prints), sobe como anexo do DevOps e aponta para ele; imagem nao achada recusa a gravacao. " +
+                 "Registra na Timeline. Especialista do caso: so com pedido explicito da pessoa.")]
     public Task<string> DevOpsSpec(string card,
         [Description("Documento inteiro (markdown) com uma linha de titulo por secao")] string? document = null,
         [Description("{secao ou campo: texto} (objeto JSON ou o JSON em texto)")] JsonElement? fields = null,
         [Description("0091: sub-tarefa (#n) que fez a acao — vira entrega dela")] long? taskNumber = null,
+        [Description("Cards onde estao os arquivos citados como anexo:<nome> (alem do proprio card), ex.: [\"78505\"]")] string[]? filesFrom = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
         var map = ParseStringMap(fields);
         if (string.IsNullOrWhiteSpace(document) && map.Count == 0)
             return Serialize(await devops.SpecAsync(id, ct));
-        var request = new WriteSpecRequest { Document = document, Fields = map.Count == 0 ? null : map };
+        var request = new WriteSpecRequest { Document = document, Fields = map.Count == 0 ? null : map, FilesFrom = filesFrom?.ToList() };
         return await specialist.RunAsync(id, "Gravar a especificação da US no card", null, async () =>
         {
             var result = await devops.RunAsync(id, a => a.WriteSpecAsync(id, request, ct), http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
