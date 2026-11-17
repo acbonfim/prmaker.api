@@ -160,7 +160,7 @@ public partial class PrmakeMcpTools(
         var count = await plans.AppendLogsAsync(await PlanIdAsync(card, phase, ct), new AppendExecutionLogsRequest
         {
             Logs = [new ExecutionLogItem { Message = message, Kind = kind, StepKey = stepKey }]
-        }, ct);
+        }, ct, await ActorAsync(ct));
         return count > 0 ? "ok" : "ignorado (duplicado)";
     });
 
@@ -462,7 +462,7 @@ public partial class PrmakeMcpTools(
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {
                 Logs = [new ExecutionLogItem { StepKey = from, Kind = string.IsNullOrWhiteSpace(kind) ? ExecutionLogKind.Progress : kind, Message = message }]
-            }, ct);
+            }, ct, actor);
         await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed, Message = message, Result = result }, actor, ct);
         // 0091: etapa de código da correção sem o diff registrado — aviso (não recusa).
         var warning = http.HttpContext?.RequestServices.GetService<IWorkItemDeliverableApplication>() is { } deliverables
@@ -471,6 +471,10 @@ public partial class PrmakeMcpTools(
         var note = warning is null ? string.Empty : $"\nAVISO: {warning}";
         if (string.IsNullOrWhiteSpace(to) || to == "-")
             return $"OK {from} -> completed{note}";
+        // Card 78505 (#874): quem não é o executor não "começa" a próxima etapa — ela ficava em andamento sem ninguém
+        // trabalhando. Fica pronta e o executor do dono foi pedido ao concluir a etapa (UpdateStepAsync).
+        if (!actor.IsExecutor)
+            return $"OK {from} -> completed · {to} fica pronta para o tratamento (executor pedido){note}";
         await plans.UpdateStepAsync(planId, to, new UpdateExecutionStepRequest { Status = ExecutionStatus.Running }, actor, ct);
         return $"OK {from} -> completed · {to} -> running{note}";
     });

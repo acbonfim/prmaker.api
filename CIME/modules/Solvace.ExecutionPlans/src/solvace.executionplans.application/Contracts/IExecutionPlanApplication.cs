@@ -79,7 +79,8 @@ public interface IExecutionPlanApplication
     Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken);
 
     /// <summary>Grava um lote de pedaços de andamento; devolve quantos eram novos.</summary>
-    Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken);
+    /// <param name="actor">Quem registra: só o executor conta como atividade do Claude (padrão: executor).</param>
+    Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken, ExecutionActor? actor = null);
     Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken);
 
     Task<ExecutionArtifactResponse> UploadArtifactAsync(Guid planId, ExecutionArtifactUpload upload, ExecutionActor actor, CancellationToken cancellationToken);
