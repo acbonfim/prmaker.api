@@ -10,4 +10,10 @@ public class WriteSpecRequest
 {
     public string? Document { get; set; }
     public Dictionary<string, string>? Fields { get; set; }
+
+    /// <summary>
+    /// Cards onde estão os arquivos citados como <c>anexo:nome</c> (padrão: o próprio card) — ex.: a análise feita no
+    /// 78505 e gravada na US 78525. Cada imagem sobe como anexo do DevOps e o texto passa a apontar para ele.
+    /// </summary>
+    public List<string>? FilesFrom { get; set; }
 }

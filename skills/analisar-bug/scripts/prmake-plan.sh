@@ -1283,8 +1283,11 @@ case "$CMD" in
       spec)
         # Card 78525: especificacao da User Story nos campos do card — uma linha de titulo por secao (as secoes do
         # PRMake: GET Azure/card/<card>/spec); o PRMake separa, converte para HTML e grava cada secao no seu campo.
+        # Imagens: ![legenda](anexo:<arquivo>) — o PRMake acha pelo nome nos arquivos do card (e dos cards de
+        # --files-from, ex.: o card onde a analise gravou os prints) e sobe como anexo do DevOps.
         F="${2:?arquivo .md da especificacao (uma linha de titulo por secao)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
-        jq -n --rawfile d "$F" '{document:$d}' > "$TMP/body"
+        FROM_CARDS="[]"; [[ "${3:-}" == "--files-from" ]] && FROM_CARDS="$(printf '%s' "${4:?--files-from <card[,card]>}" | jq -R 'split(",")')"
+        jq -n --rawfile d "$F" --argjson from "$FROM_CARDS" '{document:$d, filesFrom:$from}' > "$TMP/body"
         prmake_post_retry "Azure/card/$CARD/actions/spec" "$TMP/body" ;;
       summary)
         F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"

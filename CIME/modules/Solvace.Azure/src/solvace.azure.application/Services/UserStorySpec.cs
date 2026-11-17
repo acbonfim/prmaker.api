@@ -88,7 +88,34 @@ public static partial class UserStorySpec
         return result;
     }
 
-    public static string ToHtml(string markdown) => Markdown.ToHtml(markdown.Trim(), Pipeline).Trim();
+    /// <summary>
+    /// Markdown → HTML do campo. Lista de tarefas vira ☐/☑ no texto: o DevOps mostra o <c>input</c> checkbox como uma
+    /// caixa de texto vazia (card 78525).
+    /// </summary>
+    public static string ToHtml(string markdown)
+    {
+        var html = Markdown.ToHtml(markdown.Trim(), Pipeline).Trim();
+        html = CheckboxInput().Replace(html, m => m.Value.Contains("checked", StringComparison.OrdinalIgnoreCase) ? "☑ " : "☐ ");
+        return html.Replace(" class=\"task-list-item\"", string.Empty).Replace(" class=\"contains-task-list\"", string.Empty);
+    }
+
+    /// <summary>Nomes citados como <c>&lt;img src="anexo:nome"&gt;</c> no HTML, sem repetir.</summary>
+    public static IReadOnlyList<string> AttachmentImages(string html) =>
+        AnexoSrc().Matches(html).Select(m => System.Net.WebUtility.HtmlDecode(Uri.UnescapeDataString(m.Groups[1].Value)).Trim())
+            .Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>Troca o <c>src="anexo:nome"</c> pela URL do anexo do DevOps.</summary>
+    public static string ReplaceAttachment(string html, string name, string url) =>
+        AnexoSrc().Replace(html, m =>
+            string.Equals(System.Net.WebUtility.HtmlDecode(Uri.UnescapeDataString(m.Groups[1].Value)).Trim(), name, StringComparison.OrdinalIgnoreCase)
+                ? $"src=\"{System.Net.WebUtility.HtmlEncode(url)}\""
+                : m.Value);
+
+    [GeneratedRegex(@"<input\b[^>]*type=""?checkbox""?[^>]*>\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex CheckboxInput();
+
+    [GeneratedRegex(@"src=""anexo:([^""]+)""", RegexOptions.IgnoreCase)]
+    private static partial Regex AnexoSrc();
 
     [GeneratedRegex(@"^(#{1,6}\s*)?(\d+\s*[.)-]\s*)?")]
     private static partial Regex LeadingMarks();

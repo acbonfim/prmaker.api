@@ -63,6 +63,8 @@ builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
+// Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
+builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
 builder.Services.AddScoped<solvace.prform.Execution.EvidenceGate>();  // 0076: evidências do card abertas na análise
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardEvidenceSource, solvace.prform.Execution.ExecutionCardEvidenceSource>();
