@@ -76,12 +76,10 @@ public class CaseTokenIssuer(IConfiguration configuration)
 /// <item>só vale enquanto o pedido do especialista do card estiver ativo (cache de 15 s);</item>
 /// <item>REST: <c>GET</c> em qualquer lugar (sem o header da skill, que marca comentários como lidos) e qualquer método
 /// em <c>CaseChat/{card}</c> do próprio card;</item>
-/// <item>MCP: só as ferramentas de leitura, as <c>prmake_case_*</c>, (0085) criar/editar itens de trabalho e (r5) as AÇÕES que
-/// uma pessoa pede na conversa — Timeline, ações do card no DevOps (estado, horas...), abrir PR, andamento/cancelar/executar
-/// item de trabalho (confere o corpo JSON-RPC <c>tools/call</c>) e (0096) as mudanças do PLANO ATUAL pedidas pela pessoa —
-/// etapas, espera, situação publicada, respostas, arquivos, links, evidências, status (<see cref="SpecialistPlanEdits"/>
-/// pausa/retoma o tratamento e registra o cartão). Ficam recusadas as do tratamento: versão nova (pela proposta aceita),
-/// perguntas novas, travas, andamento interno e ler os comentários do plano;</item>
+/// <item>MCP (confere o corpo JSON-RPC <c>tools/call</c>): todas as ferramentas do PRMake — leitura, conversa, itens de
+/// trabalho (inclusive de outro card do caso), as AÇÕES que uma pessoa pede na conversa (Timeline, DevOps, PR, itens) e (0096)
+/// as mudanças do PLANO ATUAL (<see cref="SpecialistPlanEdits"/> pausa/retoma o tratamento e registra o cartão) —, menos as
+/// do tratamento (<see cref="TreatmentOnlyTools"/>);</item>
 /// <item>todo o resto: 403.</item>
 /// </list>
 /// r5: as ações (<see cref="ActingTools"/>) rodam com a identidade de quem pediu na conversa (claim <c>ExternalId</c> trocada
@@ -92,42 +90,17 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(15);
 
-    /// <summary>Ferramentas MCP que o especialista pode chamar (leitura + conversa do caso + itens de trabalho pending).</summary>
-    public static readonly IReadOnlySet<string> AllowedTools = new HashSet<string>(StringComparer.Ordinal)
+    /// <summary>
+    /// Card 78505: o especialista é o guardião do caso — usa TODAS as ferramentas do PRMake (leitura, conversa, itens de
+    /// trabalho de qualquer card do caso, ações no DevOps/GitHub/Timeline, ajustes do plano atual), menos as que montam o
+    /// tratamento: versão/etapas do plano inteiras (<c>prmake_correction</c>, <c>prmake_steps</c> — reescreve a lista e some
+    /// com as pendentes de fora), perguntas novas e travas (<c>prmake_ask</c>/<c>prmake_block</c>), o andamento interno
+    /// (<c>prmake_checkpoint</c>/<c>prmake_control</c>) e ler os comentários do plano (<c>prmake_notes</c> marca como lidos —
+    /// o tratamento perderia a instrução). Ferramenta nova já nasce liberada.
+    /// </summary>
+    public static readonly IReadOnlySet<string> TreatmentOnlyTools = new HashSet<string>(StringComparer.Ordinal)
     {
-        "prmake_plan", "prmake_answers", "prmake_attachment", "prmake_devops_config", "prmake_config", "prmake_card", "prmake_queue",
-        "prmake_base_search", "prmake_base_get", "prmake_base_module", "prmake_base_impact",
-        "prmake_case_context", "prmake_case_messages", "prmake_case_reply", "prmake_case_point", "prmake_case_propose",
-        "prmake_case_action", "prmake_case_action_done", "prmake_case_file",
-        // 0085: regras do card e itens de trabalho (criar/editar itens pending; executar sub-tarefa não).
-        "prmake_rules", "prmake_work_items", "prmake_work_item", "prmake_work_item_create", "prmake_work_item_update",
-        // Sub-tarefa a pedido no item que espelha o plano: só ACRESCENTA uma etapa pendente (as outras não mudam).
-        "prmake_work_item_add_task",
-        // Item avulso já começado/fechado: reabrir (refazendo sub-tarefas) e editar sub-tarefa pendente — nunca o plano.
-        "prmake_work_item_reopen", "prmake_work_task_update",
-        // 0085 r4: ferramentas (modelos) do card — listar e criar o item a partir de uma.
-        "prmake_tools", "prmake_tool_run",
-        // r5: ações pedidas na conversa (nunca o plano): Timeline, card no DevOps (estado, horas, ações), PR, itens.
-        "prmake_timeline", "prmake_devops", "prmake_devops_spec", "prmake_pr_open",
-        "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute",
-        // Card 77988: itens a partir da análise respondida (o Claude do tratamento monta o plano — o especialista não mexe nele).
-        "prmake_analysis_items",
-        // r5 (B5a): arquivos do item de trabalho (o chamado completo, script do item) — nunca os arquivos do plano (prmake_file).
-        "prmake_work_item_file", "prmake_work_item_files",
-        // 0092: item de validação em ambiente (uma sub-tarefa por ambiente, prints como evidência).
-        "prmake_env_validation",
-        // 0093: item de reprodução do bug no ambiente (por padrão o do cliente).
-        "prmake_env_reproduction",
-        // 0091/0089: entregas e evidências do item de trabalho.
-        "prmake_work_deliverable", "prmake_work_item_evidence",
-        // 0096: guardião do caso — muda o plano atual a pedido da pessoa (SpecialistPlanEdits: pausa/retoma o tratamento,
-        // cartão da ação). Ficam só com o tratamento: versão nova (prmake_correction, pela proposta aceita), perguntas novas e
-        // travas (prmake_ask/prmake_block), o andamento interno (prmake_checkpoint/prmake_control) e ler comentários do
-        // plano (prmake_notes marca como lidos — o tratamento perderia a instrução); prmake_steps reescreve a lista inteira (as
-        // pendentes que ficam de fora somem) — o especialista ajusta UMA etapa com prmake_step (title/description).
-        "prmake_situation", "prmake_step", "prmake_advance", "prmake_unblock", "prmake_plan_status",
-        "prmake_answer", "prmake_cancel_questions", "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link",
-        "prmake_evidence", "prmake_log", "prmake_code_ref"
+        "prmake_correction", "prmake_steps", "prmake_ask", "prmake_block", "prmake_checkpoint", "prmake_control", "prmake_notes"
     };
 
     /// <summary>
@@ -138,7 +111,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     {
         "prmake_timeline", "prmake_devops", "prmake_devops_spec", "prmake_pr_open",
         "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_work_item_reopen",
-        "prmake_work_task_update", "prmake_tool_run",
+        "prmake_work_task_update", "prmake_work_task_move", "prmake_tool_run",
         "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction",
         "prmake_work_deliverable", "prmake_work_item_evidence",
         // 0096: mudanças do plano a pedido da pessoa.
@@ -240,8 +213,8 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         return (null, acting);
     }
 
-    /// <summary>A ferramenta passa com o token do caso?</summary>
-    public static bool IsAllowed(string tool) => AllowedTools.Contains(tool);
+    /// <summary>A ferramenta passa com o token do caso? (todas, menos as do tratamento)</summary>
+    public static bool IsAllowed(string tool) => tool.Length > 0 && !TreatmentOnlyTools.Contains(tool);
 
     /// <summary>
     /// r5: claims de quem pediu (nome/id) e, com <paramref name="actAsRequester"/>, o <c>ExternalId</c> trocado pelo de quem

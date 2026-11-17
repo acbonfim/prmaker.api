@@ -35,8 +35,10 @@ public interface IWorkItemApplication
     Task<WorkItemResponse> ReopenAsync(long number, ReopenWorkItemRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>Sub-tarefas a mais num item avulso aberto (antes de uma pendente ou no fim); script ganha as do chamado.</summary>
     Task<WorkItemResponse> AddTasksAsync(long number, AddWorkTasksRequest req, ExecutionActor actor, CancellationToken ct);
-    /// <summary>Edita uma sub-tarefa pendente (item aberto, mesmo já começado). Campos null ficam.</summary>
+    /// <summary>Edita uma sub-tarefa ainda não feita (em espera/com falha voltam a pendente) de item aberto, mesmo já começado. Campos null ficam.</summary>
     Task<WorkItemResponse> UpdateTaskAsync(long taskNumber, WorkTaskInput req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Card 78505: sub-tarefa ainda não feita passa para antes de outra (ou para o fim).</summary>
+    Task<WorkItemResponse> MoveTaskAsync(long taskNumber, long? before, bool execute, ExecutionActor actor, CancellationToken ct);
     /// <param name="action">start | complete | fail | wait | skip | revert | cancel (ver <see cref="WorkTaskAction"/>).</param>
     Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>"Já resolvi" na sub-tarefa que espera a pessoa: volta a andar e o item é retomado (item de plano: pelo plano).</summary>

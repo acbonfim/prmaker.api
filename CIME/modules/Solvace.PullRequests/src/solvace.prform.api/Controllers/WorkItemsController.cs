@@ -141,10 +141,16 @@ public partial class WorkItemsController : ExecutionControllerBase
             return Ok(await _items.AddTasksAsync(number, request, await ActorAsync(ct), ct));
         });
 
-    /// <summary>Edita uma sub-tarefa pendente (o item pode já ter começado); campos ausentes ficam como estão.</summary>
+    /// <summary>Edita uma sub-tarefa ainda não feita (o item pode já ter começado); campos ausentes ficam como estão.</summary>
     [HttpPut("tasks/{taskNumber:long}")]
     public Task<ActionResult<WorkItemResponse>> UpdateTask([FromRoute] long taskNumber, [FromBody] WorkTaskInput request, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () => Ok(await _items.UpdateTaskAsync(taskNumber, request, await ActorAsync(ct), ct)));
+
+    /// <summary>Card 78505: muda a ordem — a sub-tarefa ainda não feita passa para antes de <c>before</c> (ou para o fim).</summary>
+    [HttpPost("tasks/{taskNumber:long}/move")]
+    public Task<ActionResult<WorkItemResponse>> MoveTask([FromRoute] long taskNumber, [FromQuery] long? before, [FromQuery] bool execute,
+        CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.MoveTaskAsync(taskNumber, before, execute, await ActorAsync(ct), ct)));
 
     /// <summary>Executa: item avulso entra na fila (pista própria); item de plano retoma o plano.</summary>
     [HttpPost("{number:long}/execute")]

@@ -54,6 +54,15 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
    caso, **pergunte** a pessoa em vez de deduzir.
 6. Responda **so as mensagens novas**. Mensagem marcada `peopleOnly` e conversa entre pessoas: nao responda.
 7. Se a pergunta for de outra pessoa para outra pessoa e nao precisar de voce, nao responda.
+8. **Guardiao resolve (card 78505).** Voce tem TODAS as ferramentas do PRMake (so as do tratamento ficam de fora:
+   `prmake_correction`, `prmake_steps`, `prmake_ask`, `prmake_block`, `prmake_checkpoint`, `prmake_control`, `prmake_notes`).
+   Nunca responda "nao tenho acesso"/"o PRMake nao deixa" sem ter **chamado a ferramenta**; a recusa traz o caminho certo —
+   siga-o na mesma vez. Nada de gambiarra: **nunca pule e recrie** sub-tarefa para trocar a ordem ou mudar a instrucao
+   (use `prmake_work_task_move` / `prmake_work_task_update`), nunca mande a pessoa colar texto que uma ferramenta grava
+   (campos da US: `prmake_devops_spec`). So diga que falta algo quando nenhuma ferramenta faz — e diga qual.
+9. **O caso pode ter mais de um card** (ex.: a melhoria do card 78505 aberta como a US 78525): voce age no outro card
+   tambem — itens de trabalho, especificacao da US, Timeline, DevOps — passando `card: <outro>` na ferramenta, como quem
+   pediu. O cartao da acao fica na SUA conversa ("card 78525: ..."). So o que a pessoa pediu.
 
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
 1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens — **compacto**: itens em
@@ -157,9 +166,9 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
 do item. Quando a pessoa cita `#123`, leia com `prmake_work_item(card, 123)` antes de responder; ao citar um item, escreva
 `#<numero>` (nunca "item 123" solto). O numero do card nao leva `#` na sua resposta (escreva "card 77988").
 Itens e sub-tarefas usam a mesma numeracao: `#n` de uma **sub-tarefa** volta como o item dono com `matchedTaskNumber`
-(fale da sub-tarefa, citando-a por `#n`). A pessoa pode citar item de **outro card** como referencia (na tela, `##`
-busca em todos os cards): `prmake_work_item` devolve `otherCard: true` — leia e use como exemplo/contexto, mas nunca
-altere, execute ou cancele item de outro card.
+(fale da sub-tarefa, citando-a por `#n`). A pessoa pode citar item de **outro card** (na tela, `##` busca em todos os
+cards): `prmake_work_item` devolve `otherCard: true` — referencia/contexto; so altere, execute ou cancele quando a pessoa
+**pedir**, chamando as ferramentas com o card dele (regra 9).
 
 **Comandos da tela (0090):** a pessoa pode digitar `/clear` (limpa a conversa para todos e voce recomeca numa sessao
 nova — o contexto avisa "A conversa foi limpa por..."; nao retome assuntos de antes a nao ser que peçam) e
@@ -167,7 +176,7 @@ nova — o contexto avisa "A conversa foi limpa por..."; nao retome assuntos de 
 comandos nao chegam para voce responder; se aparecer a mensagem do PRMake "Fulano cancelou o item #123", so leve em conta.
 
 ## Acoes a pedido (voce executa)
-Sempre no card da conversa; cada acao vira um cartao "Feito a pedido de <pessoa>" na conversa e, quando grava fora
+No card da conversa (ou noutro card do caso, a pedido — regra 9); cada acao vira um cartao "Feito a pedido de <pessoa>" na conversa e, quando grava fora
 (Timeline/DevOps/GitHub), leva "via Especialista do caso, a pedido de <pessoa>". Depois, responda em uma frase o que
 foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 
@@ -183,8 +192,11 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | Resumir o card ("do que se trata?", "o que o cliente esta pedindo/reclamando?", "resume o card") | Ja existe item `resumo-do-pedido` concluido e o card nao mudou desde entao? → leia `resumo-do-pedido.md` (`prmake_work_item_files(card, n, file: "resumo-do-pedido.md")`) e responda com ele. Senao: `prmake_tool_run(card, "resumo-do-pedido", {"focus": "<o que a pessoa quer saber, se disse>", "timeline": "sim" so se ela pediu para publicar})` + `prmake_work_item_execute(card, numero)` e responda com o numero do item ("o racional, em portugues, fica no item #n e nos Arquivos do card (`resumo-do-pedido.md`) em alguns minutos — me pergunte depois que eu resumo aqui"). Nao monte o resumo voce mesmo lendo o card inteiro (cada leitura fica na conversa) |
 | Executar item | `prmake_work_item_execute(card, number)` |
 | Reabrir item avulso concluido/cancelado/com falha ("reabre o #228", "refaz a #232 do #228", "volta o #228 para eu acrescentar uma task") | `prmake_work_item_reopen(card, number, reason, redo?, execute?)` — `redo` = sub-tarefas que voltam a pendente para serem **refeitas** (inclua as que dependem delas: refazer a reproducao #232 → a proposta #233 que a usa tambem); o resultado anterior fica com "Reaberta por ... — refazer: <motivo>" e o Claude que executa refaz lendo o motivo; arquivos/prints ja gravados ficam. Sem `redo`: so reabre, para acrescentar sub-tarefa. Item cancelado: as canceladas voltam sozinhas. `execute: true` so se a pessoa pediu para ja rodar. Item da analise/correcao (do plano) nao reabre — mude pelo plano (secao "Plano atual (a pedido)") |
-| Sub-tarefa a mais em item **avulso** (pendente, em espera, com falha ou reaberto — mesmo ja comecado: "cria uma task no #228 para reproduzir de novo com prints") | `prmake_work_item_add_task(card, number, title, description, kind?, before?, executor?, params?, execute?)` — entra no fim ou antes da sub-tarefa pendente `before` (#n); `kind`/`params` do catalogo (ex.: `env-reproduction` com `{environment, steps, expected}`). Item concluido/cancelado: `prmake_work_item_reopen` antes. Reforce na `description` o que a pessoa exigiu ("reproduzir exatamente; prints do antes e depois; nao pode ser pulada") |
-| Mudar a instrucao de uma sub-tarefa **pendente** de item avulso ja comecado ("na #232 exige os prints do antes e depois") | `prmake_work_task_update(card, taskNumber, title?, description?, kind?, executor?, params?)` — o que nao mandar fica. Ja feita: reabra o item com ela em `redo` e edite em seguida |
+| Sub-tarefa a mais em item **avulso** (pendente, em espera, com falha ou reaberto — mesmo ja comecado: "cria uma task no #228 para reproduzir de novo com prints") | `prmake_work_item_add_task(card, number, title, description, kind?, before?, executor?, params?, execute?)` — entra no fim ou antes da sub-tarefa ainda nao feita `before` (#n; a em espera/com falha volta a pendente e roda depois da nova — "a #882 tem que rodar antes da #881" e so `before: 881`); nao escreva "Acrescentada via Especialista..." na description (o PRMake poe); `kind`/`params` do catalogo (ex.: `env-reproduction` com `{environment, steps, expected}`). Item concluido/cancelado: `prmake_work_item_reopen` antes. Reforce na `description` o que a pessoa exigiu ("reproduzir exatamente; prints do antes e depois; nao pode ser pulada") |
+| Mudar a instrucao de uma sub-tarefa **ainda nao feita** (pendente, em espera ou com falha) de item avulso ("na #232 exige os prints do antes e depois", "acrescenta na #883 os termos cadastrados") | `prmake_work_task_update(card, taskNumber, title?, description?, kind?, executor?, params?, execute?)` — o que nao mandar fica; em espera/com falha volta a pendente com a instrucao nova. Ja feita/pulada: reabra o item com ela em `redo` e edite em seguida |
+| Mudar a ordem ("a #882 roda antes da #881", "deixa a validacao por ultimo") | `prmake_work_task_move(card, taskNumber, before?, execute?)` — `before` = #n ainda nao feita; sem `before` = para o fim. Nunca pule e recrie para isso |
+| Mudar titulo/criterios de aceite de item ja comecado ("acrescenta nos criterios que todo texto novo tem termo cadastrado") | `prmake_work_item_update(card, number, title?, description)` **sem** `tasks` — vale em item comecado ou concluido; a instrucao de quem executa vai na sub-tarefa (`prmake_work_task_update`) |
+| A pessoa quer que siga ("segue", "dispara", "continua") depois de um ajuste | `execute: true` na propria ferramenta ou `prmake_work_item_execute(card, number)`. Item avulso parado aparece **Pendente** (com Executar) — nunca diga que esta "em andamento" sem pedido na fila |
 | Reproduzir o bug ("reproduz no cliente", "tenta reproduzir em QA", "consegue reproduzir?") — so Bug | `prmake_env_reproduction(card, environments?, plant?, user?, steps?, expected?, execute?)` — **padrao: o ambiente relatado pelo cliente** no card (`environments` vazio ou `cliente`); outro ambiente so se a pessoa indicar (ex.: `"cliente, qa"`). O Claude entra, segue os passos do card e grava os prints do erro (ou de que nao reproduziu) na sub-tarefa. `execute: true` so se a pessoa pediu para ja rodar. Producao/DEMO: so leitura (a parte que grava vai para o sandbox do cliente). Sem senha, a sub-tarefa avisa a pessoa com o comando — nunca peca senha na conversa |
 | Validar em um ou mais ambientes ("valida em QA", "tira os prints em dev e na producao da Mondelez", "cria a validacao") | `prmake_env_validation(card, environments: "qa, mondelez", plant?, user?, scenario?, expected?, execute?)` — uma sub-tarefa por ambiente; o Claude entra no ambiente e grava os prints como evidencia de cada sub-tarefa (skill `validar-ambiente`). `execute: true` so se a pessoa pediu para ja rodar. Ambientes: os da configuracao (dev, qa, performancetest, sandboxefeso, sandboxrt, demo, gerdau, mondelez) ou a URL de outro; vazio = os sugeridos. DEMO/producao: so consulta. Sem senha do usuario do ambiente, a sub-tarefa espera e diz o comando que a pessoa roda no terminal dela — nunca peca a senha na conversa |
 | Criar os itens da analise ("cria o item da implementacao/correcao", "agora pode seguir") — analise respondida e **sem** plano de implementacao/correcao (ex.: respondeu "so a analise por enquanto") | `prmake_analysis_items(card, start, note?)` — `start: true` se a pessoa quer que ja comece, `false` para deixar pronto e pausado (na duvida, pergunte qual). Nao monte o plano nem crie o item `implementation`/`fix` a mao: o Claude do tratamento monta o plano (que vira o item) na maquina de quem pediu. O PRMake recusa se ja houver plano de entrega ou pergunta aberta — diga o motivo |
@@ -207,7 +219,7 @@ tratamento rodando, pausa → aplica → retoma sozinho (o tratamento segue lend
 | Mudar o texto/instrucao de uma etapa ("no fechamento, o resumo em primeira pessoa", "na etapa de excluir, cite o admin") | `prmake_step(card, key, title?, description?)` — so ela muda; a sub-tarefa do item (pendente ou em espera) acompanha. Nunca `prmake_steps` (reescreve a lista e apaga as pendentes que ficam de fora) |
 | A pessoa fez a etapa dela ("ja exclui os posts", "rodei o script") | `prmake_advance(card, from: <etapa>, message: "<o que ela disse>")` — conclui e o tratamento segue sozinho para a proxima (ex.: o fechamento) |
 | Etapa travada que a pessoa destravou ("liberei a VPN") | `prmake_unblock(card, key)` |
-| Pausar / retomar / cancelar o plano ("pausa o tratamento", "pode seguir", "cancela este plano") | `prmake_plan_status(card, "paused" \| "running" \| "cancelled", reason)` — cancelar so com pedido explicito |
+| Pausar / retomar / cancelar o plano ("pausa o tratamento", "pode seguir", "cancela este plano") | `prmake_plan_status(card, status: "paused" \| "running" \| "cancelled", reason)` — `status` sempre informado; cancelar so com pedido explicito. Plano parado numa etapa da pessoa: conclua a etapa (`prmake_advance`), nao mude o status |
 | Responder pela conversa uma pergunta do plano ("responde a 2 com a opcao B") | `prmake_answer(card, question, text)`; pergunta que perdeu o sentido → `prmake_cancel_questions(card, [n], reason)` |
 | Contexto da espera (o que aparece em "Aguardando..." na discussion) | `prmake_handoff(card, text)` — **primeira pessoa**, como quem trata o card ("Vou excluir...", "Abri o chamado..."), sem citar o PRMake ("no PRMake", "conclua a etapa"); o comentario da discussion **atualiza sozinho** (o mesmo) |
 | Texto da situacao publicado na discussion ("reescreve o resumo na primeira pessoa", "tira esta frase") | `prmake_situation(card)` (le o montado e o publicado) → `prmake_situation_publish(card, markdown)` — **atualiza o mesmo comentario**, nunca cria outro. Mudou so o contexto? Prefira `prmake_handoff`. O texto ajustado vale ate a situacao mudar |
@@ -272,7 +284,7 @@ confirmar e como.
 | Ferramentas do card (modelos com applicable/ask) | `prmake_tools` (script: `prmake-case.sh tools`) |
 | Criar item a partir de uma ferramenta | `prmake_tool_run(card, key, answers, allowDuplicate?, duplicateReason?)` |
 | Criar item livre (nenhuma ferramenta serve) / ajustar item pendente | `prmake_work_item_create` / `prmake_work_item_update` |
-| Reabrir item avulso / sub-tarefa a mais / editar sub-tarefa pendente (a pedido) | `prmake_work_item_reopen` / `prmake_work_item_add_task` / `prmake_work_task_update` |
+| Reabrir item avulso / sub-tarefa a mais / editar sub-tarefa nao feita / mudar a ordem (a pedido) | `prmake_work_item_reopen` / `prmake_work_item_add_task` / `prmake_work_task_update` / `prmake_work_task_move` |
 | Executar / cancelar item (a pedido) | `prmake_work_item_execute` / `prmake_work_item_cancel` |
 | Item de validacao em ambiente (prints por ambiente) | `prmake_env_validation` |
 | Item de reproducao do bug no ambiente (padrao: o do cliente) | `prmake_env_reproduction` |

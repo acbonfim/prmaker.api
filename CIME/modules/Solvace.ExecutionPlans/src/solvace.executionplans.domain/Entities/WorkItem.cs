@@ -98,9 +98,16 @@ public class WorkItem
 
     // ---------------------------------------------------------------- edição
 
+    /// <summary>
+    /// Título e descrição mudam em qualquer item que não foi desfeito (o guardião do caso ajusta critério de aceite de um
+    /// item já começado); a lista de sub-tarefas inteira só no item ainda pendente.
+    /// </summary>
     public void Update(string? title, string? description, IReadOnlyList<WorkTaskInput>? tasks, string actor, DateTimeOffset now)
     {
-        EnsureEditable();
+        if (tasks is not null)
+            EnsureEditable();
+        else if (Status is WorkItemStatus.Reverting or WorkItemStatus.Reverted)
+            throw new DomainException($"O item #{Number} foi desfeito — não dá para editar. Crie um novo a partir dele.");
         SetTitle(title);
         SetDescription(description);
         if (tasks is not null)
@@ -544,10 +551,7 @@ public class WorkItem
         int order;
         if (beforeTask is { } b)
         {
-            var anchor = Tasks.FirstOrDefault(t => t.Number == b)
-                         ?? throw new DomainException($"Sub-tarefa #{b} não é do item #{Number}.");
-            if (anchor.Status != WorkTaskStatus.Pending)
-                throw new DomainException($"A sub-tarefa #{b} está {anchor.Status} — só dá para acrescentar antes de uma pendente.");
+            var anchor = Anchor(b, actor, "uma sub-tarefa nova entrou antes dela", now);
             order = anchor.Order;
             foreach (var t in Tasks.Where(t => t.Order >= order))
                 t.Order += inputs.Count;
@@ -568,13 +572,66 @@ public class WorkItem
             AddLog(null, actor, WorkItemLogKind.Updated, $"Sub-tarefa acrescentada: {task.Title}.", now);
         }
         Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        Recalculate(actor, now, failedUndo: false);
         UpdatedAt = now;
         return added;
     }
 
     /// <summary>
-    /// Edita uma sub-tarefa ainda pendente de um item aberto (o item pode já ter começado). Campos null ficam como estão.
-    /// Sub-tarefa espelho do plano muda pelo plano.
+    /// Sub-tarefa ainda não feita de um item avulso que outra vai antecipar (acrescentar/mover antes dela) ou que ganha
+    /// instrução nova: pendente fica; em espera ou com falha volta a pendente (refaz depois, com o motivo no resultado) —
+    /// rodando, feita ou pulada não serve.
+    /// </summary>
+    private WorkItemTask Anchor(long taskNumber, string actor, string why, DateTimeOffset now)
+    {
+        var task = Tasks.FirstOrDefault(t => t.Number == taskNumber)
+                   ?? throw new DomainException($"Sub-tarefa #{taskNumber} não é do item #{Number}.");
+        if (task.Status is WorkTaskStatus.Waiting or WorkTaskStatus.Failed)
+        {
+            task.Reopen(actor, why, now);
+            AddLog(task.Number, actor, WorkItemLogKind.Task, $"#{task.Number} {task.Title}: volta a pendente — {why}.", now);
+        }
+        else if (task.Status != WorkTaskStatus.Pending)
+            throw new DomainException($"A sub-tarefa #{taskNumber} está {task.Status} — já saiu da fila (para refazer, reabra o item com ela em redo).");
+        return task;
+    }
+
+    /// <summary>
+    /// Muda a ordem: a sub-tarefa (pendente, em espera ou com falha) passa para antes de <paramref name="beforeTask"/>
+    /// (ainda não feita) ou para o fim. Em espera/com falha voltam a pendente. Item que espelha o plano muda pelo plano.
+    /// </summary>
+    public WorkItemTask MoveTask(long taskNumber, long? beforeTask, string actor, DateTimeOffset now)
+    {
+        if (FollowsPlan)
+            throw new DomainException($"O item #{Number} é do plano — a ordem é a das etapas do plano.");
+        if (WorkItemStatus.IsClosed(Status) || Status is WorkItemStatus.Reverting or WorkItemStatus.Queued or WorkItemStatus.Running)
+            throw new DomainException($"O item #{Number} está {Status} — mude a ordem com ele parado (pendente, em espera ou com falha).");
+        if (beforeTask == taskNumber)
+            throw new DomainException("Informe outra sub-tarefa em 'before'.");
+        var task = Anchor(taskNumber, actor, "mudou de ordem", now);
+        var ordered = OrderedTasks.Where(t => t != task).ToList();
+        var index = ordered.Count;
+        if (beforeTask is { } b)
+        {
+            var anchor = Anchor(b, actor, $"a #{task.Number} passou a vir antes dela", now);
+            index = ordered.IndexOf(anchor);
+        }
+        ordered.Insert(index, task);
+        for (var i = 0; i < ordered.Count; i++)
+            ordered[i].Order = i + 1;
+        task.Touch(now);
+        UpdatedAt = now;
+        AddLog(task.Number, actor, WorkItemLogKind.Updated, beforeTask is { } x
+            ? $"#{task.Number} {task.Title}: passa a vir antes da #{x}."
+            : $"#{task.Number} {task.Title}: passa para o fim.", now);
+        Recalculate(actor, now, failedUndo: false);
+        return task;
+    }
+
+    /// <summary>
+    /// Edita uma sub-tarefa ainda não feita de um item aberto (o item pode já ter começado): pendente, ou em espera/com
+    /// falha — essas voltam a pendente para refazer com a instrução nova. Campos null ficam como estão. Sub-tarefa espelho
+    /// do plano muda pelo plano.
     /// </summary>
     public WorkItemTask EditTask(long taskNumber, WorkTaskInput change, string actor, DateTimeOffset now)
     {
@@ -584,8 +641,7 @@ public class WorkItem
                    ?? throw new DomainException($"Sub-tarefa #{taskNumber} não é do item #{Number}.");
         if (task.StepKey is not null)
             throw new DomainException($"A sub-tarefa #{taskNumber} espelha uma etapa do plano — ela muda pelo plano.");
-        if (task.Status != WorkTaskStatus.Pending)
-            throw new DomainException($"A sub-tarefa #{taskNumber} está {task.Status} — só edita pendente (para refazer, reabra o item com ela).");
+        Anchor(taskNumber, actor, "instrução nova", now);
         task.Reshape(task.Order, new WorkTaskInput
         {
             Title = change.Title ?? task.Title,
@@ -598,6 +654,7 @@ public class WorkItem
         Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
         UpdatedAt = now;
         AddLog(task.Number, actor, WorkItemLogKind.Updated, $"#{task.Number} {task.Title}: sub-tarefa editada.", now);
+        Recalculate(actor, now, failedUndo: false);
         return task;
     }
 
@@ -670,7 +727,10 @@ public class WorkItem
         else if (live.Any(t => t.Status == WorkTaskStatus.Running)) next = WorkItemStatus.Running;
         else if (live.Any(t => t.Status == WorkTaskStatus.Waiting)) next = WorkItemStatus.Waiting;
         else if (live.Any(t => t.Status == WorkTaskStatus.Failed)) next = WorkItemStatus.Failed;
-        else if (live.Any(t => WorkTaskStatus.IsDone(t.Status))) next = WorkItemStatus.Running;
+        // Card 78505 (#877): item avulso parado (sem pedido na fila) com parte feita e o resto pendente — pulou a sub-tarefa
+        // em espera, acrescentou/mudou a ordem — não está "em andamento": fica pendente, com o Executar na Bancada.
+        else if (live.Any(t => WorkTaskStatus.IsDone(t.Status)))
+            next = FollowsPlan || ActiveRequestId is not null || Status is WorkItemStatus.Queued ? WorkItemStatus.Running : WorkItemStatus.Pending;
         else next = ActiveRequestId is not null ? WorkItemStatus.Queued
             : Status is WorkItemStatus.Queued ? WorkItemStatus.Queued : WorkItemStatus.Pending;
         SetStatus(next, actor, null, now);

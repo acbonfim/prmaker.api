@@ -179,9 +179,15 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_plan_status")]
-    [Description("Muda o status do plano: running (retomar), completed (com resumo), failed (com motivo).")]
-    public Task<string> PlanStatus(string card, string status, string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    [Description("Muda o status do plano: running (retomar/continuar), paused (pausar), completed (com resumo), failed (com motivo), " +
+                 "cancelled (com motivo). status e obrigatorio — para so ver o status, use prmake_plan.")]
+    public Task<string> PlanStatus(string card,
+        [Description("running | paused | completed | failed | cancelled")] string? status = null,
+        string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
+        // Card 78505: sem status o binding do MCP respondia "arguments dictionary is missing a value" — diga o que mandar.
+        if (string.IsNullOrWhiteSpace(status))
+            throw new McpException("Informe status: running (retomar), paused, completed, failed ou cancelled. Para ver o status: prmake_plan.");
         var plan = await plans.ChangeStatusAsync(await PlanIdAsync(card, phase, ct), new ChangeExecutionPlanStatusRequest
         {
             Status = status, Reason = reason, Summary = summary

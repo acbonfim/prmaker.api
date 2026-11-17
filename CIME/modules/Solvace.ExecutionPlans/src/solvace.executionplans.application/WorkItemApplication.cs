@@ -407,6 +407,19 @@ public class WorkItemApplication : IWorkItemApplication
         return (await ToResponsesAsync([item], ct))[0];
     }
 
+    /// <summary>Card 78505: muda a ordem de uma sub-tarefa ainda não feita do item avulso (antes de outra ou para o fim).</summary>
+    public async Task<WorkItemResponse> MoveTaskAsync(long taskNumber, long? before, bool execute, ExecutionActor actor, CancellationToken ct)
+    {
+        var owner = await _items.GetByTaskNumberAsync(taskNumber, ct)
+                    ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
+        var item = await MutateAsync(() => _items.GetByTaskNumberAsync(taskNumber, ct), owner.Number,
+            i => i.MoveTask(taskNumber, before, actor.Name, DateTimeOffset.UtcNow), ct);
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, taskNumber, ct);
+        if (execute)
+            return await ExecuteAsync(item.Number, actor, ct);
+        return (await ToResponsesAsync([item], ct))[0];
+    }
+
     // ================================================================ sub-tarefas
 
     public async Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct)

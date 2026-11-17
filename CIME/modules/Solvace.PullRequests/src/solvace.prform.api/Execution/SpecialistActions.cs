@@ -8,9 +8,10 @@ namespace solvace.prform.Execution;
 
 /// <summary>
 /// r5 (1.6): ações que o Especialista do caso executa a pedido de uma pessoa (Timeline, horas, card no DevOps, PR, itens de
-/// trabalho). Fora do token do caso não faz nada (o executor/skill usa as mesmas ferramentas). Com o token: confere o card,
-/// devolve o texto "via Especialista do caso, a pedido de X", o ator das gravações e registra a ação concluída (ou falha)
-/// como cartão na conversa. Integração pessoal ausente de quem pediu → erro claro (nada foi feito).
+/// trabalho). Fora do token do caso não faz nada (o executor/skill usa as mesmas ferramentas). Com o token: devolve o texto
+/// "via Especialista do caso, a pedido de X", o ator das gravações e registra a ação concluída (ou falha) como cartão na
+/// conversa. Card 78505: o caso pode envolver outro card (a melhoria aberta como US 78525) — a ação vale lá também, como quem
+/// pediu, e o cartão fica na conversa do card do especialista ("card 78525: ..."). Integração pessoal ausente → erro claro.
 /// </summary>
 public class SpecialistActions(CaseChatApplication chat, IHttpContextAccessor http, ILogger<SpecialistActions> logger)
 {
@@ -31,14 +32,8 @@ public class SpecialistActions(CaseChatApplication chat, IHttpContextAccessor ht
     public string Mark(string text, string separator = "\n\n") =>
         Via is { } via ? $"{text.TrimEnd()}{separator}_{via}._" : text;
 
-    /// <summary>O especialista só age no card dele.</summary>
-    public void EnsureCard(string card)
-    {
-        if (!IsSpecialist) return;
-        var own = CaseClaims.CardOf(User)?.TrimStart('#');
-        if (own is not null && !string.Equals(own, card.Trim().TrimStart('#'), StringComparison.Ordinal))
-            throw new McpException($"O Especialista do caso só age no card dele ({own}).");
-    }
+    /// <summary>Card da conversa do especialista (null fora do token do caso).</summary>
+    public string? OwnCard => IsSpecialist ? CaseClaims.CardOf(User)?.Trim().TrimStart('#') : null;
 
     /// <summary>
     /// Roda a ação; com o token do caso, registra o cartão de ação na conversa (concluída com o resumo, ou falhou com o
@@ -49,7 +44,6 @@ public class SpecialistActions(CaseChatApplication chat, IHttpContextAccessor ht
     {
         if (!IsSpecialist)
             return (await body()).Response;
-        EnsureCard(card);
         try
         {
             var (response, summary) = await body();
@@ -73,13 +67,20 @@ public class SpecialistActions(CaseChatApplication chat, IHttpContextAccessor ht
     private static bool IsIntegrationError(Exception e) =>
         e is PersonalIntegrationRequiredException || e.Message.Contains("Plugin", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Cartão da ação na conversa (0096: também as mudanças do plano, pelo filtro <see cref="SpecialistPlanEdits"/>).</summary>
+    /// <summary>
+    /// Cartão da ação na conversa do especialista (0096: também as mudanças do plano, pelo filtro
+    /// <see cref="SpecialistPlanEdits"/>); ação em outro card leva "card N:" no título.
+    /// </summary>
     public async Task RecordAsync(string card, string title, string? detail, bool ok, string? result, CancellationToken ct)
     {
         if (CaseClaims.SpecialistOf(User) is not { } actor) return;
+        var target = card.Trim().TrimStart('#');
+        var own = OwnCard ?? target;
+        if (!string.Equals(own, target, StringComparison.Ordinal))
+            title = $"card {target}: {title}";
         try
         {
-            await chat.RecordActionAsync(card, title, detail, ok, result, RequestedBy ?? "Usuário", actor, ct);
+            await chat.RecordActionAsync(own, title, detail, ok, result, RequestedBy ?? "Usuário", actor, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

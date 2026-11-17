@@ -51,7 +51,6 @@ public class PullRequestMcpTools(
         if (c.Length == 0) throw new McpException("Informe o card.");
         if (string.IsNullOrWhiteSpace(repository) || string.IsNullOrWhiteSpace(target))
             throw new McpException("Informe repository, source e target.");
-        specialist.EnsureCard(c);
 
         var r = await rules.GetAsync(c, ct);
         var branch = (source ?? string.Empty).Trim();

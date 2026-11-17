@@ -57,7 +57,6 @@ public static class SpecialistPlanEdits
             var resume = (Guid?)null;
             try
             {
-                specialist.EnsureCard(card);
                 if (!NoPause.Contains(name))
                     resume = await PauseTreatmentAsync(services, specialist, card, Argument(context.Params, "phase"), ct);
                 var result = await next(context, ct);
