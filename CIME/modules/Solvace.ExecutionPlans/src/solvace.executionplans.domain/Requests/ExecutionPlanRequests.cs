@@ -69,6 +69,18 @@ public class UpdateExecutionStepRequest
     /// reversa procura nele os itens citados (RN-…, UC-…) ou "lacuna".
     /// </summary>
     public string? Message { get; set; }
+
+    /// <summary>
+    /// Card 78505: resultado da etapa (markdown rico — tabelas dos dados consultados, itens da Base encontrados, código
+    /// citado com <c>ref:</c>, a análise detalhada) gravado na hora na sub-tarefa que espelha a etapa. Sem ele, a etapa
+    /// concluída leva o <see cref="Message"/> do advance. Só <c>result</c> (sem status) completa o resultado de uma etapa
+    /// já concluída.
+    /// </summary>
+    public string? Result { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool OnlyResult => Status is null && Reason is null && WaitingOn is null && Activity is null && Checkpoint is null
+                                && Title is null && Description is null && !string.IsNullOrWhiteSpace(Result);
 }
 
 public class CancelExecutionStepRequest

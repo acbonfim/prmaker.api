@@ -72,6 +72,25 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
+- **Toda etapa conclui com RESULTADO (card 78505)**: cada etapa vira uma sub-tarefa do item e a pessoa abre a
+  sub-tarefa para ver o que ela entregou — **na hora em que a etapa termina**, nao so no fim. Conclua sempre com
+  `prmake_advance(card, from, to, message, kind, result)` (script: `advance ... --result <arquivo.md>`); `message` e o
+  resumo de uma linha, `result` e o markdown rico, no mesmo estilo da analise (callout `> [!SUMMARY]`, selos
+  `**Confirmado:**`/`**Hipotese:**`, tabelas, `ref:`). Por tipo de etapa:
+  - `identificar-card`/`coletar-dados`: tabela do card (tipo, estado, area, cliente/ambiente, versao) + o pedido em 2-3
+    linhas + evidencias abertas (`#n` e o que mostram);
+  - `consultar-base`: tabela **Item | O que diz | Uso no caso** com os itens consultados e encontrados (`modulo#ID`),
+    as buscas feitas (termos) e as lacunas; KC: `ART-n` usados ou "sem artigo";
+  - `consultar-ambiente`: por consulta, o host/banco, a SQL em bloco ```sql``` e uma **tabela com as linhas** (corte
+    em ~20 linhas e diga o total); Cognito/logs do mesmo jeito; o que cada resultado confirma;
+  - `investigar-codigo`: repositorio + commit lido e os trechos como fotografia `[caminho:linhas](ref:<id>)` (o PRMake
+    mostra o codigo) — uma linha por trecho dizendo o que confirma; o fluxo reconstruido em passos numerados;
+  - `causa-raiz`: a analise detalhada — causa confirmada, hipoteses priorizadas (confirmado × hipotese, com
+    evidencia), pontos suspeitos `ref:`, por que acontece so neste caso;
+  - `montar-analise`/`publicar`: o que foi gerado (arquivos, scripts) e o link/resumo publicado;
+  - `propor-solucoes`: as opcoes (tabela pros/contras/risco/impacto) e as perguntas feitas.
+  Esqueceu ou faltou dado: `prmake_step(card, key, result: ...)` / `bash $PLAN result <card> <key> arquivo.md` completa
+  depois (substitui o anterior). Nunca conclua etapa com resultado vazio.
 - **Analise → correcao sem carregar a analise (0049)**: a analise termina deixando o **resumo para a correcao** no
   checkpoint de `propor-solucoes` (`$REF correcao 6`). No executor a correcao comeca numa **sessao nova** so com ele
   (`contexto-correcao`) — nao rele a conversa da analise a cada resposta.
@@ -86,7 +105,8 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | O que | MCP | Script (reserva) |
 |---|---|---|
 | **Base Solvace (antes do codigo)**: itens da engenharia reversa, secoes, KC · impacto entre modulos | `prmake_base_search(query, module?, kinds?, card)` · `prmake_base_get(refs, card)` · `prmake_base_impact(term)` · `prmake_base_module(module)` | `kb.sh re find` · `kb.sh re get <m>#<ID> --card` · `kb.sh show` |
-| concluir etapa e iniciar a proxima | `prmake_advance(card, from, to, message, kind)` | `advance <card> <key> <proxima\|-> "resumo" [finding]` |
+| concluir etapa (com o resultado) e iniciar a proxima | `prmake_advance(card, from, to, message, kind, result)` | `advance <card> <key> <proxima\|-> "resumo" [finding] --result r.md` |
+| completar o resultado de uma etapa | `prmake_step(card, key, result: ...)` | `result <card> <key> r.md` |
 | mudar etapa / registrar andamento | `prmake_step(card, key, status, reason)` · `prmake_log(card, message, kind, stepKey)` | `step` · `log` |
 | criar/refinar etapas · onde parei | `prmake_steps(card, steps)` · `prmake_checkpoint(card, key, text)` | `steps` · `checkpoint` |
 | entre etapas (pausado? cancelado?) | `prmake_control(card)` (`action`: continue/wait/stop) | `control` (0/10/11) |

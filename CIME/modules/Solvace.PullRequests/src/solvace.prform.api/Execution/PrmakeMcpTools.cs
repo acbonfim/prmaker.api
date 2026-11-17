@@ -138,6 +138,7 @@ public partial class PrmakeMcpTools(
         string? phase = null,
         [Description("Titulo novo da etapa (opcional)")] string? title = null,
         [Description("Descricao/instrucao nova da etapa (opcional)")] string? description = null,
+        [Description("Resultado da etapa em markdown rico (card 78505) — vai para a sub-tarefa espelho; so 'result' completa o de uma etapa ja concluida")] string? result = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var planId = await PlanIdAsync(card, phase, ct);
@@ -147,7 +148,7 @@ public partial class PrmakeMcpTools(
         var step = await plans.UpdateStepAsync(planId, key, new UpdateExecutionStepRequest
         {
             Status = status, Reason = reason, Activity = activity, Checkpoint = checkpoint, WaitingOn = waitingOn,
-            Title = title, Description = description
+            Title = title, Description = description, Result = result
         }, await ActorAsync(ct), ct);
         return Serialize(new { step.Key, step.Status, step.WaitingOn, reason = step.StatusReason });
     });
@@ -439,14 +440,17 @@ public partial class PrmakeMcpTools(
     // ── 0041: o ciclo inteiro do plano ──────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "prmake_advance")]
-    [Description("Conclui uma etapa e inicia a proxima numa chamada (equivale a prmake-plan.sh advance). 'to' vazio = so conclui. 'message' vira registro da etapa concluida (kind: progress|finding|decision|warning).")]
+    [Description("Conclui uma etapa e inicia a proxima numa chamada (equivale a prmake-plan.sh advance). 'to' vazio = so conclui. 'message' vira registro da etapa concluida (kind: progress|finding|decision|warning). " +
+                 "'result' = o RESULTADO da etapa em markdown rico, que aparece na hora na sub-tarefa do item (consulta: a SQL + tabela com as linhas; Base Solvace: tabela dos itens consultados/encontrados; codigo: [caminho:linhas](ref:<id>) fotografados + o que confirmam; causa raiz: a analise detalhada) — sem ele vale o 'message'.")]
     public Task<string> Advance(string card, [Description("Etapa que terminou")] string from, [Description("Proxima etapa (opcional)")] string? to = null,
-        string? message = null, string? kind = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+        string? message = null, string? kind = null, string? phase = null,
+        [Description("Resultado da etapa (markdown rico) — vai para a sub-tarefa espelho assim que a etapa conclui")] string? result = null,
+        CancellationToken ct = default) => Safe(async () =>
     {
         var planId = await PlanIdAsync(card, phase, ct);
         var actor = await ActorAsync(ct);
         // 0052: módulo com engenharia reversa completa — a investigação só conclui consultando a base ou citando item/lacuna.
-        if (await reverse.CheckGateAsync(card, from, message, ct) is { } gate)
+        if (await reverse.CheckGateAsync(card, from, string.Join("\n", new[] { message, result }.Where(t => !string.IsNullOrWhiteSpace(t))), ct) is { } gate)
             throw new McpException(gate);
         // 0075: análise/soluções só concluem com toda citação de código fotografada.
         if (await citations.CheckAsync(planId, from, ct) is { } missing)
@@ -459,7 +463,7 @@ public partial class PrmakeMcpTools(
             {
                 Logs = [new ExecutionLogItem { StepKey = from, Kind = string.IsNullOrWhiteSpace(kind) ? ExecutionLogKind.Progress : kind, Message = message }]
             }, ct);
-        await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed }, actor, ct);
+        await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed, Message = message, Result = result }, actor, ct);
         // 0091: etapa de código da correção sem o diff registrado — aviso (não recusa).
         var warning = http.HttpContext?.RequestServices.GetService<IWorkItemDeliverableApplication>() is { } deliverables
             ? await deliverables.MissingCodeWarningAsync(planId, from, ct)

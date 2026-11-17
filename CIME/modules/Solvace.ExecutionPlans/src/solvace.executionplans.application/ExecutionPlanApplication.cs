@@ -282,6 +282,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78505: só o resultado — completa o de uma etapa (já concluída ou não) sem mexer no plano.
+        if (request.OnlyResult)
+        {
+            var current = await _repository.GetPlanWithStepsAsync(planId, cancellationToken) ?? throw new ExecutionPlanNotFoundException("Plano não encontrado.");
+            var target = current.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(stepKey))
+                         ?? throw new ExecutionPlanNotFoundException($"Etapa '{stepKey}' não encontrada.");
+            await SetStepResultAsync(planId, target.Key, request.Result, cancellationToken);
+            return target.ToResponse();
+        }
         ExecutionStep? step = null;
         // 0050: o Claude não deixa uma etapa de chamado nas mãos do usuário sem o script e o texto do chamado anexados.
         var artifacts = actor.IsExecutor ? await _repository.GetArtifactsAsync(planId, cancellationToken) : null;
@@ -298,7 +307,26 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        // Card 78505: terminou a etapa, a sub-tarefa já mostra o resultado (o rico da skill; senão o resumo do advance).
+        if (step.Status == ExecutionStatus.Completed)
+            await SetStepResultAsync(planId, step.Key, string.IsNullOrWhiteSpace(request.Result) ? request.Message : request.Result, cancellationToken);
+        else if (!string.IsNullOrWhiteSpace(request.Result))
+            await SetStepResultAsync(planId, step.Key, request.Result, cancellationToken);
         return step.ToResponse();
+    }
+
+    /// <summary>Resultado da etapa na sub-tarefa espelho (best-effort: o plano já foi salvo).</summary>
+    private async Task SetStepResultAsync(Guid planId, string stepKey, string? result, CancellationToken cancellationToken)
+    {
+        if (_workItems is null || string.IsNullOrWhiteSpace(result)) return;
+        try
+        {
+            await _workItems.SetStepResultAsync(planId, stepKey, result, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not DomainException)
+        {
+            // O resultado pode ser reenviado (PATCH só com result).
+        }
     }
 
     public async Task<ExecutionStepResponse> CancelStepAsync(Guid planId, string stepKey, string reason, ExecutionActor actor, CancellationToken cancellationToken)

@@ -41,6 +41,11 @@ da maquina, codigo da analise na copia da master (`revamp-repos.sh master <repo>
 **nunca merge**, configuracao (estados, branches, titulos) sempre do PRMake. Na duvida sobre uma dessas regras:
 `$REF plano <assunto>` ou `$REF consultas <assunto>`.
 
+**Resultado de cada etapa (card 78505)**: como na `analisar-bug` (regra "Toda etapa conclui com RESULTADO"), toda
+etapa conclui com `prmake_advance(..., result)` / `advance ... --result r.md` — o markdown rico que a pessoa ve na
+sub-tarefa assim que a etapa termina (Base: tabela dos itens; dados: SQL + tabela; codigo: `ref:` fotografados; criterios
+de aceite e onde a US entra). Nunca etapa concluida com resultado vazio.
+
 **O que muda na US**: nada de `causa-raiz`, RCA, root cause no DevOps, classificacao (Resolution Type), catalogo de
 padroes de bug (A–H) nem resumo PT/EN de fechamento de bug. O "porque" e o **objetivo da US**; a evidencia de pronto sao
 os **criterios de aceite** (`CA-1`, `CA-2`...).
