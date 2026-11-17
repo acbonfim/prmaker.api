@@ -298,7 +298,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         {
             var missingBefore = artifacts is null ? [] : TicketStepsMissingFiles(p, artifacts).ToHashSet();
             step = p.UpdateStep(stepKey, request.Status, request.Reason, request.Activity, request.Checkpoint,
-                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn);
+                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn, actor.IsExecutor);
             if (artifacts is not null && TicketStepsMissingFiles(p, artifacts).FirstOrDefault(k => !missingBefore.Contains(k)) is { } missing)
                 throw new DomainException(
                     $"A etapa de chamado '{missing}' ficaria com o usuário sem os arquivos: anexe antes o script (.sql com rollback) e o texto do chamado " +
@@ -312,6 +312,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             await SetStepResultAsync(planId, step.Key, string.IsNullOrWhiteSpace(request.Result) ? request.Message : request.Result, cancellationToken);
         else if (!string.IsNullOrWhiteSpace(request.Result))
             await SetStepResultAsync(planId, step.Key, request.Result, cancellationToken);
+        // Card 78505 (#874): quem não é o executor (especialista a pedido da pessoa) concluiu/mudou a etapa — se sobrou
+        // trabalho para o Claude, pede o executor (como o "Concluir" da tela). Antes a etapa seguinte ficava "em andamento"
+        // sem ninguém trabalhando.
+        if (!actor.IsExecutor && !string.IsNullOrWhiteSpace(request.Status))
+            await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step.ToResponse();
     }
 
@@ -731,7 +736,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             throw new DomainException("O plano foi cancelado.");
     }
 
-    public async Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken)
+    public async Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken,
+        ExecutionActor? actor = null)
     {
         if (request.Logs.Count == 0)
             return 0;
@@ -759,7 +765,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 p.RaiseDivergence(log.Message, log.StepKey, now);
 
             _repository.AddLogs(fresh);
-            p.Touch(now, fromExecutor: true);
+            p.Touch(now, fromExecutor: actor?.IsExecutor ?? true);
             appended = fresh.Count;
             lastStepKey = fresh.LastOrDefault(l => l.StepKey is not null)?.StepKey;
         }, cancellationToken);

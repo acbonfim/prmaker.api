@@ -519,7 +519,7 @@ public class ExecutionPlan
     /// um envio por ter esquecido de declarar a etapa antes).
     /// </summary>
     public ExecutionStep UpdateStep(string key, string? status, string? reason, string? activity, string? checkpoint,
-        string? title, string? description, string actor, DateTimeOffset now, string? waitingOn = null)
+        string? title, string? description, string actor, DateTimeOffset now, string? waitingOn = null, bool fromExecutor = true)
     {
         EnsureNotCancelled();
 
@@ -562,7 +562,9 @@ public class ExecutionPlan
             step.Touch(now);
         }
 
-        Touch(now, fromExecutor: true);
+        // Card 78505 (#874): só o executor conta como "Claude trabalhando" — a pessoa/o especialista mexendo na etapa não
+        // pode fazer o plano parecer vivo (a fila deixaria de pedir o executor por 150 s).
+        Touch(now, fromExecutor);
         return step;
     }
 
