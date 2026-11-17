@@ -52,7 +52,7 @@
 #   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
-#                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · bug-types ·
+#                 config · rootcause <rca.md> · spec <especificacao.md> (US) · summary <resumo-pt-en.md> · classifications · bug-types ·
 #                 classify <opcao|-> [bug type] (Bug Type = um valor de bug-types; '-' grava so o Bug Type) ·
 #                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate ·
 #                 comment <texto.md> [--image <arquivo>]... [--task <n>] (comentario NOVO na discussion, sem registro
@@ -1255,7 +1255,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|comment|classifications|bug-types|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
+    ACTION="${1:?acao: config|rootcause|spec|summary|comment|classifications|bug-types|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -1280,6 +1280,12 @@ case "$CMD" in
         check_rca "$F"
         jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
         prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body" ;;
+      spec)
+        # Card 78525: especificacao da User Story nos campos do card — uma linha de titulo por secao (as secoes do
+        # PRMake: GET Azure/card/<card>/spec); o PRMake separa, converte para HTML e grava cada secao no seu campo.
+        F="${2:?arquivo .md da especificacao (uma linha de titulo por secao)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        jq -n --rawfile d "$F" '{document:$d}' > "$TMP/body"
+        prmake_post_retry "Azure/card/$CARD/actions/spec" "$TMP/body" ;;
       summary)
         F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         jq -n --rawfile s "$F" --arg html "$(to_html "$F")" '{summary:$s, html:$html}' > "$TMP/body"

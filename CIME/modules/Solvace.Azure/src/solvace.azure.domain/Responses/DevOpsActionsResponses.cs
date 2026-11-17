@@ -80,6 +80,14 @@ public class DevOpsActionResponse
     public string Message { get; set; } = string.Empty;
 }
 
+/// <summary>Card 78525: uma seção da especificação da User Story — campo do card e o texto atual (sem HTML).</summary>
+public class SpecSectionResponse
+{
+    public string Section { get; set; } = string.Empty;
+    public string Field { get; set; } = string.Empty;
+    public string? Text { get; set; }
+}
+
 /// <summary>Comentário publicado na discussion do card: id no DevOps e quantas imagens foram anexadas.</summary>
 public class DevOpsCommentResponse : DevOpsActionResponse
 {

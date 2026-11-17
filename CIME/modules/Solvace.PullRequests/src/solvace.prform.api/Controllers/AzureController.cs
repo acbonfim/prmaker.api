@@ -191,6 +191,29 @@ public class AzureController : ControllerBase
         CancellationToken cancellationToken) =>
         RunActionAsync(id, timeline, () => _actionsService.SetStateAsync(id, request.State, request.Reason, cancellationToken), cancellationToken, "set-state", state: request.State);
 
+    /// <summary>Card 78525: especificação da User Story — seções configuradas, o campo de cada uma e o texto atual.</summary>
+    [HttpGet("card/{id}/spec")]
+    public async Task<ActionResult<IReadOnlyList<SpecSectionResponse>>> GetSpec(string id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _actionsService.GetSpecAsync(id, cancellationToken));
+        }
+        catch (DevOpsActionException e)
+        {
+            return StatusCode(e.StatusCode, new { error = e.Message });
+        }
+    }
+
+    /// <summary>
+    /// Card 78525: grava a especificação da User Story nos campos do card — <c>document</c> (uma linha de título por seção)
+    /// ou <c>fields</c> (seção/campo → texto); markdown vira HTML. Registra na Timeline.
+    /// </summary>
+    [HttpPost("card/{id}/actions/spec")]
+    public Task<ActionResult<DevOpsActionResponse>> WriteSpec(string id, [FromBody] WriteSpecRequest request, [FromServices] ITimelineApplication timeline,
+        CancellationToken cancellationToken) =>
+        RunActionAsync(id, timeline, () => _actionsService.WriteSpecAsync(id, request, cancellationToken), cancellationToken, "spec");
+
     /// <summary>Zera o Remaining Work do card.</summary>
     [HttpPost("card/{id}/actions/zero-remaining")]
     public Task<ActionResult<DevOpsActionResponse>> ZeroRemaining(string id, [FromServices] ITimelineApplication timeline, CancellationToken cancellationToken) =>

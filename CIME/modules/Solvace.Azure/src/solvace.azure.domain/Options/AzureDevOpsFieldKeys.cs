@@ -14,6 +14,18 @@ public static class AzureDevOpsFieldKeys
     public const string CompletedWork = "FieldCompletedWork";
     public const string RootCauseFieldPath = "RootCauseFieldPath";
     public const string BugType = "FieldBugType";
+    /// <summary>
+    /// Card 78525: seções da especificação da User Story (refinamento) → campo do work item, na ordem do formulário. JSON
+    /// {"Seção": "Campo"}; a seção é o título que a análise usa no documento (o rótulo do formulário pode ser outro).
+    /// </summary>
+    public const string UserStorySpecFields = "FieldsUserStorySpec";
+
+    public static readonly string DefaultUserStorySpecFieldsJson =
+        "{\"High Level Business Specification (PM)\":\"System.Description\"," +
+        "\"Detailed Business Specification (PO)\":\"Custom.DetailedBusinessSpecification\"," +
+        "\"Specification Main Highlights\":\"Custom.SpecificationMainHighlights\"," +
+        "\"Technical Specification (Tech Lead / Architect)\":\"Custom.TechnicalSpecification\"," +
+        "\"Main Validation Scenarios (QA)\":\"Microsoft.VSTS.Common.AcceptanceCriteria\"}";
 
     public static readonly IReadOnlyDictionary<string, string> Defaults = new Dictionary<string, string>
     {
@@ -24,7 +36,8 @@ public static class AzureDevOpsFieldKeys
         [OriginalEstimate] = "Microsoft.VSTS.Scheduling.OriginalEstimate",
         [CompletedWork] = "Microsoft.VSTS.Scheduling.CompletedWork",
         [RootCauseFieldPath] = "/fields/Custom.RCATechnicalCategorytext",
-        [BugType] = "Custom.BugType"
+        [BugType] = "Custom.BugType",
+        [UserStorySpecFields] = DefaultUserStorySpecFieldsJson
     };
 }
 
