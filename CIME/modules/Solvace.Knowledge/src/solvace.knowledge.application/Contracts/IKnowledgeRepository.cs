@@ -239,7 +239,8 @@ public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadO
 
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultSupersedes { get; } = new Dictionary<string, IReadOnlyList<string>>
     {
-        ["visao-geral"] = ["visao", "arquitetura"],
+        // 0097: a visão foi descontinuada — o resumo do funcional e a arquitetura substituem a visão geral antiga
+        ["visao-geral"] = ["funcional", "arquitetura"],
         ["modulos"] = ["funcional", "uiux"],
         ["dados"] = ["arquitetura"],
         ["integracoes"] = ["arquitetura"],
