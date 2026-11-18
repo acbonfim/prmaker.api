@@ -221,6 +221,10 @@ public static class PluginSettingsCatalog
         // ============================================================== Azure DevOps — Estados e movimentos
         new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugReadyForQaState, Type = SettingTypes.Text, ReadBy = Api,
             Label = "Ready for QA: estado do card", Help = "Estado para onde o bug vai ao ser liberado para o QA (ex.: In Development (done)). Vazio = a ação fica indisponível." },
+        new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.UserStoryReadyForQaState, Type = SettingTypes.Text, ReadBy = Api,
+            Label = "Ready for QA da User Story: estado do card",
+            Help = "Estado para onde a User Story (US de RCA) vai no fechamento, depois da validação em QA, da classificação e do Remaining zerado.",
+            Default = solvace.azure.application.Services.DevOpsActionsService.DefaultUserStoryReadyForQaState },
         new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugDevTestInQaState, Type = SettingTypes.Text, ReadBy = Api,
             Label = "Dev Test in QA: estado do card", Help = "Estado do card enquanto o dev valida a correção em QA (ex.: In Development (doing))." },
         new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugDevTestInQaColumn, Type = SettingTypes.Text, ReadBy = Api,
