@@ -153,4 +153,48 @@ public class Reverse0097Tests
         var (_, strict, _) = (repo, new ReverseEngineeringApplication(repo, new Settings(ReverseSettings.Default with { PracticalMinQuestions = 4 })), 0);
         Assert.False((await strict.GetModuleAsync("legado-checklist", Approver, default)).PracticalSuggested);
     }
+
+    // ── B3: GAP do gerador ──────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("GAP-010 — Tela fora do pacote desta área", false, true)]
+    [InlineData("GAP-010 — O pacote não traz o front", false, true)]
+    [InlineData("GAP-010 — Pacote NÃO INCLUI a procedure", false, true)]
+    [InlineData("GAP-010 — Sem Figma para a tela de cadastro", false, true)]
+    [InlineData("GAP-010 — Figma não anexado", false, true)]
+    [InlineData("GAP-010 — Arquivo não lido nesta área", false, true)]
+    [InlineData("GAP-010 — Serviço fora desta área", false, true)]
+    [InlineData("GAP-010 — Orçamento da área estourou", false, true)]
+    [InlineData("GAP-010 — O subagente não terminou", false, true)]
+    [InlineData("GAP-010 — Inventário não lista os jobs", false, true)]
+    [InlineData("GAP-010 — Retrato não tem o banco local", false, true)]
+    [InlineData("GAP-010 — Não foi possível ler o arquivo", false, true)]
+    [InlineData("GAP-010 — Não foi possível ler a procedure STP_X", true, false)]
+    [InlineData("GAP-010 — Cálculo diverge entre front e back", false, false)]
+    [InlineData("GAP-010 — Pacote de idiomas não traduz o status", false, false)]
+    public void Generator_gap_phrases(string text, bool citesCode, bool expected) =>
+        Assert.Equal(expected, ReverseGeneratorGaps.Matches(text, citesCode));
+
+    [Fact]
+    public void Normalization_matches_the_skill_rule()
+    {
+        Assert.Equal("orcamento da area 5s", ReverseGeneratorGaps.Normalize("**Orçamento** da ÁREA — (5S)!"));
+        Assert.Equal("nao foi possivel ler", ReverseGeneratorGaps.Normalize("Não foi\npossível   ler"));
+        // a lista única (a skill tem a mesma em re_gaps.py): só letras minúsculas sem acento e espaços simples
+        foreach (var phrase in ReverseGeneratorGaps.Phrases.Concat(ReverseGeneratorGaps.PhrasesWithoutEvidence))
+            Assert.Equal(phrase, ReverseGeneratorGaps.Normalize(phrase));
+    }
+
+    [Fact]
+    public async Task Generator_gaps_stay_out_of_the_index_and_the_check_warns()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        var lint = await app.LintAsync("legado-checklist", new LintReverseDocumentRequest { DocType = "funcional", Content = Funcional }, default);
+        Assert.Contains(lint.Warnings, w => w.Contains("processo de geração") && w.Contains("GAP-001") && w.Contains("GAP-003") && !w.Contains("GAP-002"));
+
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        var gaps = (await app.SearchAsync(null, ["legado-checklist"], ["GAP"], null, 50, false, default)).Select(h => h.ItemId).ToList();
+        Assert.Equal(["GAP-002", "GAP-004"], gaps.Order().ToList());
+    }
 }

@@ -648,12 +648,15 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         return response;
     }
 
-    /// <summary>Troca os itens do índice de um documento (usado ao publicar e quando a seção re-* é editada pela Base Solvace).</summary>
+    /// <summary>
+    /// Troca os itens do índice de um documento (usado ao publicar e quando a seção re-* é editada pela Base Solvace).
+    /// 0097: GAP que fala do processo de geração (<see cref="ReverseGeneratorGaps"/>) não entra no índice.
+    /// </summary>
     public static async Task ReplaceIndexAsync(IKnowledgeRepository repository, string moduleKey, string docType, List<ReverseItem> items, int sectionVersion,
         DateTimeOffset now, CancellationToken cancellationToken)
     {
         repository.RemoveIndexEntries(await repository.GetIndexEntriesForUpdateAsync(moduleKey, docType, cancellationToken));
-        foreach (var item in items.GroupBy(i => i.Id).Select(g => g.First()))
+        foreach (var item in items.Where(i => !ReverseGeneratorGaps.IsGeneratorGap(i)).GroupBy(i => i.Id).Select(g => g.First()))
             repository.AddIndexEntry(new ReverseIndexEntry(moduleKey, docType, item, sectionVersion, now));
     }
 

@@ -82,6 +82,11 @@ public static partial class ReverseLint
         if (result.WithoutEvidence.Count > 0)
             result.Warnings.Add($"{result.WithoutEvidence.Count} itens sem evidência no código (**Onde:** arquivo:linha): {Join(result.WithoutEvidence)}.");
 
+        // 0097: GAP do gerador (fala do pacote/área/subagente/Figma… e não do sistema) não entra no índice
+        var generatorGaps = items.Where(ReverseGeneratorGaps.IsGeneratorGap).Select(i => i.Id).ToList();
+        if (generatorGaps.Count > 0)
+            result.Warnings.Add($"GAP que fala do processo de geração e não do sistema (fica fora do índice — tire do documento ou reescreva como lacuna do sistema): {Join(generatorGaps)}.");
+
         var integrationsWithoutModule = items.Where(i => !i.Removed && i.Kind == "INT" && i.Modules.Count == 0).Select(i => i.Id).ToList();
         if (integrationsWithoutModule.Count > 0)
             result.Warnings.Add($"Integrações sem **Módulos:** (o grafo entre módulos não as enxerga): {Join(integrationsWithoutModule)}.");
