@@ -545,6 +545,14 @@ namespace solvace.knowledge.infra.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Query")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.PrimitiveCollection<string>("ReadRefs")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 

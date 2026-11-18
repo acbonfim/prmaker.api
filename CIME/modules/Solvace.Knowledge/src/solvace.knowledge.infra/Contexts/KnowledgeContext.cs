@@ -286,6 +286,9 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.CardNumber).HasMaxLength(100);
             entity.Property(e => e.Modules).HasColumnType("jsonb");
             entity.Property(e => e.ConsultedRefs).HasColumnType("jsonb");
+            // 0097: histórico do card — o texto (título + repro normalizados) e os refs realmente lidos
+            entity.Property(e => e.Query).HasMaxLength(ReverseCardContext.MaxQueryLength);
+            entity.Property(e => e.ReadRefs).HasColumnType("jsonb");
         });
     }
 }

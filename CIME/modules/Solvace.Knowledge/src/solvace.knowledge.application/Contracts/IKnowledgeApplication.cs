@@ -102,6 +102,8 @@ public interface IReverseEngineeringApplication
     /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
+    /// <summary>0097: refs realmente lidos pela análise do card (histórico) — também contam como consulta.</summary>
+    Task RecordReadAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
 
     /// <summary>
     /// 0076: um item citado no texto de um card (popover). Sem módulo (<c>UC-121</c>), usa o que a análise do card

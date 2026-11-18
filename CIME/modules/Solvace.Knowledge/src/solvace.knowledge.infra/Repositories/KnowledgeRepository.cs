@@ -222,6 +222,10 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
 
     public void AddCardContext(ReverseCardContext card) => context.ReverseCardContexts.Add(card);
 
+    public Task<List<ReverseCardContext>> GetCardHistoryAsync(int limit, CancellationToken cancellationToken) =>
+        context.ReverseCardContexts.AsNoTracking().Where(c => c.Query != null)
+            .OrderByDescending(c => c.UpdatedAt).Take(Math.Clamp(limit, 1, 10_000)).ToListAsync(cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         await context.SaveChangesAsync(cancellationToken);

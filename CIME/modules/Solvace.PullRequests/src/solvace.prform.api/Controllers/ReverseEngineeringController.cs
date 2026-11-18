@@ -313,7 +313,8 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<List<ReverseItemResponse>>(async () =>
         {
             var items = await application.GetItemsAsync(Split(refs) ?? [], module, ct);
-            if (!string.IsNullOrWhiteSpace(card)) await application.RecordConsultedAsync(card, items.Select(i => i.Ref), ct);
+            // 0097: lidos de fato (kb.sh re get com card) → histórico do card + consulta
+            if (!string.IsNullOrWhiteSpace(card)) await application.RecordReadAsync(card, items.Select(i => i.Ref), ct);
             return Ok(items);
         });
 

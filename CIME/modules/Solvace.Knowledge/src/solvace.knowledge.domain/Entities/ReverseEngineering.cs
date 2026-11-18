@@ -713,6 +713,18 @@ public class ReverseCardContext
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? ConsultedAt { get; private set; }
     public List<string> ConsultedRefs { get; private set; } = [];
+    /// <summary>
+    /// 0097: título + repro do card normalizados (sem acento/caixa, até <see cref="MaxQueryLength"/>) — base do histórico
+    /// ("cards parecidos leram estes módulos").
+    /// </summary>
+    public string? Query { get; private set; }
+    /// <summary>
+    /// 0097: o que a análise do card realmente LEU (item pelo <c>prmake_base_get</c>/GET de itens com o card, seção) —
+    /// diferente de <see cref="ConsultedRefs"/>, que inclui o top-5 de cada busca.
+    /// </summary>
+    public List<string> ReadRefs { get; private set; } = [];
+
+    public const int MaxQueryLength = 1000;
 
     protected ReverseCardContext() { }
 
@@ -728,6 +740,24 @@ public class ReverseCardContext
         Modules = modules.Distinct().Take(10).ToList();
         Complete = complete;
         UpdatedAt = now;
+    }
+
+    /// <summary>0097: o texto (já normalizado por quem chama) que descreve o card; vazio mantém o anterior.</summary>
+    public void SetQuery(string? normalizedQuery, DateTimeOffset now)
+    {
+        var q = (normalizedQuery ?? string.Empty).Trim();
+        if (q.Length == 0) return;
+        Query = q.Length <= MaxQueryLength ? q : q[..MaxQueryLength];
+        UpdatedAt = now;
+    }
+
+    /// <summary>0097: refs lidos de fato (também contam como consulta para a trava).</summary>
+    public void Read(IEnumerable<string> refs, DateTimeOffset now)
+    {
+        var list = refs.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToList();
+        if (list.Count == 0) return;
+        Consulted(list, now);
+        ReadRefs = ReadRefs.Concat(list).Distinct().TakeLast(MaxRefs).ToList();
     }
 
     public void Consulted(IEnumerable<string> refs, DateTimeOffset now)

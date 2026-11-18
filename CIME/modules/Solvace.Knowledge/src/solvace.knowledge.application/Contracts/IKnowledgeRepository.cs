@@ -86,6 +86,11 @@ public interface IKnowledgeRepository
     void AddTrap(ReverseTrap trap);
     Task<ReverseCardContext?> GetCardContextAsync(string cardNumber, bool tracked, CancellationToken cancellationToken);
     void AddCardContext(ReverseCardContext context);
+    /// <summary>
+    /// 0097: histórico dos cards (os que têm <see cref="ReverseCardContext.Query"/>), mais recentes primeiro, sem rastreamento —
+    /// só número, texto, módulos e refs lidos.
+    /// </summary>
+    Task<List<ReverseCardContext>> GetCardHistoryAsync(int limit, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 

@@ -307,4 +307,97 @@ public class Reverse0097Tests
         Assert.NotEmpty(ask);
         Assert.DoesNotContain(ask, i => i.DocType == ReverseDocTypes.Technical);
     }
+
+    // ── B5: histórico do card ───────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("All", true)]
+    [InlineData("Todos", true)]
+    [InlineData("Geral", true)]
+    [InlineData("General", true)]
+    [InlineData("Other", true)]
+    [InlineData("Outros", true)]
+    [InlineData("N/A", true)]
+    [InlineData("-", true)]
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    [InlineData("Checklist", false)]
+    [InlineData("Users (Revamp)", false)]
+    public void Generic_module_fields(string? field, bool expected) => Assert.Equal(expected, ReverseCardHistory.IsGenericField(field));
+
+    [Fact]
+    public void Similar_cards_vote_for_the_modules_they_read()
+    {
+        var history = new[]
+        {
+            new ReverseCardSample("77697", ReverseCardHistory.NormalizeQuery("Compliance per Checklist mostra percentual errado"),
+                ["legado-checklist#RN-002", "legado-checklist#RN-001", "revamp-users#RN-004"], ["legado-checklist"]),
+            new ReverseCardSample("77698", ReverseCardHistory.NormalizeQuery("Relatório Compliance per Checklist com percentual errado na planta"),
+                [], ["legado-checklist", "legado-centerline"]),
+            new ReverseCardSample("70000", ReverseCardHistory.NormalizeQuery("Kaizen não envia e-mail de aprovação"), ["legado-kaizen#RN-001"], ["legado-kaizen"]),
+            new ReverseCardSample("78266", ReverseCardHistory.NormalizeQuery("Compliance per Checklist percentual errado"), ["x#RN-001"], ["x"])
+        };
+
+        var result = ReverseCardHistory.Find("Compliance per checklist: percentual errado no relatório", history, exceptCard: "78266");
+
+        Assert.Equal(["77697", "77698"], result.Similar.Select(c => c.Card).Order().ToList());   // o próprio card e o de Kaizen ficam de fora
+        Assert.Equal("77698", result.Similar[0].Card);                                            // "relatório" também casa: mais parecido
+        Assert.All(result.Similar, c => Assert.InRange(c.Similarity, ReverseCardHistory.MinSimilarity, 1));
+        Assert.Equal("legado-checklist", result.Modules[0].Module);
+        Assert.Equal(2, result.Modules[0].Cards);
+        // fatia dos refs lidos: 77697 leu 2/3 do checklist e 1/3 do users; 77698 (sem leitura) divide entre os módulos registrados
+        Assert.Contains(result.Modules, m => m.Module == "revamp-users" && m.Cards == 1);
+        Assert.Contains(result.Modules, m => m.Module == "legado-centerline" && m.Cards == 1);
+        Assert.StartsWith("Pelo histórico (cards parecidos: 77698 ", result.Line());
+        Assert.Contains("legado-checklist (2 cards)", result.Line());
+
+        Assert.True(ReverseCardHistory.Find("Kaizen", [], null).IsEmpty);
+        Assert.True(ReverseCardHistory.Find("assunto que ninguém viu antes", history).IsEmpty);
+        Assert.Equal("legado-checklist", ReverseCardHistory.ModuleOf("legado-checklist/020-modulos"));
+        Assert.Null(ReverseCardHistory.ModuleOf("ART-21"));
+    }
+
+    [Fact]
+    public async Task For_card_uses_the_history_when_the_module_field_is_generic_and_records_query_and_reads()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist", area: "Checklist");
+        Project(repo, "legado-kaizen", "Kaizen", area: "Kaizen");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+
+        // cards já analisados: o texto fica no contexto e o que foi lido vai para o histórico
+        await app.ForCardAsync("77697", "Checklist", "Compliance per Checklist mostra percentual errado", default);
+        await app.RecordReadAsync("77697", ["legado-checklist#RN-002"], default);
+        await app.ForCardAsync("70000", "Kaizen", "Kaizen não envia e-mail de aprovação", default);
+        await app.RecordReadAsync("70000", ["legado-kaizen#RN-001"], default);
+        var ctx = await repo.GetCardContextAsync("77697", false, default);
+        Assert.Equal("compliance per checklist mostra percentual errado", ctx!.Query);
+        Assert.Equal(["legado-checklist#RN-002"], ctx.ReadRefs);
+        Assert.NotNull(ctx.ConsultedAt);                                              // lido também conta como consulta
+
+        // Module "All": o histórico decide antes da busca por texto
+        var text = await app.ForCardAsync("78266", "All", "Percentual errado no Compliance per Checklist", default);
+        Assert.Contains("Pelo histórico (cards parecidos: 77697", text);
+        Assert.Contains("Módulo: legado-checklist", text);
+        Assert.DoesNotContain("legado-kaizen", text);
+        Assert.Equal(["legado-checklist"], (await repo.GetCardContextAsync("78266", false, default))!.Modules);
+    }
+
+    [Fact]
+    public async Task With_a_matching_field_the_history_adds_its_module_as_a_candidate()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist", area: "Checklist");
+        Project(repo, "legado-kaizen", "Kaizen", area: "Kaizen");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        await app.ForCardAsync("77697", "Checklist", "Compliance per Checklist mostra percentual errado", default);
+        await app.RecordReadAsync("77697", ["legado-checklist#RN-002"], default);
+
+        // campo trocado (Kaizen) num card de compliance do checklist: o módulo do histórico entra e vem primeiro
+        var text = await app.ForCardAsync("77699", "Kaizen", "Compliance per Checklist com percentual errado", default);
+        var modules = (await repo.GetCardContextAsync("77699", false, default))!.Modules;
+        Assert.Equal("legado-checklist", modules[0]);
+        Assert.Contains("legado-kaizen", modules);
+        Assert.Contains("Pelo histórico", text);
+    }
 }

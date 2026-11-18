@@ -954,14 +954,25 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var reverseModules = await repository.GetReverseModulesAsync(cancellationToken);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var names = all.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
-        var matched = MatchModules(moduleField, all, reverseModules);
+        // 0097: campo Module genérico ("All", "Todos", "Geral", "N/A"…) não casa com nada — o histórico e o texto decidem
+        var genericField = ReverseCardHistory.IsGenericField(moduleField);
+        var matched = genericField ? [] : MatchModules(moduleField, all, reverseModules);
+
+        // 0097: cards parecidos (pelo título/repro) e os módulos que eles realmente leram
+        var moduleKeys0 = all.Where(p => ModuleKinds.Contains(p.Kind)).Select(p => p.Key).ToHashSet();
+        var history = string.IsNullOrWhiteSpace(query)
+            ? ReverseCardHistoryResult.Empty
+            : ReverseCardHistory.Find(query, (await repository.GetCardHistoryAsync(HistorySize, cancellationToken)).Select(ReverseCardSample.From), card?.Trim());
+        history = history with { Modules = history.Modules.Where(m => moduleKeys0.Contains(m.Module)).ToList() };
 
         var withRe = entries.Where(e => !e.Removed).Select(e => e.ModuleKey).ToHashSet();
-        if (matched.Count == 0 && !string.IsNullOrWhiteSpace(query))
+        if (matched.Count == 0 && !history.IsEmpty)
+            matched = history.Modules.Take(2).Select(m => m.Module).ToList();       // sem casamento: o histórico vem antes do texto
+        else if (matched.Count == 0 && !string.IsNullOrWhiteSpace(query))
             matched = (await ReverseSearch.RunAsync(repository, query, null, null, null, 30, false, names, cancellationToken))
                 .GroupBy(h => h.ModuleKey).OrderByDescending(g => g.Sum(h => h.Score)).Take(2).Select(g => g.Key).ToList();
         else if (matched.Count > 0)
-            matched = await RankForCardAsync(matched, moduleField, query, all, reverseModules, withRe, names, cancellationToken);
+            matched = await RankForCardAsync(matched, moduleField, query, all, reverseModules, withRe, names, cancellationToken, history);
 
         // 0054: "completa" para a análise = os documentos técnicos exigidos (a visão prática é para pessoas)
         var technical = s.TechnicalRequired;
@@ -980,11 +991,13 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 repository.AddCardContext(ctx);
             }
             ctx.SetModules(projects.Select(p => p.Key), complete, now);
+            ctx.SetQuery(ReverseCardHistory.NormalizeQuery(query), now);   // 0097: base do histórico dos próximos cards
             await repository.SaveChangesAsync(cancellationToken);
         }
 
         var sb = new StringBuilder();
         sb.AppendLine("=== ENGENHARIA REVERSA (Base Solvace) — consulte ANTES do código");
+        if (history.Line() is { } historyLine) sb.AppendLine(historyLine);
         if (projects.Count == 0)
         {
             sb.AppendLine($"Nenhum módulo da engenharia reversa casou com o card (Module: '{moduleField}'). Ache pelo índice: prmake_base_search(\"<tela/termo>\") — ou kb.sh index <termos>.");
@@ -1058,18 +1071,25 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// título/repro decide quem vem primeiro (soma do placar da busca por módulo), depois quem tem engenharia reversa,
     /// depois a ordem do campo. Módulo com itens que casam com o card nunca é cortado.
     /// </summary>
+    /// <remarks>
+    /// 0097: com casamento, o histórico (cards parecidos) soma no placar — até metade do maior placar da busca — e os dois
+    /// módulos mais lidos por eles entram como candidatos (o campo às vezes aponta o módulo trocado).
+    /// </remarks>
     private async Task<List<string>> RankForCardAsync(List<string> matched, string? moduleField, string? query, List<ArchitectureProject> all,
-        List<ReverseModule> reverseModules, HashSet<string> withRe, Dictionary<string, string> names, CancellationToken cancellationToken)
+        List<ReverseModule> reverseModules, HashSet<string> withRe, Dictionary<string, string> names, CancellationToken cancellationToken,
+        ReverseCardHistoryResult? history = null)
     {
         // 0060b: quem casa direto com o campo (nome/sufixo/apelido) vem antes dos pares da área — no 75294 o legado-centerline
         // (relatórios espelhados, mais acertos somados) passou na frente do legado-checklist.
         var direct = MatchModules(moduleField, all, reverseModules, expandArea: false).ToHashSet();
         var (wantRevamp, wantLegacy) = FieldWorld(moduleField);
         var areas = matched.Select(k => all.FirstOrDefault(p => p.Key == k)?.BusinessArea).Where(a => a is not null).ToHashSet();
+        var fromHistory = (history?.Modules ?? []).Take(2).ToList();
         var candidates = matched.Concat(all
                 .Where(p => ModuleKinds.Contains(p.Kind) && withRe.Contains(p.Key) && p.BusinessArea is not null && areas.Contains(p.BusinessArea))
                 .Where(p => !(wantRevamp && p.Kind == "legacy") && !(wantLegacy && p.Kind != "legacy"))
                 .Select(p => p.Key))
+            .Concat(fromHistory.Select(m => m.Module))
             .Distinct().ToList();
         var score = new Dictionary<string, double>();
         var searchable = candidates.Where(withRe.Contains).ToList();
@@ -1077,6 +1097,13 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             foreach (var g in (await ReverseSearch.RunAsync(repository, query, searchable, null, null, 40, false, names, cancellationToken))
                          .Where(h => h.DocType != ReverseDocTypes.Practical).GroupBy(h => h.ModuleKey))
                 score[g.Key] = g.Sum(h => (double)h.Score);
+        if (history is { IsEmpty: false })
+        {
+            var top = history.Modules[0].Score;
+            var scale = Math.Max(10, score.Count > 0 ? score.Values.Max() : 0) * 0.5;
+            foreach (var m in history.Modules.Where(m => candidates.Contains(m.Module)))
+                score[m.Module] = score.GetValueOrDefault(m.Module) + m.Score / top * scale;
+        }
         var ranked = candidates
             .Where(k => matched.Contains(k) || score.ContainsKey(k))  // par só entra se casou com o card
             .OrderByDescending(k => direct.Contains(k) && score.ContainsKey(k))
@@ -1154,6 +1181,29 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             }
         }
         return (await GetItemsAsync([parsed.Id], null, cancellationToken))[0];
+    }
+
+    /// <summary>0097: cards do histórico lidos para achar o módulo pelos parecidos.</summary>
+    private const int HistorySize = 3000;
+
+    /// <summary>
+    /// 0097: o que a análise do card realmente LEU (<c>prmake_base_get</c>, GET de itens com o card): grava em
+    /// <see cref="ReverseCardContext.ReadRefs"/> (o histórico vota com eles) e conta como consulta (trava).
+    /// </summary>
+    public async Task RecordReadAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(card)) return;
+        var list = refs.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+        if (list.Count == 0) return;
+        var now = DateTimeOffset.UtcNow;
+        var ctx = await repository.GetCardContextAsync(card.Trim(), tracked: true, cancellationToken);
+        if (ctx is null)
+        {
+            ctx = new ReverseCardContext(card, now);
+            repository.AddCardContext(ctx);
+        }
+        ctx.Read(list, now);
+        await repository.SaveChangesAsync(cancellationToken);
     }
 
     public async Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken)

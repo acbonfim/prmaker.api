@@ -119,7 +119,8 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
             sb.AppendLine($"--- {section.Groups["project"].Value}/{s.Key} — {s.Title} v{s.Version}{(heading is null ? "" : " § " + heading)}").AppendLine(Cap(content, 15000));
             consulted.Add($"{section.Groups["project"].Value}/{s.Key}");
         }
-        if (!string.IsNullOrWhiteSpace(card) && consulted.Count > 0) await reverse.RecordConsultedAsync(card, consulted, ct);
+        // 0097: o que foi lido de fato vai para o histórico do card (e conta como consulta para a trava)
+        if (!string.IsNullOrWhiteSpace(card) && consulted.Count > 0) await reverse.RecordReadAsync(card, consulted, ct);
         return sb.ToString().TrimEnd();
     });
 
