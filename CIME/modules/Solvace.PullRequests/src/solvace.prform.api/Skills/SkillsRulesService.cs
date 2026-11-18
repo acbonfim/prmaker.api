@@ -349,7 +349,7 @@ public class SkillsRulesService(
     private static void AppendTypeChanges(StringBuilder sb, CardRules r)
     {
         if (r.IsUserStory)
-            sb.AppendLine("- **User Story**: análise pela skill `analisar-us` (plano com Kind `analisar-us`), texto do card = critérios de aceite, item da análise `analysis` e da implementação `implementation`, **sem Root Cause** no DevOps.");
+            sb.AppendLine("- **User Story**: análise pela skill `analisar-us` (plano com Kind `analisar-us`), texto do card = critérios de aceite, item da análise `analysis` e da implementação `implementation`, sem campo de Root Cause no DevOps. **US de RCA** (`[RCA]` no título / Requirement Type RCA) fecha **depois da validação em QA aprovada** pela ferramenta `fechamento-rca-us`: RCA no Modelo do prompt como comentário na discussion, classificação, resumo PT/EN, Remaining zerado e Ready for QA da US.");
         else
             sb.AppendLine("- **Bug**: análise pela skill `analisar-bug`, texto do card = Repro Steps, item da análise `analysis` e da correção `fix`, Root Cause no DevOps ao gerar o PR.");
         sb.AppendLine("- Tipo do card (Bug/US, do DevOps) não é o tipo do item de trabalho: itens têm tipos próprios (`WorkItemTypes`: task, pull-request, review, adjustment, closing, data, ticket, text...). Nunca crie item como `bug`/`user-story` (US é uma história do DevOps).");

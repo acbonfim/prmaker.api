@@ -1279,7 +1279,17 @@ case "$CMD" in
         F="${2:?arquivo .md do root cause}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         check_rca "$F"
         jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
-        prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body" ;;
+        prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body"
+        # Card 78323: User Story (US de RCA) nao tem o campo de root cause — o PRMake responde 409 e o RCA (ja conferido
+        # pelo modelo) vai como comentario na discussion, com titulo proprio.
+        if [[ "$CODE" == 409 ]] && resp_error | grep -q "User Story"; then
+          { printf '<p><b>Root Cause Analysis (RCA)</b></p>\n'; to_html "$F"; } > "$TMP/rca.html"
+          jq -n --rawfile h "$TMP/rca.html" '{html:$h, images:[]}' > "$TMP/body"
+          prmake_post "Azure/card/$CARD/comment" "$TMP/body"
+          [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao publicar o RCA na discussion: $(resp_error)"
+          echo "OK RCA publicado como comentario na discussion do card $CARD (a User Story nao tem campo de root cause; id $(jq -r '.commentId // "?"' "$TMP/resp"))"
+          exit 0
+        fi ;;
       spec)
         # Card 78525: especificacao da User Story nos campos do card — uma linha de titulo por secao (as secoes do
         # PRMake: GET Azure/card/<card>/spec); o PRMake separa, converte para HTML e grava cada secao no seu campo.
@@ -1350,6 +1360,7 @@ PY
                 + " (dev validando em QA — pode mover sem perguntar quando a correcao estiver em QA)"
               else "NAO configurado" end),
           "ready-for-qa: " + (if ($b.readyForQa.state // "") != "" then "move para \"\($b.readyForQa.state)\" (SO com autorizacao do usuario ou etapa validar-qa concluida por ele)" else "NAO configurado" end),
+          "ready-for-qa (User Story, fechamento do RCA): " + (if (.userStory.readyForQa.state // "") != "" then "move para \"\(.userStory.readyForQa.state)\" (depois da validacao em QA, classificacao e Remaining zerado)" else "NAO configurado" end),
           "initial-estimate: " + (if $b.initialEstimate.configured
               then "Original \($b.initialEstimate.originalEstimate) · Remaining \($b.initialEstimate.remainingWork) · Completed \($b.initialEstimate.completedWork)"
               else "NAO configurado" end),

@@ -7,6 +7,14 @@ public class DevOpsActionsConfigResponse
     public bool Available { get; set; }
 
     public DevOpsBugActionsConfig Bug { get; set; } = new();
+
+    /// <summary>Ações da User Story (fechamento do RCA): classificação, Remaining e o estado de pronto.</summary>
+    public DevOpsUserStoryActionsConfig UserStory { get; set; } = new();
+}
+
+public class DevOpsUserStoryActionsConfig
+{
+    public DevOpsReadyForQaConfig ReadyForQa { get; set; } = new();
 }
 
 public class DevOpsBugActionsConfig
