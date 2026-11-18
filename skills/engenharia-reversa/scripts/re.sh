@@ -38,6 +38,11 @@
 #                                     (git diff do commit gravado na revisao publicada/cabecalho; caminho completo quando unico) e lista
 #                                     os itens cujo trecho citado mudou -> $RE_HOME/<modulo>/reancorar/; --enviar = revisao `reanchor`
 #                                     (so linhas Onde: mudam; o aprovador publica) + marca os itens desatualizados no indice
+#   indice <modulo>|--todos [--enviar] [--path repo=subpasta ...]
+#                                     0097 (SEM IA): INDICE TECNICO do modulo a partir do inventario da origin/master — endpoints, rotas/
+#                                     telas e paginas .asp, tabelas, objetos do banco, chaves de config e mensagens, com o commit e IDs
+#                                     estaveis (reaproveita os do publicado) -> $RE_HOME/<modulo>/indice/tecnico.md; --enviar publica
+#                                     direto (PUT technical-index, sem aprovacao); --todos = todos os modulos com fonte (sem fonte: pula)
 #   check <modulo> <doc> [arquivo]    cobertura do inventario + checagem do PRMake (erros barram o envio)
 #   save <modulo> <doc> [arquivo] [--summary "..."]
 #                                     grava o rascunho no PRMake (sem enviar)
@@ -92,6 +97,7 @@ INFRA_PY="$HERE/re_infra.py"
 TRAD_PY="$HERE/re_traducoes.py"
 PAC_PY="$HERE/re_pacote.py"
 ANC_PY="$HERE/re_ancora.py"
+IDX_PY="$HERE/re_indice.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -608,6 +614,44 @@ case "$CMD" in
     jq -n --arg c "$COMMITS" --argjson rep "$REPLACE" --slurpfile s "$OUTD/stale.json" '{commit: $c, items: $s[0], replace: $rep}' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/stale" "$TMP/body"; check
     echo "Itens desatualizados marcados no indice: $NS (replace=$REPLACE) — a busca e o for-card avisam 'codigo mudou desde a geracao'"
+    ;;
+
+  indice)
+    # 0097: indice tecnico SEM IA — inventario da origin/master -> documento `tecnico`, publicado direto (sem revisao humana)
+    SEND=0; PASS=(); for a in "$@"; do case "$a" in --enviar) SEND=1 ;; --todos) ;; *) PASS+=("$a") ;; esac; done
+    if [[ " $* " == *" --todos "* ]]; then
+      api GET "/modules"; check
+      OUT="$RE_HOME/_indice-todos.tsv"; mkdir -p "$RE_HOME"; : > "$OUT"
+      for k in $(jq -r '.[].key' "$TMP/resp"); do
+        echo "== $k"
+        if bash "$0" indice "$k" $([[ $SEND -eq 1 ]] && echo --enviar) > "$TMP/idx.out" 2>&1; then
+          tail -4 "$TMP/idx.out"; printf '%s\t%s\n' "$k" "$(grep -m1 '^Índice técnico' "$TMP/idx.out" | cut -c1-200)" >> "$OUT"
+        else
+          tail -3 "$TMP/idx.out" >&2; printf '%s\tPULADO: %s\n' "$k" "$(grep -m1 -E '^(AVISO|ERRO|FALTA)' "$TMP/idx.out" | cut -c1-200)" >> "$OUT"
+        fi
+      done
+      echo; echo "Resumo (-> $OUT):"; cut -c1-220 "$OUT"
+      exit 0
+    fi
+    MOD="${1:?modulo (ou --todos)}"; D="$(moddir "$MOD")/indice"; mkdir -p "$D"
+    unset RE_LOCAL   # o indice e sempre da origin/master
+    resolve_sources "$MOD" "${PASS[@]:1}" > "$D/fontes"; rc=$?
+    if [[ ! -s "$D/fontes" ]]; then echo "AVISO: $MOD sem fonte local (cadastre na tela Fontes ou use --path) — pulado"; exit 4; fi
+    [[ $rc -eq 0 ]] || echo "AVISO: parte das fontes de $MOD ficou de fora (acima) — o indice cobre so o que foi encontrado"
+    args=(); while IFS=$'\t' read -r role dir; do args+=("$role=$dir"); done < "$D/fontes"
+    python3 "$TOOL_PY" inventario "$D/inventario.json" "${args[@]}" >/dev/null || die "falha no inventario de $MOD"
+    : > "$D/publicado.md"
+    api GET "/modules/$(urlenc "$MOD")/docs/tecnico"
+    [[ "$CODE" =~ ^2 ]] && jq -r '.content // ""' "$TMP/resp" > "$D/publicado.md"
+    IARGS=(gerar "$D/inventario.json" --modulo "$MOD" --publicado "$D/publicado.md" --out "$D/tecnico.md" --json "$D/resumo.json")
+    CAT="$(moddir "$MOD")/banco/catalogo.json"
+    if [[ -s "$CAT" ]] && fresh "$CAT" "$(gen snapshotMaxAgeDays 7)"; then IARGS+=(--banco "$(dirname "$CAT")"); fi
+    python3 "$IDX_PY" "${IARGS[@]}" || die "falha no indice de $MOD"
+    if [[ $SEND -eq 0 ]]; then echo "Local: $D/tecnico.md — publique com: re.sh indice $MOD --enviar (direto, sem aprovacao)"; exit 0; fi
+    jq -n --rawfile c "$D/tecnico.md" --slurpfile r "$D/resumo.json" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{content: $c, commits: $r[0].commits, generatedAt: $at, counts: $r[0].counts}' > "$TMP/body"
+    api PUT "/modules/$(urlenc "$MOD")/technical-index" "$TMP/body"; check
+    jq -r '"Indice tecnico publicado: \(.items) itens, versao \(.version)" + (if (.warnings // [] | length) > 0 then " · avisos: " + (.warnings | join("; ")) else "" end)' "$TMP/resp"
     ;;
 
   perguntas)
