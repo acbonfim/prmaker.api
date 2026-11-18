@@ -1055,14 +1055,14 @@ case "$CMD" in
   find)
     Q="$(positional "$@" | tr '\n' ' ')"; MODQ="$(opt --module "" "$@")"; KQ="$(opt --kind "" "$@")"; CARD="$(opt --card "" "$@")"
     api GET "/index/search?q=$(urlenc "$Q")&module=$(urlenc "$MODQ")&kind=$(urlenc "$KQ")&card=$(urlenc "$CARD")&limit=${RE_LIMIT:-15}"; check
-    jq -r 'if length == 0 then "Nada no indice da engenharia reversa (tente outros termos; kb.sh find para a base antiga)." else .[] | "\(.ref) [\(.kindLabel)] \(.title)\(if (.tables|length) > 0 then " · " + (.tables[:3]|join(", ")) else "" end)\n    \(.snippet[:160])" end' "$TMP/resp"
+    jq -r 'if length == 0 then "Nada no indice da engenharia reversa (tente outros termos; kb.sh find para a base antiga)." else .[] | "\(.ref) [\(.kindLabel)] \(.title)\(if (.tables|length) > 0 then " · " + (.tables[:3]|join(", ")) else "" end)\(if .stale then " (codigo mudou desde a geracao — confirme no codigo)" else "" end)\n    \(.snippet[:160])" end' "$TMP/resp"
     ;;
 
   get)
     CARD="$(opt --card "" "$@")"; REFS="$(positional "$@" | paste -sd, -)"
     api GET "/items?refs=$(urlenc "$REFS")&card=$(urlenc "$CARD")"; check
     # 0054: as armadilhas (o que ja deu errado) vem junto com o item
-    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\n\(.body)\n",
+    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\(if .stale then " · CODIGO MUDOU desde a geracao (\(.stale.reason // "") \(.stale.commit // "")) — confirme no codigo" else "" end)\n\(.body)\n",
       (.traps // [] | .[] | "  ARMADILHA\(if .needsReview then " (a conferir)" else "" end): \(.title)\(if (.cards|length) > 0 then " · cards " + (.cards[:4]|join(", ")) else "" end)\n    \(.text | gsub("\n"; "\n    "))\n")' "$TMP/resp"
     ;;
 
