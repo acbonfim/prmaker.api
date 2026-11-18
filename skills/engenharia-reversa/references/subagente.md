@@ -34,6 +34,11 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
   Item que já existe no publicado mantém o ID dele (o pacote/sessão mostram). A junção renumera as faixas depois.
 - **Nada inventado.** Regra com condição, valores e mensagem **literais** (entre aspas, como no código) e `**Onde:**`.
   Não confirmou no código → "a confirmar" + `GAP`.
+- **GAP é do SISTEMA, nunca do processo** (0097): proibido GAP sobre o pacote, a área, o orçamento, o subagente, o
+  inventário, o retrato ou o Figma ("X não está no pacote", "fora desta área", "o subagente banco cuida", "sem Figma",
+  "não foi possível ler"). Faltou algo essencial para uma regra → leia o arquivo (uma leitura, várias na mesma resposta);
+  não é essencial → não escreva nada (o `juntar` apaga esses GAPs e o PRMake os ignora). GAP bom: risco, débito,
+  divergência ou dúvida do comportamento do sistema, com `**Onde:**`.
 - Um assunto por item, item enxuto (5–12 linhas), título que diz a regra (é o que a busca acha). Referencie outros itens
   pelo ID em vez de repetir texto. Regra que vale em várias telas: **um item** com a tabela das variações por tela.
 - **Integrações (`INT`)**: `**Módulos:**` só com chaves da lista abaixo (ou `ext:<serviço>` — `ext:redis`, `ext:s3`,

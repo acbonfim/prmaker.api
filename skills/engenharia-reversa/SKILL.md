@@ -18,14 +18,16 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh           # Knowledge Center (reg
 ```
 
 ## Comandos (o que o usuario digita)
-`<doc>` = `funcional` · `arquitetura` · `uiux` · `visao` · `spec-arquitetura` · `design` · `pratica` (0054: visão prática,
-nao tecnica — so depois dos demais exigidos publicados). Sempre com o **modulo** (chave
+`<doc>` = `funcional` · `arquitetura` · `spec-arquitetura` (os **exigidos**, 0097) · `uiux` (opcional) · `pratica` (visao
+pratica **sob demanda**: so quando o Pergunte acumula perguntas sem resposta do modulo — `re.sh perguntas <m>`/`status`
+dizem se esta sugerida). **`design` e `visao` foram descontinuados (0097)**: o publicado continua legivel e na busca, mas
+o `start` recusa — diga isso ao usuario se ele pedir. Sempre com o **modulo** (chave
 da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve a dezenas de modulos.
 
 | Pedido | O que fazer |
 |---|---|
 | `/engenharia-reversa <modulo> <doc>` | um documento do modulo (sem o modulo: `re.sh modulo` pela pasta; ambiguo → pergunte) |
-| `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado); a `pratica` so depois que esses forem **publicados** (aprovacao humana) — avise o usuario e pare |
+| `/engenharia-reversa <modulo> tudo` | **0097**: `funcional` + `arquitetura` numa **passada unica** (o codigo e lido uma vez) → `spec-arquitetura` logo depois, a partir do rascunho local — veja "Tudo (passada unica)" abaixo. Nada de `design`/`visao`; a `pratica` so se `status` disser "SUGERIDA" (e com os exigidos publicados) |
 | `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa <modulo> infra` | **opcional**: mapeia a infra do modulo na AWS (esteiras de deploy, Lambdas, buckets, segredos por nome, logs no CloudWatch) e envia para a aba **Infra** da tela — veja "Infra na AWS" abaixo |
@@ -151,7 +153,10 @@ corrija antes de enviar) + checagem do PRMake (secoes obrigatorias, IDs, evidenc
 **Modulos/Mecanismo dos INT**). O que faltar de uma area: `re.sh faltando <m> <doc> <area>` e um subagente com o
 pacote da area (nunca a sessao principal relendo codigo). **Repita** escrever → check ate:
 sem erros e cobertura ≥ a minima (padrao 90%). O que ficar de fora de proposito (codigo morto, infraestrutura) entra em
-`## Lacunas` como `GAP` com o motivo — assim conta como coberto e o revisor sabe.
+`## Lacunas` como `GAP` com o motivo — assim conta como coberto e o revisor sabe. **GAP so do sistema (0097)**: GAP que
+fala do proprio processo ("fora do pacote", "nao esta no pacote", "fora desta area", "subagente", "sem Figma",
+"inventario nao", "retrato nao"...) e proibido — o `juntar` remove (`re_gaps.py`, mesma lista do PRMake), o `check` avisa e
+o PRMake nao indexa.
 
 **6. Enviar** — `bash $RE submit <modulo> <doc> --summary "o que cobre / o que mudou (itens novos, corrigidos)"`. Vai para
 revisao no PRMake (tela **Engenharia reversa** → modulo → documento). **Nunca** aprova nem publica — e uma pessoa (papel
@@ -189,7 +194,12 @@ segredos so por nome, logs) e serve de fonte para a secao "Infraestrutura e AWS 
 6. Com sessao de `arquitetura` aberta (ou na proxima `melhorar arquitetura`), escreva os itens `INF-…` a partir do `modulo.md`
    (`references/infra.md`).
 
-## Visao pratica (0054) — `/engenharia-reversa <modulo> pratica`
+## Visao pratica (0054; sob demanda desde a 0097) — `/engenharia-reversa <modulo> pratica`
+**Quando**: so sob demanda — `bash $RE perguntas <modulo>` (ou `status`) mostra quantas perguntas do Pergunte ficaram sem
+resposta e se a pratica esta **sugerida** (≥ `ReverseEngineeringPracticalMinQuestions`, padrao 3). Sem sugestao, diga ao
+usuario e nao gere. **Centre nas perguntas SEM RESPOSTA** (`perguntas.md` traz essas primeiro, marcadas `SEM RESPOSTA`):
+um FAQ/TUT para cada uma que a engenharia reversa publicada responde; as que ela nao responde viram lacuna no documento
+tecnico certo (`arch.sh suggest ...`), nao invencao.
 O guia do sistema para quem usa (QA, suporte, gestores, clientes): o que e e onde fica (**legado ou revamp**), como
 chegar em cada tela, **como fazer** cada tarefa (`### TUT-001 — Como criar um A3`) e as **perguntas praticas**
 (`### FAQ-001 — O A3 e legado ou revamp?`). Regras duras (a checagem barra):

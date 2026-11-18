@@ -98,6 +98,7 @@ TRAD_PY="$HERE/re_traducoes.py"
 PAC_PY="$HERE/re_pacote.py"
 ANC_PY="$HERE/re_ancora.py"
 IDX_PY="$HERE/re_indice.py"
+GAPS_PY="$HERE/re_gaps.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -314,11 +315,16 @@ case "$CMD" in
       "Apelidos (campo Module do card): " + (.aliases | join(", ")),
       "Documentos:",
       (.docs[] | "  \(.type)\t\(.title)\t\(if .published then "publicado v\(.published.version) (\(.published.items) itens)" else "—" end)\t\(if .open then "revisao #\(.open.number) \(.open.status)\(if .open.reviewNote then " — revisor: " + .open.reviewNote else "" end)" else "" end)\(if .pendingSuggestions > 0 then " · \(.pendingSuggestions) sugestoes" else "" end)"),
-      "Anexos de UI/UX: \(.assets | length)" + (if (.assets|length) > 0 then " (re.sh assets \(.key))" else "" end)' "$TMP/resp"
+      "Anexos de UI/UX: \(.assets | length)" + (if (.assets|length) > 0 then " (re.sh assets \(.key))" else "" end),
+      "Pergunte sem resposta: \(.openQuestions // 0)" + (if .practicalSuggested then " — visao pratica SUGERIDA (sob demanda)" else "" end)
+        + " · itens desatualizados (codigo mudou): \(.staleItems // 0)"
+        + " · indice tecnico: " + (if .technicalIndex then "v\(.technicalIndex.version) de \(.technicalIndex.generatedAt // "?" | tostring | .[:10])" else "nunca gerado (re.sh indice \(.key))" end)' "$TMP/resp"
     ;;
 
   start)
     MOD="${1:?modulo}"; DOC="${2:?documento (re.sh tipos)}"; MODE="${3:-}"
+    # 0097: design e visao foram descontinuados (o publicado continua legivel e na busca; nenhuma sessao nova)
+    case "$DOC" in design|visao) die "'$DOC' foi descontinuado na 0097 — a ER agora e funcional + arquitetura (passada unica: re.sh lote) e spec-arquitetura; a visao pratica e sob demanda (re.sh perguntas $MOD)";; esac
     D="$(docdir "$MOD" "$DOC")"; mkdir -p "$D/anexos"
     jq -n --arg m "$MODE" 'if $m == "" then {} else {mode: $m} end' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")/sessions" "$TMP/body"; check
@@ -335,7 +341,9 @@ case "$CMD" in
       for k in $(jq -r '.publishedDocs | keys[]' "$D/sessao.json"); do jq -r --arg k "$k" '.publishedDocs[$k]' "$D/sessao.json" > "$D/publicados/$k.md"; done
     fi
     jq '.questions' "$D/sessao.json" > "$D/perguntas.json"
-    jq -r '.questions[] | "- (\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
+    # 0097: a visao pratica e sob demanda, centrada nas perguntas SEM RESPOSTA (not-found/partial) — elas vem primeiro
+    jq -r '.questions | sort_by((if (.coverage == "not-found" or .coverage == "partial") then 0 else 1 end), -(.times // 0))[]
+      | "- \(if (.coverage == "not-found" or .coverage == "partial") then "SEM RESPOSTA " else "" end)(\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
     jq -r '.traps[] | "## \(.title)\(if .needsReview then " (a conferir)" else "" end)\n- itens: \(.items | join(", ")) · cards: \(.cards | join(", "))\n\n\(.text)\n"' "$D/sessao.json" > "$D/armadilhas.md"
     jq -r '.legacyTraps // ""' "$D/sessao.json" > "$D/armadilhas-antigas.md"
     # 0066: chaves validas para **Modulos:** dos INT (a checagem avisa chave desconhecida; o mapa so usa chave valida)
@@ -655,8 +663,15 @@ case "$CMD" in
     ;;
 
   perguntas)
-    MOD="${1:?modulo}"; DOC=pratica; F="$(doc_file "$MOD" "$DOC" "${2:-}")"; D="$(docdir "$MOD" "$DOC")"
-    [[ -s "$D/perguntas.json" ]] || die "sem perguntas no pacote — rode re.sh start $MOD pratica"
+    MOD="${1:?modulo}"; DOC=pratica; D="$(docdir "$MOD" "$DOC")"
+    # 0097: sem sessao da pratica aberta = quantas perguntas do Pergunte ficaram sem resposta (a pratica e sob demanda)
+    if [[ ! -s "$D/perguntas.json" || ( -z "${2:-}" && ! -s "$D/documento.md" ) ]]; then
+      api GET "/modules/$(urlenc "$MOD")"; check
+      jq -r '"Pergunte sem resposta (\(.key)): \(.openQuestions // 0) pergunta(s)" + (if .practicalSuggested then " — visao pratica SUGERIDA: /engenharia-reversa \(.key) pratica (centrada nessas perguntas)" else " — visao pratica nao sugerida (poucas perguntas sem resposta)" end)' "$TMP/resp"
+      [[ -s "$D/perguntas.md" ]] && { echo "Ultimo pacote da pratica:"; grep -m 20 'SEM RESPOSTA' "$D/perguntas.md" || true; }
+      exit 0
+    fi
+    F="$(doc_file "$MOD" "$DOC" "${2:-}")"
     python3 "$TOOL_PY" perguntas "$F" "$D/perguntas.json" --json "$D/cobertura.json"
     ;;
 
@@ -680,6 +695,7 @@ case "$CMD" in
     if [[ "$DOC" != pratica && -s "$(moddir "$MOD")/inventario.json" ]]; then
       python3 "$PAC_PY" evidencia "$F" "$(moddir "$MOD")/inventario.json" --json "$(docdir "$MOD" "$DOC")/evidencia.json" --max "${RE_MAX_EVIDENCE:-25}" || true
     fi
+    python3 "$GAPS_PY" avisar "$F"   # 0097: GAP do gerador (o juntar remove; o PRMake ignora no indice)
     # 0097: fonte fora da origin/master sem --local --motivo = ERRO (barra o envio)
     MASTER_OK=0; if [[ "$DOC" != pratica ]]; then master_check "$MOD" || MASTER_OK=1; fi
     jq -n --arg d "$DOC" --rawfile c "$F" --argjson r "$RATIO" '{docType: $d, content: $c, coverageRatio: $r}' > "$TMP/body"
@@ -824,6 +840,8 @@ case "$CMD" in
     } | sort -u > "$TMP/ids-agora.txt"
     [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
     python3 "$PAC_PY" repetidos "$D/documento.md"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
+    # 0097: GAP do gerador ("fora do pacote", "subagente", "sem Figma"...) nao e lacuna do sistema — sai (publicado vira "(removido)")
+    python3 "$GAPS_PY" remover "$D/documento.md" --publicado "$D/publicado.md"
     [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
     [[ -s "$(moddir "$MOD")/fontes.tsv" ]] && python3 "$PAC_PY" cabecalho "$D/documento.md" "$(moddir "$MOD")/fontes.tsv"
     python3 "$PAC_PY" tamanho "$D/documento.md"
