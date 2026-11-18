@@ -545,6 +545,14 @@ namespace solvace.knowledge.infra.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Query")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.PrimitiveCollection<string>("ReadRefs")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -605,6 +613,17 @@ namespace solvace.knowledge.infra.Migrations
 
                     b.Property<int>("SectionVersion")
                         .HasColumnType("integer");
+
+                    b.Property<string>("StaleCommit")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("StaleReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("StaleSince")
+                        .HasColumnType("timestamp with time zone");
 
                     b.PrimitiveCollection<string>("Synonyms")
                         .IsRequired()
@@ -706,6 +725,9 @@ namespace solvace.knowledge.infra.Migrations
 
                     b.PrimitiveCollection<string>("SuggestedTerms")
                         .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("TechnicalIndex")
                         .HasColumnType("jsonb");
 
                     b.Property<DateTimeOffset?>("TrapsMigratedAt")

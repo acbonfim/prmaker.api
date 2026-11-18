@@ -33,7 +33,9 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh
 Economia de tokens (contexto num comando, referencias so por secao, saidas curtas), **MCP primeiro** (mesma tabela:
 `$REF plano comandos` se precisar), modo executor (`PRMAKE_EXECUTOR=1`: nada de chat/`watch`; o que depende de alguem
 vai para o plano e voce encerra a vez), **Base Solvace antes do codigo** (engenharia reversa do `contexto` →
-`prmake_base_search`/`prmake_base_get` com o card, termos em PT e EN → codigo so para confirmar o `Onde:`), **lacunas
+`prmake_base_search`/`prmake_base_get` com o card, termos em PT e EN → codigo so para confirmar o `Onde:`; 0097: a linha
+**"Pelo historico (cards parecidos …)"** desempata o modulo quando o campo Module e generico ou diverge — comece por ela; item
+**"(codigo mudou desde a geracao — confirme no codigo)"** = abra o `Onde:` dele na master e confirme antes de citar), **lacunas
 obrigatorias** (codigo lido sem item que o cite → `arch.sh suggest ... --kind gap --card`), evidencias do card abertas
 antes de concluir a analise, arquivos de cada fase no plano certo, **codigo citado = fotografia** (`coderef`,
 `[caminho:linhas](ref:<id>)`), Knowledge Center antes de perguntar regra de negocio (cite ART-n), repositorios pelo mapa

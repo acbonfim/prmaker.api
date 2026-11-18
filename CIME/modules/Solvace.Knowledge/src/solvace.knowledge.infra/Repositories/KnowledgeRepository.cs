@@ -222,6 +222,10 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
 
     public void AddCardContext(ReverseCardContext card) => context.ReverseCardContexts.Add(card);
 
+    public Task<List<ReverseCardContext>> GetCardHistoryAsync(int limit, CancellationToken cancellationToken) =>
+        context.ReverseCardContexts.AsNoTracking().Where(c => c.Query != null)
+            .OrderByDescending(c => c.UpdatedAt).Take(Math.Clamp(limit, 1, 10_000)).ToListAsync(cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         await context.SaveChangesAsync(cancellationToken);
@@ -275,7 +279,7 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
             var open = await RevisionHeadsQuery(null, null, OpenStatuses).ToListAsync(cancellationToken);
             var counts = await context.ReverseIndexEntries.AsNoTracking().Where(e => !e.Removed)
                 .GroupBy(e => new { e.ModuleKey, e.DocType, e.Kind })
-                .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count()))
+                .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count(), g.Count(e => e.StaleSince != null)))
                 .ToListAsync(cancellationToken);
             var suggestions = (await context.Suggestions.AsNoTracking()
                     .Where(x => x.Status == ArchitectureSuggestionStatus.Pending && x.SectionKey != null)

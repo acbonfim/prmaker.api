@@ -112,6 +112,8 @@ public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
     public Task<ReverseCardContext?> GetCardContextAsync(string cardNumber, bool tracked, CancellationToken cancellationToken) =>
         Task.FromResult(_cards.FirstOrDefault(c => c.CardNumber == cardNumber));
     public void AddCardContext(ReverseCardContext context) => _cards.Add(context);
+    public Task<List<ReverseCardContext>> GetCardHistoryAsync(int limit, CancellationToken cancellationToken) =>
+        Task.FromResult(_cards.Where(c => c.Query != null).OrderByDescending(c => c.UpdatedAt).Take(limit).ToList());
 
     public Task SaveChangesAsync(CancellationToken cancellationToken)
     {

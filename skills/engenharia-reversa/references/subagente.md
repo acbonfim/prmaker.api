@@ -6,7 +6,9 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
 
 ## Como trabalhar (barato e rápido — cada resposta sua relê todo o contexto)
 1. **Leia o pacote inteiro numa resposta** (se ele for grande, várias chamadas `Read` com `offset`/`limit` na MESMA
-   resposta). O pacote traz o código da área com o **número real de cada linha** — use-o no `**Onde:** arquivo:linha`.
+   resposta). O pacote traz o código da área com o **número real de cada linha** e o **caminho completo a partir da raiz
+   do repositório** no cabeçalho de cada trecho — cite exatamente esse caminho no `**Onde:** caminho:linha` (nunca só o
+   nome do arquivo; nunca arquivo local do gerador como `banco/catalogo.json` ou `~/.prmake/…`).
 2. **Não explore.** O pacote já traz, em "Apoio", os métodos de outros arquivos que a área chama (ação do controller e o
    service/repositório por trás). Só abra outro arquivo quando algo essencial para a regra não está no pacote — e, nesse
    caso, leia todos de uma vez (`Read` com `offset`/`limit`, várias na mesma resposta). Nada de `grep` um a um.
@@ -16,6 +18,18 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
    não reescreva o que já está lá (você pode ser uma retomada depois de uma queda).
 5. **Ao terminar:** rode o comando `faltando` do prompt e cubra o que faltar (ou registre `GAP` com o motivo).
 6. **Responda só o resumo** (até 8 linhas): itens por tipo, GAPs, dúvidas, armadilhas vistas (elas não entram no documento).
+
+## Lote — funcional + arquitetura numa passada (0097)
+Se o seu prompt diz **"documentos funcional+arquitetura"**, você lê o código da área UMA vez e grava **duas partes** (os
+caminhos, as faixas de ID e os tipos de cada uma estão no cabeçalho do pacote; os dois modelos estão neste cartão):
+- **funcional** — o que o sistema faz para quem usa: FN, UC, RN, EST, NTF, CFG (parâmetro de negócio), REL.
+- **arquitetura** — como é feito: API (rota/contrato), INT (com outro módulo Solvace), EVT, JOB.
+- Um assunto aparece uma vez em cada documento, no papel dele: a RN diz a regra e cita `API-…`; a API diz o contrato e cita
+  `RN-…` — sem copiar o texto. Grave a parte de um documento e depois a do outro (checkpoint em cada uma).
+- **Resumo para a consolidação** (`resumo-<area>.md`, até 15 linhas): perfis/papéis vistos (`caminho:linha`), integrações,
+  o que a área faz em 2 frases e dúvidas — é dele que sai o resumo do módulo e os `PRF` (você não cria `PRF`).
+- Ao terminar: `re.sh faltando <m> lote <area>` mostra o que falta nas DUAS partes.
+Se o prompt diz **"area consolidar"**, siga o pacote da consolidação: só as seções do módulo inteiro, sem ler código.
 
 ## Regras do conteúdo
 - **Só as seções dos seus itens.** Nada de Resumo do módulo, Perfis, "Integrações com outros módulos" em prosa,
@@ -32,6 +46,11 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
   Item que já existe no publicado mantém o ID dele (o pacote/sessão mostram). A junção renumera as faixas depois.
 - **Nada inventado.** Regra com condição, valores e mensagem **literais** (entre aspas, como no código) e `**Onde:**`.
   Não confirmou no código → "a confirmar" + `GAP`.
+- **GAP é do SISTEMA, nunca do processo** (0097): proibido GAP sobre o pacote, a área, o orçamento, o subagente, o
+  inventário, o retrato ou o Figma ("X não está no pacote", "fora desta área", "o subagente banco cuida", "sem Figma",
+  "não foi possível ler"). Faltou algo essencial para uma regra → leia o arquivo (uma leitura, várias na mesma resposta);
+  não é essencial → não escreva nada (o `juntar` apaga esses GAPs e o PRMake os ignora). GAP bom: risco, débito,
+  divergência ou dúvida do comportamento do sistema, com `**Onde:**`.
 - Um assunto por item, item enxuto (5–12 linhas), título que diz a regra (é o que a busca acha). Referencie outros itens
   pelo ID em vez de repetir texto. Regra que vale em várias telas: **um item** com a tabela das variações por tela.
 - **Integrações (`INT`)**: `**Módulos:**` só com chaves da lista abaixo (ou `ext:<serviço>` — `ext:redis`, `ext:s3`,

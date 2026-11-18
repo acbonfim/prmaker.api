@@ -16,6 +16,10 @@ public class ReverseDocTypeResponse
     public string Purpose { get; set; } = string.Empty;
     /// <summary>Modelo efetivo (o do código ou o da configuração) + as regras de como escrever um item.</summary>
     public string Template { get; set; } = string.Empty;
+    /// <summary>0097: não se gera mais (design, visão) — o publicado continua legível e na busca; sessão nova é recusada.</summary>
+    public bool Discontinued { get; set; }
+    /// <summary>0097: gerado sem IA e publicado direto (índice técnico) — não tem sessão, revisão humana nem modelo.</summary>
+    public bool Generated { get; set; }
 }
 
 public class ReverseItemKindResponse
@@ -81,6 +85,10 @@ public class ReverseDocStatusResponse
     public List<string> StaleBecause { get; set; } = [];
     /// <summary>0054: o documento só pode começar com os demais exigidos publicados (faltam estes).</summary>
     public List<string> BlockedBy { get; set; } = [];
+    /// <summary>0097: documento descontinuado (design, visão) — só leitura do publicado.</summary>
+    public bool Discontinued { get; set; }
+    /// <summary>0097: gerado sem IA (índice técnico).</summary>
+    public bool Generated { get; set; }
 }
 
 public class ReverseModuleSummaryResponse
@@ -99,6 +107,58 @@ public class ReverseModuleSummaryResponse
     public int InReview { get; set; }
     public int Items { get; set; }
     public List<string> Aliases { get; set; } = [];
+    /// <summary>0097: perguntas do Pergunte sobre o módulo ainda abertas e sem resposta (not-found/partial).</summary>
+    public int OpenQuestions { get; set; }
+    /// <summary>
+    /// 0097: a visão prática (sob demanda) é sugerida — sem prática publicada ou desatualizada E
+    /// <see cref="OpenQuestions"/> ≥ ReverseEngineeringPracticalMinQuestions.
+    /// </summary>
+    public bool PracticalSuggested { get; set; }
+    /// <summary>0097: o último índice técnico publicado (null = nunca gerado).</summary>
+    public ReverseTechnicalIndexInfo? TechnicalIndex { get; set; }
+    /// <summary>0097: itens do módulo marcados como desatualizados (o código citado mudou desde a geração).</summary>
+    public int StaleItems { get; set; }
+}
+
+/// <summary>0097: resumo do índice técnico publicado (sem o texto).</summary>
+public class ReverseTechnicalIndexInfo
+{
+    /// <summary>Versão da seção <c>re-tecnico</c>.</summary>
+    public int Version { get; set; }
+    public DateTimeOffset? GeneratedAt { get; set; }
+    public DateTimeOffset PublishedAt { get; set; }
+    public string? PublishedBy { get; set; }
+    public List<Requests.ReverseTechnicalCommit> Commits { get; set; } = [];
+    /// <summary>Contagem por tipo (END, ROT, TAB, DBO, CHV, MSG) — a do índice publicado.</summary>
+    public Dictionary<string, int> Counts { get; set; } = [];
+    public int Items { get; set; }
+}
+
+/// <summary>0097: resultado da publicação do índice técnico.</summary>
+public class ReverseTechnicalIndexResponse
+{
+    public int Items { get; set; }
+    public int Version { get; set; }
+    public List<string> Warnings { get; set; } = [];
+}
+
+/// <summary>0097: item desatualizado — o trecho de código que ele cita mudou desde a geração (reancoragem).</summary>
+public class ReverseStaleInfo
+{
+    public DateTimeOffset Since { get; set; }
+    public string? Reason { get; set; }
+    public string? Commit { get; set; }
+}
+
+/// <summary>0097: resultado da marcação de itens desatualizados.</summary>
+public class ReverseStaleResponse
+{
+    public int Marked { get; set; }
+    public int Cleared { get; set; }
+    /// <summary>Itens pedidos que não estão no índice publicado (docType:itemId).</summary>
+    public List<string> NotFound { get; set; } = [];
+    /// <summary>Total de itens desatualizados do módulo depois da marcação.</summary>
+    public int StaleItems { get; set; }
 }
 
 public class ReverseAssetResponse
@@ -325,6 +385,8 @@ public class ReverseIndexHit
     public List<string> Synonyms { get; set; } = [];
     public bool Removed { get; set; }
     public double Score { get; set; }
+    /// <summary>0097: o código que o item cita mudou desde a geração (reancoragem) — confirme no código. null = em dia.</summary>
+    public ReverseStaleInfo? Stale { get; set; }
 }
 
 /// <summary>0071: item que entra no contexto de uma resposta do Pergunte (texto inteiro, cortado) e de onde veio.</summary>
@@ -369,4 +431,6 @@ public class ReverseSettingsResponse
     public JsonElement? Infra { get; set; }
     /// <summary>0066: como a skill gera (modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato).</summary>
     public JsonElement? Generation { get; set; }
+    /// <summary>0097: perguntas sem resposta no Pergunte a partir das quais a visão prática é sugerida.</summary>
+    public int PracticalMinQuestions { get; set; }
 }

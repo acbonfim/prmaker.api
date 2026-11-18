@@ -171,6 +171,8 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.SuggestedTerms).HasColumnType("jsonb");
             entity.Property(e => e.DismissedTerms).HasColumnType("jsonb");
             entity.Property(e => e.Notes).HasMaxLength(2000);
+            // 0097: resumo do último índice técnico (versão, commits, contagens)
+            entity.Property(e => e.TechnicalIndex).HasColumnType("jsonb");
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
             entity.HasIndex(e => e.Key).IsUnique();
@@ -238,6 +240,9 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Evidence).HasColumnType("jsonb");
             entity.Property(e => e.Modules).HasColumnType("jsonb");
             entity.Property(e => e.Synonyms).HasColumnType("jsonb");
+            // 0097: item desatualizado (o código citado mudou desde a geração)
+            entity.Property(e => e.StaleReason).HasMaxLength(ReverseIndexEntry.MaxStaleReasonLength);
+            entity.Property(e => e.StaleCommit).HasMaxLength(ReverseIndexEntry.MaxStaleCommitLength);
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });
@@ -284,6 +289,9 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.CardNumber).HasMaxLength(100);
             entity.Property(e => e.Modules).HasColumnType("jsonb");
             entity.Property(e => e.ConsultedRefs).HasColumnType("jsonb");
+            // 0097: histórico do card — o texto (título + repro normalizados) e os refs realmente lidos
+            entity.Property(e => e.Query).HasMaxLength(ReverseCardContext.MaxQueryLength);
+            entity.Property(e => e.ReadRefs).HasColumnType("jsonb");
         });
     }
 }

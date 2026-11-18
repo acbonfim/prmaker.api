@@ -43,6 +43,15 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   itens usados (`revamp-kaizen#RN-012`) ou `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
   (0055) mede de onde voce leu: engenharia reversa × base antiga × codigo **confirmando** um item (o arquivo que o `Onde:`
   cita) × codigo **explorando** (sem item que o cite — vira candidato a lacuna na tela).
+- **Historico desempata o modulo (0097)**: o bloco da engenharia reversa do `contexto` (e o `for-card`) pode trazer a linha
+  **"Pelo historico (cards parecidos …)"** — os modulos que cards de titulo/repro parecidos REALMENTE leram. O campo Module
+  erra ("All", modulo trocado — 77697, 78266, 77698): quando ele e generico, nao casa com o titulo ou diverge do historico,
+  comece pelos modulos do historico (`prmake_base_search` com `module` deles) e diga na analise de onde veio o modulo.
+- **Item desatualizado = confirmar no codigo antes de citar (0097)**: item marcado **"(codigo mudou desde a geracao —
+  confirme no codigo)"** (no `contexto`, no `prmake_base_search`/`prmake_base_get`) teve o trecho citado alterado na master
+  depois da geracao. Use-o como mapa, mas **abra o `Onde:` dele** (Read com offset/limit, na copia da master) e confirme a
+  regra antes de cita-la na analise, na causa raiz ou no RCA; divergiu → `log warning` + lacuna/sugestao no item
+  (`arch.sh suggest <modulo> re-<doc> ... --item <ID>`). Esse codigo conta como "confirmando", nao "explorando".
 - **Nunca pule a engenharia reversa pelo `contexto` (0060)**: se ele disser "nao publicada"/"nenhum modulo casou", o campo
   Module do card pode ter apontado o mundo errado (card 75294: "Checklist" foi para o revamp e a tela era do legado, que
   tinha engenharia reversa). Antes de `kb.sh`, rode `prmake_base_search` **sem `module`** com o nome da tela/relatorio e
