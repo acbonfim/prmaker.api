@@ -104,7 +104,7 @@ builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
-builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseAccess, solvace.prform.Knowledge.HttpReverseAccess>();  // 0074: engenharia reversa só para admin
+builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseAccess, solvace.prform.Knowledge.HttpReverseAccess>();  // 0097: engenharia reversa lida por todo usuário autenticado (0074: só admin)
 // Engenharia reversa por módulo (0052): aprovadores, documentos exigidos e trava vêm do "Skills Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseSettingsProvider, solvace.prform.Knowledge.PluginReverseSettingsProvider>();
 builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureChatService>();

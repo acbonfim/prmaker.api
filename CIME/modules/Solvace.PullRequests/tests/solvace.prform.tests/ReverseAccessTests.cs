@@ -9,7 +9,11 @@ using Xunit;
 
 namespace solvace.prform.tests;
 
-/// <summary>0074: a engenharia reversa é só de administrador, no backend — o controller e o acesso que a Base de conhecimento consulta.</summary>
+/// <summary>
+/// 0097: a engenharia reversa é lida por todo usuário autenticado; gerar continua de administrador (ação por ação no
+/// controller) e aprovar/publicar/configurar continua com ReverseEngineeringApproverRoles (na aplicação). 0074 restringia
+/// tudo a administrador.
+/// </summary>
 public class ReverseAccessTests
 {
     private static IHttpContextAccessor Accessor(params string[] roles)
@@ -18,31 +22,57 @@ public class ReverseAccessTests
         return new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } };
     }
 
+    /// <summary>Ações de geração: só administrador.</summary>
+    private static readonly string[] Generation =
+    [
+        "StartSession", "Lint", "SaveRevision", "Progress", "Submit", "AddLink", "AddFile", "DeleteAsset", "UpsertInfra",
+        "CreateTraps", "UpdateTrap", "DeleteTrap", "TrapsMigrated", "SuggestionToTrap", "LinkSuggestion"
+    ];
+
+    private static bool HasAdmin(MemberInfo member) =>
+        member.GetCustomAttributes<AuthorizeAttribute>(true).Any(a => (a.Roles ?? string.Empty).Split(',').Select(r => r.Trim()).Contains("admin"));
+
     [Fact]
-    public void Reverse_engineering_controller_requires_the_admin_role_on_every_endpoint()
+    public void The_controller_requires_authentication_and_only_the_generation_actions_require_admin()
     {
         var type = typeof(ReverseEngineeringController);
-        var classAdmin = type.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Any(a => (a.Roles ?? string.Empty).Split(',').Select(r => r.Trim()).Contains("admin"));
-        Assert.True(classAdmin, "ReverseEngineeringController precisa de [Authorize(Roles = \"admin\")]");
+        Assert.Contains(type.GetCustomAttributes<AuthorizeAttribute>(true), a => string.IsNullOrEmpty(a.Roles));
+        Assert.False(HasAdmin(type), "a leitura é aberta a todo usuário autenticado — o admin vai só nas ações de geração");
 
         var actions = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => m.GetCustomAttributes().Any(a => a is HttpMethodAttribute)).ToList();
         Assert.NotEmpty(actions);
-        // nenhum endpoint libera anônimo nem troca a exigência por uma mais fraca
         Assert.DoesNotContain(actions, a => a.GetCustomAttributes<AllowAnonymousAttribute>(true).Any());
+
+        foreach (var name in Generation)
+        {
+            var action = actions.SingleOrDefault(a => a.Name == name);
+            Assert.True(action is not null, $"ação {name} não encontrada");
+            Assert.True(HasAdmin(action!), $"{name} é geração: precisa de [Authorize(Roles = \"admin\")]");
+        }
+        // leitura, revisão, publicação e configuração: sem papel no atributo (aprovar/publicar/configurar checam ApproverRoles na aplicação)
+        foreach (var name in new[] { "Modules", "Module", "Doc", "Search", "Items", "Impact", "ForCard", "Traps", "Review", "Publish", "UpsertModule", "Consulted", "GetCardItem" })
+            Assert.False(HasAdmin(actions.Single(a => a.Name == name)), $"{name} não é geração");
     }
 
     [Theory]
-    [InlineData("admin", true)]
-    [InlineData("admin,gestor", true)]
-    [InlineData("support", false)]
-    [InlineData("user", false)]
-    [InlineData("gestor", false)]
-    [InlineData("", false)]
-    public void Only_the_admin_role_can_read_the_reverse_engineering(string roles, bool expected)
+    [InlineData("admin")]
+    [InlineData("admin,gestor")]
+    [InlineData("support")]
+    [InlineData("user")]
+    [InlineData("gestor")]
+    [InlineData("")]
+    public void Every_authenticated_user_reads_the_reverse_engineering(string roles)
     {
         var access = new HttpReverseAccess(Accessor(roles.Split(',', StringSplitOptions.RemoveEmptyEntries)));
-        Assert.Equal(expected, access.CanRead);
+        Assert.True(access.CanRead);
+    }
+
+    [Fact]
+    public void An_anonymous_request_does_not_read()
+    {
+        var anonymous = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) } };
+        Assert.False(new HttpReverseAccess(anonymous).CanRead);
     }
 
     [Fact]

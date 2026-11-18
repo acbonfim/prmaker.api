@@ -17,7 +17,7 @@ namespace solvace.knowledge.application;
 /// </summary>
 public partial class ReverseEngineeringApplication(IKnowledgeRepository repository, IReverseSettingsProvider settingsProvider, IReverseAccess? access = null) : IReverseEngineeringApplication
 {
-    /// <summary>0074: a engenharia reversa é só de administrador (a tela, a geração e o que ela publica).</summary>
+    /// <summary>0097: quem lê a engenharia reversa — todo usuário autenticado (0074 restringia a administradores).</summary>
     private bool CanRead => access?.CanRead ?? true;
 
     /// <summary>Tipos de projeto que são "módulo" na tela (as visões transversais ficam de fora).</summary>
@@ -859,7 +859,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<List<ReverseAnswerItem>> GetAnswerContextAsync(string question, IReadOnlyList<string> terms, IReadOnlyCollection<string> boostModules,
         string intent, int limit, int maxRelated, int bodyChars, CancellationToken cancellationToken)
     {
-        // 0074: o "Pergunte" de quem não é administrador não recebe texto da engenharia reversa.
+        // 0074/0097: o "Pergunte" de quem não pode ler (sem autenticação) não recebe texto da engenharia reversa.
         if (!CanRead) return [];
         var names = await ModuleNamesAsync(cancellationToken);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
@@ -1147,7 +1147,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// </summary>
     public async Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken)
     {
-        // 0074: quem não é administrador não consulta a engenharia reversa — a trava exigiria o impossível, então não vale para ele.
+        // 0097: a trava volta a valer para todos (a leitura é aberta); só quem não pode ler (sem autenticação) fica de fora.
         if (!CanRead) return null;
         var s = await settingsProvider.GetAsync(cancellationToken);
         // 0063: a trava aceita uma lista ("consultar-base,investigar-codigo") — planos novos travam na consulta à base,

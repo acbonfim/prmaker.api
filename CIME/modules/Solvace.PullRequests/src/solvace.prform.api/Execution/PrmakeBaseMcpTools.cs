@@ -19,10 +19,10 @@ namespace solvace.prform.Execution;
 public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, IArchitectureApplication architecture, IKnowledgeApplication knowledge,
     solvace.knowledge.application.Contracts.IReverseAccess access)
 {
-    /// <summary>0074: a engenharia reversa é só de administrador. Para os demais as ferramentas seguem com seções e Knowledge Center, sem itens.</summary>
+    /// <summary>0097: a engenharia reversa é lida por todo usuário autenticado (0074: só admin); sem leitura as ferramentas seguem com seções e Knowledge Center.</summary>
     private void RequireReverse()
     {
-        if (!access.CanRead) throw new ReverseForbiddenException("A engenharia reversa é restrita a administradores. Use as seções da Base Solvace e o Knowledge Center (prmake_base_get com projeto/secao ou ART-n).");
+        if (!access.CanRead) throw new ReverseForbiddenException("A engenharia reversa é restrita a usuários autenticados. Use as seções da Base Solvace e o Knowledge Center (prmake_base_get com projeto/secao ou ART-n).");
     }
 
     [McpServerTool(Name = "prmake_base_search", ReadOnly = true)]
