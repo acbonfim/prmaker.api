@@ -1078,7 +1078,7 @@ def file_index(roots):
 
 def locate(cited, idx):
     """Arquivo citado (às vezes só o fim do caminho) → candidatos no disco que terminam com ele."""
-    cited = cited.replace("\\", "/").lstrip("./")
+    cited = re.sub(r"^(?:\.{2,3}/|\./|/)+", "", cited.replace("\\", "/"))  # 0097: `.github/...` não perde o ponto
     cands = idx.get(os.path.basename(cited).lower(), [])
     if "/" in cited:
         tail = cited.lower()
@@ -1142,7 +1142,7 @@ def evidencia(doc_path, inv, out=None, max_show=40):
                 continue
             # 0097: caminho completo a partir da raiz do repositório (com ou sem o nome do repo na frente) e sem ambiguidade
             fulls = sorted({repo_rel(c, roots_cache, src_roots) for c in cands})
-            clean = cited.replace("\\", "/").lstrip("./")
+            clean = re.sub(r"^(?:\.{2,3}/|\./|/)+", "", cited.replace("\\", "/"))
             if "/" in clean and clean.split("/", 1)[0].lower() in repos:
                 clean = clean.split("/", 1)[1]
             if len(fulls) > 1 and clean not in fulls:

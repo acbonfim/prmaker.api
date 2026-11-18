@@ -33,6 +33,11 @@
 #   termos <modulo>                   termos do modulo para o GLOSSARIO (rotulos da tela, menus, siglas, traducoes)
 #   trabalho <modulo> <doc>           MELHORAR (0053): o que mudou no codigo (commits) e no banco desde a versao
 #                                     publicada e os itens afetados -> trabalho.md
+#   reancorar <modulo> [doc|todos] [--enviar]
+#                                     0097 (SEM IA): as citacoes arquivo:linha dos documentos PUBLICADOS vao para a origin/master atual
+#                                     (git diff do commit gravado na revisao publicada/cabecalho; caminho completo quando unico) e lista
+#                                     os itens cujo trecho citado mudou -> $RE_HOME/<modulo>/reancorar/; --enviar = revisao `reanchor`
+#                                     (so linhas Onde: mudam; o aprovador publica) + marca os itens desatualizados no indice
 #   check <modulo> <doc> [arquivo]    cobertura do inventario + checagem do PRMake (erros barram o envio)
 #   save <modulo> <doc> [arquivo] [--summary "..."]
 #                                     grava o rascunho no PRMake (sem enviar)
@@ -86,6 +91,7 @@ BANCO_PY="$HERE/re_banco.py"
 INFRA_PY="$HERE/re_infra.py"
 TRAD_PY="$HERE/re_traducoes.py"
 PAC_PY="$HERE/re_pacote.py"
+ANC_PY="$HERE/re_ancora.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -541,6 +547,67 @@ case "$CMD" in
     MSG="$NA arquivo(s) e $NO objeto(s) do banco mudaram desde a versao publicada → $NI item(ns) a revisar"
     echo; cat "$OUT"; echo; echo "$MSG"
     progress "$MOD" "$DOC" "$(jq -n --arg m "$MSG" '{log: ("Lista de trabalho do melhorar: " + $m), kind: "progress", activity: $m}')"
+    ;;
+
+  reancorar)
+    # 0097: reancoragem SEM IA dos documentos publicados na origin/master atual (so as linhas `Onde:` mudam)
+    MOD="${1:?modulo}"; WHAT="${2:-todos}"; [[ "$WHAT" == --* ]] && WHAT=todos
+    SEND=0; [[ " $* " == *" --enviar "* ]] && SEND=1
+    OUTD="$(moddir "$MOD")/reancorar"; mkdir -p "$OUTD"; rm -f "$OUTD"/*.json "$OUTD"/*.md
+    api GET "/modules/$(urlenc "$MOD")"; check; cp "$TMP/resp" "$OUTD/modulo.json"
+    if [[ "$WHAT" == todos ]]; then
+      DOCS=(); while IFS= read -r d; do [[ -n "$d" ]] && DOCS+=("$d"); done < <(jq -r '.docs[] | select(.published) | .type | select(. != "pratica" and . != "tecnico")' "$OUTD/modulo.json")
+    else DOCS=("$WHAT"); fi
+    [[ ${#DOCS[@]} -gt 0 ]] || { echo "$MOD: nenhum documento publicado com codigo citado — nada a reancorar."; exit 0; }
+    echo '[]' > "$OUTD/stale.json"; COMMITS=""
+    for DOC in "${DOCS[@]}"; do
+      api GET "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")"; check
+      jq -r '.content // ""' "$TMP/resp" > "$OUTD/$DOC.publicado.md"
+      [[ -s "$OUTD/$DOC.publicado.md" ]] || { echo "$DOC: sem versao publicada — pulando"; continue; }
+      REV="$(jq -r '[.revisions[]? | select(.status == "published")] | max_by(.number) | .id // empty' "$TMP/resp")"
+      echo '[]' > "$OUTD/$DOC.fontes.json"
+      if [[ -n "$REV" ]]; then api GET "/revisions/$REV?content=false"; [[ "$CODE" =~ ^2 ]] && jq '.session.sources // []' "$TMP/resp" > "$OUTD/$DOC.fontes.json"; fi
+      ARGS=(ancorar "$OUTD/$DOC.publicado.md" --doc "$DOC" --out "$OUTD/$DOC.md" --json "$OUTD/$DOC.json")
+      while IFS=$'\t' read -r repo sha prefixes; do
+        [[ -z "$repo" ]] && continue
+        root="$(repo_path "$repo")" || { echo "AVISO: $DOC: repositorio '$repo' fora do mapa da maquina (prmake-skills.sh repos set $repo <pasta>) — citacoes dele ficam como estao" >&2; continue; }
+        RE_LOCAL=0 master_root "$root" >/dev/null   # git fetch: a origin/master do clone fica atual
+        ARGS+=(--repo "$repo=$root@$sha"); [[ -z "$sha" ]] && echo "AVISO: $DOC: sem commit gravado para $repo — so completa caminhos e confere se o arquivo existe na master"
+        IFS=, read -ra PS <<<"$prefixes"; for p in "${PS[@]:-}"; do [[ -n "$p" ]] && ARGS+=(--prefixo "$repo=$p"); done
+      done < <(python3 "$ANC_PY" fontes "$OUTD/$DOC.fontes.json" "$OUTD/modulo.json" "$OUTD/$DOC.publicado.md")
+      [[ " ${ARGS[*]} " == *" --repo "* ]] || { echo "$DOC: nenhum repositorio da fonte na maquina — pulando"; continue; }
+      python3 "$ANC_PY" "${ARGS[@]}" || { echo "AVISO: $DOC: falha na reancoragem" >&2; continue; }
+      jq --arg d "$DOC" --slurpfile r "$OUTD/$DOC.json" '. + [$r[0].stale[] | {docType: $d, itemId, reason: (.reasons | join("; ") | .[:480])}]' "$OUTD/stale.json" > "$TMP/s.json" && cp "$TMP/s.json" "$OUTD/stale.json"
+      COMMITS="$(jq -r '[.commits[] | "\(.repository)@\(.to[:10])"] | join(",")' "$OUTD/$DOC.json")"
+    done
+    NS="$(jq length "$OUTD/stale.json")"
+    echo; echo "Reancorados em $OUTD/<doc>.md (relatorio <doc>.json) · $NS item(ns) desatualizado(s) no total -> stale.json"
+    [[ $SEND -eq 1 ]] || { echo "Revise e envie com: re.sh reancorar $MOD $WHAT --enviar (revisao 'reanchor' para o aprovador + itens desatualizados no indice)"; exit 0; }
+    for DOC in "${DOCS[@]}"; do
+      [[ -s "$OUTD/$DOC.json" && -s "$OUTD/$DOC.md" ]] || continue
+      if cmp -s "$OUTD/$DOC.md" "$OUTD/$DOC.publicado.md"; then echo "$DOC: nenhuma linha Onde: mudou — sem revisao"; continue; fi
+      echo '{"mode":"reanchor"}' > "$TMP/body"
+      api POST "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")/sessions" "$TMP/body"; check
+      cp "$TMP/resp" "$OUTD/$DOC.sessao.json"
+      if [[ "$(jq -r '.revision.mode' "$OUTD/$DOC.sessao.json")" != reanchor ]]; then
+        echo "AVISO: $DOC tem revisao aberta (#$(jq -r '.revision.number' "$OUTD/$DOC.sessao.json"), $(jq -r '.revision.mode' "$OUTD/$DOC.sessao.json")) — reancore depois que ela for publicada ou descartada" >&2; continue
+      fi
+      ID="$(jq -r '.revision.id' "$OUTD/$DOC.sessao.json")"
+      jq -n --rawfile c "$OUTD/$DOC.md" --slurpfile r "$OUTD/$DOC.json" --slurpfile f "$OUTD/$DOC.fontes.json" '
+        ($r[0].stats) as $st |
+        {content: $c,
+         summary: "Reancoragem na origin/master (sem IA): \($st.citacoes // 0) citacoes, \($st["linhas-remapeadas"] // 0) linhas remapeadas, \($st["caminho-completado"] // 0) caminhos completados, \($st["itens-desatualizados"] // 0) itens com o trecho alterado (marcados desatualizados)",
+         session: {tool: "re.sh reancorar", mode: "reanchor",
+                   sources: [$r[0].commits[] | {repository, commit: ((.to[:10]) + "@origin/master"), from: .from}],
+                   reanchor: {stats: $st, stale: $r[0].stale, unresolved: ($r[0].unresolved[:200])}}}' > "$TMP/body"
+      api PUT "/revisions/$ID" "$TMP/body"; check
+      api POST "/revisions/$ID/submit"; check
+      jq -r '"Revisao de reancoragem enviada: \(.moduleKey) / \(.docType) #\(.number) (\(.status)) — o aprovador publica na tela"' "$TMP/resp"
+    done
+    REPLACE=false; [[ "$WHAT" == todos ]] && REPLACE=true
+    jq -n --arg c "$COMMITS" --argjson rep "$REPLACE" --slurpfile s "$OUTD/stale.json" '{commit: $c, items: $s[0], replace: $rep}' > "$TMP/body"
+    api POST "/modules/$(urlenc "$MOD")/stale" "$TMP/body"; check
+    echo "Itens desatualizados marcados no indice: $NS (replace=$REPLACE) — a busca e o for-card avisam 'codigo mudou desde a geracao'"
     ;;
 
   perguntas)

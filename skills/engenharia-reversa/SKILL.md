@@ -29,6 +29,7 @@ da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve 
 | `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa <modulo> infra` | **opcional**: mapeia a infra do modulo na AWS (esteiras de deploy, Lambdas, buckets, segredos por nome, logs no CloudWatch) e envia para a aba **Infra** da tela — veja "Infra na AWS" abaixo |
+| `/engenharia-reversa <modulo> reancorar [doc]` | **0097, sem IA**: `bash $RE reancorar <modulo> [doc\|todos]` leva as citacoes `arquivo:linha` dos documentos publicados para a origin/master atual (git diff do commit gravado; caminho completo quando unico) e lista os itens cujo trecho citado mudou. Mostre o resumo ao usuario; com o ok dele, `--enviar` (revisao `reanchor` — so linhas `Onde:` — para o aprovador publicar + itens marcados "codigo mudou" no indice) |
 | `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
 | `/engenharia-reversa retrato [banco\|infra\|status]` | **0066**: baixa UMA vez o banco de referência inteiro (`re.sh retrato banco`, precisa da VPN) e/ou a conta AWS (`re.sh retrato infra`, ~15 min); os módulos usam o retrato enquanto ele estiver dentro da idade máxima (sem VPN, sem esperar). `status` mostra datas e lacunas da coleta. Rode de novo para atualizar. |
 
