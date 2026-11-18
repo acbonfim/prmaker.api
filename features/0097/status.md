@@ -35,7 +35,7 @@
 - Q2/Q3 precisam de ok do usuário (gravam em produção / consomem a assinatura).
 - O `lote` nunca rodou com LLM: a Q3 confirma custo, tempo, qualidade e se as áreas cabem com dois documentos por
   subagente (talvez reduzir `areaBudgetKb` no lote).
-- Migrações não rodaram em Postgres real (backfill do Query, apagar GAP do gerador com `translate`, config).
+- Migrações conferidas num Postgres 18 descartável (2026-11-18): config up/down, GAP do gerador apagado só sem evidência (GAP real e RN ficam), backfill do Query pelo título do plano.
 - `re-tecnico` entra no espelho/busca de seções das análises (público llm) — só saiu do Pergunte.
 - `kb.sh` (base-solvace) não mostra a marca de desatualizado; o `re.sh find/get` mostra.
 - Rotas do índice técnico saem só com o segmento (sem o caminho do pai).
