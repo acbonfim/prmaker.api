@@ -171,6 +171,8 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.SuggestedTerms).HasColumnType("jsonb");
             entity.Property(e => e.DismissedTerms).HasColumnType("jsonb");
             entity.Property(e => e.Notes).HasMaxLength(2000);
+            // 0097: resumo do último índice técnico (versão, commits, contagens)
+            entity.Property(e => e.TechnicalIndex).HasColumnType("jsonb");
             entity.Property(e => e.CreatedBy).IsRequired().HasMaxLength(200);
             entity.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
             entity.HasIndex(e => e.Key).IsUnique();

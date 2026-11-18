@@ -32,7 +32,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
     public Task<string> Search(
         [Description("Termos: tela, regra, entidade, mensagem de erro, tabela (TB_...), ou um ID (RN-012)")] string query,
         [Description("Modulo(s) (chave da Base Solvace, ex.: revamp-kaizen, legado-kaizen), separados por virgula (opcional)")] string? module = null,
-        [Description("Tipos de item, separados por virgula: RN, UC, FN, TELA, API, DB, INT, EVT, JOB, CFG, PRF, EST, NTF, GAP... (opcional)")] string? kinds = null,
+        [Description("Tipos de item, separados por virgula: RN, UC, FN, TELA, API, DB, INT, EVT, JOB, CFG, PRF, EST, NTF, GAP...; indice tecnico (sem IA): END, ROT, TAB, DBO, CHV, MSG (opcional)")] string? kinds = null,
         [Description("Numero do card em analise (registra a consulta)")] string? card = null,
         int limit = 10,
         CancellationToken ct = default) => Safe(async () =>

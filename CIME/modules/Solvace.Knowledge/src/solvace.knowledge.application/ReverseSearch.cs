@@ -159,6 +159,8 @@ public static partial class ReverseSearch
             if (!exact && terms.Count >= 3 && coverage < 0.34) continue;
             // Regras e casos de uso respondem mais análises; itens de lacuna por último.
             var kindBoost = e.Kind switch { "RN" or "UC" => 1.25, "API" or "TELA" or "INT" or "DB" => 1.1, "GAP" => 0.8, _ => 1.0 };
+            // 0097: o índice técnico (inventário sem IA) entra na busca das análises abaixo dos documentos escritos
+            if (e.DocType == ReverseDocTypes.Technical) kindBoost *= ReverseDocTypes.TechnicalSearchWeight;
             scored.Add((e, Math.Round(score * Math.Pow(coverage, 1.5) * kindBoost, 2)));
         }
         // 0070: o trecho (split + regex) só dos que voltam — antes era montado para todo item que casava (milhares numa
@@ -184,7 +186,7 @@ public static partial class ReverseSearch
 
     private static int Count(string text, string term) => Math.Min(30, ArchitectureSearch.CountTerm(text, term, out _));
 
-    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-\d{1,4}\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|END|ROT|TAB|DBO|CHV|MSG|FN|UC|RN|DB|UI)-\d{1,4}\b", RegexOptions.IgnoreCase)]
     private static partial Regex IdPattern();
 
     [GeneratedRegex(@"[#*`>|]+|\[(?=[^\]]*\]\()|\]\([^)]*\)|```[a-z]*")]

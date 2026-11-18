@@ -42,6 +42,14 @@ public static partial class ReverseItemKinds
         // 0054: visão prática (não técnica) — passo a passo por tarefa e perguntas práticas.
         new("TUT", "Passo a passo", "Passos a passo (como fazer)"),
         new("FAQ", "Pergunta prática", "Perguntas práticas"),
+        // 0097: índice técnico (gerado sem IA, documento "tecnico") — prefixos que não colidem com os de cima (o de objeto de
+        // banco é DBO porque SQL já é do levantamento de arquitetura).
+        new("END", "Endpoint / ação HTTP", "Endpoints e ações HTTP"),
+        new("ROT", "Rota / tela do front", "Rotas e telas do front"),
+        new("TAB", "Tabela", "Tabelas"),
+        new("DBO", "Objeto do banco (procedure, view, function, trigger, job)", "Objetos do banco"),
+        new("CHV", "Chave de configuração", "Chaves de configuração"),
+        new("MSG", "Mensagem de validação/erro", "Mensagens de validação e erro"),
         new("GAP", "Lacuna / débito / risco", "Lacunas, débitos e riscos")
     ];
 

@@ -40,6 +40,19 @@ public class ReverseModule
     /// </summary>
     public DateTimeOffset? TrapsMigratedAt { get; private set; }
 
+    /// <summary>
+    /// 0097: o último índice técnico publicado (JSON de <c>ReverseTechnicalIndexInfo</c>: versão, data da geração, commits
+    /// por repositório e contagem por tipo) — a lista e a ficha do módulo mostram sem ler o documento.
+    /// </summary>
+    public string? TechnicalIndex { get; private set; }
+
+    public void SetTechnicalIndex(string json, string actor, DateTimeOffset now)
+    {
+        TechnicalIndex = json;
+        UpdatedAt = now;
+        UpdatedBy = actor;
+    }
+
     public void MarkTrapsMigrated(string actor, DateTimeOffset now)
     {
         TrapsMigratedAt = now;
@@ -145,7 +158,14 @@ public static class ReverseRevisionStatus
 
 public static class ReverseRevisionMode
 {
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { "new", "improve", "redo", "manual" };
+    /// <summary>
+    /// 0097: <c>reanchor</c> = reancoragem sem IA (só as linhas <c>Onde:</c> mudam para a master atual; publicada como
+    /// hoje, mantém as marcas de desatualizado); <c>generated</c> = índice técnico publicado direto (sem sessão).
+    /// </summary>
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { "new", "improve", "redo", "manual", Reanchor, Generated };
+
+    public const string Reanchor = "reanchor";
+    public const string Generated = "generated";
 
     /// <summary>
     /// 0056: mesma classe de bug do construtor de <see cref="ReverseTrap"/> — "new" (o default) É um valor válido de
@@ -337,6 +357,29 @@ public class ReverseRevision
         PublishedBy = actor;
         UpdatedAt = now;
         UpdatedBy = actor;
+    }
+
+    /// <summary>
+    /// 0097: revisão de documento gerado sem IA (índice técnico) — nasce publicada (sem revisão humana), modo
+    /// <see cref="ReverseRevisionMode.Generated"/>; <paramref name="session"/> guarda commits, data e contagens.
+    /// </summary>
+    public static ReverseRevision Generated(string moduleKey, string docType, int number, string content, string? session, string? lintJson,
+        int sectionVersion, string actor, DateTimeOffset now)
+    {
+        var revision = new ReverseRevision(moduleKey, docType, number, ReverseRevisionMode.Generated, content, null, actor, now)
+        {
+            Session = string.IsNullOrWhiteSpace(session) ? null : session,
+            Lint = lintJson,
+            Status = ReverseRevisionStatus.Published,
+            Progress = null,
+            ProgressAt = null,
+            SubmittedAt = now, SubmittedBy = actor,
+            ReviewedAt = now, ReviewedBy = actor,
+            PublishedVersion = sectionVersion, PublishedAt = now, PublishedBy = actor
+        };
+        if (revision.Content.Length > MaxContentLength)
+            throw new DomainException($"O documento pode ter no máximo {MaxContentLength} caracteres.");
+        return revision;
     }
 
     public void Supersede(DateTimeOffset now)

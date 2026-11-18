@@ -122,4 +122,7 @@ public interface IReverseEngineeringApplication
     Task<List<ArchitectureSuggestionResponse>> KcDivergencesAsync(CancellationToken cancellationToken);
     /// <summary>Trava da etapa de investigação; null = pode concluir.</summary>
     Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken);
+
+    /// <summary>0097: publica o índice técnico (gerado sem IA) direto na seção <c>re-tecnico</c> — sem revisão humana.</summary>
+    Task<ReverseTechnicalIndexResponse> PublishTechnicalIndexAsync(string key, PublishTechnicalIndexRequest request, string actor, CancellationToken cancellationToken);
 }

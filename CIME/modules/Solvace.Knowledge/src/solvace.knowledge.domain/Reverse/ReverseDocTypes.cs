@@ -24,6 +24,12 @@ public static class ReverseDocTypes
     /// <summary>0054: a visão prática (não técnica), gerada do que foi publicado — último documento.</summary>
     public const string Practical = "pratica";
 
+    /// <summary>0097: índice técnico — extraído do código sem IA pela skill e publicado direto (sem revisão humana).</summary>
+    public const string Technical = "tecnico";
+
+    /// <summary>0097: peso do índice técnico na busca das análises (abaixo de RN/UC; é inventário, não regra).</summary>
+    public const double TechnicalSearchWeight = 0.85;
+
     /// <summary>
     /// Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar). 0097: só os três que as
     /// análises usam — design e visão foram descontinuados e a visão prática é sob demanda (perguntas sem resposta).
@@ -447,7 +453,41 @@ public static class ReverseDocTypes
 
             ## Glossário
             Os termos do módulo em linguagem simples, com os sinônimos — referenciando os `GLO-…` do funcional.
-            """, "human")
+            """, "human"),
+
+        // 0097: índice técnico — sem IA, sem revisão humana; fora do "completo" e do Pergunte, na busca das análises com peso menor
+        new(Technical, "Índice técnico", "re-tecnico", 170,
+            ["END", "ROT", "TAB", "DBO", "CHV", "MSG"],
+            [],
+            "Inventário do código extraído sem IA (rotas/endpoints, telas do front e páginas ASP, tabelas, objetos do banco, chaves de configuração e mensagens), com o commit — regerável a qualquer hora.",
+            """
+            # Índice técnico — <módulo>
+
+            > Gerado sem IA pela skill (`re.sh indice <módulo> --enviar`) a partir do inventário da origin/master; publicado
+            > direto (sem revisão humana). IDs estáveis: a mesma chave (tipo + símbolo) mantém o ID; novos pegam o próximo.
+
+            ## Endpoints
+            ### END-001 — GET /api/v1/kaizen/{id}
+            - **Onde:** `<repo>/<caminho a partir da raiz>:linha`
+            - **Tabelas:** TB_…
+            - **Tags:** …
+            - **Commit:** <repo>@<sha7>
+
+            ## Rotas e telas
+            `### ROT-001 — /kaizen/:id → KaizenDetailComponent` (rota do front → componente; página `.asp` do legado)
+
+            ## Tabelas
+            `### TAB-001 — TB_…`
+
+            ## Objetos do banco
+            `### DBO-001 — procedure dbo.STP_…` (procedure, view, function, trigger, job)
+
+            ## Chaves de configuração
+            `### CHV-001 — Kaizen:MaxAttachments`
+
+            ## Mensagens
+            `### MSG-001 — "Preencha todos os campos obrigatórios"`
+            """, Generated: true)
     ];
 
     public static readonly IReadOnlyDictionary<string, ReverseDocType> ByKey = All.ToDictionary(d => d.Key, StringComparer.Ordinal);

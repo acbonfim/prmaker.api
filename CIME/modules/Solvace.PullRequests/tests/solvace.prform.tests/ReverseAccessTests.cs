@@ -26,7 +26,7 @@ public class ReverseAccessTests
     private static readonly string[] Generation =
     [
         "StartSession", "Lint", "SaveRevision", "Progress", "Submit", "AddLink", "AddFile", "DeleteAsset", "UpsertInfra",
-        "CreateTraps", "UpdateTrap", "DeleteTrap", "TrapsMigrated", "SuggestionToTrap", "LinkSuggestion"
+        "CreateTraps", "UpdateTrap", "DeleteTrap", "TrapsMigrated", "SuggestionToTrap", "LinkSuggestion", "TechnicalIndex"
     ];
 
     private static bool HasAdmin(MemberInfo member) =>

@@ -72,7 +72,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         // 0070: a tela não usa o modelo (32 KB por chamada); a skill continua recebendo
         Template = !withTemplate ? string.Empty
             : (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
-              + (t.Derived ? "" : "\n\n" + ReverseDocTypes.ItemGuide.Trim())
+              + (t.Derived || t.Generated ? "" : "\n\n" + ReverseDocTypes.ItemGuide.Trim())
     };
 
     // ── Módulos ─────────────────────────────────────────────────────────────────────────────────
@@ -159,6 +159,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         }
         // 0097: prática sob demanda — sugerida quando o Pergunte acumula perguntas sem resposta do módulo e ela falta ou está velha
         summary.OpenQuestions = openQuestions;
+        summary.TechnicalIndex = TechnicalIndexInfo(module);
         var practicalDoc = summary.Docs.FirstOrDefault(d => d.Type == ReverseDocTypes.Practical);
         summary.PracticalSuggested = openQuestions >= Math.Max(1, s.PracticalMinQuestions)
                                      && (practicalDoc?.Published is null || practicalDoc.StaleBecause.Count > 0);
@@ -404,7 +405,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             PublishedSession = Element((await repository.GetPublishedRevisionsForUpdateAsync(project.Key, type.Key, cancellationToken))
                 .OrderByDescending(r => r.Number).FirstOrDefault()?.Session),
             PublishedDocs = type.Derived
-                ? ReverseDocTypes.All.Where(t => !t.Derived).Select(t => (t.Key, Section: project.Sections.FirstOrDefault(x => x.Key == t.SectionKey)))
+                ? ReverseDocTypes.All.Where(t => !t.Derived && !t.Generated).Select(t => (t.Key, Section: project.Sections.FirstOrDefault(x => x.Key == t.SectionKey)))
                     .Where(x => x.Section is not null).ToDictionary(x => x.Key, x => x.Section!.Content)
                 : [],
             Questions = await ModuleQuestionsAsync(project, module: (await repository.GetReverseModulesAsync(cancellationToken)).FirstOrDefault(m => m.Key == project.Key), cancellationToken),
@@ -889,9 +890,12 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var names = await ModuleNamesAsync(cancellationToken);
         var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         // duas buscas: as palavras da pergunta e os termos da IA (sinônimos, nomes técnicos) — fundidas pela posição
-        var byQuestion = await ReverseSearch.RunAsync(repository, question, null, null, null, 40, false, names, cancellationToken);
-        var byTerms = terms.Count == 0 ? [] : await ReverseSearch.RunAsync(repository, string.Join(' ', terms), null, null, null, 40, false, names, cancellationToken);
-        var (picked, _) = ReverseAnswerContext.Pick(ReverseAnswerContext.Fuse(byQuestion, byTerms), entries, intent, boostModules, limit, maxRelated);
+        // 0097: o índice técnico (inventário do código) fica fora do Pergunte — o público é leigo
+        static List<ReverseIndexHit> NotTechnical(List<ReverseIndexHit> hits) => hits.Where(h => h.DocType != ReverseDocTypes.Technical).ToList();
+        var byQuestion = NotTechnical(await ReverseSearch.RunAsync(repository, question, null, null, null, 40, false, names, cancellationToken));
+        var byTerms = terms.Count == 0 ? [] : NotTechnical(await ReverseSearch.RunAsync(repository, string.Join(' ', terms), null, null, null, 40, false, names, cancellationToken));
+        var (picked, _) = ReverseAnswerContext.Pick(ReverseAnswerContext.Fuse(byQuestion, byTerms), entries.Where(e => e.DocType != ReverseDocTypes.Technical).ToList(),
+            intent, boostModules, limit, maxRelated);
         if (picked.Count == 0) return [];
         // o cache da busca guarda só o começo do texto: o texto de todos os itens vem numa única consulta
         var bodies = await repository.GetIndexBodiesAsync(picked.Select(p => p.Entry.Id).ToList(), cancellationToken);
@@ -1333,6 +1337,76 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     public async Task<List<ArchitectureSuggestionResponse>> KcDivergencesAsync(CancellationToken cancellationToken) =>
         (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken)).Where(x => x.Kind == "kc").Select(ToSuggestion).ToList();
 
+    // ── 0097: índice técnico (sem IA) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Índice técnico gerado sem IA pela skill (<c>re.sh indice</c>): checagem estrutural, grava a seção <c>re-tecnico</c>
+    /// (fonte Skill), troca o índice do documento e registra uma revisão já publicada (modo <c>generated</c>) — não há texto
+    /// de LLM para revisar. O resumo (versão, commits, contagens) fica no módulo para a lista e a ficha.
+    /// </summary>
+    public async Task<ReverseTechnicalIndexResponse> PublishTechnicalIndexAsync(string key, PublishTechnicalIndexRequest request, string actor,
+        CancellationToken cancellationToken)
+    {
+        var s = await settingsProvider.GetAsync(cancellationToken);
+        var type = ReverseDocTypes.Get(ReverseDocTypes.Technical);
+        var content = (request.Content ?? string.Empty).Replace("\r\n", "\n").Trim();
+        if (content.Length > ReverseRevision.MaxContentLength)
+            throw new DomainException($"O índice técnico pode ter no máximo {ReverseRevision.MaxContentLength} caracteres — divida o módulo.");
+        var head = await ProjectAsync(key, cancellationToken);
+        var lint = await LintAsync(head, type.Key, content, null, s, cancellationToken);
+        if (!lint.Ok) throw new DomainException("O índice técnico não passou na checagem: " + string.Join(" ", lint.Errors));
+        var commits = (request.Commits ?? []).Where(c => !string.IsNullOrWhiteSpace(c.Repository) && !string.IsNullOrWhiteSpace(c.Commit))
+            .Select(c => new ReverseTechnicalCommit { Repository = c.Repository.Trim(), Commit = c.Commit.Trim(), Branch = string.IsNullOrWhiteSpace(c.Branch) ? null : c.Branch.Trim() })
+            .DistinctBy(c => (c.Repository.ToLowerInvariant(), c.Commit)).Take(ReverseModule.MaxSources).ToList();
+        if (commits.Count == 0) lint.Warnings.Add("Sem o commit das fontes — o índice não diz de que código veio (envie commits: [{repository, commit, branch}]).");
+
+        var now = DateTimeOffset.UtcNow;
+        var project = await repository.GetProjectForUpdateAsync(head.Key, cancellationToken);
+        if (project is null || project.IsDeleted) throw NotFound(key);
+        var section = project.Sections.FirstOrDefault(x => x.Key == type.SectionKey);
+        if (section is null)
+        {
+            section = new ArchitectureSection(project.Id, type.SectionKey, type.Audience);
+            project.Sections.Add(section);
+            repository.AddSection(section);
+        }
+        var commitNote = commits.Count == 0 ? "" : " — " + string.Join(", ", commits.Select(c => $"{c.Repository}@{(c.Commit.Length > 7 ? c.Commit[..7] : c.Commit)}"));
+        var version = section.Write(type.Title, content, type.Order, ArchitectureSource.Skill, $"índice técnico gerado sem IA por {actor}{commitNote}", actor, now);
+        if (version is not null) repository.AddVersion(version);
+        project.Touch(actor, now);
+
+        var items = ReverseDocParser.Parse(section.Content);
+        var counts = items.Where(i => !i.Removed).GroupBy(i => i.Kind).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count());
+        var session = JsonSerializer.Serialize(new { commits, generatedAt = request.GeneratedAt ?? now, counts, reportedCounts = request.Counts }, Json);
+        foreach (var previous in await repository.GetPublishedRevisionsForUpdateAsync(project.Key, type.Key, cancellationToken)) previous.Supersede(now);
+        var number = await repository.GetMaxRevisionNumberAsync(project.Key, type.Key, cancellationToken) + 1;
+        repository.AddRevision(ReverseRevision.Generated(project.Key, type.Key, number, section.Content, session, JsonSerializer.Serialize(lint, Json),
+            section.Version, actor, now));
+        await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken);
+
+        var info = new ReverseTechnicalIndexInfo
+        {
+            Version = section.Version, GeneratedAt = request.GeneratedAt ?? now, PublishedAt = now, PublishedBy = actor, Commits = commits, Counts = counts,
+            Items = counts.Values.Sum()
+        };
+        var module = await EnsureModuleAsync(project, actor, cancellationToken);
+        module.SetTechnicalIndex(JsonSerializer.Serialize(info, Json), actor, now);
+        if (request.Counts is { Count: > 0 } reported)
+            foreach (var (kind, n) in reported.Where(r => counts.GetValueOrDefault(r.Key.ToUpperInvariant()) != r.Value))
+                lint.Warnings.Add($"Contagem de {kind} diferente da enviada ({n}) e da publicada ({counts.GetValueOrDefault(kind.ToUpperInvariant())}).");
+        await repository.SaveChangesAsync(cancellationToken);
+        ReverseSearch.Invalidate();
+        return new ReverseTechnicalIndexResponse { Items = info.Items, Version = section.Version, Warnings = lint.Warnings };
+    }
+
+    /// <summary>0097: o resumo do índice técnico gravado no módulo (null = nunca gerado ou ilegível).</summary>
+    public static ReverseTechnicalIndexInfo? TechnicalIndexInfo(ReverseModule? module)
+    {
+        if (string.IsNullOrWhiteSpace(module?.TechnicalIndex)) return null;
+        try { return JsonSerializer.Deserialize<ReverseTechnicalIndexInfo>(module.TechnicalIndex, Json); }
+        catch (JsonException) { return null; }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
     private async Task<ReverseSettings> RequireApproverAsync(IReadOnlyCollection<string> userRoles, string what, CancellationToken cancellationToken)
@@ -1380,7 +1454,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     [GeneratedRegex(@"\b(?:revamp|legado|legacy|novo|antigo|new|old)\b|[()\[\]]")]
     private static partial Regex WorldWords();
 
-    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|FN|UC|RN|DB|UI)-\d{1,4}\b")]
+    [GeneratedRegex(@"(?:[a-z0-9][a-z0-9._-]*#)?\b(?:TELA|PRF|EST|NTF|CFG|REL|TEC|CMP|API|EVT|JOB|INT|FLX|OBJ|PER|GLO|ADR|NFR|SEQ|GAP|SQL|TRG|TUT|FAQ|END|ROT|TAB|DBO|CHV|MSG|FN|UC|RN|DB|UI)-\d{1,4}\b")]
     private static partial Regex CitedRefs();
 }
 

@@ -639,8 +639,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 if (exported.Count > 0)
                     sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
                               + $" (~{Math.Max(1, exported.Sum(s => s.Length) / 4 / 100) * 100} tok)");
-                var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is not null);
-                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm")}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
+                // 0097: o índice técnico (sem IA) não conta como documento da engenharia reversa
+                var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is { Generated: false });
+                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm" && !t.Generated)}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
                 var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
                 if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");

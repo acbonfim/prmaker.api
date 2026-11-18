@@ -708,6 +708,9 @@ namespace solvace.knowledge.infra.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("TechnicalIndex")
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset?>("TrapsMigratedAt")
                         .HasColumnType("timestamp with time zone");
 

@@ -114,6 +114,51 @@ public class ReverseModuleSummaryResponse
     /// <see cref="OpenQuestions"/> ≥ ReverseEngineeringPracticalMinQuestions.
     /// </summary>
     public bool PracticalSuggested { get; set; }
+    /// <summary>0097: o último índice técnico publicado (null = nunca gerado).</summary>
+    public ReverseTechnicalIndexInfo? TechnicalIndex { get; set; }
+    /// <summary>0097: itens do módulo marcados como desatualizados (o código citado mudou desde a geração).</summary>
+    public int StaleItems { get; set; }
+}
+
+/// <summary>0097: resumo do índice técnico publicado (sem o texto).</summary>
+public class ReverseTechnicalIndexInfo
+{
+    /// <summary>Versão da seção <c>re-tecnico</c>.</summary>
+    public int Version { get; set; }
+    public DateTimeOffset? GeneratedAt { get; set; }
+    public DateTimeOffset PublishedAt { get; set; }
+    public string? PublishedBy { get; set; }
+    public List<Requests.ReverseTechnicalCommit> Commits { get; set; } = [];
+    /// <summary>Contagem por tipo (END, ROT, TAB, DBO, CHV, MSG) — a do índice publicado.</summary>
+    public Dictionary<string, int> Counts { get; set; } = [];
+    public int Items { get; set; }
+}
+
+/// <summary>0097: resultado da publicação do índice técnico.</summary>
+public class ReverseTechnicalIndexResponse
+{
+    public int Items { get; set; }
+    public int Version { get; set; }
+    public List<string> Warnings { get; set; } = [];
+}
+
+/// <summary>0097: item desatualizado — o trecho de código que ele cita mudou desde a geração (reancoragem).</summary>
+public class ReverseStaleInfo
+{
+    public DateTimeOffset Since { get; set; }
+    public string? Reason { get; set; }
+    public string? Commit { get; set; }
+}
+
+/// <summary>0097: resultado da marcação de itens desatualizados.</summary>
+public class ReverseStaleResponse
+{
+    public int Marked { get; set; }
+    public int Cleared { get; set; }
+    /// <summary>Itens pedidos que não estão no índice publicado (docType:itemId).</summary>
+    public List<string> NotFound { get; set; } = [];
+    /// <summary>Total de itens desatualizados do módulo depois da marcação.</summary>
+    public int StaleItems { get; set; }
 }
 
 public class ReverseAssetResponse

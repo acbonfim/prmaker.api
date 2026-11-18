@@ -233,6 +233,18 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<ReverseInfraResponse>> UpsertInfra([FromRoute] string key, [FromBody] UpsertReverseInfraRequest request, CancellationToken ct) =>
         Run<ReverseInfraResponse>(async () => Ok(await application.UpsertInfraAsync(key, request, await ActorAsync(ct), ct)));
 
+    // ── 0097: índice técnico (sem IA) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Índice técnico gerado sem IA pela skill (<c>re.sh indice</c>): grava a seção <c>re-tecnico</c>, troca o índice do
+    /// documento e registra uma revisão publicada (modo <c>generated</c>) — sem revisão humana.
+    /// </summary>
+    [HttpPut("modules/{key}/technical-index")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
+    [RequestSizeLimit(16 * 1024 * 1024)]
+    public Task<ActionResult<ReverseTechnicalIndexResponse>> TechnicalIndex([FromRoute] string key, [FromBody] PublishTechnicalIndexRequest request, CancellationToken ct) =>
+        Run<ReverseTechnicalIndexResponse>(async () => Ok(await application.PublishTechnicalIndexAsync(key, request, await ActorAsync(ct), ct)));
+
     // ── 0054: armadilhas, sugestões por item, divergências com o KC ─────────────────────────────
 
     [HttpGet("traps")]

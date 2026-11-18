@@ -115,6 +115,8 @@ public class ArchitectureAskService(IAIService ai, IArchitectureApplication arch
             var sectionHits = (await architecture.SearchInProjectsAsync(q, SectionCandidates, terms, boostProjects, boostSections, only, items.Count == 0, cancellationToken));
             if (items.Count == 0 && sectionHits.Count < MinCandidates)
                 sectionHits = await WithQuestionOnlyAsync(q, Candidates, sectionHits, boostProjects, boostSections, cancellationToken);
+            // 0097: o índice técnico (inventário do código, sem IA) não é fonte do Pergunte — o público é leigo
+            sectionHits = sectionHits.Where(h => h.SectionKey != solvace.knowledge.domain.Reverse.ReverseDocTypes.ByKey[solvace.knowledge.domain.Reverse.ReverseDocTypes.Technical].SectionKey).ToList();
             tSections = clock.ElapsedMilliseconds;
 
             // 4) as fontes do prompt: itens primeiro, depois as seções/artigos (as melhores com o bloco sob o título encontrado)
