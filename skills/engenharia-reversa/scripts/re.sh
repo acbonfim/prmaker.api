@@ -65,7 +65,19 @@
 #   areas <modulo> <doc> [--orcamento KB]
 #                                     0066: divide o codigo do documento em AREAS que cabem no orcamento, com faixa de IDs -> areas.json
 #   pacote <modulo> <doc> [--area A]  0066: pacote de leitura por area (codigo inteiro em blocos, com linha) + cartao do subagente
-#   faltando <modulo> <doc> <area>    0066: o que a parte da area ainda nao cobre (checkpoint/retomada)
+#   faltando <modulo> <doc>|lote <area>
+#                                     0066: o que a parte da area ainda nao cobre (checkpoint/retomada); `lote` = as duas partes
+#   lote <modulo> [new|improve|redo] [--sem-banco] [--path repo=subpasta ...]
+#                                     0097: PASSADA UNICA funcional + arquitetura — abre as duas sessoes, inventario (master), banco e
+#                                     termos UMA vez, areas comuns e um pacote por area para os dois documentos + especiais
+#                                     (glossario; banco, modulo); imprime os prompts dos subagentes para despachar
+#   consolidar <modulo>               0097: pacote do subagente `consolidar` (resumo, perfis PRF, integracoes, mermaid) — sem ler documento
+#   fechar <modulo> [--enviar] [--summary "..."]
+#                                     0097: juntar + IDs (referencias cruzadas entre os dois) + check + save dos DOIS, resumo de ate 40
+#                                     linhas; --enviar submete os dois se nao houver erro
+#   spec <modulo>                     0097: spec-arquitetura logo apos o fechar (sessao + pacote de sintese do rascunho local) + prompt
+#   custo <modulo> [--desde AAAA-MM-DD] [--ate D] [--pausa 5] [--json f]
+#                                     0097: tokens (cache lido/gravado, entrada, saida) e tempo de parede por documento, dos transcripts
 #   juntar <modulo> <doc>             0066: junta parte-*.md em documento.md e compacta os IDs das faixas (referencias juntas)
 #   evidencia <modulo> <doc> [arq]    0066: confere arquivo:linha e literais citados contra as fontes (tambem roda no check)
 #   retrato banco|infra|status [--forcar]
@@ -99,6 +111,7 @@ PAC_PY="$HERE/re_pacote.py"
 ANC_PY="$HERE/re_ancora.py"
 IDX_PY="$HERE/re_indice.py"
 GAPS_PY="$HERE/re_gaps.py"
+CUSTO_PY="$HERE/re_custo.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -818,13 +831,124 @@ case "$CMD" in
 
   faltando)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; AREA="${3:?area}"; D="$(docdir "$MOD" "$DOC")"
+    if [[ "$DOC" == lote ]]; then   # 0097: as duas partes da area
+      for d in funcional arquitetura; do
+        DD="$(docdir "$MOD" "$d")"; [[ -s "$DD/areas.json" ]] || die "rode antes: re.sh lote $MOD"
+        echo "[$d]"; python3 "$PAC_PY" faltando "$DD/areas.json" "$AREA" "$DD/parte-$AREA.md" | head -n "${RE_MAX_MISSING:-40}"
+      done
+      exit 0
+    fi
     [[ -s "$D/areas.json" ]] || die "rode antes: re.sh areas $MOD $DOC"
     python3 "$PAC_PY" faltando "$D/areas.json" "$AREA" "$D/parte-$AREA.md"
     ;;
 
+  lote)
+    # 0097/S5: passada unica — o codigo de cada area e lido UMA vez e o subagente escreve funcional e arquitetura
+    MOD="${1:?modulo}"; MODE=""; [[ "${2:-}" =~ ^(new|improve|redo)$ ]] && MODE="$2"
+    L="$(moddir "$MOD")/lote"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"
+    PASS=(); for a in "$@"; do [[ "$a" == --sem-banco ]] || PASS+=("$a"); done
+    RESUMED=0
+    for d in funcional arquitetura; do bash "$0" start "$MOD" "$d" $MODE > "$TMP/start-$d.out" || { cat "$TMP/start-$d.out"; die "sessao $d nao abriu"; }
+      head -1 "$TMP/start-$d.out"; grep -E '^(NOTA DO REVISOR|AVISO|MELHORAR|MIGRACAO)' "$TMP/start-$d.out" || true
+      grep -q '^Sessao RETOMADA' "$TMP/start-$d.out" && RESUMED=$((RESUMED + 1)); done
+    load_config >/dev/null 2>&1 || true
+    MODEL="$(gen subagentModel sonnet)"; N=0
+    # retomada (as duas sessoes retomadas e o lote ja montado): mesmas areas/faixas — so despacha de novo o que faltou
+    if [[ $RESUMED -eq 2 && -s "$F/areas.json" && -s "$A/areas.json" && -s "$L/pacotes/cartao.md" ]]; then
+      echo "Lote RETOMADO: mesmas areas e faixas de ID — despache de novo so as areas sem parte (ou incompletas: re.sh faltando $MOD lote <area>)"
+      AREAS=(); while IFS= read -r a; do AREAS+=("$a"); done < <(jq -r '.areas[].name' "$F/areas.json")
+    else
+    bash "$0" inventario "${PASS[@]}" 2>&1 | grep -E '^(Inventario|AVISO|ERRO|FALTA|Codigo)' || true
+    [[ -s "$(moddir "$MOD")/inventario.json" ]] || die "sem inventario"
+    if [[ " $* " != *" --sem-banco "* ]]; then
+      bash "$0" banco "$MOD" > "$TMP/banco.out" 2>&1 || { tail -3 "$TMP/banco.out"; die "banco nao lido — ligue a VPN (ou, com o ok do usuario, --sem-banco e GAP 'banco nao lido')"; }
+      grep -m2 -E '^(Banco|Usando o RETRATO|Sem retrato)' "$TMP/banco.out" || true
+    fi
+    bash "$0" termos "$MOD" 2>&1 | grep -E '^(Termos|AVISO)' || true
+    for d in funcional arquitetura; do bash "$0" trabalho "$MOD" "$d" 2>/dev/null | tail -1; done
+    { bash "$0" ids "$MOD" 2>/dev/null | grep 'publicado' | cut -f1
+      for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done; } | sort -u > "$TMP/ids.txt"
+    rm -rf "$L/pacotes"; mkdir -p "$L/pacotes"; rm -f "$L"/resumo-*.md
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"; cp "$TMP/ids.txt" "$DD/ids-usados.txt"; rm -f "$DD/mapa-ids.json"
+      # lote novo = faixas novas: partes de um lote anterior (outras faixas) saem do caminho
+      if ls "$DD"/parte-*.md >/dev/null 2>&1; then mkdir -p "$DD/partes-anteriores"; mv "$DD"/parte-*.md "$DD/partes-anteriores/"; fi; done
+    EXTRA=(); for x in "$(moddir "$MOD")/banco/inventario-banco.json" "$(moddir "$MOD")/inventario-infra.json"; do [[ -s "$x" ]] && EXTRA+=(--extra "$x"); done
+    python3 "$PAC_PY" lote "$(moddir "$MOD")/inventario.json" "${EXTRA[@]+"${EXTRA[@]}"}" --funcional "$F" --arquitetura "$A" --out "$L" --modulo "$MOD" \
+      --ids "$TMP/ids.txt" --orcamento-kb "$(gen areaBudgetKb 90)" --checkpoint "$(gen checkpointEvery 10)" --banco "$(moddir "$MOD")/banco" --modulo-dir "$(moddir "$MOD")" \
+      --tipos-funcional "$(jq -r '(.docType.kinds // []) | join(",")' "$F/sessao.json")" --tipos-arquitetura "$(jq -r '(.docType.kinds // []) | join(",")' "$A/sessao.json")" > "$TMP/lote.out" || die "falha ao montar o lote"
+    head -1 "$TMP/lote.out"
+    NOTAS=(); for d in funcional arquitetura; do for x in nota-revisor.md trabalho.md; do [[ -s "$(docdir "$MOD" "$d")/$x" ]] && NOTAS+=(--nota "$d=$(docdir "$MOD" "$d")/$x"); done; done
+    python3 "$PAC_PY" cartao-lote "$HERE/../references/subagente.md" --modelo "funcional=$F/modelo.md" --modelo "arquitetura=$A/modelo.md" --modulos "$F/modulos.tsv" "${NOTAS[@]+"${NOTAS[@]}"}" --out "$L/pacotes/cartao.md" >/dev/null
+    for d in funcional arquitetura; do python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$(docdir "$MOD" "$d")/modelo.md" "$(docdir "$MOD" "$d")/modulos.tsv" --out "$(docdir "$MOD" "$d")/pacotes/cartao.md" >/dev/null; done
+    AREAS=(); while IFS= read -r a; do AREAS+=("$a"); done < <(grep -o '^  area [^ ]*' "$TMP/lote.out" | awk '{print $2}')
+    fi
+    for d in funcional arquitetura; do progress "$MOD" "$d" "$(jq -n --arg n "${#AREAS[@]}" '{step: "leitura", status: "running", detail: "passada unica: \($n) areas para funcional + arquitetura", log: "Lote (0097): \($n) areas lidas uma vez para os dois documentos", kind: "progress"}')"; done
+    echo; echo "DESPACHE (subagentes general-purpose, model=$MODEL, em segundo plano, ate $(gen maxParallel 5) ao mesmo tempo; TODOS de uma vez quando couber):"
+    for a in "${AREAS[@]}"; do N=$((N + 1))
+      echo "[$a] Subagente da engenharia reversa — modulo $MOD, documentos funcional+arquitetura, area $a. Leia NA MESMA RESPOSTA: $L/pacotes/cartao.md e $L/pacotes/pacote-$a.md. Saida: $F/parte-$a.md e $A/parte-$a.md (+ $L/resumo-$a.md; checkpoint a cada $(gen checkpointEvery 10) itens; se ja existem, continue delas). Ao terminar: bash $HERE/re.sh faltando $MOD lote $a. Responda so o resumo."
+    done
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+      for sp in $(jq -r '.madeSpecials[]?[0]' "$DD/areas.json"); do N=$((N + 1))
+        echo "[$d/$sp] Subagente da engenharia reversa — modulo $MOD, documento $d, area $sp. Leia NA MESMA RESPOSTA: $DD/pacotes/cartao.md e $DD/pacotes/pacote-$sp.md. Saida: $DD/parte-$sp.md (checkpoint a cada $(gen checkpointEvery 10) itens; se ja existe, continue dela). Ao terminar: bash $HERE/re.sh faltando $MOD $d $sp. Responda so o resumo."
+      done
+    done
+    echo "($N subagentes) Quando TODOS voltarem: re.sh consolidar $MOD (1 subagente) e depois re.sh fechar $MOD."
+    ;;
+
+  consolidar)
+    MOD="${1:?modulo}"; L="$(moddir "$MOD")/lote"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"
+    [[ -d "$L/pacotes" ]] || die "rode antes: re.sh lote $MOD"
+    python3 "$PAC_PY" consolidar --funcional "$F" --arquitetura "$A" --lote "$L" --modulo "$MOD" || die "falha no pacote da consolidacao"
+    echo "DESPACHE (1 subagente general-purpose, model=$(gen subagentModel sonnet)):"
+    echo "[consolidar] Subagente da engenharia reversa — modulo $MOD, documentos funcional+arquitetura, area consolidar. Leia NA MESMA RESPOSTA: $L/pacotes/cartao.md e $L/pacotes/pacote-consolidar.md. Saida: $F/parte-consolidar.md e $A/parte-consolidar.md (so as secoes do modulo inteiro que o pacote pede). Responda so o resumo."
+    echo "Quando voltar: re.sh fechar $MOD"
+    ;;
+
+  fechar)
+    # 0097/S5: juntar + IDs (com as referencias cruzadas) + check + save dos DOIS documentos, com resumo compacto
+    MOD="${1:?modulo}"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"; SUMMARY="$(opt --summary "" "$@")"
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"; rm -f "$DD/mapa-ids.json"
+      bash "$0" juntar "$MOD" "$d" > "$DD/juntar.out" 2>&1 || { tail -5 "$DD/juntar.out"; die "juntar $d falhou"; }; done
+    python3 "$PAC_PY" remapear "$F/documento.md" "$A/mapa-ids.json" | sed 's/^/funcional: /'
+    python3 "$PAC_PY" remapear "$A/documento.md" "$F/mapa-ids.json" | sed 's/^/arquitetura: /'
+    RC=0
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+      RE_MAX_MISSING=400 RE_MAX_EVIDENCE=0 bash "$0" check "$MOD" "$d" > "$DD/check.out" 2>&1 || RC=1
+      grep -h -E '^(GAPs do gerador removidos|Repetidos|Compactar|Tamanho)' "$DD/juntar.out" | sed "s/^/$d: /" | cut -c1-160
+    done
+    python3 "$PAC_PY" resumo-fechar --doc "funcional=$F" --doc "arquitetura=$A"
+    for d in funcional arquitetura; do bash "$0" save "$MOD" "$d" ${SUMMARY:+--summary "$SUMMARY"} 2>&1 | tail -1 | sed "s/^/$d: /"; done
+    if [[ $RC -ne 0 ]]; then echo "CHECK COM ERRO (detalhe: <doc>/check.out) — corrija (re.sh faltando $MOD lote <area> + subagente) e rode re.sh fechar $MOD de novo"; exit 1; fi
+    if [[ " $* " == *" --enviar "* ]]; then
+      for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+        S="${SUMMARY:-$(jq -r '"Passada unica (0097): \(.covered // 0)/\(.total // 0) do inventario coberto"' "$DD/cobertura.json" 2>/dev/null)}"
+        bash "$0" submit "$MOD" "$d" --summary "$S" 2>&1 | head -1
+      done
+    fi
+    echo "Proximo: re.sh spec $MOD (spec-arquitetura a partir deste rascunho)"
+    ;;
+
+  spec)
+    # 0097/S5: spec-arquitetura logo depois do fechar, a partir do rascunho local de funcional + arquitetura (sintese, sem codigo)
+    MOD="${1:?modulo}"; D="$(docdir "$MOD" spec-arquitetura)"
+    bash "$0" start "$MOD" spec-arquitetura > "$TMP/s.out" || { cat "$TMP/s.out"; die "sessao spec-arquitetura nao abriu (os levantamentos precisam existir: rascunho local ou publicado)"; }
+    head -1 "$TMP/s.out"
+    bash "$0" areas "$MOD" spec-arquitetura >/dev/null && bash "$0" pacote "$MOD" spec-arquitetura | grep -E 'pacote|ERRO' | head -2
+    echo "DESPACHE (1 subagente general-purpose, model=$(jq -r --arg m "$(gen subagentModel sonnet)" '(.generation.modelByDoc // {})["spec-arquitetura"] // $m' "$RE_HOME/_config.json" 2>/dev/null)):"
+    echo "[sintese] Subagente da engenharia reversa — modulo $MOD, documento spec-arquitetura, area sintese. Leia NA MESMA RESPOSTA: $D/pacotes/cartao.md e $D/pacotes/pacote-sintese.md. Saida: $D/parte-sintese.md (checkpoint a cada secao). Responda so o resumo."
+    echo "Quando voltar: re.sh juntar $MOD spec-arquitetura && re.sh check $MOD spec-arquitetura && re.sh submit $MOD spec-arquitetura --summary \"...\""
+    ;;
+
+  custo)
+    MOD="${1:?modulo}"; shift
+    python3 "$CUSTO_PY" "$MOD" "$@"
+    ;;
+
   juntar)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"
-    PARTS=(); for f in "$D"/parte-*.md; do [[ -s "$f" ]] && PARTS+=("$f"); done
+    # 0097: a parte da consolidacao (resumo, perfis, visao tecnica) vem primeiro — as secoes do modulo abrem o documento
+    PARTS=(); [[ -s "$D/parte-consolidar.md" ]] && PARTS+=("$D/parte-consolidar.md")
+    for f in "$D"/parte-*.md; do [[ -s "$f" && "$f" != "$D/parte-consolidar.md" ]] && PARTS+=("$f"); done
     [[ ${#PARTS[@]} -gt 0 ]] || die "nenhuma parte-*.md em $D"
     # o publicado (modo melhorar) entra primeiro: as partes completam/atualizam as secoes dele
     # a base e o documento de ANTES da primeira juntada (publicado no melhorar, ou o que a sessao escreveu): juntar de novo
@@ -839,10 +963,10 @@ case "$CMD" in
       for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" && "$o" != "$D/documento.md" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done
     } | sort -u > "$TMP/ids-agora.txt"
     [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
-    python3 "$PAC_PY" repetidos "$D/documento.md"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
+    python3 "$PAC_PY" repetidos "$D/documento.md" --mapa "$D/mapa-ids.json"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
     # 0097: GAP do gerador ("fora do pacote", "subagente", "sem Figma"...) nao e lacuna do sistema — sai (publicado vira "(removido)")
     python3 "$GAPS_PY" remover "$D/documento.md" --publicado "$D/publicado.md"
-    [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
+    [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt" --mapa "$D/mapa-ids.json"
     [[ -s "$(moddir "$MOD")/fontes.tsv" ]] && python3 "$PAC_PY" cabecalho "$D/documento.md" "$(moddir "$MOD")/fontes.tsv"
     python3 "$PAC_PY" tamanho "$D/documento.md"
     progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"

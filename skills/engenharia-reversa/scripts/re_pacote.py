@@ -29,6 +29,15 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
   re_pacote.py tamanho <documento.md>         tamanho × limite do PRMake (5 milhões de caracteres)
   re_pacote.py compactar <documento.md> --areas areas.json [--ids ids.txt] [--out saida.md]
       depois de juntar as partes: os IDs das faixas das áreas viram a sequência de cada tipo (referências trocadas junto).
+  re_pacote.py lote <inventario.json> --funcional <pasta> --arquitetura <pasta> --out <pasta-lote> --modulo m [--ids ids.txt]
+                    [--tipos-funcional K,..] [--tipos-arquitetura K,..] [--orcamento-kb 90] [--banco <pasta>] [--modulo-dir <pasta>]
+      0097: PASSADA ÚNICA — áreas comuns, um pacote por área para os DOIS documentos (código lido uma vez), faixas de ID
+      separadas por documento (areas.json em cada pasta) e os especiais de cada um (glossário; banco, módulo).
+  re_pacote.py cartao-lote <subagente.md> --modelo funcional=<m.md> --modelo arquitetura=<m.md> [--modulos tsv] --out cartao.md
+  re_pacote.py consolidar --funcional <pasta> --arquitetura <pasta> --lote <pasta> --modulo m
+      0097: pacote do subagente `consolidar` (resumo, perfis, integrações, mermaid) a partir dos títulos e resumos das áreas.
+  re_pacote.py remapear <documento.md> <mapa-ids.json> ...   referências ao outro documento seguem os IDs dele
+  re_pacote.py resumo-fechar --doc funcional=<pasta> --doc arquitetura=<pasta>   resumo compacto (≤ 40 linhas)
   re_pacote.py cabecalho <documento.md> <fontes.tsv>
       0097: linha `<!-- codigo: repo@sha (origin/master) -->` abaixo do título (a reancoragem parte desse commit).
 """
@@ -593,6 +602,19 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
         L.append(f"- **Tipos que esta área cria:** {', '.join(allowed)}. **Não crie** {', '.join(taken) or '—'} (têm subagente próprio ou são da "
                  "sessão principal: cite pelo nome) nem tipos de outros documentos (tela, endpoint, tabela… no documento certo — aqui só referencie).")
     L.append("")
+    L += pack_body(inv, area, items, banco_dir)
+    text = "\n".join(L) + "\n"
+    out = os.path.join(out_dir, f"pacote-{area['name']}.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return out, len(text.encode("utf-8")), len(items)
+
+
+def pack_body(inv, area, items, banco_dir):
+    """Itens a cobrir + o código da área (trechos com linha) + apoio + tabelas — o mesmo para um documento ou o lote."""
+    roots = source_roots(inv)
+    cache = {}
+    L = []
     if items:
         L += ["## Itens do inventário que esta área precisa cobrir", ""]
         by_cat = defaultdict(list)
@@ -639,11 +661,7 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
             else:
                 L.append(f"- `{t}` (fora do catálogo do banco do módulo)")
         L.append("")
-    text = "\n".join(L) + "\n"
-    out = os.path.join(out_dir, f"pacote-{area['name']}.md")
-    with open(out, "w", encoding="utf-8") as fh:
-        fh.write(text)
-    return out, len(text.encode("utf-8")), len(items)
+    return L
 
 
 # ── subagentes especiais: o que é do módulo inteiro (0066-ajustes) ─────────────────────────────────
@@ -1260,6 +1278,7 @@ def dedupe(doc_path, out=None):
     if not mapping:
         print("Repetidos: nenhum item repetido entre as partes.")
         return {}
+    mapping = {k: v for k, v in mapping.items()}
     text = drop_items(text, set(mapping))
 
     def repl(m):
@@ -1317,6 +1336,233 @@ def compactar(doc_path, base, used_ids, out=None):
     return mapping
 
 
+# ── passada única: funcional + arquitetura (0097/S5) ──────────────────────────────────────────────
+# Hoje cada documento dividia o MESMO código em áreas e um subagente por área o lia de novo (funcional ~32 M + arquitetura
+# ~23 M de cache lido por módulo). No lote, cada área é lida UMA vez e o subagente grava as duas partes; os especiais
+# (glossário; banco, módulo) vão na mesma leva e a consolidação (resumo, perfis, diagramas) é de um subagente — a sessão
+# principal só roda scripts.
+LOTE_DOCS = ("funcional", "arquitetura")
+
+
+def lote(inv_path, extras, used, module, budget, checkpoint, kinds, doc_dirs, lote_dir, banco_dir, moddir):
+    """Áreas comuns aos dois documentos (faixas de ID separadas por documento), pacotes do lote e especiais de cada um."""
+    inv = load_inv(inv_path, extras)
+    areas = plan_areas(inv, "arquitetura", budget, 400, 220, used)   # arquitetura lê o superconjunto de arquivos
+    base = next_base(used)
+    plans = {}
+    nxt = base
+    for doc in LOTE_DOCS:
+        doc_areas = json.loads(json.dumps(areas))
+        for i, a in enumerate(doc_areas):
+            a["idRange"] = [nxt + i * 100 + 1, nxt + i * 100 + 100]
+        plan = {"version": 1, "module": module, "docType": doc, "inventory": os.path.abspath(inv_path), "idBase": base,
+                "extras": [os.path.abspath(x) for x in extras if os.path.exists(x)], "budgetKb": budget, "checkpointEvery": checkpoint,
+                "areas": doc_areas, "kinds": kinds.get(doc) or [], "lote": os.path.abspath(lote_dir)}
+        os.makedirs(os.path.join(doc_dirs[doc], "pacotes"), exist_ok=True)
+        made = especiais(plan, os.path.join(doc_dirs[doc], "pacotes"), doc_dirs[doc], moddir, budget)
+        add_special(plan, "consolidar", ["PRF"] if doc == "funcional" else [])   # faixa reservada para a consolidação
+        plan["madeSpecials"] = [(n, o) for n, o, _ in made]
+        plans[doc] = plan
+        nxt = ((max([a["idRange"][1] for a in plan["areas"]] + [x["idRange"][1] for x in plan["specials"]]) // 100) + 1) * 100
+    for doc in LOTE_DOCS:
+        with open(os.path.join(doc_dirs[doc], "areas.json"), "w", encoding="utf-8") as fh:
+            json.dump(plans[doc], fh, ensure_ascii=False, indent=1)
+    os.makedirs(os.path.join(lote_dir, "pacotes"), exist_ok=True)
+    packs = []
+    for k, area in enumerate(areas):
+        packs.append(lote_pack(inv, plans, k, lote_dir, banco_dir, doc_dirs))
+    return plans, packs
+
+
+def lote_pack(inv, plans, k, lote_dir, banco_dir, doc_dirs):
+    pf, pa = plans["funcional"], plans["arquitetura"]
+    af, aa = pf["areas"][k], pa["areas"][k]
+    name = af["name"]
+    items, seen = [], set()
+    for plan, area in ((pf, af), (pa, aa)):
+        for it in area_items(inv, area, plan["docType"]):
+            key = (it["cat"], it["name"], it["file"], it["line"])
+            if key not in seen:
+                seen.add(key)
+                items.append(it)
+    L = [f"# Pacote de leitura do LOTE — {pf['module']} / funcional + arquitetura / área `{name}`", "",
+         "Você lê o código desta área UMA vez e escreve os DOIS documentos (cada um no seu arquivo, com as seções `##` do",
+         "modelo dele — os dois modelos estão no cartão):", ""]
+    for plan, area in ((pf, af), (pa, aa)):
+        lo, hi = area["idRange"]
+        allowed, taken = area_kinds(plan)
+        L += [f"- **{plan['docType']}** → grave em `{os.path.join(doc_dirs[plan['docType']], f'parte-{name}.md')}` · IDs {lo:03d} a {hi:03d}"
+              f" · tipos que você cria: {', '.join(allowed)} · **não crie** {', '.join(taken) or '—'}"]
+    L += [f"- **Resumo para a consolidação** → `{os.path.join(lote_dir, f'resumo-{name}.md')}` (até 15 linhas): perfis/papéis vistos com"
+          " `caminho:linha`, integrações com outros módulos, o que o módulo faz nesta área em 2 frases, dúvidas.",
+          f"- Checkpoint a cada ~{pf.get('checkpointEvery', 10)} itens em cada parte; se uma parte já existe, continue dela.",
+          f"- **Arquivos:** {len(af['files'])} · trechos com o número da linha real e o caminho COMPLETO a partir da raiz do repositório:",
+          "  cite exatamente esse caminho no `**Onde:**` (nunca só o nome do arquivo).",
+          "- Regra que vale nos dois documentos: a REGRA (RN/UC/FN) vai no funcional; endpoint/contrato/integração técnica (API/INT/EVT/JOB)",
+          "  na arquitetura — um item referencia o outro pelo ID (ex.: RN cita `API-…`), sem repetir texto."]
+    code = code_header(inv)
+    if code:
+        L.append(f"- **Código:** {code}")
+    L.append("")
+    L += pack_body(inv, af, items, banco_dir)
+    text = "\n".join(L) + "\n"
+    out = os.path.join(lote_dir, "pacotes", f"pacote-{name}.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return name, out, len(text.encode("utf-8")), len(items)
+
+
+def cartao_lote(sub_md, modelos, modulos_tsv, out, notas=None):
+    """Cartão do lote: instruções + nota do revisor/lista de trabalho (melhorar) + o modelo dos DOIS documentos + chaves dos módulos."""
+    parts = [open(sub_md, encoding="utf-8").read().strip(), ""]
+    for doc, path in (notas or []):
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            label = "Nota do revisor" if "nota" in os.path.basename(path) else "Lista de trabalho (o que mudou desde o publicado)"
+            parts += ["---", "", f"# {label} — `{doc}` (resolva o que cair na sua área)", "",
+                      open(path, encoding="utf-8").read().strip()[:6000], ""]
+    for doc, path in modelos.items():
+        parts += ["---", "", f"# Modelo do documento `{doc}` (seções ## obrigatórias e formato de cada item)", ""]
+        parts.append(open(path, encoding="utf-8").read().strip() if os.path.exists(path) else "(modelo ausente — rode re.sh start)")
+        parts.append("")
+    if modulos_tsv and os.path.exists(modulos_tsv):
+        rows = [r.split("\t") for r in open(modulos_tsv, encoding="utf-8").read().splitlines() if r.strip()]
+        parts += ["# Chaves dos módulos (use em **Módulos:** — ou ext:<serviço>)", ""]
+        parts += [f"- `{r[0]}` {r[1] if len(r) > 1 else ''}" for r in rows]
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(parts) + "\n")
+    return out
+
+
+# seções que a consolidação escreve (o resto vem das áreas e dos especiais)
+CONSOLIDAR = {
+    "funcional": ["resumo do modulo", "perfis", "integracoes com outros modulos"],
+    "arquitetura": ["visao tecnica", "integracoes"],
+}
+
+
+def consolidar_pack(doc_dirs, lote_dir, module):
+    """
+    Pacote do subagente `consolidar`: o que é do módulo inteiro (resumo, perfis PRF, integrações, diagramas mermaid) a
+    partir dos títulos de TODOS os itens das partes, dos INT inteiros e dos resumos das áreas — sem código e sem a sessão
+    principal ler documento.
+    """
+    L = [f"# Pacote da consolidação — {module} (funcional + arquitetura)", "",
+         "Você escreve SÓ o que é do módulo inteiro, a partir do que as áreas escreveram (abaixo). Não leia código nem as partes",
+         "inteiras: aqui estão os títulos de todos os itens, as integrações inteiras e os resumos das áreas. Referencie os itens",
+         "pelo ID (os IDs das faixas são renumerados depois, junto com as referências).", ""]
+    for doc in LOTE_DOCS:
+        d = doc_dirs[doc]
+        plan = json.load(open(os.path.join(d, "areas.json"), encoding="utf-8"))
+        spec = next((x for x in plan.get("specials", []) if x["name"] == "consolidar"), None)
+        lo, hi = spec["idRange"] if spec else (0, 0)
+        model = open(os.path.join(d, "modelo.md"), encoding="utf-8").read() if os.path.exists(os.path.join(d, "modelo.md")) else ""
+        L += [f"## Documento `{doc}` → grave em `{os.path.join(d, 'parte-consolidar.md')}`", ""]
+        if doc == "funcional":
+            L += [f"- Seções: `## Resumo do módulo` (o que é, para quem, telas principais, ciclo de vida — prosa curta com IDs),",
+                  f"  `## Perfis e permissões` (um `### PRF-… — <perfil>` por perfil/papel visto nos resumos, com o que pode e `**Onde:**`;",
+                  f"  IDs {lo:03d} a {hi:03d}) e `## Integrações com outros módulos` (um parágrafo por módulo citando os `INT-…`)."]
+        else:
+            L += ["- Seções: `## Visão técnica` (camadas, tecnologias e o fluxo principal em prosa curta, com IDs) com UM diagrama",
+                  "  mermaid (`flowchart`) das camadas/integrações (tela → API → serviço → banco/fila/outro módulo) e, se ajudar,",
+                  "  um `sequenceDiagram` do fluxo principal. Nada de itens novos aqui."]
+        for sec in named_sections(model, CONSOLIDAR[doc]):
+            L += ["", "Modelo da seção:", sec[:1500]]
+        L.append("")
+        parts = sorted(f for f in os.listdir(d) if f.startswith("parte-") and f.endswith(".md") and f != "parte-consolidar.md")
+        by_kind = defaultdict(list)
+        ints = []
+        for f in parts:
+            for iid, kind, title, body in blocks_by_id(open(os.path.join(d, f), encoding="utf-8").read()):
+                by_kind[kind].append(f"{iid} {title[:100]}")
+                if kind == "INT":
+                    ints.append(body[:900])
+        L += [f"### Itens de `{doc}` ({sum(len(v) for v in by_kind.values())} nas {len(parts)} partes)", ""]
+        for kind in sorted(by_kind):
+            L += [f"**{kind}** ({len(by_kind[kind])}): " + " · ".join(by_kind[kind][:400]), ""]
+        if ints:
+            L += [f"### Integrações (`INT`) de `{doc}` inteiras", ""] + ints + [""]
+        pub = os.path.join(d, "publicado.md")
+        if os.path.exists(pub) and os.path.getsize(pub) > 0:
+            prev = named_sections(open(pub, encoding="utf-8").read(), CONSOLIDAR[doc])
+            if prev:
+                L += ["### Versão publicada destas seções (melhore; mantenha os IDs dos PRF que continuam)", ""] + [x[:4000] for x in prev] + [""]
+    resumos = sorted(f for f in os.listdir(lote_dir) if f.startswith("resumo-") and f.endswith(".md"))
+    L += [f"## Resumos das áreas ({len(resumos)})", ""]
+    for f in resumos:
+        L += [f"### {f[len('resumo-'):-3]}", open(os.path.join(lote_dir, f), encoding="utf-8").read().strip()[:2500], ""]
+    out = os.path.join(lote_dir, "pacotes", "pacote-consolidar.md")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(L) + "\n")
+    return out
+
+
+def remapear(doc_path, mapas):
+    """Aplica nas REFERÊNCIAS deste documento o mapa de IDs do outro (repetidos fundidos → compactados)."""
+    text = open(doc_path, encoding="utf-8").read()
+    total = {}
+    for path in mapas:
+        if not os.path.exists(path):
+            continue
+        m = json.load(open(path, encoding="utf-8"))
+        dd, cc = m.get("dedupe", {}), m.get("compact", {})
+        for k in set(dd) | set(cc):
+            v = dd.get(k, k)
+            total[k] = cc.get(v, v)
+    if not total:
+        return 0
+    defined = set(re_tool.doc_ids(text))
+    n = 0
+
+    def repl(mm):
+        nonlocal n
+        key = f"{mm.group(1)}-{int(mm.group(2)):03d}"
+        if key in total and key not in defined:
+            n += 1
+            return total[key]
+        return mm.group(0)
+    text = R_LOCAL_REF.sub(repl, text)
+    with open(doc_path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return n
+
+
+def resumo_fechar(doc_dirs, max_lines=40):
+    """Resumo COMPACTO do `fechar` (≤ 40 linhas): itens por tipo, cobertura, evidência, erros e as áreas com faltas."""
+    L = []
+    for doc, d in doc_dirs.items():
+        text = open(os.path.join(d, "documento.md"), encoding="utf-8").read() if os.path.exists(os.path.join(d, "documento.md")) else ""
+        kinds = Counter(i.split("-")[0] for i in re_tool.doc_ids(text))
+        cov = json.load(open(os.path.join(d, "cobertura.json"), encoding="utf-8")) if os.path.exists(os.path.join(d, "cobertura.json")) else {}
+        ev = json.load(open(os.path.join(d, "evidencia.json"), encoding="utf-8")) if os.path.exists(os.path.join(d, "evidencia.json")) else {}
+        chk = open(os.path.join(d, "check.out"), encoding="utf-8").read() if os.path.exists(os.path.join(d, "check.out")) else ""
+        errs = re.findall(r"^\s+- (.+)$", chk.split("ERROS (barram o envio):", 1)[1].split("Avisos:", 1)[0], re.M) if "ERROS (barram" in chk else []
+        errs += [x for x in re.findall(r"^ERRO: (.+)$", chk, re.M)]
+        warns = len(re.findall(r"^\s+- ", chk.split("Avisos:", 1)[1])) if "Avisos:" in chk else 0
+        ratio = cov.get("ratio")
+        L.append(f"{doc}: {sum(kinds.values())} itens (" + ", ".join(f"{k} {n}" for k, n in kinds.most_common(9)) + ")"
+                 + f" · cobertura {'—' if ratio is None else f'{ratio:.0%}'} · {len(text):,} caracteres".replace(",", "."))
+        pk = Counter(p["kind"] for p in ev.get("problems", []))
+        L.append(f"  evidência: {ev.get('checked', 0)}/{ev.get('refs', 0)} conferidas · a conferir: "
+                 + (", ".join(f"{n} {k}" for k, n in pk.most_common()) or "nada") + f" · {len(errs)} erro(s), {warns} aviso(s)")
+        for e in errs[:3]:
+            L.append(f"  ERRO {e[:150]}")
+        # faltas por área (o que despachar de novo com `re.sh faltando`)
+        plan_path = os.path.join(d, "areas.json")
+        if cov.get("missing") and os.path.exists(plan_path):
+            plan = json.load(open(plan_path, encoding="utf-8"))
+            owner = {}
+            for a in plan.get("areas", []):
+                for u in a["units"]:
+                    owner.setdefault(u["file"], []).append((a["name"], u["ranges"]))
+            per = Counter()
+            for it in cov["missing"]:
+                hit = next((n for n, rs in owner.get(it.get("file"), []) if any(x <= it.get("line", 0) <= y for x, y in rs)), None)
+                per[hit or "(especiais/sem área)"] += 1
+            L.append(f"  faltando {cov.get('missingCount', len(cov['missing']))}: " + ", ".join(f"{a} {n}" for a, n in per.most_common(8)))
+    return L[:max_lines]
+
+
 # ── cabeçalho com o commit do código (0097) ───────────────────────────────────────────────────────
 
 R_CODE_HEADER = re.compile(r"^<!-- codigo: .*-->\s*$", re.M)
@@ -1359,6 +1605,16 @@ def cabecalho(doc_path, fontes_tsv):
 
 
 # ── main ──────────────────────────────────────────────────────────────────────────────────────────
+
+def save_map(path, key, mapping):
+    """0097: mapa de IDs (repetidos fundidos / compactados) — o `fechar` aplica nas referências do OUTRO documento do lote."""
+    if not path:
+        return
+    data = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+    data[key] = mapping or {}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+
 
 def opt(argv, name, default=None):
     return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
@@ -1468,7 +1724,8 @@ def main(argv):
         parts = [a for a in argv[3:] if not a.startswith("--") and a != opt(argv, "--base")]
         return juntar(argv[2], opt(argv, "--base"), parts)
     if cmd == "repetidos":
-        dedupe(argv[2], opt(argv, "--out"))
+        mapping = dedupe(argv[2], opt(argv, "--out"))
+        save_map(opt(argv, "--mapa"), "dedupe", mapping)
         return 0
     if cmd == "tamanho":
         size_report(argv[2])
@@ -1476,7 +1733,40 @@ def main(argv):
     if cmd == "compactar":
         used = open(opt(argv, "--ids"), encoding="utf-8").read().split() if opt(argv, "--ids") and os.path.exists(opt(argv, "--ids")) else []
         base = int(opt(argv, "--base")) if opt(argv, "--base") else json.load(open(opt(argv, "--areas"), encoding="utf-8")).get("idBase", 0)
-        compactar(argv[2], base, used, opt(argv, "--out"))
+        mapping = compactar(argv[2], base, used, opt(argv, "--out"))
+        save_map(opt(argv, "--mapa"), "compact", mapping)
+        return 0
+    if cmd == "lote":
+        kinds = {d: [k.strip().upper() for k in (opt(argv, f"--tipos-{d}") or "").split(",") if k.strip()] for d in LOTE_DOCS}
+        dirs = {d: opt(argv, f"--{d}") for d in LOTE_DOCS}
+        used = open(opt(argv, "--ids"), encoding="utf-8").read().split() if opt(argv, "--ids") and os.path.exists(opt(argv, "--ids")) else []
+        plans, packs = lote(argv[2], opts(argv, "--extra"), used, opt(argv, "--modulo", ""), int(opt(argv, "--orcamento-kb", "90")),
+                            int(opt(argv, "--checkpoint", "10")), kinds, dirs, opt(argv, "--out"), opt(argv, "--banco"), opt(argv, "--modulo-dir"))
+        total = sum(p[2] for p in packs)
+        print(f"Lote: {len(packs)} áreas (código lido uma vez: {total // 1024} KB de pacotes) para funcional + arquitetura")
+        for name, out, size, n in packs:
+            print(f"  area {name:<34} {size // 1024:>4} KB · {n:>4} itens -> {out}")
+        for d in LOTE_DOCS:
+            for name, out in plans[d]["madeSpecials"]:
+                print(f"  especial {d}/{name:<24} {os.path.getsize(out) // 1024:>4} KB -> {out}")
+        return 0
+    if cmd == "cartao-lote":
+        modelos = OrderedDict((spec_.partition("=")[0], spec_.partition("=")[2]) for spec_ in opts(argv, "--modelo"))
+        notas = [spec_.partition("=")[::2] for spec_ in opts(argv, "--nota")]
+        print(cartao_lote(argv[2], modelos, opt(argv, "--modulos"), opt(argv, "--out", "cartao.md"), notas))
+        return 0
+    if cmd == "consolidar":
+        dirs = {d: opt(argv, f"--{d}") for d in LOTE_DOCS}
+        out = consolidar_pack(dirs, opt(argv, "--lote"), opt(argv, "--modulo", ""))
+        print(f"  pacote consolidar {os.path.getsize(out) // 1024:>4} KB -> {out}")
+        return 0
+    if cmd == "remapear":
+        n = remapear(argv[2], [a for a in argv[3:] if not a.startswith("--")])
+        print(f"Referências ao outro documento remapeadas: {n}")
+        return 0
+    if cmd == "resumo-fechar":
+        dirs = OrderedDict((spec_.partition("=")[0], spec_.partition("=")[2]) for spec_ in opts(argv, "--doc"))
+        print("\n".join(resumo_fechar(dirs)))
         return 0
     if cmd == "cabecalho":
         line = cabecalho(argv[2], argv[3] if len(argv) > 3 else None)

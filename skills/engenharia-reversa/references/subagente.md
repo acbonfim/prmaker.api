@@ -19,6 +19,18 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
 5. **Ao terminar:** rode o comando `faltando` do prompt e cubra o que faltar (ou registre `GAP` com o motivo).
 6. **Responda só o resumo** (até 8 linhas): itens por tipo, GAPs, dúvidas, armadilhas vistas (elas não entram no documento).
 
+## Lote — funcional + arquitetura numa passada (0097)
+Se o seu prompt diz **"documentos funcional+arquitetura"**, você lê o código da área UMA vez e grava **duas partes** (os
+caminhos, as faixas de ID e os tipos de cada uma estão no cabeçalho do pacote; os dois modelos estão neste cartão):
+- **funcional** — o que o sistema faz para quem usa: FN, UC, RN, EST, NTF, CFG (parâmetro de negócio), REL.
+- **arquitetura** — como é feito: API (rota/contrato), INT (com outro módulo Solvace), EVT, JOB.
+- Um assunto aparece uma vez em cada documento, no papel dele: a RN diz a regra e cita `API-…`; a API diz o contrato e cita
+  `RN-…` — sem copiar o texto. Grave a parte de um documento e depois a do outro (checkpoint em cada uma).
+- **Resumo para a consolidação** (`resumo-<area>.md`, até 15 linhas): perfis/papéis vistos (`caminho:linha`), integrações,
+  o que a área faz em 2 frases e dúvidas — é dele que sai o resumo do módulo e os `PRF` (você não cria `PRF`).
+- Ao terminar: `re.sh faltando <m> lote <area>` mostra o que falta nas DUAS partes.
+Se o prompt diz **"area consolidar"**, siga o pacote da consolidação: só as seções do módulo inteiro, sem ler código.
+
 ## Regras do conteúdo
 - **Só as seções dos seus itens.** Nada de Resumo do módulo, Perfis, "Integrações com outros módulos" em prosa,
   Glossário ou visão geral — cada área escrevia a sua versão e o documento inchava (o revamp-users passou de 878 mil
