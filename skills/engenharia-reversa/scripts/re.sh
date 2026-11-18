@@ -14,9 +14,10 @@
 #                                     caminhos locais das fontes (mapa da maquina); legado sem subpasta = erro (o
 #                                     edv-solvace inteiro nao e um modulo). --path com PASTA substitui a do repo; com
 #                                     ARQUIVO, GLOB ou outra pasta do mesmo repo soma (0056): --path edv-solvace='solvace-core/helpers/**/Sa3*.cs'
-#   inventario <modulo> [--path repo=subpasta ...] [--local]
+#   inventario <modulo> [--path repo=subpasta ...] [--local --motivo "por que"]
 #                                     0067: le a COPIA DA MASTER atualizada (git fetch; worktree <clone>/../.prmake-wt/master/<repo>),
-#                                     nunca a branch em que o clone estiver; --local (ou RE_LOCAL=1) le o clone como esta
+#                                     nunca a branch em que o clone estiver; --local (ou RE_LOCAL=1) le o clone como esta — 0097: so
+#                                     com --motivo (ou RE_MOTIVO); sem ele o check da ERRO para fonte fora da origin/master
 #                                     inventario deterministico do codigo -> $RE_HOME/<modulo>/inventario.json
 #   banco <modulo> [--prefix TB_X_ ...] [--sigla X]
 #                                     CATALOGO DO BANCO DA DEMO (0053, somente leitura): views, procedures, functions,
@@ -229,6 +230,27 @@ progress() { # <modulo> <doc> <json>
 # Documentos com sessao aberta nesta maquina para o modulo (o inventario e do modulo; o andamento vai para cada um).
 open_docs() { local d; for d in "$(moddir "$1")"/*/sessao.json; do [[ -s "$d" ]] && basename "$(dirname "$d")"; done; }
 
+# 0097: o documento vem da origin/master. Fonte lida de outra branch (--local) so com o motivo gravado; sem ele = ERRO.
+# Imprime ERRO/AVISO por fonte e devolve 1 se alguma fonte barra o envio.
+master_check() { # <modulo>
+  local f; f="$(moddir "$1")/fontes.tsv"; local lf; lf="$(moddir "$1")/local-motivo.txt"; local rc=0
+  [[ -s "$f" ]] || { echo "AVISO: sem fontes.tsv — rode re.sh inventario $1 (o envio grava de que commit da master o documento veio)"; return 0; }
+  while IFS=$'\t' read -r role path commit repo; do
+    [[ -z "$path" ]] && continue
+    local br="${commit#*@}" sha="${commit%%@*}" g="$path"; [[ -f "$g" ]] && g="$(dirname "$g")"
+    if [[ "$br" != origin/master ]]; then
+      if [[ -s "$lf" ]]; then echo "AVISO: ${repo:-$path} lido da branch $br (--local) — motivo: $(head -c 300 "$lf")"
+      else echo "ERRO: ${repo:-$path} nao e a origin/master (lido de $br@$sha) — rode: re.sh inventario $1 (le a master) ou, para documentar uma branch que ainda nao entrou, --local --motivo \"...\""; rc=1; fi
+      continue
+    fi
+    local cur; cur="$(git -C "$g" rev-parse origin/master 2>/dev/null)"
+    if [[ -n "$cur" && -n "$sha" && "$cur" != "$sha"* ]]; then
+      echo "AVISO: a origin/master de ${repo:-$path} andou desde o inventario ($sha -> ${cur:0:10}) — rode re.sh inventario $1 antes de enviar"
+    fi
+  done < "$f"
+  return $rc
+}
+
 case "$CMD" in
   etapa)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; KEY="${3:?etapa}"; ST="${4:?status}"
@@ -348,6 +370,11 @@ case "$CMD" in
 
   inventario)
     MOD="${1:?modulo}"; shift
+    # 0097: --local (ler a branch do clone, nao a master) so com o motivo — ele vai para o revisor e o check deixa passar
+    MOTIVO="$(opt --motivo "${RE_MOTIVO:-}" "$@")"
+    if [[ " $* " == *" --local "* || "${RE_LOCAL:-0}" == 1 ]]; then
+      [[ -n "$MOTIVO" ]] || die "--local exige --motivo \"por que nao a master\" (ex.: branch da US que ainda nao entrou) — sem motivo, rode sem --local (le a origin/master)"
+    fi
     resolve_sources "$MOD" "$@" > "$TMP/sources"; rc=$?
     [[ -s "$TMP/sources" ]] || die "sem fontes locais para o inventario de $MOD"
     [[ $rc -eq 0 ]] || echo "AVISO: parte das fontes ficou de fora (acima) — o inventario cobre so o que foi encontrado" >&2
@@ -361,12 +388,15 @@ case "$CMD" in
       die "falha no inventario"; }
     DETAIL="$(jq -r '"\(.counts | to_entries | map(.value) | add // 0) itens: " + ([.counts | to_entries | sort_by(-.value)[] | "\(.value) \(.key)"] | join(", "))' "$(moddir "$MOD")/inventario.json")"
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "inventario", status: "completed", detail: $dt, log: ("Inventario: " + $dt), kind: "progress"}')"; done
-    # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio)
+    # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio); 0097: + nome do repositorio
     while IFS=$'\t' read -r role dir; do
       g="$dir"; [[ -f "$g" ]] && g="$(dirname "$g")"  # 0056: fonte pode ser um arquivo
       br="$(git -C "$g" rev-parse --abbrev-ref HEAD 2>/dev/null)"; [[ "$dir" == */.prmake-wt/master/* ]] && br="origin/master"
-      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short HEAD 2>/dev/null)@$br"
+      rn="$(git -C "$g" remote get-url origin 2>/dev/null)"; rn="$(basename "${rn%.git}")"
+      printf '%s\t%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short=10 HEAD 2>/dev/null)@$br" "$rn"
     done < "$TMP/sources" > "$(moddir "$MOD")/fontes.tsv"
+    if [[ "${RE_LOCAL:-0}" == 1 ]]; then printf '%s\n' "$MOTIVO" > "$(moddir "$MOD")/local-motivo.txt"; else rm -f "$(moddir "$MOD")/local-motivo.txt"; fi
+    master_check "$MOD" | grep -v '^AVISO: a origin/master' || true
     ;;
 
   banco)
@@ -539,6 +569,8 @@ case "$CMD" in
     if [[ "$DOC" != pratica && -s "$(moddir "$MOD")/inventario.json" ]]; then
       python3 "$PAC_PY" evidencia "$F" "$(moddir "$MOD")/inventario.json" --json "$(docdir "$MOD" "$DOC")/evidencia.json" --max "${RE_MAX_EVIDENCE:-25}" || true
     fi
+    # 0097: fonte fora da origin/master sem --local --motivo = ERRO (barra o envio)
+    MASTER_OK=0; if [[ "$DOC" != pratica ]]; then master_check "$MOD" || MASTER_OK=1; fi
     jq -n --arg d "$DOC" --rawfile c "$F" --argjson r "$RATIO" '{docType: $d, content: $c, coverageRatio: $r}' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/lint" "$TMP/body"; check
     jq -r '"Checagem do PRMake: \(.items) itens (" + ([.byKind | to_entries[] | "\(.key) \(.value)"] | join(", ")) + ")",
@@ -548,7 +580,7 @@ case "$CMD" in
       detail: ("\(.items) itens · cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end) · \(.errors|length) erro(s), \(.warnings|length) aviso(s)"),
       log: ("Checagem: \(.items) itens, cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end), \(.errors|length) erro(s)"),
       kind: (if (.errors|length) == 0 then "progress" else "warning" end)}' "$TMP/resp")"
-    [[ "$(jq '.errors|length' "$TMP/resp")" == 0 ]]
+    [[ "$(jq '.errors|length' "$TMP/resp")" == 0 && $MASTER_OK -eq 0 ]]
     ;;
 
   save|submit)
@@ -557,6 +589,7 @@ case "$CMD" in
     F="$(doc_file "$MOD" "$DOC" "${POS[0]:-}")"; ID="$(revision_id "$MOD" "$DOC")"
     SUMMARY="$(opt --summary "" "$@")"
     [[ "$CMD" == submit && -z "$SUMMARY" ]] && die "informe --summary \"o que este documento cobre / o que mudou\" (o revisor le)"
+    if [[ "$CMD" == submit && "$DOC" != pratica ]] && ! master_check "$MOD" >"$TMP/master.chk"; then cat "$TMP/master.chk"; die "fonte fora da origin/master (acima) — o envio exige a master ou --local --motivo"; fi
     COV="$(docdir "$MOD" "$DOC")/cobertura.json"; INV="$(moddir "$MOD")/inventario.json"
     if [[ "$DOC" == pratica && -s "$(docdir "$MOD" "$DOC")/perguntas.json" ]]; then
       python3 "$TOOL_PY" perguntas "$F" "$(docdir "$MOD" "$DOC")/perguntas.json" --json "$COV" >/dev/null
@@ -566,6 +599,8 @@ case "$CMD" in
     fi
     [[ -s "$COV" ]] || echo '{}' > "$COV"
     FONTES="$(moddir "$MOD")/fontes.tsv"; [[ -s "$FONTES" ]] || : > "$FONTES"
+    # 0097: a linha com o commit de cada repositorio vai no documento (a reancoragem parte dela se faltar a sessao)
+    [[ "$DOC" != pratica && -s "$FONTES" ]] && python3 "$PAC_PY" cabecalho "$F" "$FONTES" >/dev/null
     # 0053: retrato do banco (objetos/jobs com hash e data) guardado na revisão — o próximo "melhorar" compara
     CAT="$(moddir "$MOD")/banco/catalogo.json"
     if [[ -s "$CAT" ]]; then python3 "$BANCO_PY" snapshot "$CAT" > "$TMP/snapshot.json"; else echo 'null' > "$TMP/snapshot.json"; fi
@@ -573,12 +608,14 @@ case "$CMD" in
     if [[ -n "$DEC" ]]; then [[ -s "$DEC" ]] || die "arquivo de decisoes nao encontrado: $DEC"; jq -e 'type == "array"' "$DEC" >/dev/null || die "$DEC precisa ser uma lista JSON"
       jq -e 'all(.[]; ((.suggestionId // .id // "") | test("^[0-9a-fA-F-]{36}$")))' "$DEC" >/dev/null || die "$DEC: toda decisao precisa do suggestionId (o id da sugestao em sugestoes.md)"
       cp "$DEC" "$TMP/decisoes.json"; else echo 'null' > "$TMP/decisoes.json"; fi
-    jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
+    MOTIVO=""; [[ -s "$(moddir "$MOD")/local-motivo.txt" ]] && MOTIVO="$(head -c 500 "$(moddir "$MOD")/local-motivo.txt")"
+    jq -n --rawfile c "$F" --arg s "$SUMMARY" --arg motivo "$MOTIVO" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
       --slurpfile dec "$TMP/decisoes.json" --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
       {content: $c,
        coverage: ($cov[0] | {total, covered, ratio, byCategory, missingCount, missing: ((.missing // [])[:200]), outsideGlossary: ((.outsideGlossary // [])[:300])}),
        coverageRatio: ($cov[0].ratio),
-       session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]})), inventory: $counts, tool: "re.sh"}
+       session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]} + (if (.[3] // "") != "" then {repository: .[3]} else {} end))), inventory: $counts, tool: "re.sh"}
+                 + (if $motivo == "" then {} else {localReason: $motivo} end)
                  + (if $snap[0] == null then {} else {catalog: $snap[0]} end))}
       + (if $s == "" then {} else {summary: $s} end)
       + (if $dec[0] == null then {} else {suggestionDecisions: ($dec[0] | map({suggestionId: (.suggestionId // .id), decision: (.decision // .decisao), items: (.items // .itens // []), note: (.note // .motivo // .nota)}))} end)' > "$TMP/body"
@@ -677,6 +714,7 @@ case "$CMD" in
     [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
     python3 "$PAC_PY" repetidos "$D/documento.md"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
     [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
+    [[ -s "$(moddir "$MOD")/fontes.tsv" ]] && python3 "$PAC_PY" cabecalho "$D/documento.md" "$(moddir "$MOD")/fontes.tsv"
     python3 "$PAC_PY" tamanho "$D/documento.md"
     progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"
     [[ $RC -eq 0 ]] || echo "AVISO: IDs repetidos entre partes (acima) — renumere numa das partes e junte de novo" >&2

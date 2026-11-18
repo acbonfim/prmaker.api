@@ -29,6 +29,8 @@ custavam 10-30 M de leitura de cache por área. Aqui o script faz o trabalho mec
   re_pacote.py tamanho <documento.md>         tamanho × limite do PRMake (5 milhões de caracteres)
   re_pacote.py compactar <documento.md> --areas areas.json [--ids ids.txt] [--out saida.md]
       depois de juntar as partes: os IDs das faixas das áreas viram a sequência de cada tipo (referências trocadas junto).
+  re_pacote.py cabecalho <documento.md> <fontes.tsv>
+      0097: linha `<!-- codigo: repo@sha (origin/master) -->` abaixo do título (a reancoragem parte desse commit).
 """
 import json
 import os
@@ -553,6 +555,20 @@ def tables_of_area(inv, area):
     return sorted(names)
 
 
+def code_header(inv):
+    """0097: de que versão do código o pacote veio — `repo@sha (origin/master de <data>)` por fonte (ou o aviso de --local)."""
+    seen, out = set(), []
+    for s in inv.get("sources", []):
+        repo, sha = s.get("repo"), (s.get("commit") or "")[:10]
+        if not repo or (repo, sha) in seen:
+            continue
+        seen.add((repo, sha))
+        where = f"origin/master de {s['date']}" if s.get("master") and s.get("date") else ("origin/master" if s.get("master")
+                                                                                          else f"branch {s.get('branch') or '?'} (--local, NÃO é a master)")
+        out.append(f"{repo}@{sha} ({where})")
+    return " · ".join(out)
+
+
 def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
     roots = source_roots(inv)
     cache = {}
@@ -564,7 +580,11 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
          f"- **Faixa de números de ID desta área:** {lo:03d} a {hi:03d} (todos os tipos: RN-{lo:03d}, UC-{lo:03d}, TELA-{lo:03d}…). Item que já",
          "  existe no publicado mantém o ID dele.",
          f"- **Grave em:** `{parte}` (mesmas seções `##` do modelo; a cada ~{plan.get('checkpointEvery', 10)} itens — se o arquivo já existe, continue dele).",
-         f"- **Arquivos:** {len(area['files'])} · trechos com o número da linha real (use-o no `**Onde:** arquivo:linha`)."]
+         f"- **Arquivos:** {len(area['files'])} · trechos com o número da linha real e o caminho COMPLETO a partir da raiz do repositório",
+         "  (0097): no `**Onde:**` cite exatamente o caminho do cabeçalho do trecho + `:linha` — nunca só o nome do arquivo."]
+    code = code_header(inv)
+    if code:
+        L.append(f"- **Código:** {code}")
     allowed, taken = area_kinds(plan)
     if plan.get("kinds"):
         if "API" in allowed:
@@ -587,9 +607,10 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
         path = resolve_file(u["file"], roots, cache)
         lines = read_lines(path) if path else []
         total = len(lines)
+        shown = re_tool.full_path(inv, u["file"])
         for a, b in u["ranges"]:
             ext = os.path.splitext(u["file"])[1].lower()
-            L.append(f"### `{u['file']}` — linhas {a}-{b} de {total}")
+            L.append(f"### `{shown}` — linhas {a}-{b} de {total}")
             L.append("```" + LANG.get(ext, ""))
             for k in range(a - 1, min(b, total)):
                 L.append(f"{k + 1:>5}| {lines[k]}")
@@ -600,7 +621,7 @@ def build_pack(inv, plan, area, out_dir, banco_dir, parte_dir):
         L += ["## Apoio — ações chamadas por esta área que estão em outros arquivos (só o método)", ""]
         for f, a, b, lines in support:
             ext = os.path.splitext(f)[1].lower()
-            L.append(f"### `{f}` — linhas {a + 1}-{b + 1} (apoio)")
+            L.append(f"### `{re_tool.full_path(inv, f)}` — linhas {a + 1}-{b + 1} (apoio)")
             L.append("```" + LANG.get(ext, ""))
             for k in range(a, b + 1):
                 L.append(f"{k + 1:>5}| {lines[k]}")
@@ -1067,9 +1088,26 @@ def locate(cited, idx):
     return cands
 
 
+# 0097: arquivo LOCAL do gerador citado como evidência (o leitor não tem: ~/.prmake, banco/catalogo.json, pacote-*.md…)
+R_GEN_LOCAL = re.compile(r"(~/\.prmake[\w./-]*|\.prmake/[\w./-]+|\b(?:catalogo|traducoes|inventario(?:-[\w]+)?|payload)\.json\b"
+                         r"|\bpacote-[\w-]+\.md\b|\bparte-[\w-]+\.md\b|\bcartao\.md\b|(?<![\w/-])(?:banco|infra)/[\w./-]+\.(?:json|md|sql)\b)")
+
+
+def repo_rel(path, cache, roots=()):
+    """Arquivo no disco → caminho a partir da raiz do repositório (o que o `Onde:` deve citar); fora do git, da fonte."""
+    d = os.path.dirname(path)
+    if d not in cache:
+        cache[d] = re_tool.git_root(d)
+    root = cache[d] or next((r for r in roots if path.startswith(r.rstrip(os.sep) + os.sep)), None)
+    return os.path.relpath(path, root).replace(os.sep, "/") if root else os.path.basename(path)
+
+
 def evidencia(doc_path, inv, out=None, max_show=40):
     doc = open(doc_path, encoding="utf-8").read()
-    idx = file_index(source_roots(inv))
+    src_roots = source_roots(inv)
+    idx = file_index(src_roots)
+    repos = {s.get("repo", "").lower() for s in inv.get("sources", []) if s.get("repo")}
+    roots_cache = {}
     blocks, current, buf = [], None, []
     for line in doc.splitlines():
         m = re_tool.ID_HEADING.match(line)
@@ -1087,13 +1125,32 @@ def evidencia(doc_path, inv, out=None, max_show=40):
     problems = []
     for item, body in blocks:
         cited_files = []
+        local_refs = set()
+        for m in R_GEN_LOCAL.finditer(body):
+            if m.group(1) not in local_refs:
+                local_refs.add(m.group(1))
+                problems.append({"item": item, "kind": "arquivo-local", "ref": m.group(1),
+                                 "detail": "arquivo local do gerador — o leitor não tem: cite o código (ou `banco DEMO <global|local> · dbo.X`)"})
         for m in R_EVIDENCE.finditer(body):
             refs += 1
-            cands = locate(m.group(1), idx)
-            if not cands:
-                if not m.group(1).lower().startswith(("banco/", "infra/")):
-                    problems.append({"item": item, "kind": "arquivo", "ref": f"{m.group(1)}:{m.group(2)}", "detail": "arquivo não encontrado nas fontes"})
+            cited = m.group(1)
+            if any(cited.endswith(x) or x.endswith(cited) for x in local_refs):
                 continue
+            cands = locate(cited, idx)
+            if not cands:
+                problems.append({"item": item, "kind": "arquivo", "ref": f"{cited}:{m.group(2)}", "detail": "arquivo não encontrado nas fontes"})
+                continue
+            # 0097: caminho completo a partir da raiz do repositório (com ou sem o nome do repo na frente) e sem ambiguidade
+            fulls = sorted({repo_rel(c, roots_cache, src_roots) for c in cands})
+            clean = cited.replace("\\", "/").lstrip("./")
+            if "/" in clean and clean.split("/", 1)[0].lower() in repos:
+                clean = clean.split("/", 1)[1]
+            if len(fulls) > 1 and clean not in fulls:
+                problems.append({"item": item, "kind": "ambigua", "ref": f"{cited}:{m.group(2)}",
+                                 "detail": f"{len(fulls)} arquivos com esse nome: {', '.join(fulls[:3])} — cite o caminho completo"})
+            elif clean not in fulls:
+                problems.append({"item": item, "kind": "sem-caminho", "ref": f"{cited}:{m.group(2)}",
+                                 "detail": f"cite o caminho a partir da raiz do repositório: `{fulls[0]}:{m.group(2)}`"})
             start = int(m.group(2))
             ok = False
             for c in cands:
@@ -1260,6 +1317,47 @@ def compactar(doc_path, base, used_ids, out=None):
     return mapping
 
 
+# ── cabeçalho com o commit do código (0097) ───────────────────────────────────────────────────────
+
+R_CODE_HEADER = re.compile(r"^<!-- codigo: .*-->\s*$", re.M)
+
+
+def code_header_line(fontes_tsv):
+    """`<!-- codigo: edv-solvace@247220610f (origin/master) · ... -->` a partir do fontes.tsv (papel, caminho, sha@branch, repo)."""
+    seen, parts = set(), []
+    for row in open(fontes_tsv, encoding="utf-8").read().splitlines():
+        cols = row.split("\t")
+        if len(cols) < 3 or "@" not in cols[2]:
+            continue
+        sha, _, br = cols[2].partition("@")
+        repo = cols[3] if len(cols) > 3 and cols[3] else os.path.basename(cols[1].rstrip("/"))
+        if (repo, sha) not in seen:
+            seen.add((repo, sha))
+            parts.append(f"{repo}@{sha} ({br})")
+    return f"<!-- codigo: {' · '.join(parts)} -->" if parts else ""
+
+
+def cabecalho(doc_path, fontes_tsv):
+    """
+    0097: grava (ou troca) logo abaixo do título a linha com o commit de cada repositório de onde o documento veio — a
+    reancoragem usa quando a revisão publicada não tem a sessão.
+    """
+    line = code_header_line(fontes_tsv) if fontes_tsv and os.path.exists(fontes_tsv) else ""
+    if not line:
+        return None
+    text = open(doc_path, encoding="utf-8").read()
+    if R_CODE_HEADER.search(text):
+        text = R_CODE_HEADER.sub(line, text, count=1)
+    else:
+        lines = text.split("\n")
+        at = next((i + 1 for i, x in enumerate(lines[:20]) if x.startswith("# ")), 0)
+        lines.insert(at, line)
+        text = "\n".join(lines)
+    with open(doc_path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return line
+
+
 # ── main ──────────────────────────────────────────────────────────────────────────────────────────
 
 def opt(argv, name, default=None):
@@ -1379,6 +1477,10 @@ def main(argv):
         used = open(opt(argv, "--ids"), encoding="utf-8").read().split() if opt(argv, "--ids") and os.path.exists(opt(argv, "--ids")) else []
         base = int(opt(argv, "--base")) if opt(argv, "--base") else json.load(open(opt(argv, "--areas"), encoding="utf-8")).get("idBase", 0)
         compactar(argv[2], base, used, opt(argv, "--out"))
+        return 0
+    if cmd == "cabecalho":
+        line = cabecalho(argv[2], argv[3] if len(argv) > 3 else None)
+        print(f"Cabeçalho do código: {line}" if line else "Cabeçalho do código: sem fontes.tsv (rode re.sh inventario)")
         return 0
     print(f"comando desconhecido: {cmd}", file=sys.stderr)
     return 2

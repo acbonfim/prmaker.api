@@ -62,7 +62,9 @@ O ponto de partida antigo: `bash $KB show <modulo> <secao>` das secoes listadas.
 
 **3. Inventario (sem LLM)** — `bash $RE inventario <modulo>` (0067: le a **master atualizada** de cada repositorio — `git fetch`
 e uma copia so de leitura em `<clone>/../.prmake-wt/master/<repo>`; o clone de trabalho nao e tocado e a branch em que
-ele estiver nao importa. `--local` so para documentar uma branch que ainda nao entrou na master): endpoints, validacoes e mensagens (back, front e alerts do
+ele estiver nao importa. **0097: nada sai fora da master sem aviso** — `--local --motivo "por que"` so para documentar uma
+branch que ainda nao entrou (o motivo vai para o revisor); sem motivo o `--local` e recusado e o `check`/`submit` dao ERRO
+para fonte fora da origin/master. O documento leva no cabecalho o commit de cada repositorio): endpoints, validacoes e mensagens (back, front e alerts do
 legado), permissoes, tabelas, eventos/filas, jobs, handlers, procedures, rotas/componentes/chamadas HTTP do front,
 paginas `.asp`, chaves de config. **E a lista do que o documento precisa cobrir — sem excecao.** Legado (`edv-solvace`)
 exige a subpasta do modulo: `--path edv-solvace=solvace-asp/systems/<sigla>` (veja "Onde esta" em `kb.sh show <modulo>
@@ -228,6 +230,10 @@ usuario pode anexar pela tela ou aqui: `bash $RE link <modulo> <url> "<titulo>" 
   um subagente ja leu — peca a ele (ou ao `faltando`).
 
 ## Regras
+- **`Onde:` com o caminho COMPLETO a partir da raiz do repositorio** (0097): `solvace-asp/systems/sa3/sa3_registro.asp:53`,
+  nunca so `sa3_registro.asp:53` (o pacote ja mostra o caminho certo no cabecalho de cada trecho). O `check` acusa citacao
+  so com o nome, ambigua (dois arquivos com o mesmo nome) e arquivo local do gerador (`banco/catalogo.json`, `~/.prmake/…`,
+  `pacote-*.md`) — objeto do banco e `banco DEMO <global|local> · dbo.X`.
 - **Nada inventado.** Nao confirmou no codigo → "a confirmar" + `GAP`. Nunca credenciais, connection strings, tokens ou
   dados de cliente (a checagem barra). Mensagens literais, sim (sao parte da regra).
 - **ID unico no modulo e estavel**; itens de outro documento so referenciados (`TELA-003`, `revamp-users#API-004`).

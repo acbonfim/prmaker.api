@@ -6,7 +6,9 @@ precisa responder sozinho o que é, quando vale, o valor exato, onde está e que
 
 ## Como trabalhar (barato e rápido — cada resposta sua relê todo o contexto)
 1. **Leia o pacote inteiro numa resposta** (se ele for grande, várias chamadas `Read` com `offset`/`limit` na MESMA
-   resposta). O pacote traz o código da área com o **número real de cada linha** — use-o no `**Onde:** arquivo:linha`.
+   resposta). O pacote traz o código da área com o **número real de cada linha** e o **caminho completo a partir da raiz
+   do repositório** no cabeçalho de cada trecho — cite exatamente esse caminho no `**Onde:** caminho:linha` (nunca só o
+   nome do arquivo; nunca arquivo local do gerador como `banco/catalogo.json` ou `~/.prmake/…`).
 2. **Não explore.** O pacote já traz, em "Apoio", os métodos de outros arquivos que a área chama (ação do controller e o
    service/repositório por trás). Só abra outro arquivo quando algo essencial para a regra não está no pacote — e, nesse
    caso, leia todos de uma vez (`Read` com `offset`/`limit`, várias na mesma resposta). Nada de `grep` um a um.
