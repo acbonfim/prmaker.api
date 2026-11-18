@@ -48,6 +48,8 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringInfra = "ReverseEngineeringInfra";
     /// <summary>0066: como a engenharia reversa gera — modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato (JSON).</summary>
     public const string ReverseEngineeringGeneration = "ReverseEngineeringGeneration";
+    /// <summary>0097: a visão prática é sob demanda — sugerida quando o módulo tem ao menos N perguntas sem resposta no Pergunte (padrão 3).</summary>
+    public const string ReverseEngineeringPracticalMinQuestions = "ReverseEngineeringPracticalMinQuestions";
     /// <summary>0063: etapas padrão do plano de análise da analisar-bug (JSON: [{key,title,description,kind?}]) — a skill usa quando o plano nasce.</summary>
     public const string AnalysisDefaultSteps = "AnalysisDefaultSteps";
     /// <summary>0069: testes locais da correção — "changed" (só os specs do que mudou, uma vez) ou "off" (só o CI do PR).</summary>

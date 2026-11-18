@@ -39,7 +39,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             GlossaryExclusions = (s.GlossaryExclusions ?? ReverseSettings.DefaultGlossaryExclusions).ToList(),
             Translations = ParseJson(s.Translations ?? ReverseSettings.DefaultTranslations),
             Infra = ParseJson(s.Infra ?? ReverseSettings.DefaultInfra),
-            Generation = ParseJson(s.Generation ?? ReverseSettings.DefaultGeneration)
+            Generation = ParseJson(s.Generation ?? ReverseSettings.DefaultGeneration),
+            PracticalMinQuestions = s.PracticalMinQuestions
         };
     }
 
@@ -67,7 +68,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     private static ReverseDocTypeResponse ToDocType(ReverseDocType t, ReverseSettings s, bool withTemplate = true) => new()
     {
         Key = t.Key, Title = t.Title, SectionKey = t.SectionKey, Order = t.Order, Required = s.RequiredDocs.Contains(t.Key), Kinds = t.Kinds.ToList(),
-        Headings = t.Headings.Select(h => h.Title).ToList(), Purpose = t.Purpose,
+        Headings = t.Headings.Select(h => h.Title).ToList(), Purpose = t.Purpose, Discontinued = t.Discontinued, Generated = t.Generated,
         // 0070: a tela não usa o modelo (32 KB por chamada); a skill continua recebendo
         Template = !withTemplate ? string.Empty
             : (s.Templates.TryGetValue(t.Key, out var custom) && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : t.Template.Trim())
@@ -86,13 +87,19 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         // 0070: contagens no banco — antes carregava o índice inteiro (texto de todos os itens) e 500 sugestões só para contar
         var items = (await repository.CountIndexItemsAsync(null, cancellationToken)).GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
         var suggestions = await repository.CountPendingSuggestionsAsync(null, cancellationToken);
+        // 0097: perguntas abertas sem resposta (uma leitura; o texto normalizado uma vez por pergunta)
+        var gaps = (await repository.GetQuestionsAsync(ArchitectureQuestionStatus.Open, cancellationToken)).Where(ReverseModuleQuestions.IsOpenGap)
+            .Select(q => (Question: q, Padded: ReverseModuleQuestions.Padded(q.Text))).ToList();
 
         return projects
             .OrderBy(p => p.BusinessArea ?? p.DisplayName ?? p.Name).ThenBy(p => p.Kind).ThenBy(p => p.Name)
             .Select(p =>
             {
                 var summary = new ReverseModuleSummaryResponse();
-                FillSummary(summary, p, modules.GetValueOrDefault(p.Key), s, open, items.GetValueOrDefault(p.Key), suggestions);
+                var module = modules.GetValueOrDefault(p.Key);
+                var names = ReverseModuleQuestions.Names(p, module);
+                FillSummary(summary, p, module, s, open, items.GetValueOrDefault(p.Key), suggestions,
+                    gaps.Count(g => ReverseModuleQuestions.IsAbout(g.Question, p.Key, names, g.Padded)));
                 return summary;
             }).ToList();
     }
@@ -113,7 +120,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         [ReverseRevisionStatus.Draft, ReverseRevisionStatus.Review, ReverseRevisionStatus.Changes, ReverseRevisionStatus.Approved];
 
     private static void FillSummary(ReverseModuleSummaryResponse summary, ArchitectureProject p, ReverseModule? module, ReverseSettings s,
-        IReadOnlyDictionary<(string, string), ReverseRevisionHead> open, int items, IReadOnlyDictionary<(string, string), int> suggestions)
+        IReadOnlyDictionary<(string, string), ReverseRevisionHead> open, int items, IReadOnlyDictionary<(string, string), int> suggestions, int openQuestions)
     {
         summary.Key = p.Key;
         summary.Name = p.Name;
@@ -136,7 +143,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 },
                 Open = head,
                 State = head?.Status ?? (section is null ? "none" : ReverseRevisionStatus.Published),
-                PendingSuggestions = suggestions.GetValueOrDefault((p.Key, t.SectionKey))
+                PendingSuggestions = suggestions.GetValueOrDefault((p.Key, t.SectionKey)),
+                Discontinued = t.Discontinued, Generated = t.Generated
             };
         }).ToList();
         // 0054: a visão prática só começa com os demais exigidos publicados e fica desatualizada quando um técnico é republicado
@@ -144,10 +152,16 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         {
             doc.BlockedBy = s.RequiredDocs.Where(r => !ReverseDocTypes.ByKey.TryGetValue(r, out var rt) || !rt.Derived)
                 .Where(r => summary.Docs.FirstOrDefault(x => x.Type == r)?.Published is null).ToList();
+            // 0097: o índice técnico (regerado a qualquer hora, sem IA) não desatualiza a prática
             if (doc.Published is { } practical)
-                doc.StaleBecause = summary.Docs.Where(x => x.Type != doc.Type && x.Published is not null && x.Published.UpdatedAt > practical.UpdatedAt)
+                doc.StaleBecause = summary.Docs.Where(x => x.Type != doc.Type && !x.Generated && x.Published is not null && x.Published.UpdatedAt > practical.UpdatedAt)
                     .Select(x => x.Title).ToList();
         }
+        // 0097: prática sob demanda — sugerida quando o Pergunte acumula perguntas sem resposta do módulo e ela falta ou está velha
+        summary.OpenQuestions = openQuestions;
+        var practicalDoc = summary.Docs.FirstOrDefault(d => d.Type == ReverseDocTypes.Practical);
+        summary.PracticalSuggested = openQuestions >= Math.Max(1, s.PracticalMinQuestions)
+                                     && (practicalDoc?.Published is null || practicalDoc.StaleBecause.Count > 0);
         summary.RequiredCount = s.RequiredDocs.Count;
         summary.PublishedRequired = summary.Docs.Count(d => d.Required && d.Published is not null);
         summary.Complete = summary.RequiredCount > 0 && summary.PublishedRequired == summary.RequiredCount;
@@ -179,7 +193,10 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var suggestions = await repository.CountPendingSuggestionsAsync(project.Key, cancellationToken);
 
         var response = new ReverseModuleResponse();
-        FillSummary(response, project, module, s, open, counts.Sum(c => c.Count), suggestions);
+        var names = ReverseModuleQuestions.Names(project, module);
+        var openQuestions = (await repository.GetQuestionsAsync(ArchitectureQuestionStatus.Open, cancellationToken))
+            .Count(q => ReverseModuleQuestions.IsOpenGap(q) && ReverseModuleQuestions.IsAbout(q, project.Key, names));
+        FillSummary(response, project, module, s, open, counts.Sum(c => c.Count), suggestions, openQuestions);
         foreach (var doc in response.Docs.Where(d => d.Published is not null))
             doc.Published!.Items = counts.Where(c => c.DocType == doc.Type).Sum(c => c.Count);
         response.Repository = project.Repository;
@@ -325,6 +342,12 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var s = await settingsProvider.GetAsync(cancellationToken);
         var type = ReverseDocTypes.Get(docType);
+        // 0097: design e visão não se geram mais; o índice técnico é gerado sem IA (sem sessão nem revisão humana)
+        if (type.Discontinued)
+            throw new DomainException($"A {type.Title} foi descontinuada (0097): nenhuma sessão nova é aceita. O publicado continua legível e na busca; "
+                                      + $"gere {string.Join(", ", ReverseDocTypes.DefaultRequired)} (e a visão prática quando o Pergunte não souber responder).");
+        if (type.Generated)
+            throw new DomainException($"O {type.Title} é gerado sem IA e publicado direto: re.sh indice <módulo> --enviar (PUT modules/{{key}}/technical-index).");
         // 0070: os outros projetos sem o texto (antes, a Base inteira); só o do módulo vem com as seções completas
         var all = await repository.GetProjectHeadsAsync(cancellationToken);
         await ReverseRelations.ApplyAsync(repository, all, null, cancellationToken); // 0066: relacionados pelos INT resolvidos
@@ -395,12 +418,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// <summary>0054: perguntas do "Pergunte" sobre o módulo (pela seção sugerida/respondida ou pelo nome/apelido/sigla no texto).</summary>
     private async Task<List<ReverseModuleQuestion>> ModuleQuestionsAsync(ArchitectureProject project, ReverseModule? module, CancellationToken cancellationToken)
     {
-        var names = new[] { project.DisplayName, project.Name }.Concat(module?.Aliases ?? []).Concat(project.Keywords.Where(k => k.Length is >= 2 and <= 12))
-            .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => ArchitectureSearch.Normalize(n!)).Where(n => n.Length >= 2).Distinct().ToList();
+        var names = ReverseModuleQuestions.Names(project, module);
         return (await repository.GetQuestionsAsync(null, cancellationToken))
-            .Where(q => q.SuggestedProject == project.Key || q.AnsweredProject == project.Key
-                        || names.Any(n => System.Text.RegularExpressions.Regex.IsMatch(ArchitectureSearch.Normalize(q.Text), $@"(^|\W){System.Text.RegularExpressions.Regex.Escape(n)}(\W|$)")))
-            .OrderByDescending(q => q.Times).Take(80)
+            .Where(q => ReverseModuleQuestions.IsAbout(q, project.Key, names))
+            // 0097: a prática é sob demanda — as perguntas abertas sem resposta vêm primeiro
+            .OrderByDescending(ReverseModuleQuestions.IsOpenGap).ThenByDescending(q => q.Times).Take(80)
             .Select(q => new ReverseModuleQuestion { Id = q.Id, Text = q.Text, Coverage = q.Coverage, Times = q.Times, Status = q.Status }).ToList();
     }
 

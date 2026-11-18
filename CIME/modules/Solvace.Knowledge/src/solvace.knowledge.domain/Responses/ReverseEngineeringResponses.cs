@@ -16,6 +16,10 @@ public class ReverseDocTypeResponse
     public string Purpose { get; set; } = string.Empty;
     /// <summary>Modelo efetivo (o do código ou o da configuração) + as regras de como escrever um item.</summary>
     public string Template { get; set; } = string.Empty;
+    /// <summary>0097: não se gera mais (design, visão) — o publicado continua legível e na busca; sessão nova é recusada.</summary>
+    public bool Discontinued { get; set; }
+    /// <summary>0097: gerado sem IA e publicado direto (índice técnico) — não tem sessão, revisão humana nem modelo.</summary>
+    public bool Generated { get; set; }
 }
 
 public class ReverseItemKindResponse
@@ -81,6 +85,10 @@ public class ReverseDocStatusResponse
     public List<string> StaleBecause { get; set; } = [];
     /// <summary>0054: o documento só pode começar com os demais exigidos publicados (faltam estes).</summary>
     public List<string> BlockedBy { get; set; } = [];
+    /// <summary>0097: documento descontinuado (design, visão) — só leitura do publicado.</summary>
+    public bool Discontinued { get; set; }
+    /// <summary>0097: gerado sem IA (índice técnico).</summary>
+    public bool Generated { get; set; }
 }
 
 public class ReverseModuleSummaryResponse
@@ -99,6 +107,13 @@ public class ReverseModuleSummaryResponse
     public int InReview { get; set; }
     public int Items { get; set; }
     public List<string> Aliases { get; set; } = [];
+    /// <summary>0097: perguntas do Pergunte sobre o módulo ainda abertas e sem resposta (not-found/partial).</summary>
+    public int OpenQuestions { get; set; }
+    /// <summary>
+    /// 0097: a visão prática (sob demanda) é sugerida — sem prática publicada ou desatualizada E
+    /// <see cref="OpenQuestions"/> ≥ ReverseEngineeringPracticalMinQuestions.
+    /// </summary>
+    public bool PracticalSuggested { get; set; }
 }
 
 public class ReverseAssetResponse
@@ -369,4 +384,6 @@ public class ReverseSettingsResponse
     public JsonElement? Infra { get; set; }
     /// <summary>0066: como a skill gera (modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato).</summary>
     public JsonElement? Generation { get; set; }
+    /// <summary>0097: perguntas sem resposta no Pergunte a partir das quais a visão prática é sugerida.</summary>
+    public int PracticalMinQuestions { get; set; }
 }

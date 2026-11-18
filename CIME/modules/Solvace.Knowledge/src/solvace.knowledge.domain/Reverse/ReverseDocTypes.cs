@@ -8,8 +8,10 @@ public sealed record ReverseHeading(string Title, string Match);
 /// na Base Solvace (espelho, índice, busca). <see cref="Kinds"/> são os itens que ele define (<c>GAP</c> vale em todos).
 /// </summary>
 /// <param name="Audience">llm (técnico, vai para as análises) | human (0054: a visão prática — Simples, busca de pessoas, Pergunte).</param>
+/// <param name="Discontinued">0097: não se gera mais (nenhuma sessão nova); o publicado continua legível e na busca.</param>
+/// <param name="Generated">0097: gerado sem IA pela skill e publicado direto (sem revisão humana) — o índice técnico.</param>
 public sealed record ReverseDocType(string Key, string Title, string SectionKey, int Order, IReadOnlyList<string> Kinds,
-    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template, string Audience = "llm")
+    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template, string Audience = "llm", bool Discontinued = false, bool Generated = false)
 {
     /// <summary>Documento derivado só do que já foi publicado (0054: visão prática) — depende dos demais exigidos.</summary>
     public bool Derived => Key == ReverseDocTypes.Practical;
@@ -22,8 +24,11 @@ public static class ReverseDocTypes
     /// <summary>0054: a visão prática (não técnica), gerada do que foi publicado — último documento.</summary>
     public const string Practical = "pratica";
 
-    /// <summary>Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar).</summary>
-    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "visao", "spec-arquitetura", "design", Practical];
+    /// <summary>
+    /// Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar). 0097: só os três que as
+    /// análises usam — design e visão foram descontinuados e a visão prática é sob demanda (perguntas sem resposta).
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "spec-arquitetura"];
 
     private const string ItemRules = """
         ## Como escrever um item (vale para todo o documento)
@@ -306,7 +311,7 @@ public static class ReverseDocTypes
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`
-            """),
+            """, Discontinued: true),
 
         new("spec-arquitetura", "Especificação de arquitetura", "re-spec-arquitetura", 140,
             ["ADR", "NFR", "SEQ", "GAP"],
@@ -389,7 +394,7 @@ public static class ReverseDocTypes
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`
-            """),
+            """, Discontinued: true),
 
         new(Practical, "Visão prática (não técnica)", "re-pratica", 160,
             ["TUT", "FAQ"],
