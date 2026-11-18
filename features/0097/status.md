@@ -1,7 +1,7 @@
 # Status 0097
 
 - Branch: `feature/0097` (prform.api-0097 e prform-app-0097), a partir de origin/master.
-- Merge: **não autorizado** — só abrir PR quando o usuário pedir (e mesclar os dois juntos).
+- Merge: autorizado pelo usuário em 2026-11-18 (back e front juntos).
 
 | Fase | Estado | Responsável | Notas |
 |---|---|---|---|
