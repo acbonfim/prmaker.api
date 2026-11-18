@@ -400,4 +400,64 @@ public class Reverse0097Tests
         Assert.Contains("legado-kaizen", modules);
         Assert.Contains("Pelo histórico", text);
     }
+
+    // ── B6: itens desatualizados ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Stale_items_are_marked_shown_in_search_and_cleared_by_the_next_publication()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+
+        var marked = await app.MarkStaleAsync("legado-checklist", new MarkReverseStaleRequest
+        {
+            Commit = "def5678",
+            Items = [new() { DocType = "funcional", ItemId = "RN-1", Reason = "resp.asp:120 mudou" }, new() { DocType = "funcional", ItemId = "RN-099" }]
+        }, default);
+        Assert.Equal(1, marked.Marked);
+        Assert.Equal(["funcional:RN-099"], marked.NotFound);
+        Assert.Equal(1, marked.StaleItems);
+
+        var hit = (await app.SearchAsync("checklist fecha perguntas respondidas", null, null, null, 10, false, default)).First(h => h.ItemId == "RN-001");
+        Assert.NotNull(hit.Stale);
+        Assert.Equal("def5678", hit.Stale!.Commit);
+        Assert.Equal("resp.asp:120 mudou", hit.Stale.Reason);
+        Assert.Equal(" (código mudou desde a geração — confirme no código)", ReverseEngineeringApplication.StaleNote(hit));
+        Assert.NotNull((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+        Assert.Equal(["RN-001"], (await app.SearchAsync(null, ["legado-checklist"], null, null, 100, false, default, staleOnly: true)).Select(h => h.ItemId).ToList());
+        Assert.Equal(1, (await app.GetModuleAsync("legado-checklist", Dev, default)).StaleItems);
+        Assert.Equal(1, (await app.ListModulesAsync(default)).Single(m => m.Key == "legado-checklist").StaleItems);
+        Assert.Contains("RN-001 [Regra de negócio] Checklist só fecha com todas as perguntas respondidas (código mudou desde a geração",
+            await app.ForCardAsync("80001", "Checklist", "checklist não fecha com perguntas respondidas", default));
+
+        // reancoragem (só as linhas "Onde:") publicada: as marcas continuam
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional.Replace("resp.asp:120", "resp.asp:131"), ReverseRevisionMode.Reanchor);
+        Assert.NotNull((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+
+        // replace limpa as do módulo antes de marcar
+        var replaced = await app.MarkStaleAsync("legado-checklist", new MarkReverseStaleRequest
+        {
+            Replace = true, Items = [new() { DocType = "funcional", ItemId = "RN-002" }]
+        }, default);
+        Assert.Equal(1, replaced.Cleared);
+        Assert.Equal(1, replaced.StaleItems);
+        Assert.Null((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+
+        // publicar de novo (melhoria) limpa as marcas do documento
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional + "\n", "improve");
+        Assert.Equal(0, (await app.GetModuleAsync("legado-checklist", Dev, default)).StaleItems);
+        Assert.Null((await app.GetItemsAsync(["legado-checklist#RN-002"], null, default)).Single().Stale);
+    }
+
+    [Fact]
+    public async Task Reanchor_session_starts_from_the_published_text()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        var session = await app.StartSessionAsync("legado-checklist", "funcional", new StartReverseSessionRequest { Mode = "reanchor" }, "dev", Dev, default);
+        Assert.Equal(ReverseRevisionMode.Reanchor, session.Revision.Mode);
+        Assert.Contains("RN-001", session.Revision.Content);
+    }
 }

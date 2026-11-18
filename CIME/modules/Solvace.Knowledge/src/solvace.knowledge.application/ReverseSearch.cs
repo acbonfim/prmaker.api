@@ -173,7 +173,8 @@ public static partial class ReverseSearch
     {
         Ref = e.Ref, ModuleKey = e.ModuleKey, ModuleName = moduleNames.GetValueOrDefault(e.ModuleKey), DocType = e.DocType, ItemId = e.ItemId,
         Kind = e.Kind, KindLabel = ReverseItemKinds.ByPrefix.TryGetValue(e.Kind, out var k) ? k.Label : e.Kind, Title = e.Title,
-        Snippet = snippet, Tags = e.Tags, Tables = e.Tables, Modules = e.Modules, Synonyms = e.Synonyms, Removed = e.Removed, Score = score
+        Snippet = snippet, Tags = e.Tags, Tables = e.Tables, Modules = e.Modules, Synonyms = e.Synonyms, Removed = e.Removed, Score = score,
+        Stale = e.StaleSince is { } since ? new ReverseStaleInfo { Since = since, Reason = e.StaleReason, Commit = e.StaleCommit } : null   // 0097
     };
 
     /// <summary>Primeiras linhas úteis do corpo (sem o cabeçalho e sem marcação).</summary>

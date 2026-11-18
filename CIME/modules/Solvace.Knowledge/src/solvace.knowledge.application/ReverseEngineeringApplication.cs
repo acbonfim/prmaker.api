@@ -85,7 +85,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var open = WithProgress(await repository.GetRevisionHeadsAsync(null, null, OpenStatuses, cancellationToken))
             .GroupBy(r => (r.ModuleKey, r.DocType)).ToDictionary(g => g.Key, g => g.First());
         // 0070: contagens no banco — antes carregava o índice inteiro (texto de todos os itens) e 500 sugestões só para contar
-        var items = (await repository.CountIndexItemsAsync(null, cancellationToken)).GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
+        var counts = await repository.CountIndexItemsAsync(null, cancellationToken);
+        var items = counts.GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
+        var stale = counts.GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Stale));   // 0097
         var suggestions = await repository.CountPendingSuggestionsAsync(null, cancellationToken);
         // 0097: perguntas abertas sem resposta (uma leitura; o texto normalizado uma vez por pergunta)
         var gaps = (await repository.GetQuestionsAsync(ArchitectureQuestionStatus.Open, cancellationToken)).Where(ReverseModuleQuestions.IsOpenGap)
@@ -100,6 +102,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 var names = ReverseModuleQuestions.Names(p, module);
                 FillSummary(summary, p, module, s, open, items.GetValueOrDefault(p.Key), suggestions,
                     gaps.Count(g => ReverseModuleQuestions.IsAbout(g.Question, p.Key, names, g.Padded)));
+                summary.StaleItems = stale.GetValueOrDefault(p.Key);
                 return summary;
             }).ToList();
     }
@@ -198,6 +201,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var openQuestions = (await repository.GetQuestionsAsync(ArchitectureQuestionStatus.Open, cancellationToken))
             .Count(q => ReverseModuleQuestions.IsOpenGap(q) && ReverseModuleQuestions.IsAbout(q, project.Key, names));
         FillSummary(response, project, module, s, open, counts.Sum(c => c.Count), suggestions, openQuestions);
+        response.StaleItems = counts.Sum(c => c.Stale);   // 0097
         foreach (var doc in response.Docs.Where(d => d.Published is not null))
             doc.Published!.Items = counts.Where(c => c.DocType == doc.Type).Sum(c => c.Count);
         response.Repository = project.Repository;
@@ -374,7 +378,9 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         {
             var mode = ReverseRevisionMode.Normalize(request.Mode ?? (section is null ? "new" : "improve"));
             var number = await repository.GetMaxRevisionNumberAsync(project.Key, type.Key, cancellationToken) + 1;
-            revision = new ReverseRevision(project.Key, type.Key, number, mode, mode == "improve" ? section?.Content : null, section?.Version, actor, DateTimeOffset.UtcNow);
+            // 0097: a reancoragem (sem IA) também parte do publicado — só as linhas "Onde:" mudam
+            revision = new ReverseRevision(project.Key, type.Key, number, mode, mode is "improve" or ReverseRevisionMode.Reanchor ? section?.Content : null,
+                section?.Version, actor, DateTimeOffset.UtcNow);
             repository.AddRevision(revision);
         }
         await repository.SaveChangesAsync(cancellationToken);
@@ -612,7 +618,10 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         revision.MarkPublished(section.Version, actor, now);
 
         var items = ReverseDocParser.Parse(section.Content);
-        await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken);
+        // 0097: publicar limpa as marcas de desatualizado do documento — menos a reancoragem, que só move as linhas "Onde:"
+        // (o código citado continua diferente do que foi descrito até a próxima geração)
+        await ReplaceIndexAsync(repository, project.Key, type.Key, items, section.Version, now, cancellationToken,
+            keepStale: revision.Mode == ReverseRevisionMode.Reanchor);
         // 0066: as integrações (INT de qualquer documento) são resolvidas na leitura a partir do índice; as relações re# que a
         // publicação gravava antes (destino em texto livre) saem do projeto quando ele é republicado.
         DropReverseRelations(project);
@@ -653,12 +662,55 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// Troca os itens do índice de um documento (usado ao publicar e quando a seção re-* é editada pela Base Solvace).
     /// 0097: GAP que fala do processo de geração (<see cref="ReverseGeneratorGaps"/>) não entra no índice.
     /// </summary>
+    /// <param name="keepStale">0097: mantém as marcas de desatualizado do mesmo item (publicação de reancoragem); o padrão limpa.</param>
     public static async Task ReplaceIndexAsync(IKnowledgeRepository repository, string moduleKey, string docType, List<ReverseItem> items, int sectionVersion,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, bool keepStale = false)
     {
-        repository.RemoveIndexEntries(await repository.GetIndexEntriesForUpdateAsync(moduleKey, docType, cancellationToken));
+        var previous = await repository.GetIndexEntriesForUpdateAsync(moduleKey, docType, cancellationToken);
+        var stale = keepStale ? previous.Where(e => e.StaleSince is not null).GroupBy(e => e.ItemId).ToDictionary(g => g.Key, g => g.First()) : [];
+        repository.RemoveIndexEntries(previous);
         foreach (var item in items.Where(i => !ReverseGeneratorGaps.IsGeneratorGap(i)).GroupBy(i => i.Id).Select(g => g.First()))
-            repository.AddIndexEntry(new ReverseIndexEntry(moduleKey, docType, item, sectionVersion, now));
+        {
+            var entry = new ReverseIndexEntry(moduleKey, docType, item, sectionVersion, now);
+            if (stale.TryGetValue(item.Id, out var old)) entry.KeepStaleOf(old);
+            repository.AddIndexEntry(entry);
+        }
+    }
+
+    // ── 0097: itens desatualizados (reancoragem) ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Marca itens do módulo como desatualizados — a reancoragem (sem IA) viu que o trecho de código citado mudou na
+    /// master. <c>replace</c> limpa as marcas do módulo antes. Publicar o documento (menos a reancoragem) limpa as dele.
+    /// </summary>
+    public async Task<ReverseStaleResponse> MarkStaleAsync(string key, MarkReverseStaleRequest request, CancellationToken cancellationToken)
+    {
+        var project = await repository.GetProjectHeadAsync(ArchitectureProject.NormalizeKey(key), cancellationToken) ?? throw NotFound(key);
+        var wanted = (request.Items ?? []).Select(i => (DocType: ReverseDocTypes.Get(i.DocType).Key, Raw: (i.ItemId ?? string.Empty).Trim(), i.Reason)).ToList();
+        if (wanted.Count > 5000) throw new DomainException("Envie no máximo 5000 itens por vez.");
+        var docs = (request.Replace ? ReverseDocTypes.All.Select(t => t.Key) : wanted.Select(w => w.DocType)).Distinct().ToList();
+        var now = DateTimeOffset.UtcNow;
+        var response = new ReverseStaleResponse();
+        var byDoc = new Dictionary<string, List<ReverseIndexEntry>>();
+        foreach (var doc in docs) byDoc[doc] = await repository.GetIndexEntriesForUpdateAsync(project.Key, doc, cancellationToken);
+        if (request.Replace)
+            response.Cleared = byDoc.Values.SelectMany(e => e).Count(e => e.ClearStale(now));
+        foreach (var (doc, raw, reason) in wanted)
+        {
+            var id = ReverseItemKinds.ParseRef(raw)?.Id;
+            var entry = id is null ? null : byDoc[doc].FirstOrDefault(e => e.ItemId == id);
+            if (entry is null)
+            {
+                response.NotFound.Add($"{doc}:{raw}");
+                continue;
+            }
+            entry.MarkStale(reason, request.Commit, now);
+            response.Marked++;
+        }
+        await repository.SaveChangesAsync(cancellationToken);
+        ReverseSearch.Invalidate();
+        response.StaleItems = (await repository.CountIndexItemsAsync(project.Key, cancellationToken)).Sum(c => c.Stale);
+        return response;
     }
 
     /// <summary>
@@ -830,7 +882,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     // ── Índice por item ─────────────────────────────────────────────────────────────────────────
 
     public async Task<List<ReverseIndexHit>> SearchAsync(string? query, IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType,
-        int limit, bool includeRemoved, CancellationToken cancellationToken)
+        int limit, bool includeRemoved, CancellationToken cancellationToken, bool staleOnly = false)
     {
         var names = await ModuleNamesAsync(cancellationToken);
         var normalizedModules = modules?.Where(m => !string.IsNullOrWhiteSpace(m)).Select(ArchitectureProject.NormalizeKey).ToList();
@@ -842,10 +894,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
             return entries.Where(e => (normalizedModules is not { Count: > 0 } || normalizedModules.Contains(e.ModuleKey))
                                       && (normalizedKinds is not { Count: > 0 } || normalizedKinds.Contains(e.Kind))
-                                      && (doc is null || e.DocType == doc) && (includeRemoved || !e.Removed))
+                                      && (doc is null || e.DocType == doc) && (includeRemoved || !e.Removed) && (!staleOnly || e.StaleSince is not null))
                 .Take(Math.Clamp(limit, 1, 2000)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
         }
-        return await ReverseSearch.RunAsync(repository, query, normalizedModules, normalizedKinds, doc, limit, includeRemoved, names, cancellationToken);
+        var hits = await ReverseSearch.RunAsync(repository, query, normalizedModules, normalizedKinds, doc, limit, includeRemoved, names, cancellationToken);
+        return staleOnly ? hits.Where(h => h.Stale is not null).ToList() : hits;
     }
 
     public async Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken)
@@ -872,7 +925,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             {
                 Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
                 KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
-                Removed = hit.Removed, Body = bodies.GetValueOrDefault(e.Id) ?? e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
+                Removed = hit.Removed, Stale = hit.Stale, Body = bodies.GetValueOrDefault(e.Id) ?? e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
                 ReferencedBy = entries.Where(x => x.Id != e.Id && (x.Refs.Contains(e.Ref) || (x.ModuleKey == e.ModuleKey && x.Refs.Contains(e.ItemId))))
                     .Select(x => x.Ref).Take(40).ToList(),
                 Traps = (await repository.GetTrapsAsync(e.ModuleKey, cancellationToken))
@@ -1033,7 +1086,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         else
         {
             sb.AppendLine("Itens que casam com o card (texto inteiro: prmake_base_get(refs, card)):");
-            foreach (var h in hits) sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")}");
+            foreach (var h in hits) sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")}{StaleNote(h)}");
             // 0054: o que a operação já viu dar errado nesses itens
             var traps = (await repository.GetTrapsAsync(null, cancellationToken))
                 .Where(t => hits.Any(h => h.ModuleKey == t.ModuleKey && (t.Items.Contains(h.ItemId) || t.Items.Contains(h.Ref)))).Take(8).ToList();
@@ -1054,7 +1107,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 if (body.Length > 1800) body = body[..1800] + "\n…(prmake_base_get para o resto)";
                 if (budget - body.Length < 0) break;
                 budget -= body.Length;
-                sb.AppendLine($"--- {h.Ref}").AppendLine(body);
+                sb.AppendLine($"--- {h.Ref}{StaleNote(h)}").AppendLine(body);
             }
         }
         sb.AppendLine(complete
@@ -1448,6 +1501,11 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         ReverseSearch.Invalidate();
         return new ReverseTechnicalIndexResponse { Items = info.Items, Version = section.Version, Warnings = lint.Warnings };
     }
+
+    /// <summary>0097: aviso do item desatualizado nos textos para as análises (MCP, for-card).</summary>
+    public const string StaleWarning = " (código mudou desde a geração — confirme no código)";
+
+    public static string StaleNote(ReverseIndexHit hit) => hit.Stale is null ? string.Empty : StaleWarning;
 
     /// <summary>0097: o resumo do índice técnico gravado no módulo (null = nunca gerado ou ilegível).</summary>
     public static ReverseTechnicalIndexInfo? TechnicalIndexInfo(ReverseModule? module)

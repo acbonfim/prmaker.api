@@ -245,6 +245,15 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     public Task<ActionResult<ReverseTechnicalIndexResponse>> TechnicalIndex([FromRoute] string key, [FromBody] PublishTechnicalIndexRequest request, CancellationToken ct) =>
         Run<ReverseTechnicalIndexResponse>(async () => Ok(await application.PublishTechnicalIndexAsync(key, request, await ActorAsync(ct), ct)));
 
+    /// <summary>
+    /// 0097: itens desatualizados (reancoragem sem IA): o trecho de código citado mudou na master desde a geração.
+    /// <c>replace=true</c> limpa as marcas do módulo antes; publicar um documento limpa as dele (menos a reancoragem).
+    /// </summary>
+    [HttpPost("modules/{key}/stale")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
+    public Task<ActionResult<ReverseStaleResponse>> MarkStale([FromRoute] string key, [FromBody] MarkReverseStaleRequest request, CancellationToken ct) =>
+        Run<ReverseStaleResponse>(async () => Ok(await application.MarkStaleAsync(key, request, ct)));
+
     // ── 0054: armadilhas, sugestões por item, divergências com o KC ─────────────────────────────
 
     [HttpGet("traps")]
@@ -297,12 +306,13 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     // ── Índice por item ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Busca nos itens publicados (q vazio = lista filtrada). module/kind aceitam vários (separados por vírgula).</summary>
+    /// <param name="stale">0097: só os itens desatualizados (lista do cabeçalho do módulo).</param>
     [HttpGet("index/search")]
     public Task<ActionResult<List<ReverseIndexHit>>> Search([FromQuery] string? q, [FromQuery] string? module, [FromQuery] string? kind, [FromQuery] string? doc,
-        [FromQuery] int limit = 30, [FromQuery] bool removed = false, [FromQuery] string? card = null, CancellationToken ct = default) =>
+        [FromQuery] int limit = 30, [FromQuery] bool removed = false, [FromQuery] string? card = null, [FromQuery] bool stale = false, CancellationToken ct = default) =>
         Run<List<ReverseIndexHit>>(async () =>
         {
-            var hits = await application.SearchAsync(q, Split(module), Split(kind), doc, limit <= 0 ? 30 : limit, removed, ct);
+            var hits = await application.SearchAsync(q, Split(module), Split(kind), doc, limit <= 0 ? 30 : limit, removed, ct, stale);
             if (!string.IsNullOrWhiteSpace(card)) await application.RecordConsultedAsync(card, hits.Take(5).Select(h => h.Ref), ct);
             return Ok(hits);
         });

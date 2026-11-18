@@ -121,7 +121,8 @@ public interface IKnowledgeRepository
     /// <summary>Itens publicados (sem os removidos) contados por módulo, documento e tipo — sem trazer o texto.</summary>
     async Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
         (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => !e.Removed)
-            .GroupBy(e => (e.ModuleKey, e.DocType, e.Kind)).Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count())).ToList();
+            .GroupBy(e => (e.ModuleKey, e.DocType, e.Kind))
+            .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count(), g.Count(e => e.StaleSince != null))).ToList();
 
     /// <summary>
     /// Cabeças dos itens (ID, tipo, título, nível, tags, tabelas, módulos; SEM o texto), de um módulo/documento ou de todos,
@@ -149,8 +150,8 @@ public interface IKnowledgeRepository
     }
 }
 
-/// <summary>Contagem de itens publicados da engenharia reversa (0070).</summary>
-public sealed record ReverseItemCount(string ModuleKey, string DocType, string Kind, int Count);
+/// <summary>Contagem de itens publicados da engenharia reversa (0070); 0097: quantos estão desatualizados.</summary>
+public sealed record ReverseItemCount(string ModuleKey, string DocType, string Kind, int Count, int Stale = 0);
 
 /// <summary>Posições em code points (a contagem do PostgreSQL) sobre strings .NET (UTF-16) — 0070.</summary>
 public static class CodePoints

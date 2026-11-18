@@ -46,7 +46,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         {
             sb.AppendLine($"Engenharia reversa ({hits.Count}):");
             foreach (var h in hits)
-                sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")} ({h.DocType})"
+                sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")} ({h.DocType}){ReverseEngineeringApplication.StaleNote(h)}"
                               + (h.Snippet.Length > 0 ? $"\n    {Short(h.Snippet, 140)}" : ""));
         }
         if (hits.Count < Math.Max(3, limit / 2))
@@ -96,7 +96,8 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
                 RequireReverse();
                 foreach (var item in await reverse.GetItemsAsync([raw], module, ct))
                 {
-                    sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}")
+                    sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}{ReverseEngineeringApplication.StaleNote(item)}"
+                                  + (item.Stale is { } stale ? $"\n  DESATUALIZADO desde {stale.Since:yyyy-MM-dd}{(stale.Commit is null ? "" : " (master " + stale.Commit + ")")}{(stale.Reason is null ? "" : ": " + stale.Reason)}" : ""))
                         .AppendLine(item.Body);
                     // 0054: o que já deu errado neste item
                     foreach (var trap in item.Traps)

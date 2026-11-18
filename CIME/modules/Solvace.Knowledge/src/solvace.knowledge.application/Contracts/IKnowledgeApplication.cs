@@ -89,8 +89,9 @@ public interface IReverseEngineeringApplication
         string actor, CancellationToken cancellationToken);
     Task<(string FileName, string ContentType, byte[] Data)> GetAssetFileAsync(Guid id, CancellationToken cancellationToken);
     Task DeleteAssetAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    /// <param name="staleOnly">0097: só os itens desatualizados (o código citado mudou desde a geração).</param>
     Task<List<ReverseIndexHit>> SearchAsync(string? query, IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType, int limit,
-        bool includeRemoved, CancellationToken cancellationToken);
+        bool includeRemoved, CancellationToken cancellationToken, bool staleOnly = false);
     Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken);
     Task<List<ReverseIndexHit>> ImpactAsync(string term, int limit, CancellationToken cancellationToken);
     /// <summary>
@@ -127,4 +128,6 @@ public interface IReverseEngineeringApplication
 
     /// <summary>0097: publica o índice técnico (gerado sem IA) direto na seção <c>re-tecnico</c> — sem revisão humana.</summary>
     Task<ReverseTechnicalIndexResponse> PublishTechnicalIndexAsync(string key, PublishTechnicalIndexRequest request, string actor, CancellationToken cancellationToken);
+    /// <summary>0097: marca itens como desatualizados (reancoragem); <c>replace</c> limpa as marcas do módulo antes.</summary>
+    Task<ReverseStaleResponse> MarkStaleAsync(string key, MarkReverseStaleRequest request, CancellationToken cancellationToken);
 }

@@ -240,6 +240,9 @@ public class KnowledgeContext(DbContextOptions<KnowledgeContext> options) : DbCo
             entity.Property(e => e.Evidence).HasColumnType("jsonb");
             entity.Property(e => e.Modules).HasColumnType("jsonb");
             entity.Property(e => e.Synonyms).HasColumnType("jsonb");
+            // 0097: item desatualizado (o código citado mudou desde a geração)
+            entity.Property(e => e.StaleReason).HasMaxLength(ReverseIndexEntry.MaxStaleReasonLength);
+            entity.Property(e => e.StaleCommit).HasMaxLength(ReverseIndexEntry.MaxStaleCommitLength);
             entity.Ignore(e => e.Ref);
             entity.HasIndex(e => new { e.ModuleKey, e.DocType });
             entity.HasIndex(e => new { e.ModuleKey, e.ItemId });

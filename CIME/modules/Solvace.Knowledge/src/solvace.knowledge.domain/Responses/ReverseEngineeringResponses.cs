@@ -385,6 +385,8 @@ public class ReverseIndexHit
     public List<string> Synonyms { get; set; } = [];
     public bool Removed { get; set; }
     public double Score { get; set; }
+    /// <summary>0097: o código que o item cita mudou desde a geração (reancoragem) — confirme no código. null = em dia.</summary>
+    public ReverseStaleInfo? Stale { get; set; }
 }
 
 /// <summary>0071: item que entra no contexto de uma resposta do Pergunte (texto inteiro, cortado) e de onde veio.</summary>

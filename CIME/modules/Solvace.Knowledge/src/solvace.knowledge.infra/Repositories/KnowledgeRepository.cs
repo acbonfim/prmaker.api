@@ -279,7 +279,7 @@ public class KnowledgeRepository(KnowledgeContext context) : IKnowledgeRepositor
             var open = await RevisionHeadsQuery(null, null, OpenStatuses).ToListAsync(cancellationToken);
             var counts = await context.ReverseIndexEntries.AsNoTracking().Where(e => !e.Removed)
                 .GroupBy(e => new { e.ModuleKey, e.DocType, e.Kind })
-                .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count()))
+                .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count(), g.Count(e => e.StaleSince != null)))
                 .ToListAsync(cancellationToken);
             var suggestions = (await context.Suggestions.AsNoTracking()
                     .Where(x => x.Status == ArchitectureSuggestionStatus.Pending && x.SectionKey != null)

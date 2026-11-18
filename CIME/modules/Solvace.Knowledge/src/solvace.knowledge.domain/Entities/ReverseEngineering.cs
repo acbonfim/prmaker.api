@@ -649,6 +649,45 @@ public class ReverseIndexEntry
     public bool Removed { get; private set; }
     public int SectionVersion { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    /// <summary>
+    /// 0097: desatualizado — a reancoragem viu que o trecho de código citado mudou na master desde a geração. Vale até a
+    /// próxima publicação do documento (a reancoragem em si, modo <c>reanchor</c>, mantém as marcas).
+    /// </summary>
+    public DateTimeOffset? StaleSince { get; private set; }
+    public string? StaleReason { get; private set; }
+    public string? StaleCommit { get; private set; }
+
+    public const int MaxStaleReasonLength = 500;
+    public const int MaxStaleCommitLength = 64;
+
+    /// <summary>Marca como desatualizado (a última atualização muda: o cache da busca recarrega).</summary>
+    public void MarkStale(string? reason, string? commit, DateTimeOffset now)
+    {
+        var r = (reason ?? string.Empty).Trim();
+        var c = (commit ?? string.Empty).Trim();
+        StaleSince = now;
+        StaleReason = r.Length == 0 ? null : r.Length <= MaxStaleReasonLength ? r : r[..MaxStaleReasonLength];
+        StaleCommit = c.Length == 0 ? null : c.Length <= MaxStaleCommitLength ? c : c[..MaxStaleCommitLength];
+        UpdatedAt = now;
+    }
+
+    public bool ClearStale(DateTimeOffset now)
+    {
+        if (StaleSince is null) return false;
+        StaleSince = null;
+        StaleReason = null;
+        StaleCommit = null;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>Herda a marca de outra entrada do mesmo item (publicação de reancoragem).</summary>
+    public void KeepStaleOf(ReverseIndexEntry previous)
+    {
+        StaleSince = previous.StaleSince;
+        StaleReason = previous.StaleReason;
+        StaleCommit = previous.StaleCommit;
+    }
 
     protected ReverseIndexEntry() { }
 
