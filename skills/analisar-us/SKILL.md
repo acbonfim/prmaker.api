@@ -195,6 +195,8 @@ learning|divergence --card <card>`. Reporte: card, solucao, itens de trabalho (n
 **Etapa pedida (`pedido-*`)** — acrescentada pela pessoa via Especialista do caso ("antes de continuar, confira X"):
 entra pendente antes da etapa em que voce parou. Ao ser retomado, faca-a primeiro e volte; se o achado mudar a
 solucao, atualize a analise e as perguntas abertas. Ao refinar as etapas, mantenha as `pedido-*`.
+**Ordem, pausa e cancelamento pela pessoa (card 78680):** siga a ordem **atual** do `prmake_plan` (a proxima e a primeira
+etapa pronta); nao comece etapa `held` (pausada) nem as que dependem dela; etapa `pinned` fica onde a pessoa pos.
 
 ## Referencias da analisar-bug — `bash $REF <arquivo> <secao>` (so a secao, so na hora)
 | Quando | Comando |

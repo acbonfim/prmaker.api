@@ -83,9 +83,36 @@ public class CaseSpecialistGuardTests
             .Select(m => m.GetCustomAttribute<McpServerToolAttribute>()?.Name)
             .Where(n => n is not null)
             .ToHashSet();
-        Assert.All(CaseSpecialistMiddleware.AllowedTools, t => Assert.Contains(t, names));
-        Assert.All(CaseSpecialistMiddleware.ActingTools, t => Assert.Contains(t, CaseSpecialistMiddleware.AllowedTools));
+        Assert.All(CaseSpecialistMiddleware.TreatmentOnlyTools, t => Assert.Contains(t, names));
+        Assert.All(CaseSpecialistMiddleware.ActingTools, t => Assert.Contains(t, names));
+        Assert.All(CaseSpecialistMiddleware.ActingTools, t => Assert.True(CaseSpecialistMiddleware.IsAllowed(t)));
     }
+
+    /// <summary>
+    /// Card 78505: guardião do caso — toda ferramenta que grava fora da conversa roda como quem pediu (ferramenta nova que
+    /// grava entra em ActingTools); ficam de fora só as do tratamento e as da própria conversa/arquivo do item.
+    /// </summary>
+    [Fact]
+    public void Every_write_tool_is_acting_or_treatment_only()
+    {
+        string[] own = ["prmake_case_action", "prmake_case_action_done", "prmake_case_file", "prmake_case_point", "prmake_case_propose",
+            "prmake_case_reply", "prmake_situation", "prmake_work_item_file"];
+        var writes = typeof(PrmakeMcpTools).Assembly.GetTypes()
+            .Where(t => t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null)
+            .SelectMany(t => t.GetMethods())
+            .Select(m => m.GetCustomAttribute<McpServerToolAttribute>())
+            .Where(a => a is { Name: not null, ReadOnly: false })
+            .Select(a => a!.Name!)
+            .Where(n => !own.Contains(n) && !CaseSpecialistMiddleware.TreatmentOnlyTools.Contains(n));
+        Assert.All(writes, t => Assert.Contains(t, CaseSpecialistMiddleware.ActingTools));
+    }
+
+    [Theory]
+    [InlineData("prmake_work_task_move")]
+    [InlineData("prmake_devops_spec")]
+    [InlineData("prmake_some_future_tool")]
+    public void Guardian_uses_every_tool_but_the_treatment_ones(string tool) =>
+        Assert.True(CaseSpecialistMiddleware.IsAllowed(tool));
 
     [Fact]
     public async Task New_plan_version_is_refused_with_403()

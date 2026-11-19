@@ -499,6 +499,7 @@ print_plan() { # imprime o plano em $TMP/resp
             + (if (.executor // "claude") == "user" then "  (usuario)" else "" end)
             + (if .repository then "  repo=\(.repository)" else "" end)
             + (if ((.dependsOn // []) | length) > 0 then "  depende de: \(.dependsOn | join(","))" else "" end)
+            + (if .held then "  PAUSADA por \(.heldBy // "uma pessoa") (nao comece)" else "" end)
             + (if .checkpoint then "\n      checkpoint: \(.checkpoint | gsub("\n"; " | "))" else "" end)
                                                           + (if .statusReason then "\n      motivo: \(.statusReason)" else "" end)),
          (if (.artifacts | length) > 0 then "  arquivos: " + ([.artifacts[] | "\(.kind)/\(.name)"] | join(", ")) else empty end),

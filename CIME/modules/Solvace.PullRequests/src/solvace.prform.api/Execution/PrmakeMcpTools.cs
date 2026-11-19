@@ -90,6 +90,8 @@ public partial class PrmakeMcpTools(
             steps = plan.Steps.OrderBy(s => s.Order).Select(s => new
             {
                 s.Key, s.Title, s.Status, s.Executor, s.Kind, s.TaskKind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
+                // Card 78680: pausada pela pessoa (nao comece, nem as que dependem dela); posicao escolhida pela pessoa.
+                held = s.Held ? true : (bool?)null, heldBy = s.Held ? s.HeldBy : null, pinned = s.OrderPinned ? true : (bool?)null,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
                 links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new
@@ -179,9 +181,15 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_plan_status")]
-    [Description("Muda o status do plano: running (retomar), completed (com resumo), failed (com motivo).")]
-    public Task<string> PlanStatus(string card, string status, string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    [Description("Muda o status do plano: running (retomar/continuar), paused (pausar), completed (com resumo), failed (com motivo), " +
+                 "cancelled (com motivo). status e obrigatorio — para so ver o status, use prmake_plan.")]
+    public Task<string> PlanStatus(string card,
+        [Description("running | paused | completed | failed | cancelled")] string? status = null,
+        string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
+        // Card 78505: sem status o binding do MCP respondia "arguments dictionary is missing a value" — diga o que mandar.
+        if (string.IsNullOrWhiteSpace(status))
+            throw new McpException("Informe status: running (retomar), paused, completed, failed ou cancelled. Para ver o status: prmake_plan.");
         var plan = await plans.ChangeStatusAsync(await PlanIdAsync(card, phase, ct), new ChangeExecutionPlanStatusRequest
         {
             Status = status, Reason = reason, Summary = summary
@@ -528,8 +536,20 @@ public partial class PrmakeMcpTools(
         // trabalhando. Fica pronta e o executor do dono foi pedido ao concluir a etapa (UpdateStepAsync).
         if (!actor.IsExecutor)
             return $"OK {from} -> completed · {to} fica pronta para o tratamento (executor pedido){note}";
+        // Card 78680: a pessoa pode ter reordenado/pausado etapas — a próxima é a primeira pronta da ordem atual.
+        var current = await plans.GetAsync(planId, ct);
+        var target = current.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(to));
+        if (target is { Held: true })
+        {
+            var next = current.Steps.Where(s => s.Status == ExecutionStatus.Pending && !s.Held).OrderBy(s => s.Order).FirstOrDefault();
+            return $"OK {from} -> completed · {to} esta PAUSADA por {target.HeldBy ?? "uma pessoa"} (nao comece)" +
+                   (next is null ? " — sem outra etapa pronta: encerre a vez" : $" — siga para '{next.Key}'") + note;
+        }
+        var earlier = current.Steps.Where(s => s.OrderPinned && s.Status == ExecutionStatus.Pending && !s.Held && target is not null && s.Order < target.Order)
+            .OrderBy(s => s.Order).FirstOrDefault();
         await plans.UpdateStepAsync(planId, to, new UpdateExecutionStepRequest { Status = ExecutionStatus.Running }, actor, ct);
-        return $"OK {from} -> completed · {to} -> running{note}";
+        return $"OK {from} -> completed · {to} -> running{note}" +
+               (earlier is null ? string.Empty : $"\nATENCAO: a pessoa pos '{earlier.Key}' antes de '{to}' — faca '{earlier.Key}' primeiro (prmake_step running).");
     });
 
     [McpServerTool(Name = "prmake_block")]

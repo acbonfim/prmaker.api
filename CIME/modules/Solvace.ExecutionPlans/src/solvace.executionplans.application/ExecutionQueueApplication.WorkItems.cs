@@ -31,14 +31,14 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
 
     public Task<Guid> EnqueueUndoAsync(WorkItem item, ExecutionActor actor, CancellationToken ct) => EnqueueWorkItemAsync(item, true, actor, ct);
 
-    public async Task CancelActiveAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct)
+    public async Task CancelActiveAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct, string? reason = null)
     {
         var now = DateTimeOffset.UtcNow;
         for (var attempt = 1; attempt <= 5; attempt++)
         {
             if (await _queue.GetActiveForWorkItemAsync(workItemId, ct) is not { } active)
                 return;
-            active.Cancel(actor.Name, $"Item de trabalho cancelado — {actor.Name}", now);
+            active.Cancel(actor.Name, reason ?? $"Item de trabalho cancelado — {actor.Name}", now);
             try
             {
                 await _queue.SaveChangesAsync(ct);

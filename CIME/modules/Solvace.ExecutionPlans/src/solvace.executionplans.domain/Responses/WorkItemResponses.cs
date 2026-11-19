@@ -74,7 +74,7 @@ public class WorkItemResponse
         RequestId = item.ActiveRequestId,
         Activity = activity,
         Fingerprint = item.Fingerprint,
-        Tasks = item.Tasks.OrderBy(t => t.Order).Select(WorkTaskResponse.From).ToList(),
+        Tasks = item.Tasks.OrderBy(t => t.Order).Select(t => WorkTaskResponse.From(t, item)).ToList(),
     };
 }
 
@@ -108,8 +108,15 @@ public class WorkTaskResponse
     /// chamado anexado (<see cref="WorkTaskTicket"/>).
     /// </summary>
     public List<WorkTaskLinkResponse> Links { get; set; } = [];
+    /// <summary>Card 78680: pausada pela pessoa.</summary>
+    public bool Held { get; set; }
+    public string? HeldBy { get; set; }
+    /// <summary>Card 78680: dependências, quem depende dela e o que dá para fazer agora (mover/pausar/cancelar) e por quê não.</summary>
+    public WorkTaskControls? Controls { get; set; }
 
-    public static WorkTaskResponse From(WorkItemTask task) => new()
+    public static WorkTaskResponse From(WorkItemTask task) => From(task, null);
+
+    public static WorkTaskResponse From(WorkItemTask task, WorkItem? item) => new()
     {
         Id = task.Id,
         Number = task.Number,
@@ -127,6 +134,9 @@ public class WorkTaskResponse
         StartedAt = task.StartedAt,
         CompletedAt = task.CompletedAt,
         Links = WorkTaskTicket.Read(task) is { } t ? [t] : [],
+        Held = task.Held,
+        HeldBy = task.HeldBy,
+        Controls = item?.Controls(task),
     };
 }
 

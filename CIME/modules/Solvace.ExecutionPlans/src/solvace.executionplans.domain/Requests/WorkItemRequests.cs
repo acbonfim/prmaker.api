@@ -15,6 +15,8 @@ public class WorkTaskInput
     public Dictionary<string, string>? Params { get; set; }
     /// <summary>Etapa do plano que a sub-tarefa espelha (itens gerados do plano).</summary>
     public string? StepKey { get; set; }
+    /// <summary>Card 78680: números (#n) das sub-tarefas do item que precisam terminar antes desta (item avulso).</summary>
+    public List<long>? DependsOn { get; set; }
 }
 
 /// <summary>0085: <c>POST WorkItems/card/{card}</c>.</summary>
@@ -111,6 +113,39 @@ public class AddWorkTasksRequest
     public List<WorkTaskInput> Tasks { get; set; } = [];
     /// <summary>Número da sub-tarefa pendente antes da qual entram (vazio = no fim).</summary>
     public long? Before { get; set; }
+    /// <summary>Card 78680: <c>first</c> = antes da primeira ainda não feita (vale quando não há <see cref="Before"/>).</summary>
+    public string? Position { get; set; }
     /// <summary>Já executar o item depois de acrescentar.</summary>
     public bool Execute { get; set; }
+}
+
+/// <summary>
+/// Card 78680: <c>POST WorkItems/tasks/{n}/control</c> — mexer numa sub-tarefa (avulsa ou espelho do plano): mudar a
+/// ordem, pausar, continuar ou cancelar só ela, sem cancelar o item.
+/// </summary>
+public class WorkTaskControlRequest
+{
+    /// <summary>move | pause | resume | cancel.</summary>
+    public string? Action { get; set; }
+    /// <summary>move: first | last | up | down | before.</summary>
+    public string? Position { get; set; }
+    /// <summary>move before: número da sub-tarefa ainda não feita antes da qual ela passa.</summary>
+    public long? Before { get; set; }
+    public string? Reason { get; set; }
+    /// <summary>cancel com sub-tarefas que dependem dela: <c>cancel</c> (cancela junto) | <c>keep</c> (seguem sem ela).</summary>
+    public string? Dependents { get; set; }
+    /// <summary>Retomar a execução depois (padrão: só se o item já tinha começado).</summary>
+    public bool? Execute { get; set; }
+}
+
+public static class WorkTaskControl
+{
+    public const string Move = "move";
+    public const string Pause = "pause";
+    public const string Resume = "resume";
+    public const string Cancel = "cancel";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Move, Pause, Resume, Cancel };
+
+    public const string DependentsCancel = "cancel";
+    public const string DependentsKeep = "keep";
 }

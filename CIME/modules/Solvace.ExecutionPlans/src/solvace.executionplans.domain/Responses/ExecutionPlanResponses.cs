@@ -247,6 +247,11 @@ public class ExecutionStepResponse
     public string TaskKind { get; set; } = WorkTaskKind.Task;
     public string? Repository { get; set; }
     public List<string> DependsOn { get; set; } = [];
+    /// <summary>Card 78680: pausada pela pessoa (não começa, nem as que dependem dela).</summary>
+    public bool Held { get; set; }
+    public string? HeldBy { get; set; }
+    /// <summary>Card 78680: a pessoa escolheu a posição (a skill não a tira do lugar ao refinar).</summary>
+    public bool OrderPinned { get; set; }
 }
 
 public class ExecutionQuestionResponse
@@ -552,7 +557,10 @@ public static class ExecutionPlanMappings
         Kind = step.Kind,
         TaskKind = WorkTaskKind.FromStep(step.Kind, step.Executor, step.Key, step.Title, step.TaskKind),
         Repository = step.Repository,
-        DependsOn = step.DependsOn.ToList()
+        DependsOn = step.DependsOn.ToList(),
+        Held = step.Held,
+        HeldBy = step.HeldBy,
+        OrderPinned = step.OrderPinned
     };
 
     public static ExecutionQuestionResponse ToResponse(this ExecutionQuestion q) => new()

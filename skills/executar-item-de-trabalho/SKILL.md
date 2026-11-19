@@ -32,6 +32,12 @@ CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dad
    plano" e encerre.
 5. **Cancelado para tudo**: antes de **cada** sub-tarefa, `prmake_work_item(card, number)`; status `cancelled`,
    `reverting` ou `reverted` → pare na hora (nao comece a proxima, nao marque nada).
+5b. **A pessoa mexe nas sub-tarefas enquanto voce roda** (card 78680): ela pode mudar a ordem, pausar (`held: true`),
+   continuar ou cancelar uma sub-tarefa. Siga sempre a ordem **atual** — a proxima e o `next` da resposta do
+   `prmake_work_task` (ou a primeira pendente/em espera de `prmake_work_item` que nao esta pausada nem presa a uma pausada:
+   `controls.waitsForHeld`). **Nunca comece sub-tarefa `held`** nem as que dependem dela (o PRMake recusa o `start`); so
+   restaram pausadas → encerre a vez dizendo quais ficaram pausadas. Sub-tarefa `cancelled` nao se faz. Se o PRMake parar
+   o pedido (cancelado "para mudar a ordem/pausar"), encerre — ele ja pos o item na fila de novo na ordem nova.
 6. **Nunca force-push** nem reescrever historico de branch ja publicada. **Banco e somente leitura** (sub-tarefa `sql-script` so escreve o script); sem comentarios novos no codigo.
 7. Modo executor (`PRMAKE_EXECUTOR=1`): ninguem le o chat. O que depende de alguem vira `wait` na sub-tarefa (com o
    que a pessoa precisa fazer/decidir) e voce **encerra a vez** — o PRMake retoma quando ela agir.
@@ -72,8 +78,8 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
   resultado anterior e so contexto, nao conta como feito; os arquivos ja gravados no item continuam la. O `result` novo
   substitui o anterior.
 
-**2. Para cada sub-tarefa, na ordem** (uma por vez):
-1. Checagem do item (regra 5).
+**2. Para cada sub-tarefa, na ordem atual** (uma por vez — regra 5b):
+1. Checagem do item (regras 5 e 5b).
 2. `executor: user` → `prmake_work_task(action: wait, result: "<o que a pessoa faz, com os arquivos/links>")` e
    **pare** (encerre a vez). A pessoa conclui pela tela; o executor retoma o item.
 3. `prmake_work_task(action: start)`.
@@ -95,7 +101,8 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
      (branch, base, commits e o diff completo, direto do worktree — nao cole diff no chat); PR, acoes do DevOps e Timeline
      sao registrados sozinhos (passe `taskNumber`/`--task` quando a ferramenta aceitar); chamado com link, aviso ou
      documento → `prmake_work_deliverable` (o `output` do `complete` tambem e lido, mas a entrega deixa claro).
-6. Proxima sub-tarefa. No fim, `prmake_work_item` para conferir: todas concluidas → o PRMake conclui o item sozinho.
+6. Proxima sub-tarefa = o `next` da resposta (pula as pausadas). No fim, `prmake_work_item` para conferir: todas
+   concluidas → o PRMake conclui o item sozinho.
 
 **3. Relatorio** — 3–6 linhas no chat (item, sub-tarefas feitas, PRs/branches, o que ficou esperando quem). Os marcos
 ja ficam no historico do item; nao duplique na Timeline (so a sub-tarefa `comment` escreve la).

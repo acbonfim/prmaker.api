@@ -141,6 +141,10 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.TaskKind).HasMaxLength(WorkItemTask.MaxKindLength);
             entity.Property(e => e.Repository).HasMaxLength(200);
             entity.Property(e => e.DependsOn).HasColumnType("jsonb");
+            // Card 78680: pausa e posição escolhida pela pessoa.
+            entity.Property(e => e.Held).HasDefaultValue(false);
+            entity.Property(e => e.HeldBy).HasMaxLength(200);
+            entity.Property(e => e.OrderPinned).HasDefaultValue(false);
 
             entity.HasIndex(e => new { e.PlanId, e.Key }).IsUnique();
         });
@@ -516,6 +520,10 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Result).HasColumnType("text");
             entity.Property(e => e.OutputJson).HasColumnName("Output").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
             entity.Property(e => e.UndoJson).HasColumnName("Undo").HasColumnType("jsonb");
+            // Card 78680: pausa e dependências (números das sub-tarefas do item).
+            entity.Property(e => e.Held).HasDefaultValue(false);
+            entity.Property(e => e.HeldBy).HasMaxLength(200);
+            entity.Property(e => e.DependsOn).HasColumnType("jsonb").IsRequired().HasDefaultValueSql("'[]'::jsonb");
             entity.Ignore(e => e.Params);
             entity.Ignore(e => e.OutputElement);
             entity.Ignore(e => e.Undo);
