@@ -1,6 +1,6 @@
 ---
 name: analisar-us
-description: Faz a analise de uma User Story (US) a partir do card no PRMake/Azure DevOps e do codigo — entende a US (descricao + criterios de aceite), consulta a Base Solvace (engenharia reversa + Knowledge Center) antes do codigo, mapeia onde a US entra, propoe a solucao perguntando ao usuario (responde no PRMake ou no Claude) e no fim gera os itens de trabalho (implementacao = tipo `implementation`; entregas com tipos proprios — nunca item `user-story`) com as sub-tarefas (plano de implementacao → item automatico; entregas separadas → itens proprios). Mesmo ciclo da analisar-bug (plano de execucao em tempo real, executor, retomada), sem causa raiz nem RCA. So abre PRs, nunca faz merge. Use quando o card for User Story ou o usuario pedir "analisar US", "analisar a historia", "analise da user story", "levantar a solucao da US".
+description: Faz a analise de uma User Story (US) a partir do card no PRMake/Azure DevOps e do codigo — entende a US (descricao + criterios de aceite), consulta a Base Solvace (engenharia reversa + Knowledge Center) antes do codigo, mapeia onde a US entra, propoe a solucao perguntando ao usuario (responde no PRMake ou no Claude) e no fim gera os itens de trabalho (implementacao = tipo `implementation`; entregas com tipos proprios — nunca item `user-story`) com as sub-tarefas (plano de implementacao → item automatico; entregas separadas → itens proprios). Mesmo ciclo da analisar-bug (plano de execucao em tempo real, executor, retomada), sem causa raiz na analise; US de RCA ([RCA] no titulo) fecha depois da validacao em QA pela ferramenta fechamento-rca-us. So abre PRs, nunca faz merge. Use quando o card for User Story ou o usuario pedir "analisar US", "analisar a historia", "analise da user story", "levantar a solucao da US".
 model: opus
 ---
 
@@ -33,7 +33,9 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh
 Economia de tokens (contexto num comando, referencias so por secao, saidas curtas), **MCP primeiro** (mesma tabela:
 `$REF plano comandos` se precisar), modo executor (`PRMAKE_EXECUTOR=1`: nada de chat/`watch`; o que depende de alguem
 vai para o plano e voce encerra a vez), **Base Solvace antes do codigo** (engenharia reversa do `contexto` →
-`prmake_base_search`/`prmake_base_get` com o card, termos em PT e EN → codigo so para confirmar o `Onde:`), **lacunas
+`prmake_base_search`/`prmake_base_get` com o card, termos em PT e EN → codigo so para confirmar o `Onde:`; 0097: a linha
+**"Pelo historico (cards parecidos …)"** desempata o modulo quando o campo Module e generico ou diverge — comece por ela; item
+**"(codigo mudou desde a geracao — confirme no codigo)"** = abra o `Onde:` dele na master e confirme antes de citar), **lacunas
 obrigatorias** (codigo lido sem item que o cite → `arch.sh suggest ... --kind gap --card`), evidencias do card abertas
 antes de concluir a analise, arquivos de cada fase no plano certo, **codigo citado = fotografia** (`coderef`,
 `[caminho:linhas](ref:<id>)`), Knowledge Center antes de perguntar regra de negocio (cite ART-n), repositorios pelo mapa
@@ -49,6 +51,12 @@ de aceite e onde a US entra). Nunca etapa concluida com resultado vazio.
 **O que muda na US**: nada de `causa-raiz`, RCA, root cause no DevOps, classificacao (Resolution Type), catalogo de
 padroes de bug (A–H) nem resumo PT/EN de fechamento de bug. O "porque" e o **objetivo da US**; a evidencia de pronto sao
 os **criterios de aceite** (`CA-1`, `CA-2`...).
+
+**US de RCA** (`[RCA]` no titulo / `Microsoft.VSTS.CMMI.RequirementType = RCA` no `contexto` — a US nasceu de uma analise
+de causa raiz, card 78323): a analise e a implementacao seguem esta skill, mas o card **fecha como RCA**, pela ferramenta
+**`fechamento-rca-us`** (o PRMake semeia): confere a validacao em QA e os CAs, RCA no Modelo do prompt de Bug como
+comentario na discussion (a US nao tem campo de root cause), classificacao (preset, sem Bug Type), resumo PT/EN, Remaining
+zerado e Ready for QA da US. Nesse card a palavra "RCA" pode aparecer no fechamento (e o tipo do card).
 
 **Terminologia (obrigatoria em tudo o que a pessoa le** — titulos do plano e das etapas, Timeline, perguntas, checkpoint,
 handoff, itens, PR, respostas): US = **plano de implementacao**, **implementar**, **implementacao**, **entrega**. Nunca
@@ -115,8 +123,12 @@ da Base, regras de negocio, cenarios de uso, criterios de aceite; `3. Specificat
 `4. Technical Specification (Tech Lead / Architect)` → estado atual no codigo com `caminho:linha`, mudancas propostas,
 impacto, seguranca, esforco/ordem, pontos a confirmar; `5. Main Validation Scenarios (QA)` → cenarios de validacao
 DADO/QUANDO/ENTAO, um por criterio de aceite + regressao do impacto) e grave com `prmake_devops_spec(card, document)`
-(script: `bash $PLAN devops <card> spec especificacao.md`). O PRMake separa as secoes, converte o markdown e grava cada
-uma no seu campo (secao vazia nao apaga o campo); registra na Timeline. Itens da Base como `modulo#ID` no texto.
+(script: `bash $PLAN devops <card> spec especificacao.md [--files-from <card>]`). O PRMake separa as secoes, converte o
+markdown e grava cada uma no seu campo (secao vazia nao apaga o campo); registra na Timeline. Itens da Base como
+`modulo#ID` no texto. **Imagens** (prototipo, prints): grave o arquivo antes (`prmake_work_item_file`/`prmake_file`) e cite
+`![legenda](anexo:<nome-do-arquivo>)` — o PRMake acha pelo nome, sobe como anexo do DevOps e aponta para ele; arquivo
+gravado em outro card (ex.: a analise rodou no card do bug) → `filesFrom: ["<card>"]`. Nunca caminho local nem `ref:` no
+campo do DevOps. Criterios de aceite como `- [ ] ...` viram ☐ no card.
 
 **7. Plano de implementacao → item de trabalho** — `prmake_correction(card, "Implementacao <card>: <resumo>", steps)`
 (script: `bash $PLAN correction <card> "Implementacao <card>: <resumo>" -`): o PRMake cria **um item `implementation`** ligado ao plano, com **uma sub-tarefa por
@@ -132,8 +144,8 @@ esse item). Etapas tipicas (adapte ao caso; nomes e descricoes concretos):
 | `preparar-script-<nome>` (so com script de dados) | `task` | claude | escreve o `.sql` com rollback e a consulta de validacao e o **chamado completo**; **antes** de concluir, grava no plano com `key` = a etapa do chamado: `prmake_file(card, "01_<card>_<nome>.sql", ..., "script", "chamado-<nome>", phase: "correction")` e `prmake_file(card, "chamado-<card>-<nome>.md", ..., "ticket", "chamado-<nome>", phase: "correction")` (1a linha = titulo; corpo: link do card, cliente, ambiente, banco, o que o script faz e por que — pelo objetivo da US —, rollback, consulta de validacao). O PRMake recusa a etapa do chamado com o usuario sem os dois arquivos |
 | `chamado-<nome>` | `ticket` | **user** | `dependsOn: preparar-script-<nome>`; descricao cita os arquivos ("Abra o chamado no `TicketSystem` com o texto de `chamado-<card>-<nome>.md` e anexe `01_<card>_<nome>.sql`; depois use **Anexar chamado** nesta etapa/sub-tarefa com o link"); a etapa fica aguardando o chamado e **conclui sozinha** quando a pessoa marca o chamado como resolvido — nunca peca para clicar em *Concluir* nem ponha a validacao na descricao desta etapa |
 | `validar-chamado-<nome>` | `validation` (`taskKind: sql-query`) | claude | `dependsOn: chamado-<nome>`; com o chamado resolvido, roda a **consulta de validacao** do script (somente leitura, `sql-query.sh` no host/banco do cliente) e confirma que os dados mudaram como o script previa; grava o resultado (consulta + linhas) como evidencia: `prmake_file(card, "validacao-<card>-<nome>.md", ..., "analysis", "validar-chamado-<nome>", phase: "correction")` + resumo na Timeline. Divergencia → `fail` dizendo o que ficou diferente (o chamado volta para a pessoa). As etapas seguintes que dependem dos dados (ex.: `validar-qa` com CA de dados, `fechar-card`) dependem desta |
-| `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado). **So se algum PR do `branches` tem destino QA** — repositorio sem QA (ex.: revamp-backend, so `development`) nao tem essa etapa: nao crie `validar-qa`; a validacao fica na `validar`/no destino que o fluxo tem |
-| `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs; mover o card **so** com a acao configurada (`devops <card> config`) e autorizada nas respostas; sem acao aplicavel a US → nao mova e diga |
+| `validar-qa` | `validation` | **user** | a pessoa valida os CAs em QA (roteiro na descricao: CA → passo → esperado) quando algum PR do `branches` tem destino QA. **O card nunca fecha so com o PR mesclado** (card 78323): repositorio sem destino QA no fluxo (ex.: revamp-backend, so `development`) nao ganha esta etapa, mas ganha o **item de validacao em ambiente `qa`** (`prmake_env_validation`, abaixo) e o fechamento depende dele |
+| `fechar-card` | `task` | claude | ultima etapa: confere PRs e CAs e **nao move nem preenche o card** — cria (sem iniciar, sem duplicar) o item de fechamento: **US de RCA** → `prmake_tool_run(card, "fechamento-rca-us", {classification})` (preset pelo que a implementacao fez: codigo → `code-fix`); outra US → so mover com a acao configurada (`devops <card> config`) e autorizada nas respostas. O fechamento roda depois da validacao em QA aprovada |
 
 **Categoria na Bancada (`taskKind`)** — cada etapa vira uma sub-tarefa do item de trabalho e a categoria dela aparece
 na Bancada. Informe `taskKind` (catalogo `WorkItemTaskKinds`) em toda etapa que nao for codigo: `research` (analise/consulta

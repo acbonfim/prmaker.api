@@ -19,17 +19,17 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
     IReverseAccess? reverseAccess = null)
     : IArchitectureApplication
 {
-    /// <summary>0074: quem não é administrador não lê a engenharia reversa — nem as seções <c>re-*</c> que ela publica na Base.</summary>
+    /// <summary>0097: quem lê a engenharia reversa (todo usuário autenticado; 0074: só administrador) — inclusive as seções <c>re-*</c> da Base.</summary>
     private bool CanReadReverse => reverseAccess?.CanRead ?? true;
 
     private static bool IsReverseSection(string? sectionKey) =>
         (sectionKey ?? string.Empty).Trim().StartsWith(domain.Reverse.ReverseDocTypes.SectionPrefix, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A seção é da engenharia reversa e quem pede não é administrador: recusa (403) sem revelar o conteúdo.</summary>
+    /// <summary>A seção é da engenharia reversa e quem pede não pode lê-la: recusa (403) sem revelar o conteúdo.</summary>
     private void EnsureReadable(string sectionKey)
     {
         if (!CanReadReverse && IsReverseSection(sectionKey))
-            throw new ReverseForbiddenException("A engenharia reversa é restrita a administradores.");
+            throw new ReverseForbiddenException("A engenharia reversa é restrita a usuários autenticados.");
     }
 
     /// <summary>Módulos da engenharia reversa — vazio para quem não pode ler (a Base dele é a de antes da engenharia reversa).</summary>
@@ -103,7 +103,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
         var projects = await repository.GetProjectHeadsAsync(cancellationToken);
         var integrations = await ApplyReverseRelationsAsync(projects, null, cancellationToken);
         var graph = BuildGraph(projects, integrations);
-        // Os itens INT por trás de cada ligação (mecanismo, contrato) são texto da engenharia reversa: só administrador.
+        // Os itens INT por trás de cada ligação (mecanismo, contrato) são texto da engenharia reversa: só quem pode lê-la (0097: autenticado).
         if (!CanReadReverse)
             foreach (var edge in graph.Edges) edge.Items = [];
         return graph;
@@ -548,7 +548,7 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 foreach (var project in projects.Where(p => migrated.Contains(p.Key) && traps.ContainsKey(p.Key)))
                     Add(zip, $"projects/{project.Key}/090-armadilhas.md", ReverseSupersession.RenderTraps(project, traps[project.Key]));
             }
-            // 0074: o índice por item (reverse/*.tsv) é a engenharia reversa por dentro: só no pacote de administrador.
+            // 0074/0097: o índice por item (reverse/*.tsv) é a engenharia reversa por dentro: só no pacote de quem pode lê-la.
             var reverse = CanReadReverse ? await repository.GetIndexHeadsAsync(null, null, cancellationToken) : []; // 0070: sem o texto dos itens
             if (reverse.Count > 0)
             {
@@ -639,8 +639,9 @@ public class ArchitectureApplication(IKnowledgeRepository repository, IKnowledge
                 if (exported.Count > 0)
                     sb.Append($" · seções {string.Join("·", exported.OrderBy(s => s.Order).ThenBy(s => s.Key).Select(s => $"{s.Order:000}"))}"
                               + $" (~{Math.Max(1, exported.Sum(s => s.Length) / 4 / 100) * 100} tok)");
-                var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is not null);
-                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm")}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
+                // 0097: o índice técnico (sem IA) não conta como documento da engenharia reversa
+                var reverseDocs = exported.Count(s => domain.Reverse.ReverseDocTypes.BySection(s.Key) is { Generated: false });
+                if (reverseDocs > 0) sb.Append($" · **RE {reverseDocs}/{domain.Reverse.ReverseDocTypes.All.Count(t => t.Audience == "llm" && !t.Generated)}** (reverse/{p.Key}.tsv · fonte: engenharia reversa)");
                 var deps = p.Relations.Select(r => r.Target).Distinct().Count();
                 var users = usedBy.TryGetValue(p.Key, out var u) ? u.Select(x => x.Source).Distinct().Count() : 0;
                 if (deps + users > 0) sb.Append($" · ⇄ {deps}/{users}");

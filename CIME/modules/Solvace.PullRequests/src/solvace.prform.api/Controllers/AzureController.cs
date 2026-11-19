@@ -84,6 +84,15 @@ public class AzureController : ControllerBase
     [Consumes("application/json", "text/plain", "text/html", "text/markdown")]
     public async Task<IActionResult> UpdateRootCause([FromRoute] string id,[FromBody] UpdateRootCauseRequest body, CancellationToken cancellationToken)
     {
+        // User Story sem o campo de root cause (fechamento do RCA da US): 409 dizendo para publicar o RCA na discussion.
+        try
+        {
+            await _actionsService.EnsureRootCauseFieldAsync(id, cancellationToken);
+        }
+        catch (DevOpsActionException e)
+        {
+            return StatusCode(e.StatusCode, new { error = e.Message });
+        }
 
         var result = await _azureService.UpdateRootCauseAsync(id, body, cancellationToken);
         if (result == null)

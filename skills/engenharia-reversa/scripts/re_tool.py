@@ -25,6 +25,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 import unicodedata
 from collections import OrderedDict, defaultdict
@@ -175,11 +176,79 @@ def add(items, seen, cat, name, path, root, text, index, detail=None):
     items.append(item)
 
 
+def git_root(path):
+    """0097: raiz do repositorio git que contem a pasta/arquivo (a propria pasta, se for a raiz); None fora do git."""
+    d = os.path.abspath(path if os.path.isdir(path) else os.path.dirname(path))
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def _git(root, *args):
+    try:
+        return subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def source_meta(target):
+    """
+    0097: de onde a fonte veio — repositorio (nome do remote origin), raiz, prefixo (pasta da fonte a partir da raiz: o
+    `Onde:` cita o caminho COMPLETO a partir da raiz do repositorio), commit e se e a copia da origin/master.
+    """
+    root = git_root(target)
+    if not root:
+        return {}
+    remote = _git(root, "remote", "get-url", "origin")
+    repo = os.path.basename(remote[:-4] if remote.endswith(".git") else remote) if remote else os.path.basename(root)
+    base = target if os.path.isdir(target) else os.path.dirname(target)
+    prefix = os.path.relpath(os.path.abspath(base), root).replace(os.sep, "/")
+    master = "/.prmake-wt/master/" in root.replace(os.sep, "/") + "/"
+    meta = {"repo": repo, "root": root, "prefix": "" if prefix == "." else prefix, "commit": _git(root, "rev-parse", "HEAD"),
+            "branch": "origin/master" if master else _git(root, "rev-parse", "--abbrev-ref", "HEAD"), "master": master}
+    if master:
+        meta["date"] = _git(root, "log", "-1", "--format=%cd", "--date=short")
+    return meta
+
+
+def full_path(inv, rel, src=None):
+    """
+    0097: caminho do inventario (relativo a fonte) -> caminho a partir da RAIZ do repositorio (o que o `Onde:` cita).
+    `src` = indice da fonte do item; sem ele (inventario antigo), a primeira fonte em que o arquivo existe.
+    """
+    srcs = inv.get("sources", [])
+    order = [src] if isinstance(src, int) and 0 <= src < len(srcs) else range(len(srcs))
+    for i in order:
+        s = srcs[i]
+        p = s.get("path") or ""
+        if not p:
+            continue
+        base = p if os.path.isdir(p) or not os.path.exists(p) else None
+        if base is None:  # fonte arquivo: o inventario ja cita a partir da raiz do repositorio
+            return rel
+        if src is None and not os.path.exists(os.path.join(base, rel)):
+            continue
+        prefix = s.get("prefix")
+        if prefix is None:
+            root = git_root(base)
+            prefix = os.path.relpath(base, root).replace(os.sep, "/") if root else ""
+            prefix = "" if prefix == "." else prefix
+        return f"{prefix}/{rel}" if prefix else rel
+    return rel
+
+
 def inventory(sources):
     items, seen = [], set()
     files_by_role = defaultdict(int)
-    for role, target in sources:
+    metas = []
+    for idx, (role, target) in enumerate(sources):
         root = repo_root(target) if os.path.isfile(target) else target
+        first = len(items)
+        metas.append(source_meta(target))
         for path, text in walk(target):
             files_by_role[role] += 1
             ext = os.path.splitext(path)[1].lower()
@@ -295,11 +364,13 @@ def inventory(sources):
                     data = None
                 for key in flat_keys(data):  # so o NOME da chave — valores nunca entram no inventario
                     add(items, seen, "config", key, path, root, text, 0)
+        for it in items[first:]:
+            it["src"] = idx  # 0097: de qual fonte (o caminho completo a partir da raiz do repositorio sai daqui)
     counts = defaultdict(int)
     for it in items:
         counts[it["cat"]] += 1
-    return {"version": 1, "sources": [{"role": r, "path": p} for r, p in sources], "files": dict(files_by_role), "counts": dict(counts),
-            "items": items}
+    return {"version": 2, "sources": [dict({"role": r, "path": p}, **m) for (r, p), m in zip(sources, metas)], "files": dict(files_by_role),
+            "counts": dict(counts), "items": items}
 
 
 def flat_items(data, prefix=""):

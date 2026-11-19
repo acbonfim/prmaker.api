@@ -63,6 +63,8 @@ builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
+// Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
+builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
 builder.Services.AddScoped<solvace.prform.Execution.EvidenceGate>();  // 0076: evidências do card abertas na análise
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardEvidenceSource, solvace.prform.Execution.ExecutionCardEvidenceSource>();
@@ -102,7 +104,7 @@ builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
-builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseAccess, solvace.prform.Knowledge.HttpReverseAccess>();  // 0074: engenharia reversa só para admin
+builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseAccess, solvace.prform.Knowledge.HttpReverseAccess>();  // 0097: engenharia reversa lida por todo usuário autenticado (0074: só admin)
 // Engenharia reversa por módulo (0052): aprovadores, documentos exigidos e trava vêm do "Skills Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseSettingsProvider, solvace.prform.Knowledge.PluginReverseSettingsProvider>();
 builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureChatService>();

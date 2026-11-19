@@ -20,6 +20,12 @@ public interface IDevOpsActionsService
     Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fechamento do RCA da User Story: 409 quando o card é User Story e o tipo não tem o campo de root cause no DevOps
+    /// (o RCA vai como comentário na discussion). Bug passa direto.
+    /// </summary>
+    Task EnsureRootCauseFieldAsync(string cardNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 0085: muda o estado do card para um estado válido do tipo dele (Bug ou User Story) — usado para desfazer a sub-tarefa
     /// <c>devops-state</c> de um item de trabalho (voltar ao estado anterior). Mesmo estado → 409.
     /// </summary>

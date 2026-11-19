@@ -1,0 +1,463 @@
+using solvace.knowledge.application;
+using solvace.knowledge.application.Contracts;
+using solvace.knowledge.domain.Entities;
+using solvace.knowledge.domain.Requests;
+using solvace.knowledge.domain.Reverse;
+using Xunit;
+
+namespace solvace.knowledge.tests;
+
+/// <summary>
+/// 0097: engenharia reversa mais barata e aberta — exigidos (funcional, arquitetura, spec-arquitetura), design/visão
+/// descontinuados, prática sob demanda pelas perguntas sem resposta do Pergunte.
+/// </summary>
+public class Reverse0097Tests
+{
+    internal static readonly string[] Approver = ["gestor"];
+    internal static readonly string[] Dev = ["admin"];
+
+    internal sealed class Settings(ReverseSettings value) : IReverseSettingsProvider
+    {
+        public Task<ReverseSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(value);
+    }
+
+    internal sealed class Kc : IKnowledgeSettingsProvider
+    {
+        public Task<KnowledgeSettings> GetAsync(CancellationToken cancellationToken) => Task.FromResult(new KnowledgeSettings("dev", domain.Filtering.KnowledgeFilterOptions.None));
+    }
+
+    internal const string Funcional = """
+        # Levantamento funcional — Checklist
+        ## Resumo do módulo
+        Checklist legado.
+        ## Perfis e permissões
+        ## Funcionalidades
+        ### FN-001 — Responder checklist
+        Tela TELA-001.
+        ## Casos de uso
+        ## Regras de negócio
+        ### RN-001 — Checklist só fecha com todas as perguntas respondidas
+        - **Onde:** `edv-solvace/checklist/resp.asp:120`
+        ### RN-002 — Compliance por checklist considera só itens ativos
+        - **Onde:** `edv-solvace/checklist/compliance.asp:40`
+        ## Estados e ciclo de vida
+        ## Notificações
+        ## Configurações e parâmetros
+        ## Relatórios e indicadores
+        ## Integrações com outros módulos
+        ## Glossário
+        ## Lacunas e pontos a confirmar
+        ### GAP-001 — Tela de compliance fora do pacote desta área
+        Não foi lida nesta passada.
+        ### GAP-002 — Cálculo de compliance diverge entre front e back
+        - **Onde:** `edv-solvace/checklist/compliance.asp:44`
+        ### GAP-003 — Não foi possível ler o anexo do Figma
+        Sem figma no pacote.
+        ### GAP-004 — Não foi possível ler a procedure STP_CHECK
+        - **Onde:** `edv-solvace/db/stp_check.sql:10`
+        """;
+
+    internal static ArchitectureProject Project(InMemoryKnowledgeRepository repo, string key, string name, string kind = "legacy", string? area = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var p = new ArchitectureProject(key, "admin", now);
+        p.Update(name, kind, null, "resumo", [name], null, null, null, "admin", now);
+        p.SetFriendly(name, area, null);
+        repo.AddProject(p);
+        return p;
+    }
+
+    internal static async Task PublishAsync(ReverseEngineeringApplication app, string key, string doc, string content, string? mode = null)
+    {
+        var session = await app.StartSessionAsync(key, doc, new StartReverseSessionRequest { Mode = mode }, "dev", Dev, default);
+        await app.SaveRevisionAsync(session.Revision.Id, new SaveReverseRevisionRequest { Content = content, CoverageRatio = 0.95 }, "dev", Dev, default);
+        await app.SubmitAsync(session.Revision.Id, "dev", Dev, default);
+        await app.PublishAsync(session.Revision.Id, new PublishReverseRevisionRequest { Approve = true }, "gestor", Approver, default);
+    }
+
+    internal static (InMemoryKnowledgeRepository Repo, ReverseEngineeringApplication App, Settings Settings) Create(ReverseSettings? settings = null)
+    {
+        var repo = new InMemoryKnowledgeRepository();
+        var s = new Settings(settings ?? ReverseSettings.Default);
+        return (repo, new ReverseEngineeringApplication(repo, s), s);
+    }
+
+    [Fact]
+    public void Required_docs_are_functional_architecture_and_architecture_spec()
+    {
+        Assert.Equal(["funcional", "arquitetura", "spec-arquitetura"], ReverseDocTypes.DefaultRequired);
+        Assert.True(ReverseDocTypes.ByKey["design"].Discontinued);
+        Assert.True(ReverseDocTypes.ByKey["visao"].Discontinued);
+        Assert.False(ReverseDocTypes.ByKey["funcional"].Discontinued);
+        Assert.False(ReverseDocTypes.ByKey[ReverseDocTypes.Practical].Discontinued);
+        Assert.Equal(3, ReverseSettings.Default.PracticalMinQuestions);
+    }
+
+    [Theory]
+    [InlineData("design")]
+    [InlineData("visao")]
+    public async Task Discontinued_documents_refuse_new_sessions_but_stay_readable_and_searchable(string doc)
+    {
+        var (repo, app, s) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        var error = await Assert.ThrowsAsync<DomainException>(() => app.StartSessionAsync("legado-checklist", doc, new StartReverseSessionRequest(), "dev", Dev, default));
+        Assert.Contains("descontinuad", error.Message);
+
+        // o que já foi publicado continua legível e na busca (escrito como antes, pela seção da Base)
+        var arch = new ArchitectureApplication(repo, new Kc(), s);
+        var type = ReverseDocTypes.ByKey[doc];
+        var item = doc == "design" ? "UI-001" : "OBJ-001";
+        await arch.WriteSectionAsync("legado-checklist", type.SectionKey,
+            new WriteArchitectureSectionRequest { Content = $"# {type.Title}\n## Lacunas\n### {item} — Grade de respostas do checklist\nTexto.", Source = "admin" }, "admin", default);
+        var published = await app.GetDocAsync("legado-checklist", doc, default);
+        Assert.Contains(item, published.Content);
+        Assert.True(published.Type.Discontinued);
+        Assert.Contains(await app.SearchAsync("grade respostas", null, null, null, 10, false, default), h => h.ItemId == item);
+        var types = await app.GetDocTypesAsync(default, false);
+        Assert.True(types.Single(t => t.Key == doc).Discontinued);
+        Assert.False(types.Single(t => t.Key == doc).Required);
+    }
+
+    [Fact]
+    public async Task Module_is_complete_with_the_three_required_docs_and_practical_is_suggested_by_open_questions()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+
+        // perguntas sem resposta do módulo: abertas e not-found/partial; respondida ou de outro módulo não conta
+        void Ask(string text, string coverage, string? project = null)
+        {
+            var q = new ArchitectureQuestion(text, "ana", DateTimeOffset.UtcNow);
+            q.Asked("operacao", coverage, project, null, "ana", DateTimeOffset.UtcNow);
+            repo.AddQuestion(q);
+        }
+        Ask("Como reabrir um checklist fechado?", "not-found");
+        Ask("Quem pode excluir resposta do checklist?", "partial");
+        Ask("Onde vejo o compliance?", "not-found", "legado-checklist");
+        Ask("Como criar um checklist?", "answered");
+        Ask("Como criar um kaizen?", "not-found");
+
+        var module = await app.GetModuleAsync("legado-checklist", Approver, default);
+        Assert.Equal(3, module.OpenQuestions);
+        Assert.True(module.PracticalSuggested);              // sem prática publicada e 3 ≥ 3
+        Assert.Equal(3, module.RequiredCount);
+        Assert.False(module.Complete);
+        Assert.True(module.Docs.Single(d => d.Type == "design").Discontinued);
+
+        var listed = (await app.ListModulesAsync(default)).Single(m => m.Key == "legado-checklist");
+        Assert.Equal(3, listed.OpenQuestions);
+        Assert.True(listed.PracticalSuggested);
+
+        // com o mínimo acima das perguntas, não sugere
+        var (_, strict, _) = (repo, new ReverseEngineeringApplication(repo, new Settings(ReverseSettings.Default with { PracticalMinQuestions = 4 })), 0);
+        Assert.False((await strict.GetModuleAsync("legado-checklist", Approver, default)).PracticalSuggested);
+    }
+
+    // ── B3: GAP do gerador ──────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("GAP-010 — Tela fora do pacote desta área", false, true)]
+    [InlineData("GAP-010 — O pacote não traz o front", false, true)]
+    [InlineData("GAP-010 — Pacote NÃO INCLUI a procedure", false, true)]
+    [InlineData("GAP-010 — Sem Figma para a tela de cadastro", false, true)]
+    [InlineData("GAP-010 — Figma não anexado", false, true)]
+    [InlineData("GAP-010 — Arquivo não lido nesta área", false, true)]
+    [InlineData("GAP-010 — Serviço fora desta área", false, true)]
+    [InlineData("GAP-010 — Orçamento da área estourou", false, true)]
+    [InlineData("GAP-010 — O subagente não terminou", false, true)]
+    [InlineData("GAP-010 — Inventário não lista os jobs", false, true)]
+    [InlineData("GAP-010 — Retrato não tem o banco local", false, true)]
+    [InlineData("GAP-010 — Não foi possível ler o arquivo", false, true)]
+    [InlineData("GAP-010 — Não foi possível ler a procedure STP_X", true, false)]
+    [InlineData("GAP-010 — Cálculo diverge entre front e back", false, false)]
+    [InlineData("GAP-010 — Pacote de idiomas não traduz o status", false, false)]
+    public void Generator_gap_phrases(string text, bool citesCode, bool expected) =>
+        Assert.Equal(expected, ReverseGeneratorGaps.Matches(text, citesCode));
+
+    [Fact]
+    public void Normalization_matches_the_skill_rule()
+    {
+        Assert.Equal("orcamento da area 5s", ReverseGeneratorGaps.Normalize("**Orçamento** da ÁREA — (5S)!"));
+        Assert.Equal("nao foi possivel ler", ReverseGeneratorGaps.Normalize("Não foi\npossível   ler"));
+        // a lista única (a skill tem a mesma em re_gaps.py): só letras minúsculas sem acento e espaços simples
+        foreach (var phrase in ReverseGeneratorGaps.Phrases.Concat(ReverseGeneratorGaps.PhrasesWithoutEvidence))
+            Assert.Equal(phrase, ReverseGeneratorGaps.Normalize(phrase));
+    }
+
+    [Fact]
+    public async Task Generator_gaps_stay_out_of_the_index_and_the_check_warns()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        var lint = await app.LintAsync("legado-checklist", new LintReverseDocumentRequest { DocType = "funcional", Content = Funcional }, default);
+        Assert.Contains(lint.Warnings, w => w.Contains("processo de geração") && w.Contains("GAP-001") && w.Contains("GAP-003") && !w.Contains("GAP-002"));
+
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        var gaps = (await app.SearchAsync(null, ["legado-checklist"], ["GAP"], null, 50, false, default)).Select(h => h.ItemId).ToList();
+        Assert.Equal(["GAP-002", "GAP-004"], gaps.Order().ToList());
+    }
+
+    // ── B4: índice técnico ──────────────────────────────────────────────────────────────────────
+
+    internal const string Technical = """
+        # Índice técnico — Checklist
+
+        ## Endpoints
+        ### END-0001 — POST /checklist/resp.asp (salvar respostas do checklist)
+        - **Onde:** `edv-solvace/checklist/resp.asp:12`
+        - **Tabelas:** TB_CHECKLIST_RESP
+        - **Commit:** edv-solvace@abc1234
+        ### END-0002 — GET /api/v1/checklist/{id}
+        - **Onde:** `revamp-checklist-api/src/Controllers/ChecklistController.cs:40`
+
+        ## Rotas e telas
+        ### ROT-0001 — /checklist/:id → ChecklistDetailComponent
+        - **Onde:** `revamp-checklist-front/src/app/app.routes.ts:20`
+
+        ## Tabelas
+        ### TAB-0001 — TB_CHECKLIST_RESP
+
+        ## Objetos do banco
+        ### DBO-0001 — procedure dbo.STP_CHECKLIST_FECHAR
+
+        ## Chaves de configuração
+        ### CHV-0001 — Checklist:MaxPerguntas
+
+        ## Mensagens
+        ### MSG-0001 — "Responda todas as perguntas antes de fechar"
+        """;
+
+    [Fact]
+    public void Technical_index_kinds_do_not_collide_with_the_existing_ones()
+    {
+        foreach (var kind in new[] { "END", "ROT", "TAB", "DBO", "CHV", "MSG" }) Assert.True(ReverseItemKinds.IsKind(kind), kind);
+        Assert.Equal(ReverseItemKinds.All.Count, ReverseItemKinds.All.Select(k => k.Prefix).Distinct().Count());
+        var type = ReverseDocTypes.ByKey[ReverseDocTypes.Technical];
+        Assert.True(type.Generated);
+        Assert.Equal("re-tecnico", type.SectionKey);
+        Assert.DoesNotContain("SQL", type.Kinds);                                     // SQL é do levantamento de arquitetura
+        Assert.DoesNotContain(type.Kinds, k => ReverseDocTypes.All.Where(t => !t.Generated).Any(t => t.Kinds.Contains(k)));
+        Assert.Equal(("legado-checklist", "END-001"), ReverseItemKinds.ParseRef("legado-checklist#END-0001")!.Value);
+    }
+
+    [Fact]
+    public async Task Technical_index_is_published_without_review_and_summarized_in_the_module()
+    {
+        var (repo, app, s) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await Assert.ThrowsAsync<DomainException>(() => app.StartSessionAsync("legado-checklist", ReverseDocTypes.Technical, new StartReverseSessionRequest(), "dev", Dev, default));
+        await Assert.ThrowsAsync<DomainException>(() => app.PublishTechnicalIndexAsync("legado-checklist", new PublishTechnicalIndexRequest { Content = "# vazio" }, "dev", default));
+
+        var generatedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var result = await app.PublishTechnicalIndexAsync("legado-checklist", new PublishTechnicalIndexRequest
+        {
+            Content = Technical, GeneratedAt = generatedAt,
+            Commits = [new() { Repository = "edv-solvace", Commit = "abc1234def", Branch = "master" }],
+            Counts = new() { ["END"] = 2, ["ROT"] = 1, ["TAB"] = 1, ["DBO"] = 1, ["CHV"] = 1, ["MSG"] = 1 }
+        }, "dev", default);
+        Assert.Equal(7, result.Items);
+        Assert.Equal(1, result.Version);
+
+        var module = await app.GetModuleAsync("legado-checklist", Dev, default);
+        Assert.NotNull(module.TechnicalIndex);
+        Assert.Equal(1, module.TechnicalIndex!.Version);
+        Assert.Equal(2, module.TechnicalIndex.Counts["END"]);
+        Assert.Equal("edv-solvace", module.TechnicalIndex.Commits.Single().Repository);
+        Assert.Equal(generatedAt, module.TechnicalIndex.GeneratedAt);
+        Assert.False(module.Complete);                                                 // fora do "completo"
+        Assert.Equal(0, module.PublishedRequired);
+        var doc = module.Docs.Single(d => d.Type == ReverseDocTypes.Technical);
+        Assert.True(doc.Generated);
+        Assert.False(doc.Required);
+        Assert.NotNull(doc.Published);
+        Assert.NotNull((await app.ListModulesAsync(default)).Single(m => m.Key == "legado-checklist").TechnicalIndex);
+
+        var revision = (await app.ListRevisionsAsync("legado-checklist", ReverseDocTypes.Technical, "all", default)).Single();
+        Assert.Equal(ReverseRevisionMode.Generated, revision.Mode);
+        Assert.Equal(ReverseRevisionStatus.Published, revision.Status);
+
+        // regerar: a versão nova substitui a anterior (revisão anterior fica "substituída")
+        var again = await app.PublishTechnicalIndexAsync("legado-checklist", new PublishTechnicalIndexRequest { Content = Technical.Replace("END-0002", "END-0003") }, "dev", default);
+        Assert.Equal(2, again.Version);
+        Assert.Contains(again.Warnings, w => w.Contains("commit"));
+        var revisions = await app.ListRevisionsAsync("legado-checklist", ReverseDocTypes.Technical, "all", default);
+        Assert.Equal(2, revisions.Count);
+        Assert.Single(revisions, r => r.Status == ReverseRevisionStatus.Published);
+        Assert.Contains(await app.SearchAsync(null, ["legado-checklist"], ["END"], null, 10, false, default), h => h.ItemId == "END-003");
+        Assert.DoesNotContain(await app.SearchAsync(null, ["legado-checklist"], ["END"], null, 10, false, default), h => h.ItemId == "END-002");
+    }
+
+    [Fact]
+    public async Task Technical_items_weigh_less_in_search_and_stay_out_of_the_ask_context()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        await app.PublishTechnicalIndexAsync("legado-checklist", new PublishTechnicalIndexRequest { Content = Technical }, "dev", default);
+
+        var hits = await app.SearchAsync("responder perguntas checklist fechar", null, null, null, 20, false, default);
+        Assert.Contains(hits, h => h.DocType == ReverseDocTypes.Technical);
+        var rule = hits.First(h => h.ItemId == "RN-001");
+        var message = hits.First(h => h.ItemId == "MSG-001");
+        Assert.True(rule.Score > message.Score, $"RN {rule.Score} × MSG {message.Score}");
+
+        var ask = await app.GetAnswerContextAsync("como fechar o checklist com perguntas respondidas", ["fechar", "checklist"], [],
+            ArchitectureQuestionKind.Operation, 10, 6, 1500, default);
+        Assert.NotEmpty(ask);
+        Assert.DoesNotContain(ask, i => i.DocType == ReverseDocTypes.Technical);
+    }
+
+    // ── B5: histórico do card ───────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("All", true)]
+    [InlineData("Todos", true)]
+    [InlineData("Geral", true)]
+    [InlineData("General", true)]
+    [InlineData("Other", true)]
+    [InlineData("Outros", true)]
+    [InlineData("N/A", true)]
+    [InlineData("-", true)]
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    [InlineData("Checklist", false)]
+    [InlineData("Users (Revamp)", false)]
+    public void Generic_module_fields(string? field, bool expected) => Assert.Equal(expected, ReverseCardHistory.IsGenericField(field));
+
+    [Fact]
+    public void Similar_cards_vote_for_the_modules_they_read()
+    {
+        var history = new[]
+        {
+            new ReverseCardSample("77697", ReverseCardHistory.NormalizeQuery("Compliance per Checklist mostra percentual errado"),
+                ["legado-checklist#RN-002", "legado-checklist#RN-001", "revamp-users#RN-004"], ["legado-checklist"]),
+            new ReverseCardSample("77698", ReverseCardHistory.NormalizeQuery("Relatório Compliance per Checklist com percentual errado na planta"),
+                [], ["legado-checklist", "legado-centerline"]),
+            new ReverseCardSample("70000", ReverseCardHistory.NormalizeQuery("Kaizen não envia e-mail de aprovação"), ["legado-kaizen#RN-001"], ["legado-kaizen"]),
+            new ReverseCardSample("78266", ReverseCardHistory.NormalizeQuery("Compliance per Checklist percentual errado"), ["x#RN-001"], ["x"])
+        };
+
+        var result = ReverseCardHistory.Find("Compliance per checklist: percentual errado no relatório", history, exceptCard: "78266");
+
+        Assert.Equal(["77697", "77698"], result.Similar.Select(c => c.Card).Order().ToList());   // o próprio card e o de Kaizen ficam de fora
+        Assert.Equal("77698", result.Similar[0].Card);                                            // "relatório" também casa: mais parecido
+        Assert.All(result.Similar, c => Assert.InRange(c.Similarity, ReverseCardHistory.MinSimilarity, 1));
+        Assert.Equal("legado-checklist", result.Modules[0].Module);
+        Assert.Equal(2, result.Modules[0].Cards);
+        // fatia dos refs lidos: 77697 leu 2/3 do checklist e 1/3 do users; 77698 (sem leitura) divide entre os módulos registrados
+        Assert.Contains(result.Modules, m => m.Module == "revamp-users" && m.Cards == 1);
+        Assert.Contains(result.Modules, m => m.Module == "legado-centerline" && m.Cards == 1);
+        Assert.StartsWith("Pelo histórico (cards parecidos: 77698 ", result.Line());
+        Assert.Contains("legado-checklist (2 cards)", result.Line());
+
+        Assert.True(ReverseCardHistory.Find("Kaizen", [], null).IsEmpty);
+        Assert.True(ReverseCardHistory.Find("assunto que ninguém viu antes", history).IsEmpty);
+        Assert.Equal("legado-checklist", ReverseCardHistory.ModuleOf("legado-checklist/020-modulos"));
+        Assert.Null(ReverseCardHistory.ModuleOf("ART-21"));
+    }
+
+    [Fact]
+    public async Task For_card_uses_the_history_when_the_module_field_is_generic_and_records_query_and_reads()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist", area: "Checklist");
+        Project(repo, "legado-kaizen", "Kaizen", area: "Kaizen");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+
+        // cards já analisados: o texto fica no contexto e o que foi lido vai para o histórico
+        await app.ForCardAsync("77697", "Checklist", "Compliance per Checklist mostra percentual errado", default);
+        await app.RecordReadAsync("77697", ["legado-checklist#RN-002"], default);
+        await app.ForCardAsync("70000", "Kaizen", "Kaizen não envia e-mail de aprovação", default);
+        await app.RecordReadAsync("70000", ["legado-kaizen#RN-001"], default);
+        var ctx = await repo.GetCardContextAsync("77697", false, default);
+        Assert.Equal("compliance per checklist mostra percentual errado", ctx!.Query);
+        Assert.Equal(["legado-checklist#RN-002"], ctx.ReadRefs);
+        Assert.NotNull(ctx.ConsultedAt);                                              // lido também conta como consulta
+
+        // Module "All": o histórico decide antes da busca por texto
+        var text = await app.ForCardAsync("78266", "All", "Percentual errado no Compliance per Checklist", default);
+        Assert.Contains("Pelo histórico (cards parecidos: 77697", text);
+        Assert.Contains("Módulo: legado-checklist", text);
+        Assert.DoesNotContain("legado-kaizen", text);
+        Assert.Equal(["legado-checklist"], (await repo.GetCardContextAsync("78266", false, default))!.Modules);
+    }
+
+    [Fact]
+    public async Task With_a_matching_field_the_history_adds_its_module_as_a_candidate()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist", area: "Checklist");
+        Project(repo, "legado-kaizen", "Kaizen", area: "Kaizen");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        await app.ForCardAsync("77697", "Checklist", "Compliance per Checklist mostra percentual errado", default);
+        await app.RecordReadAsync("77697", ["legado-checklist#RN-002"], default);
+
+        // campo trocado (Kaizen) num card de compliance do checklist: o módulo do histórico entra e vem primeiro
+        var text = await app.ForCardAsync("77699", "Kaizen", "Compliance per Checklist com percentual errado", default);
+        var modules = (await repo.GetCardContextAsync("77699", false, default))!.Modules;
+        Assert.Equal("legado-checklist", modules[0]);
+        Assert.Contains("legado-kaizen", modules);
+        Assert.Contains("Pelo histórico", text);
+    }
+
+    // ── B6: itens desatualizados ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Stale_items_are_marked_shown_in_search_and_cleared_by_the_next_publication()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+
+        var marked = await app.MarkStaleAsync("legado-checklist", new MarkReverseStaleRequest
+        {
+            Commit = "def5678",
+            Items = [new() { DocType = "funcional", ItemId = "RN-1", Reason = "resp.asp:120 mudou" }, new() { DocType = "funcional", ItemId = "RN-099" }]
+        }, default);
+        Assert.Equal(1, marked.Marked);
+        Assert.Equal(["funcional:RN-099"], marked.NotFound);
+        Assert.Equal(1, marked.StaleItems);
+
+        var hit = (await app.SearchAsync("checklist fecha perguntas respondidas", null, null, null, 10, false, default)).First(h => h.ItemId == "RN-001");
+        Assert.NotNull(hit.Stale);
+        Assert.Equal("def5678", hit.Stale!.Commit);
+        Assert.Equal("resp.asp:120 mudou", hit.Stale.Reason);
+        Assert.Equal(" (código mudou desde a geração — confirme no código)", ReverseEngineeringApplication.StaleNote(hit));
+        Assert.NotNull((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+        Assert.Equal(["RN-001"], (await app.SearchAsync(null, ["legado-checklist"], null, null, 100, false, default, staleOnly: true)).Select(h => h.ItemId).ToList());
+        Assert.Equal(1, (await app.GetModuleAsync("legado-checklist", Dev, default)).StaleItems);
+        Assert.Equal(1, (await app.ListModulesAsync(default)).Single(m => m.Key == "legado-checklist").StaleItems);
+        Assert.Contains("RN-001 [Regra de negócio] Checklist só fecha com todas as perguntas respondidas (código mudou desde a geração",
+            await app.ForCardAsync("80001", "Checklist", "checklist não fecha com perguntas respondidas", default));
+
+        // reancoragem (só as linhas "Onde:") publicada: as marcas continuam
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional.Replace("resp.asp:120", "resp.asp:131"), ReverseRevisionMode.Reanchor);
+        Assert.NotNull((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+
+        // replace limpa as do módulo antes de marcar
+        var replaced = await app.MarkStaleAsync("legado-checklist", new MarkReverseStaleRequest
+        {
+            Replace = true, Items = [new() { DocType = "funcional", ItemId = "RN-002" }]
+        }, default);
+        Assert.Equal(1, replaced.Cleared);
+        Assert.Equal(1, replaced.StaleItems);
+        Assert.Null((await app.GetItemsAsync(["legado-checklist#RN-001"], null, default)).Single().Stale);
+
+        // publicar de novo (melhoria) limpa as marcas do documento
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional + "\n", "improve");
+        Assert.Equal(0, (await app.GetModuleAsync("legado-checklist", Dev, default)).StaleItems);
+        Assert.Null((await app.GetItemsAsync(["legado-checklist#RN-002"], null, default)).Single().Stale);
+    }
+
+    [Fact]
+    public async Task Reanchor_session_starts_from_the_published_text()
+    {
+        var (repo, app, _) = Create();
+        Project(repo, "legado-checklist", "Checklist");
+        await PublishAsync(app, "legado-checklist", "funcional", Funcional);
+        var session = await app.StartSessionAsync("legado-checklist", "funcional", new StartReverseSessionRequest { Mode = "reanchor" }, "dev", Dev, default);
+        Assert.Equal(ReverseRevisionMode.Reanchor, session.Revision.Mode);
+        Assert.Contains("RN-001", session.Revision.Content);
+    }
+}

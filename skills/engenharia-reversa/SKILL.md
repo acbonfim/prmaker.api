@@ -1,7 +1,7 @@
 ---
 name: engenharia-reversa
-description: Faz a engenharia reversa PROFUNDA de um modulo Solvace (legado ou revamp, back e front) com o Claude aberto no repositorio do modulo — levantamento funcional, levantamento de arquitetura, UI/UX (com Figma/prototipo), especificacao de visao, especificacao de arquitetura e especificacao de design — com TODAS as regras de negocio, casos de uso, integracoes entre modulos e tecnologias, em itens com ID (RN-012, UC-003, API-004...). Cada documento vai para aprovacao no PRMake e, publicado, fica ativo na Base Solvace (as analises consultam por item, sem ir ao codigo). Use quando o usuario pedir "engenharia reversa do modulo", "levantamento funcional", "levantamento de arquitetura", "especificacao de visao/arquitetura/design", "mapear UI/UX", "melhorar/refazer a engenharia reversa", "mapear a infra/AWS do modulo" (esteiras, buckets, segredos, logs), "/engenharia-reversa".
-model: opus
+description: Faz a engenharia reversa PROFUNDA de um modulo Solvace (legado ou revamp, back e front) com o Claude aberto no repositorio do modulo — levantamento funcional e de arquitetura numa passada unica, especificacao de arquitetura, indice tecnico (sem IA) e reancoragem na master (sem IA); UI/UX e visao pratica sob demanda — com TODAS as regras de negocio, casos de uso, integracoes entre modulos e tecnologias, em itens com ID (RN-012, UC-003, API-004...). Cada documento vai para aprovacao no PRMake e, publicado, fica ativo na Base Solvace (as analises consultam por item, sem ir ao codigo). Use quando o usuario pedir "engenharia reversa do modulo", "levantamento funcional", "levantamento de arquitetura", "especificacao de arquitetura", "indice tecnico", "reancorar", "mapear UI/UX", "melhorar/refazer a engenharia reversa", "custo da engenharia reversa", "mapear a infra/AWS do modulo" (esteiras, buckets, segredos, logs), "/engenharia-reversa".
+model: sonnet
 ---
 
 # engenharia-reversa
@@ -18,19 +18,54 @@ KC=~/.claude/skills/base-solvace/scripts/kc.sh           # Knowledge Center (reg
 ```
 
 ## Comandos (o que o usuario digita)
-`<doc>` = `funcional` · `arquitetura` · `uiux` · `visao` · `spec-arquitetura` · `design` · `pratica` (0054: visão prática,
-nao tecnica — so depois dos demais exigidos publicados). Sempre com o **modulo** (chave
+`<doc>` = `funcional` · `arquitetura` · `spec-arquitetura` (os **exigidos**, 0097) · `uiux` (opcional) · `pratica` (visao
+pratica **sob demanda**: so quando o Pergunte acumula perguntas sem resposta do modulo — `re.sh perguntas <m>`/`status`
+dizem se esta sugerida). **`design` e `visao` foram descontinuados (0097)**: o publicado continua legivel e na busca, mas
+o `start` recusa — diga isso ao usuario se ele pedir. Sempre com o **modulo** (chave
 da Base Solvace, ex. `legado-rca`) — no legado a pasta do `edv-solvace` serve a dezenas de modulos.
 
 | Pedido | O que fazer |
 |---|---|
 | `/engenharia-reversa <modulo> <doc>` | um documento do modulo (sem o modulo: `re.sh modulo` pela pasta; ambiguo → pergunte) |
-| `/engenharia-reversa <modulo> tudo` | todos, nesta ordem: `arquitetura` → `uiux` → `funcional` → `visao` → `spec-arquitetura` → `design` (cada um enviado separado); a `pratica` so depois que esses forem **publicados** (aprovacao humana) — avise o usuario e pare |
+| `/engenharia-reversa <modulo> tudo` | **0097**: `funcional` + `arquitetura` numa **passada unica** (o codigo e lido uma vez) → `spec-arquitetura` logo depois, a partir do rascunho local — veja "Tudo (passada unica)" abaixo. Nada de `design`/`visao`; a `pratica` so se `status` disser "SUGERIDA" (e com os exigidos publicados) |
 | `/engenharia-reversa <modulo> melhorar <doc>` | parte do publicado + o que mudou no codigo e no banco desde ele (`re.sh trabalho`) + sugestoes pendentes + nota do revisor |
 | `/engenharia-reversa <modulo> refazer <doc>` | do zero, mantendo os IDs dos assuntos que continuam existindo |
 | `/engenharia-reversa <modulo> infra` | **opcional**: mapeia a infra do modulo na AWS (esteiras de deploy, Lambdas, buckets, segredos por nome, logs no CloudWatch) e envia para a aba **Infra** da tela — veja "Infra na AWS" abaixo |
+| `/engenharia-reversa <modulo> reancorar [doc]` | **0097, sem IA**: `bash $RE reancorar <modulo> [doc\|todos]` leva as citacoes `arquivo:linha` dos documentos publicados para a origin/master atual (git diff do commit gravado; caminho completo quando unico) e lista os itens cujo trecho citado mudou. Mostre o resumo ao usuario; com o ok dele, `--enviar` (revisao `reanchor` — so linhas `Onde:` — para o aprovador publicar + itens marcados "codigo mudou" no indice) |
+| `/engenharia-reversa <modulo> indice` (ou `indice --todos`) | **0097, sem IA**: `bash $RE indice <modulo>\|--todos` gera o **indice tecnico** (endpoints `END`, rotas/telas e paginas .asp `ROT`, tabelas `TAB`, objetos do banco `DBO`, chaves de config `CHV`, mensagens `MSG`) do inventario da origin/master, com o commit e IDs estaveis. Mostre contagens e tamanho; com o ok do usuario, `--enviar` publica direto (sem aprovacao: nao ha texto de LLM). Modulo sem fonte: pula com aviso |
 | `/engenharia-reversa <modulo> status` | `bash $RE status <modulo>` |
 | `/engenharia-reversa retrato [banco\|infra\|status]` | **0066**: baixa UMA vez o banco de referência inteiro (`re.sh retrato banco`, precisa da VPN) e/ou a conta AWS (`re.sh retrato infra`, ~15 min); os módulos usam o retrato enquanto ele estiver dentro da idade máxima (sem VPN, sem esperar). `status` mostra datas e lacunas da coleta. Rode de novo para atualizar. |
+
+## Tudo (passada unica, 0097) — `/engenharia-reversa <modulo> tudo`
+Meta: metade dos tokens e ~40% do tempo de antes (hoje ~98 M de cache lido e ~87 min por modulo, `re.sh custo`) com a
+mesma qualidade. **Voce (sessao principal, Sonnet) so roda scripts e despacha subagentes** — nunca le codigo, pacote,
+parte ou documento; quem le e escreve sao os subagentes, e os scripts resumem.
+1. Atualizar (passo 0) e `bash $RE modulo <modulo>`.
+2. `bash $RE lote <modulo> [new|improve|redo]` — abre as sessoes de `funcional` e `arquitetura`, faz inventario (master),
+   banco e termos UMA vez, divide o codigo em **areas comuns** (cada area com uma faixa de IDs por documento) e imprime os
+   **prompts prontos**: um subagente por area (le o codigo uma vez e grava as DUAS partes + `resumo-<area>.md`) e os
+   especiais (funcional → `glossario`; arquitetura → `banco`, `modulo`). Sem VPN o `banco` para o lote: diga ao usuario;
+   so com o ok dele `--sem-banco` (e GAP "banco nao lido"). Sessao retomada: o `lote` reaproveita as areas e as faixas.
+3. Despache **todos** os prompts impressos de uma vez (`Agent`, `general-purpose`, `model` = o impresso, em segundo plano;
+   no maximo `maxParallel` simultaneos — o proximo assim que um terminar). Copie o prompt como esta. Andamento: um unico
+   `bash $RE etapa <m> funcional leitura running --detail "N areas (lote)"` (o lote ja reporta). Espere as notificacoes —
+   nao fique consultando arquivos. Subagente que caiu: despache o MESMO prompt (ele continua da parte gravada).
+4. Todos voltaram → `bash $RE consolidar <modulo>` e despache o subagente `consolidar` impresso (resumo do modulo,
+   perfis `PRF`, integracoes, diagramas mermaid — a partir dos titulos e resumos das areas).
+5. Voltou → `bash $RE fechar <modulo>`: junta as partes dos dois, funde repetidos, tira GAP do gerador, compacta os IDs
+   (referencias cruzadas entre os dois documentos acompanham), poe o cabecalho do commit, roda o `check` e grava o rascunho
+   dos dois; imprime um **resumo de ate 40 linhas** (itens por tipo, cobertura, evidencia, erros, faltas por area).
+   Faltas/erros: `bash $RE faltando <m> lote <area>` → um subagente com o MESMO prompt da area (ele completa a parte) →
+   `fechar` de novo. So o necessario: cobertura ≥ minima e sem erros.
+6. Pronto: `bash $RE fechar <modulo> --enviar --summary "..."` (ou `submit` de cada um) e, **na mesma hora**,
+   `bash $RE spec <modulo>` — spec-arquitetura a partir do rascunho local (sintese, sem codigo): despache o subagente
+   impresso, depois `juntar`, `check` e `submit` dela. Aprovacao e publicacao continuam humanas.
+7. Diga ao usuario: revisoes, itens por tipo, cobertura, avisos, onde aprovar e `bash $RE custo <modulo> --desde <hoje>`
+   (tokens e minutos por documento — a regua da meta).
+**Regras de turno** (cada resposta da sessao principal rele todo o contexto): um comando de script por resposta, agrupando
+andamento com `&&`; nunca `cat`/`Read` de pacote, parte, documento ou codigo (os scripts imprimem o que importa — se
+precisar de um detalhe, `grep -n` de uma linha); despache todos os subagentes na MESMA resposta; nao repita o resumo dos
+subagentes — so contagens; nada de "vou verificar" entre um passo e outro.
 
 ## Andamento ao vivo (obrigatorio — o usuario acompanha pela tela)
 A tela Engenharia reversa mostra a sessao **enquanto ela roda**: etapas (sessao → inventario → banco da DEMO → leitura e escrita, com uma
@@ -62,7 +97,9 @@ O ponto de partida antigo: `bash $KB show <modulo> <secao>` das secoes listadas.
 
 **3. Inventario (sem LLM)** — `bash $RE inventario <modulo>` (0067: le a **master atualizada** de cada repositorio — `git fetch`
 e uma copia so de leitura em `<clone>/../.prmake-wt/master/<repo>`; o clone de trabalho nao e tocado e a branch em que
-ele estiver nao importa. `--local` so para documentar uma branch que ainda nao entrou na master): endpoints, validacoes e mensagens (back, front e alerts do
+ele estiver nao importa. **0097: nada sai fora da master sem aviso** — `--local --motivo "por que"` so para documentar uma
+branch que ainda nao entrou (o motivo vai para o revisor); sem motivo o `--local` e recusado e o `check`/`submit` dao ERRO
+para fonte fora da origin/master. O documento leva no cabecalho o commit de cada repositorio): endpoints, validacoes e mensagens (back, front e alerts do
 legado), permissoes, tabelas, eventos/filas, jobs, handlers, procedures, rotas/componentes/chamadas HTTP do front,
 paginas `.asp`, chaves de config. **E a lista do que o documento precisa cobrir — sem excecao.** Legado (`edv-solvace`)
 exige a subpasta do modulo: `--path edv-solvace=solvace-asp/systems/<sigla>` (veja "Onde esta" em `kb.sh show <modulo>
@@ -127,7 +164,7 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
    **compacta os IDs** das faixas (RN-2701 → RN-058, referencias juntas) e mostra o **tamanho** × o limite do PRMake
    (5 milhoes de caracteres). Pode rodar de novo. **Nunca compacte o texto das regras** para caber: se passar do
    limite, procure secoes coladas por area e itens repetidos; ainda assim grande → diga ao usuario.
-6. Consolide na sessao principal **so o que e do modulo inteiro** (resumo, perfis `PRF` a partir dos resumos dos
+6. (Documento avulso; no `tudo` e o subagente `consolidar` — passo 4 acima.) Consolide **so o que e do modulo inteiro** (resumo, perfis `PRF` a partir dos resumos dos
    subagentes, diagramas mermaid, integracoes consolidadas) — **sem ler o `documento.md` inteiro** (centenas de KB a cada
    resposta): use o `check`, `grep -n '^## \|^### ' documento.md` e leia so o trecho que vai editar, lendo o documento juntado e o `check` — sem reler o codigo. Area pequena (1 so): pode escrever voce mesmo
    a partir do pacote, sem subagente.
@@ -135,9 +172,6 @@ leitura de uma vez e nada de exploracao. **Voce (sessao principal) nao le o codi
   `**Modulos:**` **so com a chave** do outro projeto (`modulos.tsv` do pacote da sessao; servico externo `ext:<nome>`),
   `**Mecanismo:**` do vocabulario e a evidencia dos dois lados quando o outro repositorio estiver na maquina; use
   `relacionados.md` e `bash $RE impact <tabela>` para ver o que o outro lado ja publicou. E isso que desenha o mapa.
-- Integracoes: para cada chamada a outro modulo (HTTP, fila/evento, tabela de outro dono, pacote), um `INT-…` com
-  `**Modulos:**` (chave do outro projeto) e a evidencia dos dois lados quando o outro repositorio estiver na maquina; use
-  `relacionados.md` e `bash $RE impact <tabela>` para ver o que o outro lado ja publicou.
 - Regras de negocio: `bash $KC search <termos do modulo>` — cite `**KC:** ART-n` quando o Knowledge Center documenta a
   regra; divergencia entre KC e codigo vira `GAP`.
 
@@ -147,7 +181,10 @@ corrija antes de enviar) + checagem do PRMake (secoes obrigatorias, IDs, evidenc
 **Modulos/Mecanismo dos INT**). O que faltar de uma area: `re.sh faltando <m> <doc> <area>` e um subagente com o
 pacote da area (nunca a sessao principal relendo codigo). **Repita** escrever → check ate:
 sem erros e cobertura ≥ a minima (padrao 90%). O que ficar de fora de proposito (codigo morto, infraestrutura) entra em
-`## Lacunas` como `GAP` com o motivo — assim conta como coberto e o revisor sabe.
+`## Lacunas` como `GAP` com o motivo — assim conta como coberto e o revisor sabe. **GAP so do sistema (0097)**: GAP que
+fala do proprio processo ("fora do pacote", "nao esta no pacote", "fora desta area", "subagente", "sem Figma",
+"inventario nao", "retrato nao"...) e proibido — o `juntar` remove (`re_gaps.py`, mesma lista do PRMake), o `check` avisa e
+o PRMake nao indexa.
 
 **6. Enviar** — `bash $RE submit <modulo> <doc> --summary "o que cobre / o que mudou (itens novos, corrigidos)"`. Vai para
 revisao no PRMake (tela **Engenharia reversa** → modulo → documento). **Nunca** aprova nem publica — e uma pessoa (papel
@@ -185,7 +222,12 @@ segredos so por nome, logs) e serve de fonte para a secao "Infraestrutura e AWS 
 6. Com sessao de `arquitetura` aberta (ou na proxima `melhorar arquitetura`), escreva os itens `INF-…` a partir do `modulo.md`
    (`references/infra.md`).
 
-## Visao pratica (0054) — `/engenharia-reversa <modulo> pratica`
+## Visao pratica (0054; sob demanda desde a 0097) — `/engenharia-reversa <modulo> pratica`
+**Quando**: so sob demanda — `bash $RE perguntas <modulo>` (ou `status`) mostra quantas perguntas do Pergunte ficaram sem
+resposta e se a pratica esta **sugerida** (≥ `ReverseEngineeringPracticalMinQuestions`, padrao 3). Sem sugestao, diga ao
+usuario e nao gere. **Centre nas perguntas SEM RESPOSTA** (`perguntas.md` traz essas primeiro, marcadas `SEM RESPOSTA`):
+um FAQ/TUT para cada uma que a engenharia reversa publicada responde; as que ela nao responde viram lacuna no documento
+tecnico certo (`arch.sh suggest ...`), nao invencao.
 O guia do sistema para quem usa (QA, suporte, gestores, clientes): o que e e onde fica (**legado ou revamp**), como
 chegar em cada tela, **como fazer** cada tarefa (`### TUT-001 — Como criar um A3`) e as **perguntas praticas**
 (`### FAQ-001 — O A3 e legado ou revamp?`). Regras duras (a checagem barra):
@@ -220,7 +262,10 @@ Read). Com o MCP do Figma conectado nesta sessao, leia os frames pelos links; se
 usuario pode anexar pela tela ou aqui: `bash $RE link <modulo> <url> "<titulo>" --screens TELA-001` /
 `bash $RE upload <modulo> <arquivo> "<titulo>"`. Divergencia prototipo × implementado = `GAP`.
 
-## Custo (0066)
+## Custo (0066; medido desde a 0097)
+- `bash $RE custo <modulo> [--desde AAAA-MM-DD]` le os transcripts do Claude Code (sessao principal + subagentes) e soma, por
+  documento, cache lido/gravado, entrada, saida, chamadas e o tempo de parede ativo. Linha de base (mediana de 11 modulos,
+  out/2026): funcional 32 M · arquitetura 27 M · pratica 20 M · design 17 M · spec 3 M · visao 3 M de cache lido.
 - `bash $RE config` mostra a configuracao da geracao (Skills Configurations → `ReverseEngineeringGeneration`): modelo dos
   subagentes (padrao `sonnet`; `modelByDoc` troca por documento, ex. `{"design": "haiku"}`), simultaneos, orcamento da
   area, checkpoint e idade maxima do retrato. Mudou a configuracao: vale na proxima sessao, sem atualizar a skill.
@@ -228,6 +273,10 @@ usuario pode anexar pela tela ou aqui: `bash $RE link <modulo> <url> "<titulo>" 
   um subagente ja leu — peca a ele (ou ao `faltando`).
 
 ## Regras
+- **`Onde:` com o caminho COMPLETO a partir da raiz do repositorio** (0097): `solvace-asp/systems/sa3/sa3_registro.asp:53`,
+  nunca so `sa3_registro.asp:53` (o pacote ja mostra o caminho certo no cabecalho de cada trecho). O `check` acusa citacao
+  so com o nome, ambigua (dois arquivos com o mesmo nome) e arquivo local do gerador (`banco/catalogo.json`, `~/.prmake/…`,
+  `pacote-*.md`) — objeto do banco e `banco DEMO <global|local> · dbo.X`.
 - **Nada inventado.** Nao confirmou no codigo → "a confirmar" + `GAP`. Nunca credenciais, connection strings, tokens ou
   dados de cliente (a checagem barra). Mensagens literais, sim (sao parte da regra).
 - **ID unico no modulo e estavel**; itens de outro documento so referenciados (`TELA-003`, `revamp-users#API-004`).

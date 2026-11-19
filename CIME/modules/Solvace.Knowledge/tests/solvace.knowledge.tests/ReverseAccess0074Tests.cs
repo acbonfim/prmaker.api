@@ -9,9 +9,10 @@ using Xunit;
 namespace solvace.knowledge.tests;
 
 /// <summary>
-/// 0074: a engenharia reversa é só de administrador. Quem não é admin não lê as seções <c>re-*</c> que ela publica na Base
-/// (nem pela seção, nem pelo espelho, índice, catálogo ou busca), não recebe texto dela no "Pergunte" e a trava da análise
-/// não vale para ele (ele não consegue consultar). O restante da Base continua igual.
+/// 0074 → 0097: quem NÃO pode ler a engenharia reversa (<see cref="IReverseAccess.CanRead"/> falso — desde a 0097, só a
+/// requisição sem autenticação; antes, quem não era admin) não lê as seções <c>re-*</c> que ela publica na Base (nem pela
+/// seção, nem pelo espelho, índice, catálogo ou busca), não recebe texto dela no "Pergunte" e a trava da análise não vale
+/// para ele. O restante da Base continua igual. Todo usuário autenticado lê, qualquer que seja o papel (último teste).
 /// </summary>
 public class ReverseAccess0074Tests
 {
@@ -56,8 +57,9 @@ public class ReverseAccess0074Tests
         ## Lacunas e pontos a confirmar
         """;
 
+    /// <summary>Admin* = pode ler; User* = não pode ler (CanRead falso).</summary>
     private sealed record World(InMemoryKnowledgeRepository Repo, ReverseEngineeringApplication AdminReverse, ArchitectureApplication AdminArch,
-        ReverseEngineeringApplication UserReverse, ArchitectureApplication UserArch);
+        ReverseEngineeringApplication UserReverse, ArchitectureApplication UserArch, Settings Settings);
 
     private static async Task<World> CreateAsync()
     {
@@ -70,7 +72,7 @@ public class ReverseAccess0074Tests
         var settings = new Settings(ReverseSettings.Default with { RequiredDocs = ["funcional"] });
         var world = new World(repo,
             new ReverseEngineeringApplication(repo, settings), new ArchitectureApplication(repo, new Kc(), settings),
-            new ReverseEngineeringApplication(repo, settings, new Access(false)), new ArchitectureApplication(repo, new Kc(), settings, new Access(false)));
+            new ReverseEngineeringApplication(repo, settings, new Access(false)), new ArchitectureApplication(repo, new Kc(), settings, new Access(false)), settings);
 
         // uma seção comum da Base (continua legível para todos) e o documento da engenharia reversa publicado por admin
         await world.AdminArch.WriteSectionAsync("legado-rca", "modulos", new WriteArchitectureSectionRequest { Content = "telas do A3 e o aprovador", Source = "admin" }, "admin", default);
@@ -210,5 +212,24 @@ public class ReverseAccess0074Tests
             Assert.DoesNotContain(admin.Entries, e => e.FullName.EndsWith("-regras-de-negocio.md", StringComparison.Ordinal));
         using (var user = new ZipArchive(new MemoryStream(userZip)))
             Assert.Contains(user.Entries, e => e.FullName.EndsWith("-regras-de-negocio.md", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Every_authenticated_user_reads_the_reverse_engineering_and_the_gate_applies_to_everyone()
+    {
+        // 0097: o acesso do host diz "pode ler" para qualquer usuário autenticado — o papel (user/support/gestor) não importa
+        var w = await CreateAsync();
+        var devReverse = new ReverseEngineeringApplication(w.Repo, w.Settings, new Access(true));
+        var devArch = new ArchitectureApplication(w.Repo, new Kc(), w.Settings, new Access(true));
+
+        Assert.Contains("RN-001", (await devArch.GetSectionAsync("legado-rca", "re-funcional", default)).Content);
+        Assert.NotEmpty(await devReverse.SearchAsync("aprovador", null, null, null, 10, false, default));
+        Assert.NotEmpty(await devReverse.GetAnswerContextAsync("a3 passa de etapa com aprovador", ["aprovador"], [], ArchitectureQuestionKind.Rule, 7, 6, 1500, default));
+        Assert.Contains("legado-rca", await devReverse.ForCardAsync("75002", "A3", "A3 não passa de etapa", default));
+        Assert.NotNull(await devReverse.CheckGateAsync("75002", "investigar-codigo", "olhei o código", default));
+        // gerar e publicar continuam com quem tem o papel: aprovar exige ApproverRoles
+        var session = await devReverse.StartSessionAsync("legado-rca", "funcional", new StartReverseSessionRequest(), "dev", Dev, default);
+        await Assert.ThrowsAsync<ReverseForbiddenException>(() =>
+            devReverse.ReviewAsync(session.Revision.Id, new ReviewReverseRevisionRequest { Action = "approve" }, "dev", Dev, default));
     }
 }

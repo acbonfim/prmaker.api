@@ -67,6 +67,32 @@ public class UserStorySpecTests
         Assert.Contains("<table>", html);
     }
 
+    /// <summary>Card 78525: o DevOps mostra o checkbox como caixa de texto vazia — vira ☐/☑ no texto.</summary>
+    [Fact]
+    public void Task_list_becomes_check_marks_without_inputs()
+    {
+        var html = UserStorySpec.ToHtml("**Critérios de aceite**\n\n- [ ] Caixa visível\n- [x] Sem marcar, nada muda");
+        Assert.DoesNotContain("<input", html);
+        Assert.Contains("☐ Caixa visível", html);
+        Assert.Contains("☑ Sem marcar, nada muda", html);
+    }
+
+    /// <summary>Card 78525: anexo:nome não abre no DevOps — as imagens são achadas e o src troca pela URL do anexo.</summary>
+    [Fact]
+    public void Attachment_images_are_listed_and_replaced_by_the_devops_url()
+    {
+        var html = UserStorySpec.ToHtml("| Antes | Depois |\n|---|---|\n| ![Antes, mobile](anexo:01-antes-mobile.png) | ![Depois](anexo:03-depois-mobile-desmarcada.png) |\n\n" +
+                                        "Desktop: ![Antes](anexo:02-antes-desktop.png) ![Antes de novo](anexo:01-antes-mobile.png) ![externa](https://x.com/a.png)");
+
+        Assert.Equal(["01-antes-mobile.png", "03-depois-mobile-desmarcada.png", "02-antes-desktop.png"], UserStorySpec.AttachmentImages(html));
+
+        var replaced = UserStorySpec.ReplaceAttachment(html, "01-antes-mobile.png", "https://dev.azure.com/_apis/wit/attachments/abc?fileName=01-antes-mobile.png");
+        Assert.DoesNotContain("anexo:01-antes-mobile.png", replaced);
+        Assert.Equal(2, replaced.Split("_apis/wit/attachments/abc").Length - 1);
+        Assert.Contains("anexo:02-antes-desktop.png", replaced);
+        Assert.Contains("https://x.com/a.png", replaced);
+    }
+
     [Fact]
     public void Invalid_configuration_falls_back_to_the_default() =>
         Assert.Equal(5, UserStorySpec.ParseMap("não é json", AzureDevOpsFieldKeys.DefaultUserStorySpecFieldsJson).Count);

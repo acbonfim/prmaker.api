@@ -14,9 +14,10 @@
 #                                     caminhos locais das fontes (mapa da maquina); legado sem subpasta = erro (o
 #                                     edv-solvace inteiro nao e um modulo). --path com PASTA substitui a do repo; com
 #                                     ARQUIVO, GLOB ou outra pasta do mesmo repo soma (0056): --path edv-solvace='solvace-core/helpers/**/Sa3*.cs'
-#   inventario <modulo> [--path repo=subpasta ...] [--local]
+#   inventario <modulo> [--path repo=subpasta ...] [--local --motivo "por que"]
 #                                     0067: le a COPIA DA MASTER atualizada (git fetch; worktree <clone>/../.prmake-wt/master/<repo>),
-#                                     nunca a branch em que o clone estiver; --local (ou RE_LOCAL=1) le o clone como esta
+#                                     nunca a branch em que o clone estiver; --local (ou RE_LOCAL=1) le o clone como esta — 0097: so
+#                                     com --motivo (ou RE_MOTIVO); sem ele o check da ERRO para fonte fora da origin/master
 #                                     inventario deterministico do codigo -> $RE_HOME/<modulo>/inventario.json
 #   banco <modulo> [--prefix TB_X_ ...] [--sigla X]
 #                                     CATALOGO DO BANCO DA DEMO (0053, somente leitura): views, procedures, functions,
@@ -32,6 +33,16 @@
 #   termos <modulo>                   termos do modulo para o GLOSSARIO (rotulos da tela, menus, siglas, traducoes)
 #   trabalho <modulo> <doc>           MELHORAR (0053): o que mudou no codigo (commits) e no banco desde a versao
 #                                     publicada e os itens afetados -> trabalho.md
+#   reancorar <modulo> [doc|todos] [--enviar]
+#                                     0097 (SEM IA): as citacoes arquivo:linha dos documentos PUBLICADOS vao para a origin/master atual
+#                                     (git diff do commit gravado na revisao publicada/cabecalho; caminho completo quando unico) e lista
+#                                     os itens cujo trecho citado mudou -> $RE_HOME/<modulo>/reancorar/; --enviar = revisao `reanchor`
+#                                     (so linhas Onde: mudam; o aprovador publica) + marca os itens desatualizados no indice
+#   indice <modulo>|--todos [--enviar] [--path repo=subpasta ...]
+#                                     0097 (SEM IA): INDICE TECNICO do modulo a partir do inventario da origin/master — endpoints, rotas/
+#                                     telas e paginas .asp, tabelas, objetos do banco, chaves de config e mensagens, com o commit e IDs
+#                                     estaveis (reaproveita os do publicado) -> $RE_HOME/<modulo>/indice/tecnico.md; --enviar publica
+#                                     direto (PUT technical-index, sem aprovacao); --todos = todos os modulos com fonte (sem fonte: pula)
 #   check <modulo> <doc> [arquivo]    cobertura do inventario + checagem do PRMake (erros barram o envio)
 #   save <modulo> <doc> [arquivo] [--summary "..."]
 #                                     grava o rascunho no PRMake (sem enviar)
@@ -54,7 +65,19 @@
 #   areas <modulo> <doc> [--orcamento KB]
 #                                     0066: divide o codigo do documento em AREAS que cabem no orcamento, com faixa de IDs -> areas.json
 #   pacote <modulo> <doc> [--area A]  0066: pacote de leitura por area (codigo inteiro em blocos, com linha) + cartao do subagente
-#   faltando <modulo> <doc> <area>    0066: o que a parte da area ainda nao cobre (checkpoint/retomada)
+#   faltando <modulo> <doc>|lote <area>
+#                                     0066: o que a parte da area ainda nao cobre (checkpoint/retomada); `lote` = as duas partes
+#   lote <modulo> [new|improve|redo] [--sem-banco] [--path repo=subpasta ...]
+#                                     0097: PASSADA UNICA funcional + arquitetura — abre as duas sessoes, inventario (master), banco e
+#                                     termos UMA vez, areas comuns e um pacote por area para os dois documentos + especiais
+#                                     (glossario; banco, modulo); imprime os prompts dos subagentes para despachar
+#   consolidar <modulo>               0097: pacote do subagente `consolidar` (resumo, perfis PRF, integracoes, mermaid) — sem ler documento
+#   fechar <modulo> [--enviar] [--summary "..."]
+#                                     0097: juntar + IDs (referencias cruzadas entre os dois) + check + save dos DOIS, resumo de ate 40
+#                                     linhas; --enviar submete os dois se nao houver erro
+#   spec <modulo>                     0097: spec-arquitetura logo apos o fechar (sessao + pacote de sintese do rascunho local) + prompt
+#   custo <modulo> [--desde AAAA-MM-DD] [--ate D] [--pausa 5] [--json f]
+#                                     0097: tokens (cache lido/gravado, entrada, saida) e tempo de parede por documento, dos transcripts
 #   juntar <modulo> <doc>             0066: junta parte-*.md em documento.md e compacta os IDs das faixas (referencias juntas)
 #   evidencia <modulo> <doc> [arq]    0066: confere arquivo:linha e literais citados contra as fontes (tambem roda no check)
 #   retrato banco|infra|status [--forcar]
@@ -85,6 +108,10 @@ BANCO_PY="$HERE/re_banco.py"
 INFRA_PY="$HERE/re_infra.py"
 TRAD_PY="$HERE/re_traducoes.py"
 PAC_PY="$HERE/re_pacote.py"
+ANC_PY="$HERE/re_ancora.py"
+IDX_PY="$HERE/re_indice.py"
+GAPS_PY="$HERE/re_gaps.py"
+CUSTO_PY="$HERE/re_custo.py"
 # 0056: as traducoes vem do Multilingual (PostgreSQL) — psycopg no venv da skill base-solvace
 MLG_PY="${RE_MLG_PYTHON:-$HOME/.claude/skills/base-solvace/.venv/bin/python}"
 [[ -x "$MLG_PY" ]] || { [[ -x "$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe" ]] && MLG_PY="$HOME/.claude/skills/base-solvace/.venv/Scripts/python.exe"; }
@@ -229,6 +256,27 @@ progress() { # <modulo> <doc> <json>
 # Documentos com sessao aberta nesta maquina para o modulo (o inventario e do modulo; o andamento vai para cada um).
 open_docs() { local d; for d in "$(moddir "$1")"/*/sessao.json; do [[ -s "$d" ]] && basename "$(dirname "$d")"; done; }
 
+# 0097: o documento vem da origin/master. Fonte lida de outra branch (--local) so com o motivo gravado; sem ele = ERRO.
+# Imprime ERRO/AVISO por fonte e devolve 1 se alguma fonte barra o envio.
+master_check() { # <modulo>
+  local f; f="$(moddir "$1")/fontes.tsv"; local lf; lf="$(moddir "$1")/local-motivo.txt"; local rc=0
+  [[ -s "$f" ]] || { echo "AVISO: sem fontes.tsv — rode re.sh inventario $1 (o envio grava de que commit da master o documento veio)"; return 0; }
+  while IFS=$'\t' read -r role path commit repo; do
+    [[ -z "$path" ]] && continue
+    local br="${commit#*@}" sha="${commit%%@*}" g="$path"; [[ -f "$g" ]] && g="$(dirname "$g")"
+    if [[ "$br" != origin/master ]]; then
+      if [[ -s "$lf" ]]; then echo "AVISO: ${repo:-$path} lido da branch $br (--local) — motivo: $(head -c 300 "$lf")"
+      else echo "ERRO: ${repo:-$path} nao e a origin/master (lido de $br@$sha) — rode: re.sh inventario $1 (le a master) ou, para documentar uma branch que ainda nao entrou, --local --motivo \"...\""; rc=1; fi
+      continue
+    fi
+    local cur; cur="$(git -C "$g" rev-parse origin/master 2>/dev/null)"
+    if [[ -n "$cur" && -n "$sha" && "$cur" != "$sha"* ]]; then
+      echo "AVISO: a origin/master de ${repo:-$path} andou desde o inventario ($sha -> ${cur:0:10}) — rode re.sh inventario $1 antes de enviar"
+    fi
+  done < "$f"
+  return $rc
+}
+
 case "$CMD" in
   etapa)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; KEY="${3:?etapa}"; ST="${4:?status}"
@@ -280,11 +328,16 @@ case "$CMD" in
       "Apelidos (campo Module do card): " + (.aliases | join(", ")),
       "Documentos:",
       (.docs[] | "  \(.type)\t\(.title)\t\(if .published then "publicado v\(.published.version) (\(.published.items) itens)" else "—" end)\t\(if .open then "revisao #\(.open.number) \(.open.status)\(if .open.reviewNote then " — revisor: " + .open.reviewNote else "" end)" else "" end)\(if .pendingSuggestions > 0 then " · \(.pendingSuggestions) sugestoes" else "" end)"),
-      "Anexos de UI/UX: \(.assets | length)" + (if (.assets|length) > 0 then " (re.sh assets \(.key))" else "" end)' "$TMP/resp"
+      "Anexos de UI/UX: \(.assets | length)" + (if (.assets|length) > 0 then " (re.sh assets \(.key))" else "" end),
+      "Pergunte sem resposta: \(.openQuestions // 0)" + (if .practicalSuggested then " — visao pratica SUGERIDA (sob demanda)" else "" end)
+        + " · itens desatualizados (codigo mudou): \(.staleItems // 0)"
+        + " · indice tecnico: " + (if .technicalIndex then "v\(.technicalIndex.version) de \(.technicalIndex.generatedAt // "?" | tostring | .[:10])" else "nunca gerado (re.sh indice \(.key))" end)' "$TMP/resp"
     ;;
 
   start)
     MOD="${1:?modulo}"; DOC="${2:?documento (re.sh tipos)}"; MODE="${3:-}"
+    # 0097: design e visao foram descontinuados (o publicado continua legivel e na busca; nenhuma sessao nova)
+    case "$DOC" in design|visao) die "'$DOC' foi descontinuado na 0097 — a ER agora e funcional + arquitetura (passada unica: re.sh lote) e spec-arquitetura; a visao pratica e sob demanda (re.sh perguntas $MOD)";; esac
     D="$(docdir "$MOD" "$DOC")"; mkdir -p "$D/anexos"
     jq -n --arg m "$MODE" 'if $m == "" then {} else {mode: $m} end' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")/sessions" "$TMP/body"; check
@@ -301,7 +354,9 @@ case "$CMD" in
       for k in $(jq -r '.publishedDocs | keys[]' "$D/sessao.json"); do jq -r --arg k "$k" '.publishedDocs[$k]' "$D/sessao.json" > "$D/publicados/$k.md"; done
     fi
     jq '.questions' "$D/sessao.json" > "$D/perguntas.json"
-    jq -r '.questions[] | "- (\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
+    # 0097: a visao pratica e sob demanda, centrada nas perguntas SEM RESPOSTA (not-found/partial) — elas vem primeiro
+    jq -r '.questions | sort_by((if (.coverage == "not-found" or .coverage == "partial") then 0 else 1 end), -(.times // 0))[]
+      | "- \(if (.coverage == "not-found" or .coverage == "partial") then "SEM RESPOSTA " else "" end)(\(.times)×, \(.coverage)) \(.text)"' "$D/sessao.json" > "$D/perguntas.md"
     jq -r '.traps[] | "## \(.title)\(if .needsReview then " (a conferir)" else "" end)\n- itens: \(.items | join(", ")) · cards: \(.cards | join(", "))\n\n\(.text)\n"' "$D/sessao.json" > "$D/armadilhas.md"
     jq -r '.legacyTraps // ""' "$D/sessao.json" > "$D/armadilhas-antigas.md"
     # 0066: chaves validas para **Modulos:** dos INT (a checagem avisa chave desconhecida; o mapa so usa chave valida)
@@ -348,6 +403,11 @@ case "$CMD" in
 
   inventario)
     MOD="${1:?modulo}"; shift
+    # 0097: --local (ler a branch do clone, nao a master) so com o motivo — ele vai para o revisor e o check deixa passar
+    MOTIVO="$(opt --motivo "${RE_MOTIVO:-}" "$@")"
+    if [[ " $* " == *" --local "* || "${RE_LOCAL:-0}" == 1 ]]; then
+      [[ -n "$MOTIVO" ]] || die "--local exige --motivo \"por que nao a master\" (ex.: branch da US que ainda nao entrou) — sem motivo, rode sem --local (le a origin/master)"
+    fi
     resolve_sources "$MOD" "$@" > "$TMP/sources"; rc=$?
     [[ -s "$TMP/sources" ]] || die "sem fontes locais para o inventario de $MOD"
     [[ $rc -eq 0 ]] || echo "AVISO: parte das fontes ficou de fora (acima) — o inventario cobre so o que foi encontrado" >&2
@@ -361,12 +421,15 @@ case "$CMD" in
       die "falha no inventario"; }
     DETAIL="$(jq -r '"\(.counts | to_entries | map(.value) | add // 0) itens: " + ([.counts | to_entries | sort_by(-.value)[] | "\(.value) \(.key)"] | join(", "))' "$(moddir "$MOD")/inventario.json")"
     for d in $(open_docs "$MOD"); do progress "$MOD" "$d" "$(jq -n --arg dt "$DETAIL" '{step: "inventario", status: "completed", detail: $dt, log: ("Inventario: " + $dt), kind: "progress"}')"; done
-    # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio)
+    # commits das fontes (vao com o envio, para saber de que versao do codigo o documento veio); 0097: + nome do repositorio
     while IFS=$'\t' read -r role dir; do
       g="$dir"; [[ -f "$g" ]] && g="$(dirname "$g")"  # 0056: fonte pode ser um arquivo
       br="$(git -C "$g" rev-parse --abbrev-ref HEAD 2>/dev/null)"; [[ "$dir" == */.prmake-wt/master/* ]] && br="origin/master"
-      printf '%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short HEAD 2>/dev/null)@$br"
+      rn="$(git -C "$g" remote get-url origin 2>/dev/null)"; rn="$(basename "${rn%.git}")"
+      printf '%s\t%s\t%s\t%s\n' "$role" "$dir" "$(git -C "$g" rev-parse --short=10 HEAD 2>/dev/null)@$br" "$rn"
     done < "$TMP/sources" > "$(moddir "$MOD")/fontes.tsv"
+    if [[ "${RE_LOCAL:-0}" == 1 ]]; then printf '%s\n' "$MOTIVO" > "$(moddir "$MOD")/local-motivo.txt"; else rm -f "$(moddir "$MOD")/local-motivo.txt"; fi
+    master_check "$MOD" | grep -v '^AVISO: a origin/master' || true
     ;;
 
   banco)
@@ -513,9 +576,115 @@ case "$CMD" in
     progress "$MOD" "$DOC" "$(jq -n --arg m "$MSG" '{log: ("Lista de trabalho do melhorar: " + $m), kind: "progress", activity: $m}')"
     ;;
 
+  reancorar)
+    # 0097: reancoragem SEM IA dos documentos publicados na origin/master atual (so as linhas `Onde:` mudam)
+    MOD="${1:?modulo}"; WHAT="${2:-todos}"; [[ "$WHAT" == --* ]] && WHAT=todos
+    SEND=0; [[ " $* " == *" --enviar "* ]] && SEND=1
+    OUTD="$(moddir "$MOD")/reancorar"; mkdir -p "$OUTD"; rm -f "$OUTD"/*.json "$OUTD"/*.md
+    api GET "/modules/$(urlenc "$MOD")"; check; cp "$TMP/resp" "$OUTD/modulo.json"
+    if [[ "$WHAT" == todos ]]; then
+      DOCS=(); while IFS= read -r d; do [[ -n "$d" ]] && DOCS+=("$d"); done < <(jq -r '.docs[] | select(.published) | .type | select(. != "pratica" and . != "tecnico")' "$OUTD/modulo.json")
+    else DOCS=("$WHAT"); fi
+    [[ ${#DOCS[@]} -gt 0 ]] || { echo "$MOD: nenhum documento publicado com codigo citado — nada a reancorar."; exit 0; }
+    echo '[]' > "$OUTD/stale.json"; COMMITS=""
+    for DOC in "${DOCS[@]}"; do
+      api GET "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")"; check
+      jq -r '.content // ""' "$TMP/resp" > "$OUTD/$DOC.publicado.md"
+      [[ -s "$OUTD/$DOC.publicado.md" ]] || { echo "$DOC: sem versao publicada — pulando"; continue; }
+      REV="$(jq -r '[.revisions[]? | select(.status == "published")] | max_by(.number) | .id // empty' "$TMP/resp")"
+      echo '[]' > "$OUTD/$DOC.fontes.json"
+      if [[ -n "$REV" ]]; then api GET "/revisions/$REV?content=false"; [[ "$CODE" =~ ^2 ]] && jq '.session.sources // []' "$TMP/resp" > "$OUTD/$DOC.fontes.json"; fi
+      ARGS=(ancorar "$OUTD/$DOC.publicado.md" --doc "$DOC" --out "$OUTD/$DOC.md" --json "$OUTD/$DOC.json")
+      while IFS=$'\t' read -r repo sha prefixes; do
+        [[ -z "$repo" ]] && continue
+        root="$(repo_path "$repo")" || { echo "AVISO: $DOC: repositorio '$repo' fora do mapa da maquina (prmake-skills.sh repos set $repo <pasta>) — citacoes dele ficam como estao" >&2; continue; }
+        RE_LOCAL=0 master_root "$root" >/dev/null   # git fetch: a origin/master do clone fica atual
+        ARGS+=(--repo "$repo=$root@$sha"); [[ -z "$sha" ]] && echo "AVISO: $DOC: sem commit gravado para $repo — so completa caminhos e confere se o arquivo existe na master"
+        IFS=, read -ra PS <<<"$prefixes"; for p in "${PS[@]:-}"; do [[ -n "$p" ]] && ARGS+=(--prefixo "$repo=$p"); done
+      done < <(python3 "$ANC_PY" fontes "$OUTD/$DOC.fontes.json" "$OUTD/modulo.json" "$OUTD/$DOC.publicado.md")
+      [[ " ${ARGS[*]} " == *" --repo "* ]] || { echo "$DOC: nenhum repositorio da fonte na maquina — pulando"; continue; }
+      python3 "$ANC_PY" "${ARGS[@]}" || { echo "AVISO: $DOC: falha na reancoragem" >&2; continue; }
+      jq --arg d "$DOC" --slurpfile r "$OUTD/$DOC.json" '. + [$r[0].stale[] | {docType: $d, itemId, reason: (.reasons | join("; ") | .[:480])}]' "$OUTD/stale.json" > "$TMP/s.json" && cp "$TMP/s.json" "$OUTD/stale.json"
+      COMMITS="$(jq -r '[.commits[] | "\(.repository)@\(.to[:10])"] | join(",")' "$OUTD/$DOC.json")"
+    done
+    NS="$(jq length "$OUTD/stale.json")"
+    echo; echo "Reancorados em $OUTD/<doc>.md (relatorio <doc>.json) · $NS item(ns) desatualizado(s) no total -> stale.json"
+    [[ $SEND -eq 1 ]] || { echo "Revise e envie com: re.sh reancorar $MOD $WHAT --enviar (revisao 'reanchor' para o aprovador + itens desatualizados no indice)"; exit 0; }
+    for DOC in "${DOCS[@]}"; do
+      [[ -s "$OUTD/$DOC.json" && -s "$OUTD/$DOC.md" ]] || continue
+      if cmp -s "$OUTD/$DOC.md" "$OUTD/$DOC.publicado.md"; then echo "$DOC: nenhuma linha Onde: mudou — sem revisao"; continue; fi
+      echo '{"mode":"reanchor"}' > "$TMP/body"
+      api POST "/modules/$(urlenc "$MOD")/docs/$(urlenc "$DOC")/sessions" "$TMP/body"; check
+      cp "$TMP/resp" "$OUTD/$DOC.sessao.json"
+      if [[ "$(jq -r '.revision.mode' "$OUTD/$DOC.sessao.json")" != reanchor ]]; then
+        echo "AVISO: $DOC tem revisao aberta (#$(jq -r '.revision.number' "$OUTD/$DOC.sessao.json"), $(jq -r '.revision.mode' "$OUTD/$DOC.sessao.json")) — reancore depois que ela for publicada ou descartada" >&2; continue
+      fi
+      ID="$(jq -r '.revision.id' "$OUTD/$DOC.sessao.json")"
+      jq -n --rawfile c "$OUTD/$DOC.md" --slurpfile r "$OUTD/$DOC.json" --slurpfile f "$OUTD/$DOC.fontes.json" '
+        ($r[0].stats) as $st |
+        {content: $c,
+         summary: "Reancoragem na origin/master (sem IA): \($st.citacoes // 0) citacoes, \($st["linhas-remapeadas"] // 0) linhas remapeadas, \($st["caminho-completado"] // 0) caminhos completados, \($st["itens-desatualizados"] // 0) itens com o trecho alterado (marcados desatualizados)",
+         session: {tool: "re.sh reancorar", mode: "reanchor",
+                   sources: [$r[0].commits[] | {repository, commit: ((.to[:10]) + "@origin/master"), from: .from}],
+                   reanchor: {stats: $st, stale: $r[0].stale, unresolved: ($r[0].unresolved[:200])}}}' > "$TMP/body"
+      api PUT "/revisions/$ID" "$TMP/body"; check
+      api POST "/revisions/$ID/submit"; check
+      jq -r '"Revisao de reancoragem enviada: \(.moduleKey) / \(.docType) #\(.number) (\(.status)) — o aprovador publica na tela"' "$TMP/resp"
+    done
+    REPLACE=false; [[ "$WHAT" == todos ]] && REPLACE=true
+    jq -n --arg c "$COMMITS" --argjson rep "$REPLACE" --slurpfile s "$OUTD/stale.json" '{commit: $c, items: $s[0], replace: $rep}' > "$TMP/body"
+    api POST "/modules/$(urlenc "$MOD")/stale" "$TMP/body"; check
+    echo "Itens desatualizados marcados no indice: $NS (replace=$REPLACE) — a busca e o for-card avisam 'codigo mudou desde a geracao'"
+    ;;
+
+  indice)
+    # 0097: indice tecnico SEM IA — inventario da origin/master -> documento `tecnico`, publicado direto (sem revisao humana)
+    SEND=0; PASS=(); for a in "$@"; do case "$a" in --enviar) SEND=1 ;; --todos) ;; *) PASS+=("$a") ;; esac; done
+    if [[ " $* " == *" --todos "* ]]; then
+      api GET "/modules"; check
+      OUT="$RE_HOME/_indice-todos.tsv"; mkdir -p "$RE_HOME"; : > "$OUT"
+      for k in $(jq -r '.[].key' "$TMP/resp"); do
+        echo "== $k"
+        if bash "$0" indice "$k" $([[ $SEND -eq 1 ]] && echo --enviar) > "$TMP/idx.out" 2>&1; then
+          tail -4 "$TMP/idx.out"; printf '%s\t%s\n' "$k" "$(grep -m1 '^Índice técnico' "$TMP/idx.out" | cut -c1-200)" >> "$OUT"
+        else
+          tail -3 "$TMP/idx.out" >&2; printf '%s\tPULADO: %s\n' "$k" "$(grep -m1 -E '^(AVISO|ERRO|FALTA)' "$TMP/idx.out" | cut -c1-200)" >> "$OUT"
+        fi
+      done
+      echo; echo "Resumo (-> $OUT):"; cut -c1-220 "$OUT"
+      exit 0
+    fi
+    MOD="${1:?modulo (ou --todos)}"; D="$(moddir "$MOD")/indice"; mkdir -p "$D"
+    unset RE_LOCAL   # o indice e sempre da origin/master
+    resolve_sources "$MOD" "${PASS[@]:1}" > "$D/fontes"; rc=$?
+    if [[ ! -s "$D/fontes" ]]; then echo "AVISO: $MOD sem fonte local (cadastre na tela Fontes ou use --path) — pulado"; exit 4; fi
+    [[ $rc -eq 0 ]] || echo "AVISO: parte das fontes de $MOD ficou de fora (acima) — o indice cobre so o que foi encontrado"
+    args=(); while IFS=$'\t' read -r role dir; do args+=("$role=$dir"); done < "$D/fontes"
+    python3 "$TOOL_PY" inventario "$D/inventario.json" "${args[@]}" >/dev/null || die "falha no inventario de $MOD"
+    : > "$D/publicado.md"
+    api GET "/modules/$(urlenc "$MOD")/docs/tecnico"
+    [[ "$CODE" =~ ^2 ]] && jq -r '.content // ""' "$TMP/resp" > "$D/publicado.md"
+    IARGS=(gerar "$D/inventario.json" --modulo "$MOD" --publicado "$D/publicado.md" --out "$D/tecnico.md" --json "$D/resumo.json")
+    CAT="$(moddir "$MOD")/banco/catalogo.json"
+    if [[ -s "$CAT" ]] && fresh "$CAT" "$(gen snapshotMaxAgeDays 7)"; then IARGS+=(--banco "$(dirname "$CAT")"); fi
+    python3 "$IDX_PY" "${IARGS[@]}" || die "falha no indice de $MOD"
+    if [[ $SEND -eq 0 ]]; then echo "Local: $D/tecnico.md — publique com: re.sh indice $MOD --enviar (direto, sem aprovacao)"; exit 0; fi
+    jq -n --rawfile c "$D/tecnico.md" --slurpfile r "$D/resumo.json" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{content: $c, commits: $r[0].commits, generatedAt: $at, counts: $r[0].counts}' > "$TMP/body"
+    api PUT "/modules/$(urlenc "$MOD")/technical-index" "$TMP/body"; check
+    jq -r '"Indice tecnico publicado: \(.items) itens, versao \(.version)" + (if (.warnings // [] | length) > 0 then " · avisos: " + (.warnings | join("; ")) else "" end)' "$TMP/resp"
+    ;;
+
   perguntas)
-    MOD="${1:?modulo}"; DOC=pratica; F="$(doc_file "$MOD" "$DOC" "${2:-}")"; D="$(docdir "$MOD" "$DOC")"
-    [[ -s "$D/perguntas.json" ]] || die "sem perguntas no pacote — rode re.sh start $MOD pratica"
+    MOD="${1:?modulo}"; DOC=pratica; D="$(docdir "$MOD" "$DOC")"
+    # 0097: sem sessao da pratica aberta = quantas perguntas do Pergunte ficaram sem resposta (a pratica e sob demanda)
+    if [[ ! -s "$D/perguntas.json" || ( -z "${2:-}" && ! -s "$D/documento.md" ) ]]; then
+      api GET "/modules/$(urlenc "$MOD")"; check
+      jq -r '"Pergunte sem resposta (\(.key)): \(.openQuestions // 0) pergunta(s)" + (if .practicalSuggested then " — visao pratica SUGERIDA: /engenharia-reversa \(.key) pratica (centrada nessas perguntas)" else " — visao pratica nao sugerida (poucas perguntas sem resposta)" end)' "$TMP/resp"
+      [[ -s "$D/perguntas.md" ]] && { echo "Ultimo pacote da pratica:"; grep -m 20 'SEM RESPOSTA' "$D/perguntas.md" || true; }
+      exit 0
+    fi
+    F="$(doc_file "$MOD" "$DOC" "${2:-}")"
     python3 "$TOOL_PY" perguntas "$F" "$D/perguntas.json" --json "$D/cobertura.json"
     ;;
 
@@ -539,6 +708,9 @@ case "$CMD" in
     if [[ "$DOC" != pratica && -s "$(moddir "$MOD")/inventario.json" ]]; then
       python3 "$PAC_PY" evidencia "$F" "$(moddir "$MOD")/inventario.json" --json "$(docdir "$MOD" "$DOC")/evidencia.json" --max "${RE_MAX_EVIDENCE:-25}" || true
     fi
+    python3 "$GAPS_PY" avisar "$F"   # 0097: GAP do gerador (o juntar remove; o PRMake ignora no indice)
+    # 0097: fonte fora da origin/master sem --local --motivo = ERRO (barra o envio)
+    MASTER_OK=0; if [[ "$DOC" != pratica ]]; then master_check "$MOD" || MASTER_OK=1; fi
     jq -n --arg d "$DOC" --rawfile c "$F" --argjson r "$RATIO" '{docType: $d, content: $c, coverageRatio: $r}' > "$TMP/body"
     api POST "/modules/$(urlenc "$MOD")/lint" "$TMP/body"; check
     jq -r '"Checagem do PRMake: \(.items) itens (" + ([.byKind | to_entries[] | "\(.key) \(.value)"] | join(", ")) + ")",
@@ -548,7 +720,7 @@ case "$CMD" in
       detail: ("\(.items) itens · cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end) · \(.errors|length) erro(s), \(.warnings|length) aviso(s)"),
       log: ("Checagem: \(.items) itens, cobertura \(if $r == null then "—" else (($r * 100 | floor | tostring) + "%") end), \(.errors|length) erro(s)"),
       kind: (if (.errors|length) == 0 then "progress" else "warning" end)}' "$TMP/resp")"
-    [[ "$(jq '.errors|length' "$TMP/resp")" == 0 ]]
+    [[ "$(jq '.errors|length' "$TMP/resp")" == 0 && $MASTER_OK -eq 0 ]]
     ;;
 
   save|submit)
@@ -557,6 +729,7 @@ case "$CMD" in
     F="$(doc_file "$MOD" "$DOC" "${POS[0]:-}")"; ID="$(revision_id "$MOD" "$DOC")"
     SUMMARY="$(opt --summary "" "$@")"
     [[ "$CMD" == submit && -z "$SUMMARY" ]] && die "informe --summary \"o que este documento cobre / o que mudou\" (o revisor le)"
+    if [[ "$CMD" == submit && "$DOC" != pratica ]] && ! master_check "$MOD" >"$TMP/master.chk"; then cat "$TMP/master.chk"; die "fonte fora da origin/master (acima) — o envio exige a master ou --local --motivo"; fi
     COV="$(docdir "$MOD" "$DOC")/cobertura.json"; INV="$(moddir "$MOD")/inventario.json"
     if [[ "$DOC" == pratica && -s "$(docdir "$MOD" "$DOC")/perguntas.json" ]]; then
       python3 "$TOOL_PY" perguntas "$F" "$(docdir "$MOD" "$DOC")/perguntas.json" --json "$COV" >/dev/null
@@ -566,6 +739,8 @@ case "$CMD" in
     fi
     [[ -s "$COV" ]] || echo '{}' > "$COV"
     FONTES="$(moddir "$MOD")/fontes.tsv"; [[ -s "$FONTES" ]] || : > "$FONTES"
+    # 0097: a linha com o commit de cada repositorio vai no documento (a reancoragem parte dela se faltar a sessao)
+    [[ "$DOC" != pratica && -s "$FONTES" ]] && python3 "$PAC_PY" cabecalho "$F" "$FONTES" >/dev/null
     # 0053: retrato do banco (objetos/jobs com hash e data) guardado na revisão — o próximo "melhorar" compara
     CAT="$(moddir "$MOD")/banco/catalogo.json"
     if [[ -s "$CAT" ]]; then python3 "$BANCO_PY" snapshot "$CAT" > "$TMP/snapshot.json"; else echo 'null' > "$TMP/snapshot.json"; fi
@@ -573,12 +748,14 @@ case "$CMD" in
     if [[ -n "$DEC" ]]; then [[ -s "$DEC" ]] || die "arquivo de decisoes nao encontrado: $DEC"; jq -e 'type == "array"' "$DEC" >/dev/null || die "$DEC precisa ser uma lista JSON"
       jq -e 'all(.[]; ((.suggestionId // .id // "") | test("^[0-9a-fA-F-]{36}$")))' "$DEC" >/dev/null || die "$DEC: toda decisao precisa do suggestionId (o id da sugestao em sugestoes.md)"
       cp "$DEC" "$TMP/decisoes.json"; else echo 'null' > "$TMP/decisoes.json"; fi
-    jq -n --rawfile c "$F" --arg s "$SUMMARY" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
+    MOTIVO=""; [[ -s "$(moddir "$MOD")/local-motivo.txt" ]] && MOTIVO="$(head -c 500 "$(moddir "$MOD")/local-motivo.txt")"
+    jq -n --rawfile c "$F" --arg s "$SUMMARY" --arg motivo "$MOTIVO" --slurpfile cov "$COV" --rawfile fontes "$FONTES" --slurpfile snap "$TMP/snapshot.json" \
       --slurpfile dec "$TMP/decisoes.json" --argjson counts "$( [[ -s "$INV" ]] && jq '.counts' "$INV" || echo '{}')" '
       {content: $c,
        coverage: ($cov[0] | {total, covered, ratio, byCategory, missingCount, missing: ((.missing // [])[:200]), outsideGlossary: ((.outsideGlossary // [])[:300])}),
        coverageRatio: ($cov[0].ratio),
-       session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]})), inventory: $counts, tool: "re.sh"}
+       session: ({sources: ($fontes | split("\n") | map(select(length > 0) | split("\t") | {role: .[0], path: .[1], commit: .[2]} + (if (.[3] // "") != "" then {repository: .[3]} else {} end))), inventory: $counts, tool: "re.sh"}
+                 + (if $motivo == "" then {} else {localReason: $motivo} end)
                  + (if $snap[0] == null then {} else {catalog: $snap[0]} end))}
       + (if $s == "" then {} else {summary: $s} end)
       + (if $dec[0] == null then {} else {suggestionDecisions: ($dec[0] | map({suggestionId: (.suggestionId // .id), decision: (.decision // .decisao), items: (.items // .itens // []), note: (.note // .motivo // .nota)}))} end)' > "$TMP/body"
@@ -654,13 +831,124 @@ case "$CMD" in
 
   faltando)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; AREA="${3:?area}"; D="$(docdir "$MOD" "$DOC")"
+    if [[ "$DOC" == lote ]]; then   # 0097: as duas partes da area
+      for d in funcional arquitetura; do
+        DD="$(docdir "$MOD" "$d")"; [[ -s "$DD/areas.json" ]] || die "rode antes: re.sh lote $MOD"
+        echo "[$d]"; python3 "$PAC_PY" faltando "$DD/areas.json" "$AREA" "$DD/parte-$AREA.md" | head -n "${RE_MAX_MISSING:-40}"
+      done
+      exit 0
+    fi
     [[ -s "$D/areas.json" ]] || die "rode antes: re.sh areas $MOD $DOC"
     python3 "$PAC_PY" faltando "$D/areas.json" "$AREA" "$D/parte-$AREA.md"
     ;;
 
+  lote)
+    # 0097/S5: passada unica — o codigo de cada area e lido UMA vez e o subagente escreve funcional e arquitetura
+    MOD="${1:?modulo}"; MODE=""; [[ "${2:-}" =~ ^(new|improve|redo)$ ]] && MODE="$2"
+    L="$(moddir "$MOD")/lote"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"
+    PASS=(); for a in "$@"; do [[ "$a" == --sem-banco ]] || PASS+=("$a"); done
+    RESUMED=0
+    for d in funcional arquitetura; do bash "$0" start "$MOD" "$d" $MODE > "$TMP/start-$d.out" || { cat "$TMP/start-$d.out"; die "sessao $d nao abriu"; }
+      head -1 "$TMP/start-$d.out"; grep -E '^(NOTA DO REVISOR|AVISO|MELHORAR|MIGRACAO)' "$TMP/start-$d.out" || true
+      grep -q '^Sessao RETOMADA' "$TMP/start-$d.out" && RESUMED=$((RESUMED + 1)); done
+    load_config >/dev/null 2>&1 || true
+    MODEL="$(gen subagentModel sonnet)"; N=0
+    # retomada (as duas sessoes retomadas e o lote ja montado): mesmas areas/faixas — so despacha de novo o que faltou
+    if [[ $RESUMED -eq 2 && -s "$F/areas.json" && -s "$A/areas.json" && -s "$L/pacotes/cartao.md" ]]; then
+      echo "Lote RETOMADO: mesmas areas e faixas de ID — despache de novo so as areas sem parte (ou incompletas: re.sh faltando $MOD lote <area>)"
+      AREAS=(); while IFS= read -r a; do AREAS+=("$a"); done < <(jq -r '.areas[].name' "$F/areas.json")
+    else
+    bash "$0" inventario "${PASS[@]}" 2>&1 | grep -E '^(Inventario|AVISO|ERRO|FALTA|Codigo)' || true
+    [[ -s "$(moddir "$MOD")/inventario.json" ]] || die "sem inventario"
+    if [[ " $* " != *" --sem-banco "* ]]; then
+      bash "$0" banco "$MOD" > "$TMP/banco.out" 2>&1 || { tail -3 "$TMP/banco.out"; die "banco nao lido — ligue a VPN (ou, com o ok do usuario, --sem-banco e GAP 'banco nao lido')"; }
+      grep -m2 -E '^(Banco|Usando o RETRATO|Sem retrato)' "$TMP/banco.out" || true
+    fi
+    bash "$0" termos "$MOD" 2>&1 | grep -E '^(Termos|AVISO)' || true
+    for d in funcional arquitetura; do bash "$0" trabalho "$MOD" "$d" 2>/dev/null | tail -1; done
+    { bash "$0" ids "$MOD" 2>/dev/null | grep 'publicado' | cut -f1
+      for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done; } | sort -u > "$TMP/ids.txt"
+    rm -rf "$L/pacotes"; mkdir -p "$L/pacotes"; rm -f "$L"/resumo-*.md
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"; cp "$TMP/ids.txt" "$DD/ids-usados.txt"; rm -f "$DD/mapa-ids.json"
+      # lote novo = faixas novas: partes de um lote anterior (outras faixas) saem do caminho
+      if ls "$DD"/parte-*.md >/dev/null 2>&1; then mkdir -p "$DD/partes-anteriores"; mv "$DD"/parte-*.md "$DD/partes-anteriores/"; fi; done
+    EXTRA=(); for x in "$(moddir "$MOD")/banco/inventario-banco.json" "$(moddir "$MOD")/inventario-infra.json"; do [[ -s "$x" ]] && EXTRA+=(--extra "$x"); done
+    python3 "$PAC_PY" lote "$(moddir "$MOD")/inventario.json" "${EXTRA[@]+"${EXTRA[@]}"}" --funcional "$F" --arquitetura "$A" --out "$L" --modulo "$MOD" \
+      --ids "$TMP/ids.txt" --orcamento-kb "$(gen areaBudgetKb 90)" --checkpoint "$(gen checkpointEvery 10)" --banco "$(moddir "$MOD")/banco" --modulo-dir "$(moddir "$MOD")" \
+      --tipos-funcional "$(jq -r '(.docType.kinds // []) | join(",")' "$F/sessao.json")" --tipos-arquitetura "$(jq -r '(.docType.kinds // []) | join(",")' "$A/sessao.json")" > "$TMP/lote.out" || die "falha ao montar o lote"
+    head -1 "$TMP/lote.out"
+    NOTAS=(); for d in funcional arquitetura; do for x in nota-revisor.md trabalho.md; do [[ -s "$(docdir "$MOD" "$d")/$x" ]] && NOTAS+=(--nota "$d=$(docdir "$MOD" "$d")/$x"); done; done
+    python3 "$PAC_PY" cartao-lote "$HERE/../references/subagente.md" --modelo "funcional=$F/modelo.md" --modelo "arquitetura=$A/modelo.md" --modulos "$F/modulos.tsv" "${NOTAS[@]+"${NOTAS[@]}"}" --out "$L/pacotes/cartao.md" >/dev/null
+    for d in funcional arquitetura; do python3 "$PAC_PY" cartao "$HERE/../references/subagente.md" "$(docdir "$MOD" "$d")/modelo.md" "$(docdir "$MOD" "$d")/modulos.tsv" --out "$(docdir "$MOD" "$d")/pacotes/cartao.md" >/dev/null; done
+    AREAS=(); while IFS= read -r a; do AREAS+=("$a"); done < <(grep -o '^  area [^ ]*' "$TMP/lote.out" | awk '{print $2}')
+    fi
+    for d in funcional arquitetura; do progress "$MOD" "$d" "$(jq -n --arg n "${#AREAS[@]}" '{step: "leitura", status: "running", detail: "passada unica: \($n) areas para funcional + arquitetura", log: "Lote (0097): \($n) areas lidas uma vez para os dois documentos", kind: "progress"}')"; done
+    echo; echo "DESPACHE (subagentes general-purpose, model=$MODEL, em segundo plano, ate $(gen maxParallel 5) ao mesmo tempo; TODOS de uma vez quando couber):"
+    for a in "${AREAS[@]}"; do N=$((N + 1))
+      echo "[$a] Subagente da engenharia reversa — modulo $MOD, documentos funcional+arquitetura, area $a. Leia NA MESMA RESPOSTA: $L/pacotes/cartao.md e $L/pacotes/pacote-$a.md. Saida: $F/parte-$a.md e $A/parte-$a.md (+ $L/resumo-$a.md; checkpoint a cada $(gen checkpointEvery 10) itens; se ja existem, continue delas). Ao terminar: bash $HERE/re.sh faltando $MOD lote $a. Responda so o resumo."
+    done
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+      for sp in $(jq -r '.madeSpecials[]?[0]' "$DD/areas.json"); do N=$((N + 1))
+        echo "[$d/$sp] Subagente da engenharia reversa — modulo $MOD, documento $d, area $sp. Leia NA MESMA RESPOSTA: $DD/pacotes/cartao.md e $DD/pacotes/pacote-$sp.md. Saida: $DD/parte-$sp.md (checkpoint a cada $(gen checkpointEvery 10) itens; se ja existe, continue dela). Ao terminar: bash $HERE/re.sh faltando $MOD $d $sp. Responda so o resumo."
+      done
+    done
+    echo "($N subagentes) Quando TODOS voltarem: re.sh consolidar $MOD (1 subagente) e depois re.sh fechar $MOD."
+    ;;
+
+  consolidar)
+    MOD="${1:?modulo}"; L="$(moddir "$MOD")/lote"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"
+    [[ -d "$L/pacotes" ]] || die "rode antes: re.sh lote $MOD"
+    python3 "$PAC_PY" consolidar --funcional "$F" --arquitetura "$A" --lote "$L" --modulo "$MOD" || die "falha no pacote da consolidacao"
+    echo "DESPACHE (1 subagente general-purpose, model=$(gen subagentModel sonnet)):"
+    echo "[consolidar] Subagente da engenharia reversa — modulo $MOD, documentos funcional+arquitetura, area consolidar. Leia NA MESMA RESPOSTA: $L/pacotes/cartao.md e $L/pacotes/pacote-consolidar.md. Saida: $F/parte-consolidar.md e $A/parte-consolidar.md (so as secoes do modulo inteiro que o pacote pede). Responda so o resumo."
+    echo "Quando voltar: re.sh fechar $MOD"
+    ;;
+
+  fechar)
+    # 0097/S5: juntar + IDs (com as referencias cruzadas) + check + save dos DOIS documentos, com resumo compacto
+    MOD="${1:?modulo}"; F="$(docdir "$MOD" funcional)"; A="$(docdir "$MOD" arquitetura)"; SUMMARY="$(opt --summary "" "$@")"
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"; rm -f "$DD/mapa-ids.json"
+      bash "$0" juntar "$MOD" "$d" > "$DD/juntar.out" 2>&1 || { tail -5 "$DD/juntar.out"; die "juntar $d falhou"; }; done
+    python3 "$PAC_PY" remapear "$F/documento.md" "$A/mapa-ids.json" | sed 's/^/funcional: /'
+    python3 "$PAC_PY" remapear "$A/documento.md" "$F/mapa-ids.json" | sed 's/^/arquitetura: /'
+    RC=0
+    for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+      RE_MAX_MISSING=400 RE_MAX_EVIDENCE=0 bash "$0" check "$MOD" "$d" > "$DD/check.out" 2>&1 || RC=1
+      grep -h -E '^(GAPs do gerador removidos|Repetidos|Compactar|Tamanho)' "$DD/juntar.out" | sed "s/^/$d: /" | cut -c1-160
+    done
+    python3 "$PAC_PY" resumo-fechar --doc "funcional=$F" --doc "arquitetura=$A"
+    for d in funcional arquitetura; do bash "$0" save "$MOD" "$d" ${SUMMARY:+--summary "$SUMMARY"} 2>&1 | tail -1 | sed "s/^/$d: /"; done
+    if [[ $RC -ne 0 ]]; then echo "CHECK COM ERRO (detalhe: <doc>/check.out) — corrija (re.sh faltando $MOD lote <area> + subagente) e rode re.sh fechar $MOD de novo"; exit 1; fi
+    if [[ " $* " == *" --enviar "* ]]; then
+      for d in funcional arquitetura; do DD="$(docdir "$MOD" "$d")"
+        S="${SUMMARY:-$(jq -r '"Passada unica (0097): \(.covered // 0)/\(.total // 0) do inventario coberto"' "$DD/cobertura.json" 2>/dev/null)}"
+        bash "$0" submit "$MOD" "$d" --summary "$S" 2>&1 | head -1
+      done
+    fi
+    echo "Proximo: re.sh spec $MOD (spec-arquitetura a partir deste rascunho)"
+    ;;
+
+  spec)
+    # 0097/S5: spec-arquitetura logo depois do fechar, a partir do rascunho local de funcional + arquitetura (sintese, sem codigo)
+    MOD="${1:?modulo}"; D="$(docdir "$MOD" spec-arquitetura)"
+    bash "$0" start "$MOD" spec-arquitetura > "$TMP/s.out" || { cat "$TMP/s.out"; die "sessao spec-arquitetura nao abriu (os levantamentos precisam existir: rascunho local ou publicado)"; }
+    head -1 "$TMP/s.out"
+    bash "$0" areas "$MOD" spec-arquitetura >/dev/null && bash "$0" pacote "$MOD" spec-arquitetura | grep -E 'pacote|ERRO' | head -2
+    echo "DESPACHE (1 subagente general-purpose, model=$(jq -r --arg m "$(gen subagentModel sonnet)" '(.generation.modelByDoc // {})["spec-arquitetura"] // $m' "$RE_HOME/_config.json" 2>/dev/null)):"
+    echo "[sintese] Subagente da engenharia reversa — modulo $MOD, documento spec-arquitetura, area sintese. Leia NA MESMA RESPOSTA: $D/pacotes/cartao.md e $D/pacotes/pacote-sintese.md. Saida: $D/parte-sintese.md (checkpoint a cada secao). Responda so o resumo."
+    echo "Quando voltar: re.sh juntar $MOD spec-arquitetura && re.sh check $MOD spec-arquitetura && re.sh submit $MOD spec-arquitetura --summary \"...\""
+    ;;
+
+  custo)
+    MOD="${1:?modulo}"; shift
+    python3 "$CUSTO_PY" "$MOD" "$@"
+    ;;
+
   juntar)
     MOD="${1:?modulo}"; DOC="${2:?documento}"; D="$(docdir "$MOD" "$DOC")"
-    PARTS=(); for f in "$D"/parte-*.md; do [[ -s "$f" ]] && PARTS+=("$f"); done
+    # 0097: a parte da consolidacao (resumo, perfis, visao tecnica) vem primeiro — as secoes do modulo abrem o documento
+    PARTS=(); [[ -s "$D/parte-consolidar.md" ]] && PARTS+=("$D/parte-consolidar.md")
+    for f in "$D"/parte-*.md; do [[ -s "$f" && "$f" != "$D/parte-consolidar.md" ]] && PARTS+=("$f"); done
     [[ ${#PARTS[@]} -gt 0 ]] || die "nenhuma parte-*.md em $D"
     # o publicado (modo melhorar) entra primeiro: as partes completam/atualizam as secoes dele
     # a base e o documento de ANTES da primeira juntada (publicado no melhorar, ou o que a sessao escreveu): juntar de novo
@@ -675,8 +963,11 @@ case "$CMD" in
       for o in "$(moddir "$MOD")"/*/documento.md; do [[ -s "$o" && "$o" != "$D/documento.md" ]] && python3 "$TOOL_PY" ids "$o" | cut -f1; done
     } | sort -u > "$TMP/ids-agora.txt"
     [[ -s "$TMP/ids-agora.txt" ]] && cat "$D/ids-usados.txt" "$TMP/ids-agora.txt" 2>/dev/null | sort -u > "$TMP/ids-todos.txt" && cp "$TMP/ids-todos.txt" "$D/ids-usados.txt"
-    python3 "$PAC_PY" repetidos "$D/documento.md"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
-    [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt"
+    python3 "$PAC_PY" repetidos "$D/documento.md" --mapa "$D/mapa-ids.json"   # 0066-ajustes4: mesmo item vindo de duas areas → um so
+    # 0097: GAP do gerador ("fora do pacote", "subagente", "sem Figma"...) nao e lacuna do sistema — sai (publicado vira "(removido)")
+    python3 "$GAPS_PY" remover "$D/documento.md" --publicado "$D/publicado.md"
+    [[ -s "$D/areas.json" ]] && python3 "$PAC_PY" compactar "$D/documento.md" --areas "$D/areas.json" --ids "$D/ids-usados.txt" --mapa "$D/mapa-ids.json"
+    [[ -s "$(moddir "$MOD")/fontes.tsv" ]] && python3 "$PAC_PY" cabecalho "$D/documento.md" "$(moddir "$MOD")/fontes.tsv"
     python3 "$PAC_PY" tamanho "$D/documento.md"
     progress "$MOD" "$DOC" "$(jq -n --arg n "${#PARTS[@]}" '{log: "Partes das areas juntadas (\($n)) e IDs compactados", kind: "progress"}')"
     [[ $RC -eq 0 ]] || echo "AVISO: IDs repetidos entre partes (acima) — renumere numa das partes e junte de novo" >&2
@@ -764,14 +1055,14 @@ case "$CMD" in
   find)
     Q="$(positional "$@" | tr '\n' ' ')"; MODQ="$(opt --module "" "$@")"; KQ="$(opt --kind "" "$@")"; CARD="$(opt --card "" "$@")"
     api GET "/index/search?q=$(urlenc "$Q")&module=$(urlenc "$MODQ")&kind=$(urlenc "$KQ")&card=$(urlenc "$CARD")&limit=${RE_LIMIT:-15}"; check
-    jq -r 'if length == 0 then "Nada no indice da engenharia reversa (tente outros termos; kb.sh find para a base antiga)." else .[] | "\(.ref) [\(.kindLabel)] \(.title)\(if (.tables|length) > 0 then " · " + (.tables[:3]|join(", ")) else "" end)\n    \(.snippet[:160])" end' "$TMP/resp"
+    jq -r 'if length == 0 then "Nada no indice da engenharia reversa (tente outros termos; kb.sh find para a base antiga)." else .[] | "\(.ref) [\(.kindLabel)] \(.title)\(if (.tables|length) > 0 then " · " + (.tables[:3]|join(", ")) else "" end)\(if .stale then " (codigo mudou desde a geracao — confirme no codigo)" else "" end)\n    \(.snippet[:160])" end' "$TMP/resp"
     ;;
 
   get)
     CARD="$(opt --card "" "$@")"; REFS="$(positional "$@" | paste -sd, -)"
     api GET "/items?refs=$(urlenc "$REFS")&card=$(urlenc "$CARD")"; check
     # 0054: as armadilhas (o que ja deu errado) vem junto com o item
-    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\n\(.body)\n",
+    jq -r '.[] | "--- \(.ref) (\(.docType), v\(.sectionVersion))\(if (.referencedBy|length) > 0 then " · citado por: " + (.referencedBy[:8]|join(", ")) else "" end)\(if .stale then " · CODIGO MUDOU desde a geracao (\(.stale.reason // "") \(.stale.commit // "")) — confirme no codigo" else "" end)\n\(.body)\n",
       (.traps // [] | .[] | "  ARMADILHA\(if .needsReview then " (a conferir)" else "" end): \(.title)\(if (.cards|length) > 0 then " · cards " + (.cards[:4]|join(", ")) else "" end)\n    \(.text | gsub("\n"; "\n    "))\n")' "$TMP/resp"
     ;;
 

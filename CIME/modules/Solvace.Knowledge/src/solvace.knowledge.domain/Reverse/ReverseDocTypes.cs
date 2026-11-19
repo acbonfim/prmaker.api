@@ -8,8 +8,10 @@ public sealed record ReverseHeading(string Title, string Match);
 /// na Base Solvace (espelho, índice, busca). <see cref="Kinds"/> são os itens que ele define (<c>GAP</c> vale em todos).
 /// </summary>
 /// <param name="Audience">llm (técnico, vai para as análises) | human (0054: a visão prática — Simples, busca de pessoas, Pergunte).</param>
+/// <param name="Discontinued">0097: não se gera mais (nenhuma sessão nova); o publicado continua legível e na busca.</param>
+/// <param name="Generated">0097: gerado sem IA pela skill e publicado direto (sem revisão humana) — o índice técnico.</param>
 public sealed record ReverseDocType(string Key, string Title, string SectionKey, int Order, IReadOnlyList<string> Kinds,
-    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template, string Audience = "llm")
+    IReadOnlyList<ReverseHeading> Headings, string Purpose, string Template, string Audience = "llm", bool Discontinued = false, bool Generated = false)
 {
     /// <summary>Documento derivado só do que já foi publicado (0054: visão prática) — depende dos demais exigidos.</summary>
     public bool Derived => Key == ReverseDocTypes.Practical;
@@ -22,8 +24,17 @@ public static class ReverseDocTypes
     /// <summary>0054: a visão prática (não técnica), gerada do que foi publicado — último documento.</summary>
     public const string Practical = "pratica";
 
-    /// <summary>Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar).</summary>
-    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "visao", "spec-arquitetura", "design", Practical];
+    /// <summary>0097: índice técnico — extraído do código sem IA pela skill e publicado direto (sem revisão humana).</summary>
+    public const string Technical = "tecnico";
+
+    /// <summary>0097: peso do índice técnico na busca das análises (abaixo de RN/UC; é inventário, não regra).</summary>
+    public const double TechnicalSearchWeight = 0.85;
+
+    /// <summary>
+    /// Padrão de documentos exigidos para o módulo contar como "completo" (a config pode mudar). 0097: só os três que as
+    /// análises usam — design e visão foram descontinuados e a visão prática é sob demanda (perguntas sem resposta).
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultRequired = ["funcional", "arquitetura", "spec-arquitetura"];
 
     private const string ItemRules = """
         ## Como escrever um item (vale para todo o documento)
@@ -306,7 +317,7 @@ public static class ReverseDocTypes
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`
-            """),
+            """, Discontinued: true),
 
         new("spec-arquitetura", "Especificação de arquitetura", "re-spec-arquitetura", 140,
             ["ADR", "NFR", "SEQ", "GAP"],
@@ -389,7 +400,7 @@ public static class ReverseDocTypes
 
             ## Lacunas e pontos a confirmar
             `### GAP-001 — …`
-            """),
+            """, Discontinued: true),
 
         new(Practical, "Visão prática (não técnica)", "re-pratica", 160,
             ["TUT", "FAQ"],
@@ -442,7 +453,41 @@ public static class ReverseDocTypes
 
             ## Glossário
             Os termos do módulo em linguagem simples, com os sinônimos — referenciando os `GLO-…` do funcional.
-            """, "human")
+            """, "human"),
+
+        // 0097: índice técnico — sem IA, sem revisão humana; fora do "completo" e do Pergunte, na busca das análises com peso menor
+        new(Technical, "Índice técnico", "re-tecnico", 170,
+            ["END", "ROT", "TAB", "DBO", "CHV", "MSG"],
+            [],
+            "Inventário do código extraído sem IA (rotas/endpoints, telas do front e páginas ASP, tabelas, objetos do banco, chaves de configuração e mensagens), com o commit — regerável a qualquer hora.",
+            """
+            # Índice técnico — <módulo>
+
+            > Gerado sem IA pela skill (`re.sh indice <módulo> --enviar`) a partir do inventário da origin/master; publicado
+            > direto (sem revisão humana). IDs estáveis: a mesma chave (tipo + símbolo) mantém o ID; novos pegam o próximo.
+
+            ## Endpoints
+            ### END-001 — GET /api/v1/kaizen/{id}
+            - **Onde:** `<repo>/<caminho a partir da raiz>:linha`
+            - **Tabelas:** TB_…
+            - **Tags:** …
+            - **Commit:** <repo>@<sha7>
+
+            ## Rotas e telas
+            `### ROT-001 — /kaizen/:id → KaizenDetailComponent` (rota do front → componente; página `.asp` do legado)
+
+            ## Tabelas
+            `### TAB-001 — TB_…`
+
+            ## Objetos do banco
+            `### DBO-001 — procedure dbo.STP_…` (procedure, view, function, trigger, job)
+
+            ## Chaves de configuração
+            `### CHV-001 — Kaizen:MaxAttachments`
+
+            ## Mensagens
+            `### MSG-001 — "Preencha todos os campos obrigatórios"`
+            """, Generated: true)
     ];
 
     public static readonly IReadOnlyDictionary<string, ReverseDocType> ByKey = All.ToDictionary(d => d.Key, StringComparer.Ordinal);

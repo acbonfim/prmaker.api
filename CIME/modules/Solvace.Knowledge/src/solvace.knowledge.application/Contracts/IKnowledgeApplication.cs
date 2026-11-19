@@ -89,8 +89,9 @@ public interface IReverseEngineeringApplication
         string actor, CancellationToken cancellationToken);
     Task<(string FileName, string ContentType, byte[] Data)> GetAssetFileAsync(Guid id, CancellationToken cancellationToken);
     Task DeleteAssetAsync(Guid id, string actor, IReadOnlyCollection<string> userRoles, CancellationToken cancellationToken);
+    /// <param name="staleOnly">0097: só os itens desatualizados (o código citado mudou desde a geração).</param>
     Task<List<ReverseIndexHit>> SearchAsync(string? query, IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType, int limit,
-        bool includeRemoved, CancellationToken cancellationToken);
+        bool includeRemoved, CancellationToken cancellationToken, bool staleOnly = false);
     Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken);
     Task<List<ReverseIndexHit>> ImpactAsync(string term, int limit, CancellationToken cancellationToken);
     /// <summary>
@@ -102,6 +103,8 @@ public interface IReverseEngineeringApplication
     /// <summary>Texto compacto para o contexto da analisar-bug (e registra o card).</summary>
     Task<string> ForCardAsync(string card, string? moduleField, string? query, CancellationToken cancellationToken);
     Task RecordConsultedAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
+    /// <summary>0097: refs realmente lidos pela análise do card (histórico) — também contam como consulta.</summary>
+    Task RecordReadAsync(string card, IEnumerable<string> refs, CancellationToken cancellationToken);
 
     /// <summary>
     /// 0076: um item citado no texto de um card (popover). Sem módulo (<c>UC-121</c>), usa o que a análise do card
@@ -122,4 +125,9 @@ public interface IReverseEngineeringApplication
     Task<List<ArchitectureSuggestionResponse>> KcDivergencesAsync(CancellationToken cancellationToken);
     /// <summary>Trava da etapa de investigação; null = pode concluir.</summary>
     Task<string?> CheckGateAsync(string card, string stepKey, string? message, CancellationToken cancellationToken);
+
+    /// <summary>0097: publica o índice técnico (gerado sem IA) direto na seção <c>re-tecnico</c> — sem revisão humana.</summary>
+    Task<ReverseTechnicalIndexResponse> PublishTechnicalIndexAsync(string key, PublishTechnicalIndexRequest request, string actor, CancellationToken cancellationToken);
+    /// <summary>0097: marca itens como desatualizados (reancoragem); <c>replace</c> limpa as marcas do módulo antes.</summary>
+    Task<ReverseStaleResponse> MarkStaleAsync(string key, MarkReverseStaleRequest request, CancellationToken cancellationToken);
 }

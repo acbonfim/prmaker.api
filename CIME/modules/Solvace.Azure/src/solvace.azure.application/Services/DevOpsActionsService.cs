@@ -26,6 +26,13 @@ public class DevOpsActionsService : IDevOpsActionsService
     private const string FieldAreaPath = "System.AreaPath";
     private const string FieldState = "System.State";
     private const string FieldHistory = "System.History";
+    private const string UserStoryType = "User Story";
+
+    /// <summary>
+    /// Estado de pronto da User Story depois da validação em QA (o "Ready for QA" da US) quando o
+    /// <c>UserStoryReadyForQaState</c> não está configurado — o estado em que as US de RCA validadas ficam.
+    /// </summary>
+    public const string DefaultUserStoryReadyForQaState = "In Development (done)";
 
     /// <summary>
     /// Opções padrão de classificação — as combinações usadas pelo time em 300 bugs resolvidos (estudo da 0027).
@@ -57,9 +64,12 @@ public class DevOpsActionsService : IDevOpsActionsService
     private readonly IPluginConfigurationResolver _configurationResolver;
     private readonly IPullRequestApplication _pullRequestApplication;
 
+    private readonly ISpecImageSource? _specImages;
+
     public DevOpsActionsService(IAzureService azureService, IPluginConfigurationResolver configurationResolver,
-        IPullRequestApplication pullRequestApplication)
+        IPullRequestApplication pullRequestApplication, ISpecImageSource? specImages = null)
     {
+        _specImages = specImages;
         _azureService = azureService;
         _configurationResolver = configurationResolver;
         _pullRequestApplication = pullRequestApplication;
@@ -109,6 +119,10 @@ public class DevOpsActionsService : IDevOpsActionsService
                     RemainingWork = remaining,
                     CompletedWork = completed
                 }
+            },
+            UserStory = new DevOpsUserStoryActionsConfig
+            {
+                ReadyForQa = new DevOpsReadyForQaConfig { State = Value(AIConfigurationKeys.UserStoryReadyForQaState) ?? DefaultUserStoryReadyForQaState }
             }
         };
     }
@@ -120,7 +134,7 @@ public class DevOpsActionsService : IDevOpsActionsService
             throw DevOpsActionException.Conflict("Área e estado de destino não configurados no plugin AI Configurations");
 
         var card = await LoadBugAsync(cardNumber, cancellationToken);
-        EnsureNoPendencies(card);
+        await EnsureNoPendenciesAsync(card, cancellationToken);
 
         var currentArea = GetString(card, FieldAreaPath);
         if (!string.IsNullOrEmpty(bug.RequiredArea) &&
@@ -139,14 +153,19 @@ public class DevOpsActionsService : IDevOpsActionsService
         };
     }
 
+    /// <summary>
+    /// Bug: estado <c>BugReadyForQaState</c>. User Story (fechamento do RCA): <c>UserStoryReadyForQaState</c> (padrão
+    /// <see cref="DefaultUserStoryReadyForQaState"/>). Nos dois, só sem pendências de fechamento.
+    /// </summary>
     public async Task<DevOpsActionResponse> MoveToReadyForQaAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
-        var state = (await GetConfigAsync(cancellationToken)).Bug.ReadyForQa.State;
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
+        var config = await GetConfigAsync(cancellationToken);
+        var state = IsUserStory(card) ? config.UserStory.ReadyForQa.State : config.Bug.ReadyForQa.State;
         if (string.IsNullOrEmpty(state))
             throw DevOpsActionException.Conflict("Estado de Ready for QA não configurado no plugin AI Configurations");
 
-        var card = await LoadBugAsync(cardNumber, cancellationToken);
-        EnsureNoPendencies(card);
+        await EnsureNoPendenciesAsync(card, cancellationToken);
 
         var rev = await _azureService.PatchFieldsAsync(cardNumber, new Dictionary<string, object> { [FieldState] = state }, cancellationToken);
         return new DevOpsActionResponse { Rev = rev, Message = $"Card movido para {state} (Ready for QA)" };
@@ -226,9 +245,10 @@ public class DevOpsActionsService : IDevOpsActionsService
         };
     }
 
+    /// <summary>Bug e User Story (fechamento do RCA da US).</summary>
     public async Task<DevOpsActionResponse> ZeroRemainingAsync(string cardNumber, CancellationToken cancellationToken = default)
     {
-        var card = await LoadBugAsync(cardNumber, cancellationToken);
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
         var names = await _azureService.GetFieldNamesAsync(cancellationToken);
         var remaining = GetNumber(card, names.RemainingWork);
         if (remaining is null or 0m)
@@ -269,21 +289,23 @@ public class DevOpsActionsService : IDevOpsActionsService
         var states = await _azureService.GetWorkItemTypeStateInfosAsync(type, cancellationToken);
         var current = GetString(card, FieldState);
 
-        // Ações do menu "Ações DevOps" (só Bug): os estados configurados pelo usuário são os próximos usuais.
+        // Ações do menu "Ações DevOps": os estados configurados pelo usuário são os próximos usuais (US: só o Ready for QA).
         var actions = new List<(string Action, string? State)>();
-        if (!string.Equals(type, "User Story", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            try
+            var config = await GetConfigAsync(cancellationToken);
+            if (string.Equals(type, UserStoryType, StringComparison.OrdinalIgnoreCase))
+                actions.Add((CardStateSuggestions.ReadyForQa, config.UserStory.ReadyForQa.State));
+            else
             {
-                var bug = (await GetConfigAsync(cancellationToken)).Bug;
-                actions.Add((CardStateSuggestions.DevTestInQa, bug.DevTestInQa.State));
-                actions.Add((CardStateSuggestions.ReadyForQa, bug.ReadyForQa.State));
-                actions.Add((CardStateSuggestions.TestInProduction, bug.TestInProduction.State));
+                actions.Add((CardStateSuggestions.DevTestInQa, config.Bug.DevTestInQa.State));
+                actions.Add((CardStateSuggestions.ReadyForQa, config.Bug.ReadyForQa.State));
+                actions.Add((CardStateSuggestions.TestInProduction, config.Bug.TestInProduction.State));
             }
-            catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
-            {
-                // Sem "AI Configurations": sugere pela ordem/categoria do DevOps.
-            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
+        {
+            // Sem "AI Configurations": sugere pela ordem/categoria do DevOps.
         }
 
         return new CardStatesResponse
@@ -375,7 +397,10 @@ public class DevOpsActionsService : IDevOpsActionsService
         if (anyClassification ? !fullClassification : string.IsNullOrWhiteSpace(bugType))
             throw new DevOpsActionException(400, "Informe o preset ou os três valores (resolutionType, generalClassification e classification) e/ou o bugType");
 
-        await LoadBugAsync(cardNumber, cancellationToken);
+        // Bug e User Story (fechamento do RCA da US: mesmos campos de classificação); Bug Type só existe no Bug.
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(bugType) && IsUserStory(card))
+            throw new DevOpsActionException(400, "Bug Type é só do Bug — a User Story não tem o campo; classifique sem bugType");
         var names = await _azureService.GetFieldNamesAsync(cancellationToken);
         var fields = new Dictionary<string, object>();
         if (fullClassification)
@@ -531,8 +556,48 @@ public class DevOpsActionsService : IDevOpsActionsService
         if (fields.Count == 0)
             throw DevOpsActionException.Conflict("Nada para gravar: o documento precisa de uma linha de título por seção (" +
                                                  string.Join(", ", map.Select(m => m.Section)) + ") com o texto embaixo.");
+        var images = await UploadSpecImagesAsync(cardNumber, request.FilesFrom, fields, cancellationToken);
         var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
-        return new DevOpsActionResponse { Rev = rev, Message = $"Especificação da US gravada no card: {string.Join(", ", sections.Distinct())}" };
+        var message = $"Especificação da US gravada no card: {string.Join(", ", sections.Distinct())}";
+        return new DevOpsActionResponse { Rev = rev, Message = images > 0 ? $"{message} ({images} imagem(ns))" : message };
+    }
+
+    /// <summary>
+    /// Card 78525: <c>anexo:nome</c> não abre no DevOps — cada imagem é achada nos arquivos dos cards (o próprio e os de
+    /// <paramref name="filesFrom"/>), sobe como anexo do work item e o texto aponta para ela. Faltou alguma: recusa antes
+    /// de gravar (nada de imagem quebrada no card).
+    /// </summary>
+    private async Task<int> UploadSpecImagesAsync(string cardNumber, IEnumerable<string>? filesFrom, Dictionary<string, object> fields,
+        CancellationToken cancellationToken)
+    {
+        var names = fields.Values.OfType<string>().SelectMany(UserStorySpec.AttachmentImages).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 0) return 0;
+        var cards = new[] { cardNumber }.Concat(filesFrom ?? []).Select(c => c?.Trim().TrimStart('#') ?? string.Empty)
+            .Where(c => c.Length > 0).Distinct().ToList();
+        if (_specImages is null)
+            throw DevOpsActionException.Conflict("Imagens anexo: não podem ser resolvidas aqui — envie o texto sem elas.");
+
+        var found = new List<(string Name, byte[] Content)>();
+        var missing = new List<string>();
+        foreach (var name in names)
+        {
+            if (await _specImages.FindAsync(cards, name, cancellationToken) is { } file && file.Content.Length > 0)
+                found.Add((name, file.Content));
+            else
+                missing.Add(name);
+        }
+        if (missing.Count > 0)
+            throw DevOpsActionException.Conflict($"Imagem não encontrada nos arquivos do(s) card(s) {string.Join(", ", cards)}: {string.Join(", ", missing)}. " +
+                                                 "Informe em filesFrom o card onde as imagens foram gravadas (ex.: o card da análise).");
+
+        foreach (var (name, content) in found)
+        {
+            var url = await _azureService.UploadAttachmentAsync(name, content, cancellationToken);
+            foreach (var key in fields.Keys.ToList())
+                if (fields[key] is string html)
+                    fields[key] = UserStorySpec.ReplaceAttachment(html, name, url);
+        }
+        return found.Count;
     }
 
     private async Task<AzureCardFullResponse> LoadUserStoryAsync(string cardNumber, CancellationToken cancellationToken)
@@ -559,23 +624,49 @@ public class DevOpsActionsService : IDevOpsActionsService
         return card;
     }
 
-    /// <summary>Relê o card no DevOps; só cards do tipo Bug (User Story terá outras ações).</summary>
+    /// <summary>
+    /// Relê o card no DevOps; só cards do tipo Bug (Test in production, Dev Test in QA e estimativa inicial). As ações do
+    /// fechamento da User Story (classificação, Remaining, Ready for QA) usam <see cref="LoadCardAsync"/>.
+    /// </summary>
     private async Task<AzureCardFullResponse> LoadBugAsync(string cardNumber, CancellationToken cancellationToken)
     {
         var card = await LoadCardAsync(cardNumber, cancellationToken);
 
         // Mesma regra do front: User Story é US, o resto é tratado como Bug.
-        if (string.Equals(GetString(card, FieldWorkItemType), "User Story", StringComparison.OrdinalIgnoreCase))
-            throw DevOpsActionException.Conflict("Ações de DevOps para User Story ainda não estão disponíveis");
+        if (IsUserStory(card))
+            throw DevOpsActionException.Conflict("Esta ação é só do Bug — na User Story o fechamento é classificação, Remaining zerado e Ready for QA");
 
         return card;
     }
 
-    private static void EnsureNoPendencies(AzureCardFullResponse card)
+    private static bool IsUserStory(AzureCardFullResponse card) =>
+        string.Equals(GetString(card, FieldWorkItemType), UserStoryType, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// O tipo do card tem o campo de root cause? Bug sempre; User Story só se o processo do DevOps tiver o campo nela
+    /// (hoje não tem: o RCA da US vai como comentário na discussion).
+    /// </summary>
+    private async Task<bool> HasRootCauseFieldAsync(AzureCardFullResponse card, CancellationToken cancellationToken)
+    {
+        if (!IsUserStory(card))
+            return true;
+        var names = await _azureService.GetFieldNamesAsync(cancellationToken);
+        return await _azureService.GetFieldAllowedValuesAsync(UserStoryType, names.RootCause, cancellationToken) is not null;
+    }
+
+    public async Task EnsureRootCauseFieldAsync(string cardNumber, CancellationToken cancellationToken = default)
+    {
+        var card = await LoadCardAsync(cardNumber, cancellationToken);
+        if (!await HasRootCauseFieldAsync(card, cancellationToken))
+            throw DevOpsActionException.Conflict(
+                "A User Story não tem o campo de root cause no DevOps: publique o RCA (no Modelo do RCA do prompt) como comentário na discussion do card");
+    }
+
+    private async Task EnsureNoPendenciesAsync(AzureCardFullResponse card, CancellationToken cancellationToken)
     {
         var a = card.Alerts;
         var pending = new List<string>();
-        if (a.MissingRootCause) pending.Add("Root Cause");
+        if (a.MissingRootCause && await HasRootCauseFieldAsync(card, cancellationToken)) pending.Add("Root Cause");
         if (a.MissingResolutionType) pending.Add("Resolution Type");
         if (a.MissingGeneralClassification) pending.Add("General Classification");
         if (a.MissingClassification) pending.Add("Classification");
