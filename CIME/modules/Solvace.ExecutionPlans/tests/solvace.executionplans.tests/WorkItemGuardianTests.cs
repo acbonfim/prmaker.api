@@ -66,8 +66,8 @@ public class WorkItemGuardianTests
         Assert.Equal([1, 2, 3, 4, 5], item.OrderedTasks.Select(t => t.Order));
         Assert.Equal(WorkTaskStatus.Pending, Task(item, 881).Status);
         Assert.Equal(WorkItemStatus.Pending, item.Status);
-        Assert.Contains("já saiu da fila", Assert.Throws<DomainException>(() => item.MoveTask(882, 878, "Especialista", Now)).Message);
-        Assert.Contains("já saiu da fila", Assert.Throws<DomainException>(() => item.MoveTask(878, null, "Especialista", Now)).Message);
+        Assert.Contains("já terminou", Assert.Throws<DomainException>(() => item.MoveTask(882, 878, "Especialista", Now)).Message);
+        Assert.Contains("já terminou", Assert.Throws<DomainException>(() => item.MoveTask(878, null, "Especialista", Now)).Message);
 
         item.MoveTask(882, null, "Especialista", Now);
         Assert.Equal([878L, 879, 880, 881, 882], item.OrderedTasks.Select(t => t.Number));

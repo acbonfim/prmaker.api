@@ -15,7 +15,8 @@ namespace solvace.prform.Execution;
 /// 0085: regras do PRMake para o card e itens de trabalho pelo MCP. O Especialista do caso (token do caso) lê as regras,
 /// lista/cria/edita itens do caso (<see cref="CaseSpecialistMiddleware.IsAllowed"/>) e (r5) cancela,
 /// executa e registra o andamento de itens a pedido de uma pessoa — nunca de sub-tarefa espelho do plano (no item espelho, só
-/// acrescenta sub-tarefa nova: <c>prmake_work_item_add_task</c> vira etapa pendente do plano). Item avulso já começado ou
+/// acrescenta sub-tarefa nova: <c>prmake_work_item_add_task</c> vira etapa pendente do plano). Card 78680: em qualquer item,
+/// move/pausa/continua/cancela uma sub-tarefa (<c>prmake_work_task_control</c>) sem cancelar e recriar o item. Item avulso já começado ou
 /// fechado: reabre (<c>prmake_work_item_reopen</c>, refazendo sub-tarefas), acrescenta sub-tarefa e edita sub-tarefa
 /// pendente (<c>prmake_work_task_update</c>). Duplicata (mesmo fingerprint) volta como mensagem clara com o item existente
 /// e como forçar.
@@ -62,7 +63,13 @@ public class WorkItemMcpTools(
             {
                 i.Number, i.Type, i.Title, i.Status, i.Origin, i.TemplateKey, i.PlanId, i.PlanPhase, i.Editable, i.Fingerprint,
                 progress = $"{i.Progress.Done}/{i.Progress.Total}",
-                tasks = i.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Status, t.Executor })
+                tasks = i.Tasks.OrderBy(t => t.Order).Select(t => new
+                {
+                    t.Number, t.Order, t.Kind, t.Title, t.Status, t.Executor,
+                    // Card 78680: pausada pela pessoa e de quem depende (o que depende de outra nao passa na frente dela).
+                    held = t.Held ? true : (bool?)null,
+                    dependsOn = t.Controls is { DependsOn.Count: > 0 } c ? c.DependsOn : null,
+                })
             })
         });
     });
@@ -369,6 +376,7 @@ public class WorkItemMcpTools(
         [Description("O que fazer e para que (objetivo, fontes, o que confirmar, evidencias exigidas) — o Claude que executa segue este texto")] string description,
         [Description("Tipo da sub-tarefa (catalogo WorkItemTaskKinds: research, sql-query, env-reproduction, env-validation, code, pr, task...; no plano, sem ele o PRMake deduz)")] string? kind = null,
         [Description("Item espelho do plano: chave da etapa antes da qual entra (padrao: a em andamento/espera). Item avulso: numero da sub-tarefa ainda nao feita (pendente, em espera ou com falha) antes da qual entra (padrao: no fim)")] string? before = null,
+        [Description("first = no inicio (antes da primeira ainda nao feita — ex.: 'antes de tudo, peca o HAR no card'); last = no fim. Sem before nem position: item espelho = antes da etapa atual; avulso = no fim")] string? position = null,
         [Description("Item avulso: claude (padrao) ou user")] string? executor = null,
         [Description("Item avulso: parametros da sub-tarefa {repository, branch, environment, steps, expected, ...} (objeto ou JSON em texto)")] JsonElement? @params = null,
         [Description("Executar agora (a pessoa pediu para ja fazer)")] bool execute = false,
@@ -400,7 +408,7 @@ public class WorkItemMcpTools(
                 throw new McpException(incomplete);
             return await specialist.RunAsync(c, $"Acrescentar sub-tarefa ao item #{number}", title, async () =>
             {
-                var item = await items.AddTasksAsync(number, new AddWorkTasksRequest { Tasks = [input], Before = beforeTask, Execute = execute },
+                var item = await items.AddTasksAsync(number, new AddWorkTasksRequest { Tasks = [input], Before = beforeTask, Position = position, Execute = execute },
                     await ActorAsync(ct), ct);
                 var known = current.Tasks.Select(t => t.Number).ToHashSet();
                 var added = item.Tasks.Where(t => !known.Contains(t.Number)).OrderBy(t => t.Order).ToList();
@@ -425,7 +433,7 @@ public class WorkItemMcpTools(
         return await specialist.RunAsync(c, $"Acrescentar sub-tarefa ao item #{number}", title, async () =>
         {
             var actor = await ActorAsync(ct);
-            var step = await plans.AddStepAsync(planId, definition, before, actor, ct);
+            var step = await plans.AddStepAsync(planId, definition, before, actor, ct, position);
             var item = await items.GetAsync(number, false, ct);
             var task = item.Tasks.FirstOrDefault(t => t.StepKey == step.Key);
             if (execute)
@@ -518,30 +526,71 @@ public class WorkItemMcpTools(
     });
 
     [McpServerTool(Name = "prmake_work_task_move")]
-    [Description("Muda a ORDEM das sub-tarefas de um item avulso parado (pendente, em espera ou com falha): a sub-tarefa ainda nao " +
-                 "feita taskNumber passa para antes de 'before' (#n de outra ainda nao feita) ou, sem before, para o fim. As que estavam " +
-                 "em espera/com falha voltam a pendente (rodam na ordem nova). Nunca pule/recrie sub-tarefa so para trocar a ordem. " +
-                 "execute=true ja poe o item na fila. Item espelho do plano: a ordem e a das etapas. Especialista do caso: so com pedido " +
-                 "da pessoa na conversa.")]
+    [Description("Muda a ORDEM de uma sub-tarefa ainda nao feita — de item avulso OU de item que espelha o plano (a etapa muda de lugar " +
+                 "no plano e o item acompanha). position: first (antes da primeira ainda nao feita), last, up, down ou before (+ before = #n). " +
+                 "Nunca deixa o que depende de outra passar na frente dela (o erro diz qual depende de qual). Se o Claude estava fazendo a " +
+                 "sub-tarefa atropelada, a execucao para e recomeca na ordem nova. NUNCA cancele o item e recrie so para trocar a ordem ou " +
+                 "por uma sub-tarefa na frente: acrescente (prmake_work_item_add_task position=first) e/ou mova. Especialista do caso: so com " +
+                 "pedido da pessoa na conversa.")]
     public Task<string> MoveTask(string card, [Description("Numero da sub-tarefa a mover (#n)")] long taskNumber,
-        [Description("Numero da sub-tarefa (#n) antes da qual ela passa a rodar; vazio = para o fim")] long? before = null,
+        [Description("Numero da sub-tarefa (#n) antes da qual ela passa a rodar (position before)")] long? before = null,
         [Description("Executar o item logo depois (a pessoa pediu para seguir)")] bool execute = false,
-        CancellationToken ct = default) => Safe(async () =>
+        [Description("first | last | up | down | before (padrao: before com 'before', senao last)")] string? position = null,
+        CancellationToken ct = default) =>
+        Control(card, taskNumber, WorkTaskControl.Move, position, before, null, null, execute ? true : null, ct);
+
+    [McpServerTool(Name = "prmake_work_task_control")]
+    [Description("Mexe numa sub-tarefa SEM cancelar o item (avulso ou espelho do plano): action move (position first|last|up|down|before " +
+                 "+ before #n), pause (o Claude nao a faz — nem as que dependem dela — ate alguem continuar), resume (continua; retoma o " +
+                 "item se ja tinha comecado) ou cancel (so ela; se outras dependem dela, informe dependents: cancel = cancela junto, " +
+                 "keep = seguem sem ela). Se o Claude estava nela, a execucao para e recomeca na ordem nova. As regras do que pode e " +
+                 "por que nao (dependencias) aparecem em prmake_work_item → tasks[].controls. Especialista do caso: so com pedido da " +
+                 "pessoa na conversa.")]
+    public Task<string> ControlTask(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber,
+        [Description("move | pause | resume | cancel")] string action,
+        [Description("move: first | last | up | down | before")] string? position = null,
+        [Description("move before: numero (#n) da sub-tarefa ainda nao feita antes da qual ela passa")] long? before = null,
+        [Description("Motivo (vai para o item e a Timeline)")] string? reason = null,
+        [Description("cancel com dependentes: cancel (cancela junto) | keep (seguem sem ela)")] string? dependents = null,
+        [Description("Retomar a execucao depois (padrao: so se parou a execucao ou ao continuar item ja comecado)")] bool? execute = null,
+        CancellationToken ct = default) =>
+        Control(card, taskNumber, action, position, before, reason, dependents, execute, ct);
+
+    private Task<string> Control(string card, long taskNumber, string action, string? position, long? before, string? reason,
+        string? dependents, bool? execute, CancellationToken ct) => Safe(async () =>
     {
         var c = RequireCard(card);
         var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
                     ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
         if (before is { } b && owner.Tasks.All(t => t.Number != b))
             throw new McpException($"A sub-tarefa #{b} nao e do item #{owner.Number}.");
-        var what = before is { } x ? $"#{taskNumber} antes da #{x}" : $"#{taskNumber} para o fim";
-        return await specialist.RunAsync(c, $"Mudar a ordem no item #{owner.Number}", what, async () =>
+        var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
+        var why = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (specialist.Via is { } via) why = why is null ? via : $"{why} ({via})";
+        var what = verb switch
         {
-            var item = await items.MoveTaskAsync(taskNumber, before, execute, await ActorAsync(ct), ct);
+            WorkTaskControl.Move => $"#{taskNumber} {TaskPosition.Label(TaskPosition.Normalize(position, before is not null), before is { } x ? $"#{x}" : null)}",
+            WorkTaskControl.Pause => $"pausar a #{taskNumber}",
+            WorkTaskControl.Resume => $"continuar a #{taskNumber}",
+            WorkTaskControl.Cancel => $"cancelar a #{taskNumber}{(dependents?.Trim().ToLowerInvariant() == WorkTaskControl.DependentsCancel ? " e as que dependem dela" : string.Empty)}",
+            _ => throw new McpException("action: move | pause | resume | cancel."),
+        };
+        var title = verb == WorkTaskControl.Move ? $"Mudar a ordem no item #{owner.Number}" : $"Sub-tarefa do item #{owner.Number}";
+        return await specialist.RunAsync(c, title, why is null ? what : $"{what} — {why}", async () =>
+        {
+            var item = await items.ControlTaskAsync(taskNumber, new WorkTaskControlRequest
+            {
+                Action = verb, Position = position, Before = before, Reason = why, Dependents = dependents, Execute = execute,
+            }, await ActorAsync(ct), ct);
             return (Serialize(new
             {
                 item.Number, item.Status,
-                tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Status })
-            }), $"{what}{(execute ? " e item na fila" : string.Empty)}");
+                tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new
+                {
+                    t.Number, t.Order, t.Kind, t.Title, t.Status, held = t.Held ? true : (bool?)null,
+                    dependsOn = t.Controls is { DependsOn.Count: > 0 } d ? d.DependsOn : null,
+                })
+            }), $"{what}{(item.Status is WorkItemStatus.Queued or WorkItemStatus.Running ? " — execucao segue na ordem nova" : string.Empty)}");
         }, ct);
     });
 
@@ -643,7 +692,8 @@ public class WorkItemMcpTools(
         // "Ja resolvi" e acao da pessoa (repassada pelo especialista), nao mudanca do plano.
         if (verb != "resolve" && specialist.IsSpecialist && owner.PlanId is not null && owner.Tasks.First(t => t.Number == taskNumber).StepKey is not null)
             throw new McpException($"A sub-tarefa #{taskNumber} espelha a etapa '{owner.Tasks.First(t => t.Number == taskNumber).StepKey}' do plano " +
-                                   "— mude pela etapa (prmake_advance conclui; prmake_step muda status/motivo; prmake_steps ajusta titulo/descricao).");
+                                   "— mude pela etapa (prmake_advance conclui; prmake_step muda status/motivo/titulo/descricao); para mover, pausar, " +
+                                   "continuar ou cancelar so ela: prmake_work_task_control.");
         var request = new WorkTaskActionRequest
         {
             Result = result,
@@ -661,9 +711,12 @@ public class WorkItemMcpTools(
             {
                 item = new { item.Number, item.Status, progress = $"{item.Progress.Done}/{item.Progress.Total}" },
                 task = task is null ? null : new { task.Number, task.Status },
-                next = item.Tasks.OrderBy(t => t.Order).FirstOrDefault(t => t.Status is WorkTaskStatus.Pending or WorkTaskStatus.Waiting) is { } n
+                // Card 78680: a proxima pela ordem ATUAL (a pessoa pode ter reordenado), pulando as pausadas e as presas a uma pausada.
+                next = item.Tasks.OrderBy(t => t.Order).FirstOrDefault(t => t.Status is WorkTaskStatus.Pending or WorkTaskStatus.Waiting
+                                                                           && !t.Held && t.Controls?.WaitsForHeld is null) is { } n
                     ? new { n.Number, n.Title, n.Kind, n.Status }
-                    : null
+                    : null,
+                held = item.Tasks.Where(t => t.Held).Select(t => t.Number).ToList() is { Count: > 0 } h ? h : null
             }), $"sub-tarefa #{taskNumber}: {task?.Status ?? verb}");
         }, ct);
     });

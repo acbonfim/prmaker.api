@@ -270,11 +270,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return await BuildResponseAsync(plan, cancellationToken);
     }
 
-    public async Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken)
+    public async Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken,
+        string? position = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ExecutionStep? step = null;
-        var plan = await MutateAsync(planId, p => step = p.AddStep(definition, beforeKey, DateTimeOffset.UtcNow), cancellationToken, actor);
+        var plan = await MutateAsync(planId, p => step = p.AddStep(definition, beforeKey, DateTimeOffset.UtcNow, position), cancellationToken, actor);
         // Steps: o item espelho ganha a sub-tarefa na sincronização (SyncWorkItemsAsync).
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, step!.Key, cancellationToken);
         return step.ToResponse();

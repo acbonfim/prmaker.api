@@ -39,6 +39,12 @@ public interface IWorkItemApplication
     Task<WorkItemResponse> UpdateTaskAsync(long taskNumber, WorkTaskInput req, ExecutionActor actor, CancellationToken ct);
     /// <summary>Card 78505: sub-tarefa ainda não feita passa para antes de outra (ou para o fim).</summary>
     Task<WorkItemResponse> MoveTaskAsync(long taskNumber, long? before, bool execute, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// Card 78680: mexe numa sub-tarefa sem cancelar o item (avulso ou espelho do plano) — move (first/last/up/down/before),
+    /// pausa, continua ou cancela só ela (dependents: cancel|keep). A execução em andamento que for atropelada é parada e
+    /// retomada na ordem nova.
+    /// </summary>
+    Task<WorkItemResponse> ControlTaskAsync(long taskNumber, WorkTaskControlRequest req, ExecutionActor actor, CancellationToken ct);
     /// <param name="action">start | complete | fail | wait | skip | revert | cancel (ver <see cref="WorkTaskAction"/>).</param>
     Task<WorkItemResponse> TaskActionAsync(long taskNumber, string action, WorkTaskActionRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>"Já resolvi" na sub-tarefa que espera a pessoa: volta a andar e o item é retomado (item de plano: pelo plano).</summary>
@@ -117,7 +123,7 @@ public interface IWorkItemQueue
 {
     Task<Guid> EnqueueAsync(WorkItem item, ExecutionActor actor, CancellationToken ct);
     Task<Guid> EnqueueUndoAsync(WorkItem item, ExecutionActor actor, CancellationToken ct);
-    Task CancelActiveAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct);
+    Task CancelActiveAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct, string? reason = null);
     /// <summary>Ajustes 0085: motivo de espera (código) do pedido na fila — o mesmo da tela do plano; null fora da fila.</summary>
     Task<string?> WaitCodeAsync(Guid requestId, CancellationToken ct);
 }

@@ -41,6 +41,18 @@ public partial class WorkItemTask
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    /// <summary>
+    /// Card 78680: pausada pela pessoa — o executor não a começa (nem as que dependem dela) até alguém continuar. Fica
+    /// pendente enquanto isso.
+    /// </summary>
+    public bool Held { get; private set; }
+    public string? HeldBy { get; private set; }
+    private List<long>? _dependsOn = [];
+    /// <summary>
+    /// Card 78680: números das sub-tarefas do item que precisam terminar antes desta (jsonb). Item espelho: as dependências
+    /// da etapa do plano; item avulso: as informadas (sem elas, as do tipo — <see cref="WorkTaskDependencies"/>).
+    /// </summary>
+    public List<long> DependsOn { get => _dependsOn ??= []; private set => _dependsOn = value; }
 
     protected WorkItemTask() { }
 
@@ -105,6 +117,38 @@ public partial class WorkItemTask
         Executor = executor;
 
         ParamsJson = SerializeParams(input.Params);
+        if (input.DependsOn is not null)
+            SetDependsOn(input.DependsOn);
+    }
+
+    /// <summary>Dependências (números de sub-tarefa); devolve se mudou.</summary>
+    internal bool SetDependsOn(IEnumerable<long> numbers)
+    {
+        var list = numbers.Where(n => n > 0 && n != Number).Distinct().OrderBy(n => n).ToList();
+        if (list.SequenceEqual(DependsOn)) return false;
+        DependsOn = list;
+        return true;
+    }
+
+    /// <summary>Card 78680: pausa/continua (sem mudar o status — quem chama devolve a pendente antes de pausar).</summary>
+    internal bool SetHeld(bool held, string? by, DateTimeOffset now)
+    {
+        if (Held == held) return false;
+        Held = held;
+        HeldBy = held ? WorkItem.Clean(by, 200) : null;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// Card 78680: a pessoa mexeu (moveu, pausou, passou outra na frente) numa sub-tarefa em andamento/espera/com falha —
+    /// ela volta a pendente com o motivo no fim do resultado (o executor refaz dali).
+    /// </summary>
+    internal void BackToPending(string actor, string why, DateTimeOffset now)
+    {
+        AppendResult($"**{why}** ({actor}).");
+        Set(WorkTaskStatus.Pending, now);
+        CompletedAt = null;
     }
 
     /// <summary>0096: título/descrição da sub-tarefa pendente ou em espera acompanhando a etapa (o plano foi ajustado no lugar).</summary>
@@ -159,6 +203,8 @@ public partial class WorkItemTask
     /// <summary>Transição pedida por ação (valida a origem).</summary>
     internal void Apply(string action, string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
     {
+        if (Held && action is WorkTaskAction.Start)
+            throw new DomainException($"A sub-tarefa #{Number} está pausada por {HeldBy ?? "uma pessoa"} — siga com a próxima (as que dependem dela também esperam).");
         switch (action)
         {
             case WorkTaskAction.Start:

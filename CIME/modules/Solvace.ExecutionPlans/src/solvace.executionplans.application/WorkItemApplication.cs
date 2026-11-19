@@ -387,7 +387,8 @@ public class WorkItemApplication : IWorkItemApplication
         // Como na criação: sub-tarefa de script ganha as do chamado (gerar o arquivo + abrir no sistema de chamados).
         var tasks = WorkItemTicketRule.Apply(req.Tasks ?? [], settings?.TicketSystem);
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
-            i => i.AddTasks(tasks, req.Before, actor.Name, DateTimeOffset.UtcNow), ct);
+            i => i.AddTasks(tasks, req.Before, actor.Name, DateTimeOffset.UtcNow,
+                first: string.Equals(req.Position?.Trim(), TaskPosition.First, StringComparison.OrdinalIgnoreCase)), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
         await CaptureItemRefAsync(item.CardNumber, item.Number, null, tasks.Select(t => t.Description), actor, ct);
         if (req.Execute)
@@ -408,16 +409,108 @@ public class WorkItemApplication : IWorkItemApplication
     }
 
     /// <summary>Card 78505: muda a ordem de uma sub-tarefa ainda não feita do item avulso (antes de outra ou para o fim).</summary>
-    public async Task<WorkItemResponse> MoveTaskAsync(long taskNumber, long? before, bool execute, ExecutionActor actor, CancellationToken ct)
+    public Task<WorkItemResponse> MoveTaskAsync(long taskNumber, long? before, bool execute, ExecutionActor actor, CancellationToken ct) =>
+        ControlTaskAsync(taskNumber, new WorkTaskControlRequest
+        {
+            Action = WorkTaskControl.Move, Position = before is null ? TaskPosition.Last : TaskPosition.Before, Before = before,
+            Execute = execute ? true : null,
+        }, actor, ct);
+
+    public async Task<WorkItemResponse> ControlTaskAsync(long taskNumber, WorkTaskControlRequest req, ExecutionActor actor, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(req);
+        var action = (req.Action ?? string.Empty).Trim().ToLowerInvariant();
+        if (!WorkTaskControl.All.Contains(action))
+            throw new DomainException($"Ação inválida: '{req.Action}' (use move, pause, resume ou cancel).");
         var owner = await _items.GetByTaskNumberAsync(taskNumber, ct)
                     ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
-        var item = await MutateAsync(() => _items.GetByTaskNumberAsync(taskNumber, ct), owner.Number,
-            i => i.MoveTask(taskNumber, before, actor.Name, DateTimeOffset.UtcNow), ct);
-        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, taskNumber, ct);
-        if (execute)
+        var task = owner.Tasks.First(t => t.Number == taskNumber);
+        var position = action == WorkTaskControl.Move ? TaskPosition.Normalize(req.Position, req.Before is not null) : null;
+
+        // Sub-tarefa espelho: o plano é a fonte — a etapa muda e o item acompanha pela sincronização.
+        if (owner.PlanId is { } planId && task.StepKey is { } stepKey && owner.MirrorsPlan)
+        {
+            string? beforeKey = null;
+            if (position == TaskPosition.Before && req.Before is { } b)
+                beforeKey = owner.Tasks.FirstOrDefault(t => t.Number == b)?.StepKey
+                            ?? throw new DomainException($"A sub-tarefa #{b} não é do item #{owner.Number} (ou não espelha uma etapa do plano).");
+            _items.DetachWorkItems();
+            await PlanApp.ControlStepAsync(planId, stepKey, new WorkTaskControlRequest
+            {
+                Action = action, Position = position, Reason = req.Reason, Dependents = req.Dependents, Execute = req.Execute,
+            }, beforeKey, actor, ct);
+            _items.DetachWorkItems();
+            await SyncFromPlanAsync(planId, ct);
+            _items.DetachWorkItems();
+            var mirror = await GetAsync(owner.Number, false, ct);
+            await TimelineAsync(owner, ControlText(owner.Number, taskNumber, task.Title, action, position, req), actor, ct);
+            return mirror;
+        }
+
+        // Avulso: com o executor nesta sub-tarefa (ou na que ganha outra na frente), para a execução, aplica e retoma.
+        var before = owner.Status;
+        var dependents = action == WorkTaskControl.Cancel ? owner.DependentsOf(task) : [];
+        var mode = req.Dependents?.Trim().ToLowerInvariant();
+        if (dependents.Count > 0 && mode is not (WorkTaskControl.DependentsCancel or WorkTaskControl.DependentsKeep))
+            throw new DomainException($"Dependem desta sub-tarefa: {string.Join(", ", dependents.Select(d => $"#{d.Number} ({d.Title})"))} — " +
+                                      "informe dependents: cancel (cancelar junto) ou keep (seguem sem ela).");
+        var number = owner.Number;
+        void Apply(WorkItem i)
+        {
+            var now = DateTimeOffset.UtcNow;
+            switch (action)
+            {
+                case WorkTaskControl.Move: i.MoveTaskTo(taskNumber, position!, req.Before, actor.Name, now); break;
+                case WorkTaskControl.Pause: i.HoldTask(taskNumber, true, req.Reason, actor.Name, now); break;
+                case WorkTaskControl.Resume: i.HoldTask(taskNumber, false, req.Reason, actor.Name, now); break;
+                case WorkTaskControl.Cancel: i.CancelTask(taskNumber, req.Reason, mode == WorkTaskControl.DependentsCancel, actor.Name, now); break;
+            }
+        }
+        WorkItem item;
+        var interrupted = false;
+        _items.DetachWorkItems();
+        try
+        {
+            item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number, Apply, ct);
+        }
+        catch (WorkTaskInterruptRequiredException)
+        {
+            _items.DetachWorkItems();
+            await CancelRequestAsync(owner.Id, actor, ct, $"Parado para {(action == WorkTaskControl.Move ? "mudar a ordem" : action == WorkTaskControl.Pause ? "pausar" : "cancelar")} " +
+                                                         $"a sub-tarefa #{taskNumber} — {actor.Name} (retoma na ordem nova)");
+            _items.DetachWorkItems();
+            item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number, i =>
+            {
+                if (i.ActiveRequestId is { } active)
+                    i.AttachRequest(active, ExecutionRequestStatus.Cancelled, DateTimeOffset.UtcNow);
+                Apply(i);
+            }, ct);
+            interrupted = true;
+        }
+        await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, taskNumber, ct);
+        await AfterStatusChangeAsync(item, before, actor, ct);
+        await TimelineAsync(item, ControlText(item.Number, taskNumber, task.Title, action, position, req, interrupted), actor, ct);
+
+        // Retoma: quem parou a execução, ou "Continuar" num item que já tinha começado (pedido explícito vale sempre).
+        var execute = req.Execute ?? (interrupted || action == WorkTaskControl.Resume && item.StartedAt is not null);
+        if (execute && item.ActiveRequestId is null && !WorkItemStatus.IsClosed(item.Status) && item.NextTask is not null)
             return await ExecuteAsync(item.Number, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
+    }
+
+    private static string ControlText(long item, long task, string title, string action, string? position, WorkTaskControlRequest req,
+        bool interrupted = false)
+    {
+        var what = action switch
+        {
+            WorkTaskControl.Move => $"movida {TaskPosition.Label(position!, req.Before is { } b ? $"#{b}" : null)}",
+            WorkTaskControl.Pause => "pausada",
+            WorkTaskControl.Resume => "continua",
+            _ => req.Dependents?.Trim().ToLowerInvariant() == WorkTaskControl.DependentsCancel ? "cancelada (com as que dependiam dela)" : "cancelada",
+        };
+        var why = string.IsNullOrWhiteSpace(req.Reason) ? string.Empty : $" — {req.Reason.Trim()}";
+        return $"Item de trabalho **#{item}**: sub-tarefa #{task} ({title}) {what}{why}." +
+               (interrupted ? " A execução foi parada e retomada na ordem nova." : string.Empty);
     }
 
     // ================================================================ sub-tarefas
@@ -620,6 +713,9 @@ public class WorkItemApplication : IWorkItemApplication
         // Item reaberto sem nada a refazer: sem sub-tarefa aberta o executor não teria o que fazer (e o item cairia em falha).
         if (item.PlanId is null && !item.Tasks.Any(t => WorkTaskStatus.IsOpen(t.Status) || t.Status == WorkTaskStatus.Failed))
             throw new DomainException($"O item #{item.Number} não tem sub-tarefa pendente — acrescente uma ou reabra informando quais refazer.");
+        // Card 78680: só sobrou sub-tarefa pausada — o executor não teria o que fazer.
+        if (item.PlanId is null && item.OnlyHeldLeft)
+            throw new DomainException($"O item #{item.Number} só tem sub-tarefa pausada por fazer — continue uma delas (as que dependem dela seguem junto).");
 
         Guid? requestId = null;
         if (item.PlanId is { } planId)
@@ -728,10 +824,10 @@ public class WorkItemApplication : IWorkItemApplication
         return (await ToResponsesAsync([item], ct))[0];
     }
 
-    private async Task CancelRequestAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct)
+    private async Task CancelRequestAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct, string? reason = null)
     {
         if (_services.GetService(typeof(IWorkItemQueue)) is IWorkItemQueue queue)
-            await queue.CancelActiveAsync(workItemId, actor, ct);
+            await queue.CancelActiveAsync(workItemId, actor, ct, reason);
     }
 
     public async Task<IReadOnlyList<WorkItemResponse>> CancelByPlanAsync(Guid planId, bool undo, string? reason, ExecutionActor actor, CancellationToken ct)
@@ -933,10 +1029,10 @@ public class WorkItemApplication : IWorkItemApplication
         {
             var added = item.AddStepTasks(StepInputs(plan.Steps), now);
             if (added.Count > 0)
-            {
-                item.ReorderByStep(plan.Steps.ToDictionary(s => s.Key, s => s.Order));
                 item.AddLog(null, actor, WorkItemLogKind.Updated, $"{added.Count} sub-tarefa(s) nova(s) do plano: {string.Join(", ", added.Select(t => t.Title))}.", now);
-            }
+            // Card 78680: a ordem das etapas pode ter mudado (a pessoa reordenou) — as sub-tarefas acompanham.
+            if (item.ReorderByStep(plan.Steps.ToDictionary(s => s.Key, s => s.Order)) || added.Count > 0)
+                item.Touch(now);
         }
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
         {
@@ -945,6 +1041,8 @@ public class WorkItemApplication : IWorkItemApplication
                 item.SyncStepKind(step.Key, StepTaskKind(step), ServerKinds(step), now);
                 // 0096: etapa ajustada no lugar (especialista/tratamento) — a sub-tarefa pendente acompanha o texto.
                 item.SyncStepText(step.Key, step.Title, step.Description, now);
+                // Card 78680: pausa e dependências da etapa.
+                item.SyncStepControl(step.Key, step.Held, step.HeldBy, step.DependsOn, now);
             }
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
         }

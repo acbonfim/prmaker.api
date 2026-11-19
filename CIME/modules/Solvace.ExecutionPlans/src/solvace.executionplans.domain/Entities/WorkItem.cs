@@ -10,7 +10,7 @@ namespace solvace.executionplans.domain.Entities;
 /// O <see cref="Number"/> vem da sequência global <c>execution.work_item_number_seq</c> (compartilhada com as
 /// sub-tarefas): o número identifica item ou sub-tarefa sem ambiguidade. Só edita pendente (item e sub-tarefas).
 /// </summary>
-public class WorkItem
+public partial class WorkItem
 {
     public const int MaxTitleLength = 300;
     public const int MaxDescriptionLength = 50_000;
@@ -232,14 +232,23 @@ public class WorkItem
         return added;
     }
 
-    /// <summary>Reordena as sub-tarefas do plano pela ordem das etapas (as sem etapa ficam no fim, na ordem atual).</summary>
-    public void ReorderByStep(IReadOnlyDictionary<string, int> stepOrder)
+    /// <summary>
+    /// Reordena as sub-tarefas do plano pela ordem das etapas (as sem etapa ficam no fim, na ordem atual). Devolve se mudou
+    /// (card 78680: a pessoa reordenou as etapas).
+    /// </summary>
+    public bool ReorderByStep(IReadOnlyDictionary<string, int> stepOrder)
     {
         var ordered = OrderedTasks
             .OrderBy(t => t.StepKey is not null && stepOrder.TryGetValue(t.StepKey, out var o) ? o : int.MaxValue)
             .ThenBy(t => t.Order).ToList();
+        var changed = false;
         for (var i = 0; i < ordered.Count; i++)
+        {
+            if (ordered[i].Order == i + 1) continue;
             ordered[i].Order = i + 1;
+            changed = true;
+        }
+        return changed;
     }
 
     // ---------------------------------------------------------------- execução
@@ -278,7 +287,13 @@ public class WorkItem
             // Pedido terminou (done/failed/expired/cancelled) sem o item fechar e sem sub-tarefa esperando alguém: falhou —
             // a pessoa vê e decide (executar de novo, cancelar, desfazer). Desfazer que terminou ainda "reverting" idem.
             var waiting = Tasks.Any(t => t.Status == WorkTaskStatus.Waiting);
-            if (Status is WorkItemStatus.Queued or WorkItemStatus.Running && !waiting)
+            // Card 78680: o executor fez o que podia e parou nas sub-tarefas pausadas — o item espera alguém continuar.
+            if (Status is WorkItemStatus.Queued or WorkItemStatus.Running && !waiting && OnlyHeldLeft)
+            {
+                Status = WorkItemStatus.Pending;
+                unfinished = "Parou nas sub-tarefas pausadas — continue uma delas para seguir.";
+            }
+            else if (Status is WorkItemStatus.Queued or WorkItemStatus.Running && !waiting)
             {
                 Status = WorkItemStatus.Failed;
                 unfinished = $"A execução terminou ({requestStatus}) sem concluir as sub-tarefas.";
@@ -535,7 +550,8 @@ public class WorkItem
     /// antes). Entram antes da sub-tarefa pendente <paramref name="beforeTask"/> ou no fim. Item que espelha o plano ganha
     /// sub-tarefa pela etapa nova do plano. Devolve as criadas (o número vem do banco ao salvar).
     /// </summary>
-    public IReadOnlyList<WorkItemTask> AddTasks(IReadOnlyList<WorkTaskInput> inputs, long? beforeTask, string actor, DateTimeOffset now)
+    public IReadOnlyList<WorkItemTask> AddTasks(IReadOnlyList<WorkTaskInput> inputs, long? beforeTask, string actor, DateTimeOffset now,
+        bool first = false)
     {
         if (FollowsPlan)
             throw new DomainException($"O item #{Number} é do plano — a sub-tarefa a mais entra como etapa nova do plano.");
@@ -548,6 +564,9 @@ public class WorkItem
         if (Tasks.Count + inputs.Count > MaxTasks)
             throw new DomainException($"Um item pode ter no máximo {MaxTasks} sub-tarefas.");
 
+        // Card 78680: "no início" = antes da primeira ainda não feita.
+        if (beforeTask is null && first && OrderedTasks.FirstOrDefault(t => !IsSettled(t)) is { } head)
+            beforeTask = head.Number;
         int order;
         if (beforeTask is { } b)
         {
@@ -591,42 +610,21 @@ public class WorkItem
             task.Reopen(actor, why, now);
             AddLog(task.Number, actor, WorkItemLogKind.Task, $"#{task.Number} {task.Title}: volta a pendente — {why}.", now);
         }
+        else if (task.Status == WorkTaskStatus.Running)
+        {
+            // Card 78680: com o executor no item, quem chama para a execução antes; parada, ela recomeça depois da nova.
+            EnsureNotRunningLive(task, "pôr outra sub-tarefa antes dela");
+            task.BackToPending(actor, $"Interrompida: {why}", now);
+            AddLog(task.Number, actor, WorkItemLogKind.Task, $"#{task.Number} {task.Title}: interrompida — {why}.", now);
+        }
         else if (task.Status != WorkTaskStatus.Pending)
             throw new DomainException($"A sub-tarefa #{taskNumber} está {task.Status} — já saiu da fila (para refazer, reabra o item com ela em redo).");
         return task;
     }
 
-    /// <summary>
-    /// Muda a ordem: a sub-tarefa (pendente, em espera ou com falha) passa para antes de <paramref name="beforeTask"/>
-    /// (ainda não feita) ou para o fim. Em espera/com falha voltam a pendente. Item que espelha o plano muda pelo plano.
-    /// </summary>
-    public WorkItemTask MoveTask(long taskNumber, long? beforeTask, string actor, DateTimeOffset now)
-    {
-        if (FollowsPlan)
-            throw new DomainException($"O item #{Number} é do plano — a ordem é a das etapas do plano.");
-        if (WorkItemStatus.IsClosed(Status) || Status is WorkItemStatus.Reverting or WorkItemStatus.Queued or WorkItemStatus.Running)
-            throw new DomainException($"O item #{Number} está {Status} — mude a ordem com ele parado (pendente, em espera ou com falha).");
-        if (beforeTask == taskNumber)
-            throw new DomainException("Informe outra sub-tarefa em 'before'.");
-        var task = Anchor(taskNumber, actor, "mudou de ordem", now);
-        var ordered = OrderedTasks.Where(t => t != task).ToList();
-        var index = ordered.Count;
-        if (beforeTask is { } b)
-        {
-            var anchor = Anchor(b, actor, $"a #{task.Number} passou a vir antes dela", now);
-            index = ordered.IndexOf(anchor);
-        }
-        ordered.Insert(index, task);
-        for (var i = 0; i < ordered.Count; i++)
-            ordered[i].Order = i + 1;
-        task.Touch(now);
-        UpdatedAt = now;
-        AddLog(task.Number, actor, WorkItemLogKind.Updated, beforeTask is { } x
-            ? $"#{task.Number} {task.Title}: passa a vir antes da #{x}."
-            : $"#{task.Number} {task.Title}: passa para o fim.", now);
-        Recalculate(actor, now, failedUndo: false);
-        return task;
-    }
+    /// <summary>Muda a ordem: para antes de <paramref name="beforeTask"/> (ainda não feita) ou para o fim (<see cref="MoveTaskTo"/>).</summary>
+    public WorkItemTask MoveTask(long taskNumber, long? beforeTask, string actor, DateTimeOffset now) =>
+        MoveTaskTo(taskNumber, beforeTask is null ? TaskPosition.Last : TaskPosition.Before, beforeTask, actor, now);
 
     /// <summary>
     /// Edita uma sub-tarefa ainda não feita de um item aberto (o item pode já ter começado): pendente, ou em espera/com
@@ -727,6 +725,8 @@ public class WorkItem
         else if (live.Any(t => t.Status == WorkTaskStatus.Running)) next = WorkItemStatus.Running;
         else if (live.Any(t => t.Status == WorkTaskStatus.Waiting)) next = WorkItemStatus.Waiting;
         else if (live.Any(t => t.Status == WorkTaskStatus.Failed)) next = WorkItemStatus.Failed;
+        // Card 78680: só sobrou o que está pausado (ou preso a uma pausada) e ninguém executando — o item espera alguém continuar.
+        else if (ActiveRequestId is null && !FollowsPlan && OnlyHeldLeft) next = WorkItemStatus.Pending;
         // Card 78505 (#877): item avulso parado (sem pedido na fila) com parte feita e o resto pendente — pulou a sub-tarefa
         // em espera, acrescentou/mudou a ordem — não está "em andamento": fica pendente, com o Executar na Bancada.
         else if (live.Any(t => WorkTaskStatus.IsDone(t.Status)))

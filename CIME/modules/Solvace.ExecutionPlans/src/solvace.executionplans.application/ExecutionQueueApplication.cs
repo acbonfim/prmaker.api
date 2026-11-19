@@ -1113,7 +1113,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
     private const string RequestedStepsText =
         " Etapa pendente com chave pedido-* antes da etapa em que voce parou foi pedida por uma pessoa: faca-a primeiro (a descricao " +
         "diz o que fazer e para que), conclua com o resultado e volte a etapa; se o achado mudar a causa raiz ou as solucoes, " +
-        "atualize a analise e as perguntas abertas. Nunca a remova ao refinar as etapas.";
+        "atualize a analise e as perguntas abertas. Nunca a remova ao refinar as etapas. A pessoa tambem pode ter mudado a ordem das " +
+        "etapas, pausado (held) ou cancelado alguma: siga a ordem ATUAL do plano (a proxima e a primeira etapa pronta), nao comece etapa " +
+        "pausada nem as que dependem dela e, ao refinar as etapas, nao as tire do lugar.";
 
     private const string RevisitQuestionsText =
         " Se o que mudou (comentario, anexo, resposta) muda a analise ou as solucoes, revise as perguntas ainda abertas: a revisada " +

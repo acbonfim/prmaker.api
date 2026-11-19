@@ -146,11 +146,29 @@ public partial class WorkItemsController : ExecutionControllerBase
     public Task<ActionResult<WorkItemResponse>> UpdateTask([FromRoute] long taskNumber, [FromBody] WorkTaskInput request, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () => Ok(await _items.UpdateTaskAsync(taskNumber, request, await ActorAsync(ct), ct)));
 
-    /// <summary>Card 78505: muda a ordem — a sub-tarefa ainda não feita passa para antes de <c>before</c> (ou para o fim).</summary>
+    /// <summary>
+    /// Card 78505: muda a ordem — a sub-tarefa ainda não feita passa para antes de <c>before</c> (ou para o fim). Card 78680:
+    /// <c>position</c> = first | last | up | down; vale também para a sub-tarefa espelho do plano.
+    /// </summary>
     [HttpPost("tasks/{taskNumber:long}/move")]
     public Task<ActionResult<WorkItemResponse>> MoveTask([FromRoute] long taskNumber, [FromQuery] long? before, [FromQuery] bool execute,
-        CancellationToken ct) =>
-        RunItem<WorkItemResponse>(async () => Ok(await _items.MoveTaskAsync(taskNumber, before, execute, await ActorAsync(ct), ct)));
+        [FromQuery] string? position, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(string.IsNullOrWhiteSpace(position)
+            ? await _items.MoveTaskAsync(taskNumber, before, execute, await ActorAsync(ct), ct)
+            : await _items.ControlTaskAsync(taskNumber, new WorkTaskControlRequest
+            {
+                Action = WorkTaskControl.Move, Position = position, Before = before, Execute = execute ? true : null,
+            }, await ActorAsync(ct), ct)));
+
+    /// <summary>
+    /// Card 78680: mexe numa sub-tarefa sem cancelar o item (avulso ou espelho do plano) — <c>action</c> move (position
+    /// first|last|up|down|before + before), pause, resume ou cancel (com <c>dependents</c> cancel|keep quando outras dependem
+    /// dela). A execução atropelada é parada e retomada na ordem nova. As regras (o que pode e por quê) vêm em
+    /// <c>tasks[].controls</c> do item.
+    /// </summary>
+    [HttpPost("tasks/{taskNumber:long}/control")]
+    public Task<ActionResult<WorkItemResponse>> ControlTask([FromRoute] long taskNumber, [FromBody] WorkTaskControlRequest request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.ControlTaskAsync(taskNumber, request, await ActorAsync(ct), ct)));
 
     /// <summary>Executa: item avulso entra na fila (pista própria); item de plano retoma o plano.</summary>
     [HttpPost("{number:long}/execute")]

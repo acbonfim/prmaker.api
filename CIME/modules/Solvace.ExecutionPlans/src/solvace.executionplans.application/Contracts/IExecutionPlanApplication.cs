@@ -20,7 +20,14 @@ public interface IExecutionPlanApplication
 
     Task<ExecutionPlanResponse> UpsertStepsAsync(Guid planId, UpsertExecutionStepsRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     /// <summary>Etapa nova, pendente, a pedido de uma pessoa — sem mexer nas outras (antes da etapa em andamento).</summary>
-    Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken,
+        string? position = null);
+    /// <summary>
+    /// Card 78680: mexe numa etapa sem cancelar o plano — move (first/last/up/down/before), pausa, continua ou cancela (com as
+    /// que dependem dela, se pedido). Etapa em andamento atropelada: o plano é pausado e retomado na ordem nova.
+    /// </summary>
+    Task<ExecutionStepResponse> ControlStepAsync(Guid planId, string stepKey, WorkTaskControlRequest request, string? beforeKey,
+        ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> CancelStepAsync(Guid planId, string stepKey, string reason, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionPlanResponse> ChangeStatusAsync(Guid planId, ChangeExecutionPlanStatusRequest request, ExecutionActor actor, CancellationToken cancellationToken);

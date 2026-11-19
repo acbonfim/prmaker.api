@@ -342,6 +342,11 @@ volte a etapa em que estava. Se o achado mudar a causa raiz/solucoes, atualize a
 perguntas abertas (`prmake_ask` com `replaces` / `prmake_cancel_questions`). Ao refinar as etapas (`prmake_steps`),
 mantenha as `pedido-*` (o PRMake nao as apaga por omissao).
 
+**Ordem, pausa e cancelamento pela pessoa (card 78680):** a pessoa (tela ou Especialista) pode mudar a ordem das etapas,
+pausar (`held`) ou cancelar uma etapa. Siga sempre a ordem **atual** do `prmake_plan`: a proxima e a primeira etapa
+pendente pronta. **Nao comece etapa `held`** nem as que dependem dela (o PRMake recusa); sem outra pronta, encerre a vez.
+Etapa com `pinned` foi posta no lugar pela pessoa — ao refinar (`prmake_steps`) nao a tire de la (o PRMake a mantem).
+
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
 | Quando | Comando |
 |---|---|

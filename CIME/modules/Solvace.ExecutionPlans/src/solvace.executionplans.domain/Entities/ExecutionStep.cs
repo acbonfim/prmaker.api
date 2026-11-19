@@ -65,6 +65,18 @@ public partial class ExecutionStep
     /// <summary>Keys das etapas que precisam terminar antes desta.</summary>
     public List<string> DependsOn { get; private set; } = [];
 
+    /// <summary>
+    /// Card 78680: pausada pela pessoa — fica pendente e não é "pronta" (nem as que dependem dela) até alguém continuar.
+    /// </summary>
+    public bool Held { get; private set; }
+    public string? HeldBy { get; private set; }
+
+    /// <summary>
+    /// Card 78680: a pessoa escolheu a posição desta etapa (mudou a ordem / acrescentou no início) — ao refinar as etapas a
+    /// skill não a tira do lugar: ela volta para antes da etapa que vinha depois dela.
+    /// </summary>
+    public bool OrderPinned { get; internal set; }
+
     protected ExecutionStep() { }
 
     internal ExecutionStep(Guid planId, string key, int order, string title, string? description, DateTimeOffset now)
@@ -195,6 +207,15 @@ public partial class ExecutionStep
     }
 
     internal void Touch(DateTimeOffset now) => UpdatedAt = now;
+
+    internal bool SetHeld(bool held, string? by, DateTimeOffset now)
+    {
+        if (Held == held) return false;
+        Held = held;
+        HeldBy = held ? Truncate((by ?? string.Empty).Trim(), 200) : null;
+        UpdatedAt = now;
+        return true;
+    }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 
