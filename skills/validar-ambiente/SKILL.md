@@ -45,6 +45,11 @@ descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/
 2. **Pelo menu, como a pessoa faria** (o login cai em `/myworkspace/...`):
    - **Menu de modulos**: `snap` → botao `icone: apps` no canto superior direito → bloco do pilar (`item "Segurança e
      Meio Ambiente"`) → modulo (`item "Incidentes"`). Nome com **"- Novo"** = revamp (Angular); sem sufixo = legado.
+     **O modulo pode abrir em OUTRA aba** (preferencia do usuario "Abrir modulos na mesma aba" desligada, card 78720):
+     o navegador segue a aba nova sozinho e a saida mostra `ABA: o comando abriu uma ABA NOVA — sigo nela: <url>`.
+     Confira sempre a `pagina:` da saida — continuou em `/myworkspace/...` depois de clicar no modulo = o modulo nao
+     abriu (a home tambem tem abas/widgets com o mesmo nome, ex. "Ideias Kaizen"; nao confunda com o modulo).
+     `tabs` lista as abas e `tab <n>` volta para outra.
    - **Legado .NET (solvace-core)**: `go /<modulo>/` (ex.: `/incident/`) abre a lista do modulo; o menu lateral sao
      icones (`snap` mostra `icone: ... @x,y`; clique e `snap` de novo). As telas internas carregam por **POST** dentro da
      moldura (`/incident/Report/Main`) — abrir a action direto por GET vem **em branco**: entre pelo modulo e pelo menu.
@@ -116,7 +121,8 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
    - `bash $ENV browser snap <sessao>` → titulos, elementos clicaveis com o alvo sugerido e o texto; o arquivo da
      tela (`_snap.jpg`) voce abre com `Read` quando precisar ver.
    - `go <sessao> <url|/caminho>` · `click <sessao> "<alvo>"` · `fill <sessao> "<alvo>" "<valor>"` ·
-     `select <sessao> "<alvo>" "<opcao>"` · `press <sessao> Enter` · `wait <sessao> "<alvo>|ms"` · `text <sessao>`.
+     `select <sessao> "<alvo>" "<opcao>"` · `press <sessao> Enter` · `wait <sessao> "<alvo>|ms"` · `text <sessao>` ·
+     `tabs <sessao>` · `tab <sessao> <n>` (clique que abre aba nova: a sessao ja segue nela — linha `ABA:` na saida).
      Alvo = o do `snap` (`#id`, `[formcontrolname=...]`, `text=Salvar`, `role=button[name="Salvar"]`) ou o texto visivel.
    - **Print e prova, nao diario de navegacao.** Um `shot` por **resultado esperado** do roteiro — a tela onde o criterio
      aparece (data no formato certo, mensagem de sucesso, registro na lista) —, mais no maximo um da tela de partida se

@@ -12,10 +12,14 @@ Tela ao vivo (0095): o Chrome abre tambem uma porta de depuracao so em 127.0.0.1
 sessao grava a porta, a aba e o card/sub-tarefa. O executor (prmake-agent) le isso e mostra a tela na Bancada da propria
 maquina ("Ver tela ao vivo") — nada sai da maquina nem e gravado.
 
+Aba nova (card 78720): o menu de modulos abre o modulo em OUTRA aba quando a preferencia do usuario "Abrir modulos na
+mesma aba" esta desligada (e links target=_blank/window.open fazem o mesmo). A sessao passa a seguir a aba que o comando
+abriu (prints, snap e alvos vem dela; a tela ao vivo tambem) e avisa; `tabs` lista as abas e `tab <n>` volta para outra.
+
 Uso (pelo env.sh):
   env_browser.py start --env <key> --url <url> --user <email> --out <pasta> [--read-only] [--allow <trecho-da-rota>]...
                        [--headed] [--label <nome>] [--card <card>] [--task <n>]
-  env_browser.py go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]
+  env_browser.py go|click|fill|select|press|wait|shot|snap|text|tabs|tab|stop <sessao> [args]
   env_browser.py status
 Saida: 0 ok · 1 erro · 2 sem navegador/Playwright · 3 login recusado · 4 sem senha · 5 sessao inexistente.
 """
@@ -212,7 +216,62 @@ class Session:
         self.guard_on = False
         self.ctx.route("**/*", self.route)
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+        self.profile = profile
+        self.opened = []
+        self.ctx.on("page", self.on_page)
         self.live = self.live_target(profile)
+
+    def on_page(self, page):
+        self.opened.append(page)
+
+    def open_pages(self):
+        return [pg for pg in self.ctx.pages if not pg.is_closed()]
+
+    def follow_tabs(self):
+        """Aba que o comando abriu (modulo fora da mesma aba, target=_blank) vira a da sessao; aba fechada volta para a ultima aberta."""
+        fresh = [pg for pg in self.opened if not pg.is_closed()]
+        self.opened.clear()
+        note = None
+        if fresh:
+            self.page = fresh[-1]
+            try:
+                self.page.wait_for_load_state("domcontentloaded", timeout=30000)
+            except Exception:  # noqa: BLE001
+                pass
+            self.settle(1200)
+            note = f"o comando abriu uma ABA NOVA — sigo nela: {self.page.url} (voltar: tabs/tab)"
+        elif self.page.is_closed():
+            pages = self.open_pages()
+            if not pages:
+                self.page = self.ctx.new_page()
+            else:
+                self.page = pages[-1]
+            note = f"a aba da sessao fechou — sigo na aba {self.page.url}"
+        if note:
+            self.retarget_live()
+        return note
+
+    def switch_tab(self, n):
+        pages = self.open_pages()
+        if not 1 <= n <= len(pages):
+            raise ValueError(f"aba {n} nao existe (abertas: {len(pages)}) — rode tabs")
+        self.page = pages[n - 1]
+        self.page.bring_to_front()
+        self.settle(300)
+        self.retarget_live()
+
+    def tabs(self):
+        return {"tabs": [f"{i}{' (atual)' if pg == self.page else ''}: {pg.title()} — {pg.url}"
+                         for i, pg in enumerate(self.open_pages(), 1)]}
+
+    # 0095: a tela ao vivo conecta no targetId gravado na sessao — passa a apontar para a aba atual.
+    def retarget_live(self):
+        live = self.live_target(self.profile)
+        if live and live != self.live:
+            self.live = live
+            if self.meta.get("status") == "ready":
+                self.meta.update(**live)
+                write_meta(self.meta)
 
     # 0095: porta de depuracao + aba que o Playwright controla (o executor transmite a tela dela). Sem isso, segue sem ao vivo.
     def live_target(self, profile):
@@ -228,7 +287,11 @@ class Session:
             self.page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
             pass
-        self.page.wait_for_timeout(ms)
+        try:
+            self.page.wait_for_timeout(ms)
+        except Exception:  # noqa: BLE001 — o comando fechou a aba (follow_tabs volta para outra)
+            if not self.page.is_closed():
+                raise
 
     def on_sign_in(self):
         return "sign-in" in self.page.url or "signin" in self.page.url or "/login" in self.page.url
@@ -324,6 +387,15 @@ class Session:
         self.last = time.time()
         self.blocked.clear()
         self.allowed.clear()
+        before = self.follow_tabs()
+        out = self.command(cmd, args)
+        after = self.follow_tabs()
+        notes = [n for n in (before, after) if n]
+        if notes:
+            out = {**out, "tab": " · ".join(notes)}
+        return out
+
+    def command(self, cmd, args):
         p = self.page
         if cmd == "go":
             dest = args["url"]
@@ -353,6 +425,13 @@ class Session:
             return self.shot(args.get("name") or "print", args.get("caption"), bool(args.get("full")))
         elif cmd == "snap":
             return self.snap()
+        elif cmd == "tabs":
+            return self.tabs()
+        elif cmd == "tab":
+            if not re.fullmatch(r"\d+", str(args["n"]).strip()):
+                raise ValueError("tab <n>: o numero da aba (rode tabs)")
+            self.switch_tab(int(str(args["n"]).strip()))
+            return self.tabs()
         elif cmd == "text":
             text = p.locator("body").inner_text(timeout=10000)
             for sel, frame in self.frames():
@@ -444,6 +523,7 @@ def serve(sid):
             write_meta(meta)
             return
         s.guard_on = True
+        s.opened.clear()  # aba aberta durante o login nao conta como "o comando abriu"
 
         token = secrets.token_hex(16)
 
@@ -510,6 +590,12 @@ def report(res):
         print(f"LIBERADO (rota autorizada no somente leitura): {a}")
     if not res.get("ok", True):
         print(f"FALHOU: {res.get('error')}")
+    if res.get("tab"):
+        print(f"ABA: {res['tab']}")
+    if res.get("tabs"):
+        print("abas abertas (tab <n> para trocar):")
+        for t in res["tabs"]:
+            print(f"  {t}")
     for k in ("file", "screenshot"):
         if res.get(k):
             print(f"{'print' if k == 'file' else 'tela'}: {res[k]}" + (f" (#{res['number']})" if k == "file" else "")
@@ -639,7 +725,7 @@ def main():
     if cmd == "stop":
         return stop(sid)
     need = {"go": ["url"], "click": ["target"], "fill": ["target", "value"], "select": ["target", "value"],
-            "press": ["key"], "wait": ["target"], "shot": ["name"], "snap": [], "text": []}
+            "press": ["key"], "wait": ["target"], "shot": ["name"], "snap": [], "text": [], "tabs": [], "tab": ["n"]}
     if cmd not in need:
         die(f"comando desconhecido: {cmd}")
     flags = {"full": "--full" in rest}
