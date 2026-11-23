@@ -14,7 +14,8 @@
 #   env.sh browser start <ambiente> [--user <email>] [--plant <sigla>] [--card <card>] [--task <n>] [--allow <rota>]... [--headed]
 #                                                --allow = rota que pode gravar no ambiente somente leitura (so com autorizacao
 #                                                da pessoa; as da configuracao readOnlyAllow ja entram sozinhas)
-#   env.sh browser go|click|fill|select|press|wait|shot|snap|text|stop <sessao> [args]   (env_browser.py)
+#   env.sh browser go|click|fill|select|press|wait|shot|snap|text|tabs|tab|stop <sessao> [args]   (env_browser.py;
+#                                                aba nova aberta pelo clique vira a da sessao — "ABA:" na saida)
 #   env.sh browser status
 #   env.sh evidence <card> <item> <sub-tarefa> <pasta> [--report <relatorio.md>]
 #                                                sobe como evidencia da sub-tarefa SO os prints citados no relatorio (sem
