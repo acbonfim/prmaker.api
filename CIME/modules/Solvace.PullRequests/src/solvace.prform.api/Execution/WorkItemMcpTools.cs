@@ -229,7 +229,8 @@ public class WorkItemMcpTools(
     [McpServerTool(Name = "prmake_env_validation")]
     [Description("Cria o item de VALIDACAO EM AMBIENTE do card (ferramenta validar-em-ambiente): uma sub-tarefa env-validation por " +
                  "ambiente — o Claude entra no ambiente (navegador da maquina de quem executa, senha guardada so nela), segue o roteiro e " +
-                 "grava a sequencia de prints como evidencia na sub-tarefa. environments = chaves de ValidationEnvironments (dev, qa, " +
+                 "grava a sequencia de prints como evidencia na sub-tarefa; no fim, uma sub-tarefa escreve o comentario com as evidencias " +
+                 "(arquivo do item) e so o publica na discussion do card com discussion=\"sim\". environments = chaves de ValidationEnvironments (dev, qa, " +
                  "sandboxefeso, sandboxrt, performancetest, demo, gerdau, mondelez...) ou URL/nome de outro ambiente, separados por virgula; " +
                  "vazio = os sugeridos para o tipo do card. DEMO e producao: so navegar e consultar. Mesma checagem de duplicidade do " +
                  "prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa).")]
@@ -239,13 +240,26 @@ public class WorkItemMcpTools(
         [Description("E-mail do usuario (opcional; padrao: quem ja tem senha gravada na maquina que executa — ex.: admin@ewcm.com.br, que entra em qualquer planta —, senao o do ambiente ou o admin da planta). Nao pergunte a pessoa")] string? user = null,
         [Description("O que validar (roteiro curto; vazio = o que o card pede)")] string? scenario = null,
         [Description("Resultado esperado (opcional)")] string? expected = null,
+        [Description("Publicar o comentario com as evidencias na discussion do card: \"sim\" so quando a pessoa pediu; vazio/\"nao\" = " +
+                     "o texto fica so nos arquivos do item")] string? discussion = null,
         [Description("Titulo do item (opcional)")] string? title = null,
         [Description("true = ja coloca na fila do executor")] bool execute = false,
         [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
         string? duplicateReason = null,
         CancellationToken ct = default) => Safe(() => CreateEnvItemAsync(card, EnvValidationTemplate, WorkTaskKind.EnvValidation,
-        new Dictionary<string, string?> { ["environments"] = environments, ["plant"] = plant, ["user"] = user, ["scenario"] = scenario },
+        new Dictionary<string, string?>
+        {
+            ["environments"] = environments, ["plant"] = plant, ["user"] = user, ["scenario"] = scenario, ["discussion"] = YesNo(discussion)
+        },
         expected, title, execute, allowDuplicate, duplicateReason, "validacao em ambiente", ct));
+
+    /// <summary>Resposta sim/não das ferramentas (opções "não"/"sim" do modelo); outro valor ou vazio = o padrão do modelo.</summary>
+    public static string? YesNo(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "sim" or "s" or "yes" or "y" or "true" => "sim",
+        "não" or "nao" or "n" or "no" or "false" => "não",
+        _ => null
+    };
 
     /// <summary>0093: chave da ferramenta da reprodução do bug no ambiente (semeada pela <c>SeedEnvReproduction0093</c>).</summary>
     public const string EnvReproductionTemplate = "reproduzir-bug-no-ambiente";
@@ -314,7 +328,7 @@ public class WorkItemMcpTools(
                 {
                     created.Number, created.Type, created.Title, status, created.Origin, created.TemplateKey, created.Fingerprint,
                     tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
-                }), $"item de {what} #{created.Number} criado com {created.Tasks.Count} ambiente(s){(execute ? " e na fila do executor" : string.Empty)}");
+                }), $"item de {what} #{created.Number} criado com {created.Tasks.Count(t => t.Kind == kind)} ambiente(s){(execute ? " e na fila do executor" : string.Empty)}");
             }, ct);
         }
         catch (WorkItemDuplicateException d)

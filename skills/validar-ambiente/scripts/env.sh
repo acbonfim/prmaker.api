@@ -19,6 +19,9 @@
 #   env.sh evidence <card> <item> <sub-tarefa> <pasta> [--report <relatorio.md>]
 #                                                sobe como evidencia da sub-tarefa SO os prints citados no relatorio (sem
 #                                                repetir imagem igual; ate maxShots da configuracao, padrao 8)
+#   env.sh evidence-comment <card> <item> <sub-tarefa> <texto.md> [--publish] [--from-item <n>]...
+#                                                grava o comentario com as evidencias nos arquivos do item; --publish tambem
+#                                                publica na discussion do card com os prints que o texto cita pelo nome
 #   env.sh setup                                 prepara o venv (Playwright; usa o Chrome da maquina)
 # Senha: so no arquivo local ~/.claude/solvace-env-credentials.json, gravado pela PESSOA no terminal dela:
 #   bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <ambiente> <email>
@@ -446,5 +449,48 @@ case "$CMD" in
     [[ $FAIL -eq 0 ]] || exit 1
     ;;
 
-  *) sed -n '2,20p' "$0"; exit 1 ;;
+  evidence-comment)
+    # Comentario com as evidencias: sempre vira arquivo do item; na discussion do card so com --publish (a pessoa marcou
+    # "Publicar na discussion" = sim). Prints anexados = os deste item (e dos --from-item) que o texto cita pelo nome.
+    CARD="${1:?card}"; ITEM="${2:?numero do item}"; ITEM="${ITEM#\#}"; TASK="${3:?numero da sub-tarefa}"; TASK="${TASK#\#}"; TEXT="${4:?arquivo .md do comentario}"; shift 4
+    PUBLISH=0; ITEMS=("$ITEM")
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --publish) PUBLISH=1; shift ;;
+        --from-item) n="${2:?numero do item}"; ITEMS+=("${n#\#}"); shift 2 ;;
+        *) die "argumento desconhecido: $1 (use --publish ou --from-item <n>)" ;;
+      esac
+    done
+    [[ -s "$TEXT" ]] || die "arquivo vazio: $TEXT"
+    TOK="$(token)"; [[ -n "$TOK" ]] || die "sem token do PRMake (PRMAKE_TOKEN ou ~/.claude/prmake-token.txt)"
+    NAME="comentario-evidencias-$CARD-item-$ITEM.md"
+    code="$(curl -s --max-time 60 -o "$TMP/up.json" -w '%{http_code}' -X POST "$BASE/WorkItems/$ITEM/files" \
+      -H "x-api-key: $TOK" -H 'X-Execution-Client: skill' \
+      -F "file=@$TEXT;type=text/markdown" -F "name=$NAME" -F "kind=text" -F "taskNumber=$TASK" 2>/dev/null)"
+    [[ "$code" =~ ^2 ]] || die "HTTP $code ao gravar $NAME: $(jq -r '.error // .message // empty' "$TMP/up.json" 2>/dev/null | head -c 300)"
+    echo "texto gravado nos arquivos do item #$ITEM: $NAME"
+    if [[ $PUBLISH -eq 0 ]]; then
+      echo "discussion: nao publicado (Publicar na discussion = nao)"
+      exit 0
+    fi
+    IMAGES=(); mkdir -p "$TMP/img"
+    for n in "${ITEMS[@]}"; do
+      code="$(curl -s --max-time 60 -o "$TMP/files.json" -w '%{http_code}' -H "x-api-key: $TOK" "$BASE/WorkItems/$n/files" 2>/dev/null)"
+      [[ "$code" =~ ^2 ]] || die "HTTP $code ao listar os arquivos do item #$n"
+      mkdir -p "$TMP/img/$n"
+      while IFS=$'\t' read -r fname furl; do
+        [[ -n "$fname" ]] || continue
+        grep -qF "$fname" "$TEXT" || continue
+        out="$TMP/img/$n/$fname"
+        code="$(curl -s --max-time 120 -o "$out" -w '%{http_code}' -H "x-api-key: $TOK" "$BASE/$furl" 2>/dev/null)"
+        if [[ "$code" =~ ^2 && -s "$out" ]]; then IMAGES+=(--image "$out"); else echo "falhou baixar $fname (item #$n): HTTP $code"; fi
+      done < <(jq -r '.[] | select(.source == "item" or .source == null)
+        | select(.name | test("\\.(png|jpe?g|gif|webp)$"; "i")) | [.name, .contentUrl] | @tsv' "$TMP/files.json")
+    done
+    [[ ${#IMAGES[@]} -gt 0 ]] || echo "aviso: o texto nao cita nenhum print dos itens ${ITEMS[*]} pelo nome — publicando sem imagens"
+    bash "$HOME/.claude/skills/analisar-bug/scripts/prmake-plan.sh" devops "$CARD" comment "$TEXT" --task "$TASK" ${IMAGES[@]+"${IMAGES[@]}"} || exit 1
+    echo "discussion: publicado com $(( ${#IMAGES[@]} / 2 )) print(s)"
+    ;;
+
+  *) sed -n '2,23p' "$0"; exit 1 ;;
 esac
