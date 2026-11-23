@@ -45,6 +45,19 @@ public partial class WorkItem
         }
     }
 
+    /// <summary>
+    /// Card 78720: das sub-tarefas que já podem começar (pendentes, sem pausa, com as dependências terminadas), todas são da
+    /// pessoa — o Claude não tem o que fazer até ela agir.
+    /// </summary>
+    public bool OnlyPersonTurn
+    {
+        get
+        {
+            var ready = Tasks.Where(t => t.Status == WorkTaskStatus.Pending && HeldBlocker(t) is null && DependenciesOf(t).All(IsSettled)).ToList();
+            return ready.Count > 0 && ready.All(t => t.Executor == ExecutionExecutor.User);
+        }
+    }
+
     private WorkItemTask FindTask(long number) =>
         Tasks.FirstOrDefault(t => t.Number == number) ?? throw new DomainException($"Sub-tarefa #{number} não é do item #{Number}.");
 

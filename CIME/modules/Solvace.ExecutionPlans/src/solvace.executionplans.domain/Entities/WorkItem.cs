@@ -738,6 +738,9 @@ public partial class WorkItem
         else if (live.Any(t => t.Status == WorkTaskStatus.Running)) next = WorkItemStatus.Running;
         else if (live.Any(t => t.Status == WorkTaskStatus.Waiting)) next = WorkItemStatus.Waiting;
         else if (live.Any(t => t.Status == WorkTaskStatus.Failed)) next = WorkItemStatus.Failed;
+        // Card 78720: item do plano já começado em que só sobrou a vez da pessoa (validar em QA, aprovar...) — o resto
+        // depende dela. Não está "em andamento": aguarda você (a etapa do plano fica pendente, não em espera).
+        else if (FollowsPlan && StartedAt is not null && OnlyPersonTurn) next = WorkItemStatus.Waiting;
         // Card 78680: só sobrou o que está pausado (ou preso a uma pausada) e ninguém executando — o item espera alguém continuar.
         else if (ActiveRequestId is null && !FollowsPlan && OnlyHeldLeft) next = WorkItemStatus.Pending;
         // Card 78505 (#877): item avulso parado (sem pedido na fila) com parte feita e o resto pendente — pulou a sub-tarefa
