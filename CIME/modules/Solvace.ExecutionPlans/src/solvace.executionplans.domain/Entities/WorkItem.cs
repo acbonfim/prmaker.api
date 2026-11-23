@@ -449,6 +449,19 @@ public partial class WorkItem
         UpdatedAt = now;
     }
 
+    /// <summary>
+    /// Card 78728: o plano concluído voltou a rodar (etapas que tinham saído por engano voltaram) — o item espelho, fechado
+    /// junto com o plano, reabre e as sub-tarefas voltam a acompanhar as etapas na sincronização.
+    /// </summary>
+    public bool ReopenWithPlan(IReadOnlyCollection<string> openStepKeys, string actor, DateTimeOffset now)
+    {
+        if (Status != WorkItemStatus.Completed || !MirrorsPlan) return false;
+        if (!Tasks.Any(t => t.StepKey is not null && openStepKeys.Contains(t.StepKey) && t.Status == WorkTaskStatus.Skipped)) return false;
+        SetStatus(WorkItemStatus.Running, actor, "Plano reaberto — o item volta a acompanhar as etapas.", now);
+        UpdatedAt = now;
+        return true;
+    }
+
     /// <summary>Plano concluído/cancelado: fecha o item.</summary>
     public bool ClosePlan(string planStatus, string? reason, string actor, DateTimeOffset now)
     {
