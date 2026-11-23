@@ -91,12 +91,18 @@ dev validando a correcao em QA):
   ou (b) o usuario autorizar explicitamente depois disso, pelo chat ou por comentario no plano ("pode mover para
   Ready for QA"). A resposta a pergunta de fechamento do passo 6 **nao** autoriza o Ready for QA — ela veio antes
   da validacao. Sem (a) ou (b), nao mova: deixe o `watch` em segundo plano e siga quando a etapa for concluida.
-- Por isso, com codigo, o fechamento e dividido (0075): **`preparar-fechamento` antes da validacao** (logo depois de abrir
-  os PRs: root cause, classificacao, resumo PT/EN e `zero-remaining` — itens 1–4 de *Fechamento do card*, sem mover) e
-  `validar-qa` depende dele; o `fechar-card` tem `dependsOn: ["validar-qa"]` e so confere (`prmake_card`) e move para
-  Ready for QA se o card ainda nao estiver la. Assim, quando o usuario conclui *Validar em QA* e escolhe "Mover para
-  Ready for QA agora", o card nao tem pendencias (o DevOps recusa com 409 se faltar Root Cause, Resolution Type,
-  classificacoes, Bug Type ou Remaining zerado — card 77698).
+- Por isso, com codigo, o fechamento e dividido (0075, ordem corrigida no card 78728): **`preparar-fechamento` com a
+  correcao em QA** — `dependsOn` as etapas `pr-*`, que so concluem com **todos** os PRs mesclados (o PR da branch de QA
+  mesclado leva o card a Dev Test in QA); ai sim root cause, classificacao, resumo PT/EN e `zero-remaining` (itens 1–4
+  de *Fechamento do card*, sem mover). **Nunca antes do merge**: com o PR aguardando, encerre a vez — nao troque o
+  `dependsOn` para adiantar o fechamento. `validar-qa` (usuario) depende dele e o plano **espera** a pessoa; o
+  `fechar-card` tem `dependsOn: ["validar-qa"]`, confere (`prmake_card`) e move para Ready for QA se o card ainda nao
+  estiver la — **Ready for QA e o fechamento e o fim do fluxo do dev**. Assim o card chega ao Ready for QA sem
+  pendencias (o PRMake recusa com 409 se faltar Root Cause, Resolution Type, classificacoes, Bug Type ou Remaining
+  zerado — card 77698). O item de validacao em ambiente (0092) e uma ferramenta opcional da pessoa: **nao substitui**
+  `validar-qa` nem a tira do plano.
+- Card que fecha em **Test in Production** (sem QA no fluxo, coluna QA done) tem outro fechamento: nao ha
+  `preparar-fechamento`/`validar-qa` — o `fechar-card` faz os itens 1–4 e move (secao acima).
 
 ## Mover o card (permissao, DevOps fora do ar, 409)
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e

@@ -47,6 +47,12 @@ public class CreateExecutionPlanRequest
 public class UpsertExecutionStepsRequest
 {
     public List<ExecutionStepDefinition> Steps { get; set; } = [];
+
+    /// <summary>
+    /// true = a lista é o plano inteiro: pendentes omitidas saem (pedidas/fixadas pela pessoa ficam). false (padrão,
+    /// card 78728) = só as enviadas mudam; lista parcial não remove nem reordena as outras.
+    /// </summary>
+    public bool Replace { get; set; }
 }
 
 /// <summary>Atualização parcial de uma etapa: só os campos informados mudam.</summary>
