@@ -1027,6 +1027,7 @@ public class WorkItemApplication : IWorkItemApplication
         }
         if (IsMirror(item))
         {
+            item.ReopenWithPlan(plan.Steps.Where(s => !ExecutionStatus.IsStepFinished(s.Status)).Select(s => s.Key).ToList(), actor, now);
             var added = item.AddStepTasks(StepInputs(plan.Steps), now);
             if (added.Count > 0)
                 item.AddLog(null, actor, WorkItemLogKind.Updated, $"{added.Count} sub-tarefa(s) nova(s) do plano: {string.Join(", ", added.Select(t => t.Title))}.", now);

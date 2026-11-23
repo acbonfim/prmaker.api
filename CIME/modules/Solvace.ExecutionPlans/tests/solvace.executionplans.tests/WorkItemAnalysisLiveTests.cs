@@ -92,6 +92,23 @@ public class WorkItemAnalysisLiveTests
         Assert.Equal(WorkTaskStatus.Skipped, item.Tasks.Single(t => t.StepKey == "reproduzir").Status);
     }
 
+    [Fact]
+    public void Reopened_plan_reopens_the_item_and_the_skipped_task_follows_the_step()
+    {
+        // Card 78728: validar-qa saiu do plano por engano, o plano concluiu e pulou a sub-tarefa; recolocada, o plano reabre.
+        var item = AnalysisItem([Step("pr", "PR"), Step("validar-qa", "Validar em QA")]);
+        item.SyncStep("pr", ExecutionStatus.Completed, null, "Plano", Now);
+        item.ClosePlan(ExecutionStatus.Completed, null, "Plano", Now);
+
+        Assert.False(item.ReopenWithPlan(["outra"], "Plano", Now));
+        Assert.True(item.ReopenWithPlan(["validar-qa"], "Plano", Now));
+        item.SyncStep("validar-qa", ExecutionStatus.Waiting, "Valide em QA", "Plano", Now);
+
+        Assert.Equal(WorkItemStatus.Waiting, item.Status);
+        Assert.Equal(WorkTaskStatus.Waiting, item.Tasks.Single(t => t.StepKey == "validar-qa").Status);
+        Assert.Null(item.CompletedAt);
+    }
+
     // ---------------------------------------------------------------- ao vivo
 
     private static WorkItemLiveHead Head(string status = WorkItemStatus.Running, string? planStatus = null, DateTimeOffset? planLast = null) =>
