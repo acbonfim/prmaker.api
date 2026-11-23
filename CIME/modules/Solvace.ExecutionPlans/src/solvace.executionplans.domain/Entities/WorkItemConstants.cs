@@ -177,6 +177,10 @@ public static class WorkTaskKind
     public const string EnvValidation = "env-validation";
     /// <summary>0093: reproduzir o bug no ambiente (login, passos do card e prints como evidência da sub-tarefa).</summary>
     public const string EnvReproduction = "env-reproduction";
+    /// <summary>Comentário com as evidências da validação (arquivo do item; discussion do card só com <c>discussion = sim</c>).</summary>
+    public const string EvidenceComment = "evidence-comment";
+    /// <summary>Arquivo do item com o comentário das evidências (fica nos arquivos do card, com o número do card).</summary>
+    public static string EvidenceCommentFileName(string card, long itemNumber) => $"comentario-evidencias-{card}-item-{itemNumber}.md";
 
     /// <summary>Tipos de sub-tarefa: levantamento/consulta sem alterar nada (impacto na base, ler o card, mapear o código).</summary>
     public const string Research = "research";
@@ -187,7 +191,7 @@ public static class WorkTaskKind
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
-          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation, EnvReproduction };
+          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation, EnvReproduction, EvidenceComment };
 
     /// <summary>
     /// Tipo da sub-tarefa que espelha uma etapa do plano: o <c>taskKind</c> que a skill informou; sem ele, pelo tipo da

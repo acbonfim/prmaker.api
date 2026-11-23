@@ -16,6 +16,7 @@ public static class WorkTaskDependencies
         [WorkTaskKind.PrReview] = [WorkTaskKind.PullRequest],
         [WorkTaskKind.Ticket] = [WorkTaskKind.SqlScript],
         [WorkTaskKind.EnvValidation] = [WorkTaskKind.PullRequest],
+        [WorkTaskKind.EvidenceComment] = [WorkTaskKind.EnvValidation, WorkTaskKind.EnvReproduction, WorkTaskKind.Validation, WorkTaskKind.Manual],
     };
 
     /// <summary>Sub-tarefas do item de que <paramref name="task"/> depende pelo tipo (mesmo repositório/destino quando os dois informam).</summary>

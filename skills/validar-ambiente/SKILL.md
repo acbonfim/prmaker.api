@@ -140,6 +140,14 @@ Params: `environment` (chave ou URL), `plant?`, `user?`, `scenario?` (o que vali
    - Reprovado → `prmake_work_task(fail, result: "<o que falhou, em qual passo, print #n>")` — os prints ja estao na
      sub-tarefa; nao siga para os outros ambientes do item sem a pessoa decidir.
 
+## Comentario com as evidencias (sub-tarefa `evidence-comment`)
+As ferramentas `validar-em-ambiente` e `validar-em-qa` terminam com a sub-tarefa **Comentario com as evidencias**: o
+texto (PT/EN, o que foi validado, onde, resultado por esperado e o nome do print que prova) e **sempre** gerado e gravado
+nos arquivos do item; so vai para a **discussion do card** quando a pessoa marcou "Publicar na discussion" = sim
+(`params.discussion`). Roteiro na linha `evidence-comment` da `executar-item-de-trabalho`; gravar/publicar:
+`bash $ENV evidence-comment <card> <item> <taskNumber> <texto.md> [--publish] [--from-item <n>]...` (anexa so os prints do
+item — e dos `--from-item` — que o texto cita pelo nome). Nunca publique com `discussion` = nao/vazio.
+
 ## Reproduzir o bug (sub-tarefa `env-reproduction`, 0093)
 Params: `environment` (`cliente` = o relatado no card — padrao; ou chave/URL de outro ambiente), `plant?`, `user?`,
 `steps?` (vazio = os passos do card), `expected?`. Mesmas regras e mesmo navegador da validacao.
@@ -178,7 +186,8 @@ Com plano de analise aberto, cite o resultado na analise (secao Reproducao) — 
 Toda entrega que **altera** algo e precisa ser validada ganha um **item de validacao** (tipo `validation`), com **uma
 sub-tarefa por ambiente** — ex.: dev, qa, sandboxefeso (homologacao de release) ou sandboxrt (release/hotfix) e a
 producao do cliente do bug (Bug) ou de um cliente especifico (US). A pessoa tambem pode pedir um ambiente especifico.
-- MCP: `prmake_env_validation(card, environments: "dev, qa, mondelez", plant?, user?, scenario?, expected?, execute?)`
+- MCP: `prmake_env_validation(card, environments: "dev, qa, mondelez", plant?, user?, scenario?, expected?, discussion?, execute?)`
+  — `discussion: "sim"` so quando a pessoa pediu para publicar as evidencias na discussion (padrao: nao publica)
   — mesma checagem de duplicidade dos itens (`prmake_work_items` antes; ja existe → use o existente). Sem
   `environments` = os sugeridos para o tipo do card (`defaults` da configuracao).
 - Ferramenta: `prmake_tool_run(card, "validar-em-ambiente", {"environments": "...", "plant": "COR", "scenario": "..."})`.
