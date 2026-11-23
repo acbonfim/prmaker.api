@@ -404,10 +404,19 @@ public class ExecutionPlan
     /// se ainda pendentes, saem do plano; se já começaram, ficam (histórico) depois das enviadas. Etapa pedida por uma
     /// pessoa (<see cref="ExecutionStep.RequestedKeyPrefix"/>, <see cref="AddStep"/>) não sai por omissão: fica antes da
     /// etapa que vinha depois dela.
+    /// Card 78728: <paramref name="replace"/> = false e a lista não traz todas as etapas → é um ajuste parcial (ex.: trocar
+    /// o <c>dependsOn</c> de uma etapa): as enviadas mudam no lugar, as novas entram depois da enviada anterior e nenhuma sai
+    /// — antes o ajuste de uma etapa apagava <c>validar-qa</c>/<c>fechar-card</c> e o plano concluía sem a validação.
     /// </summary>
-    public void UpsertSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now)
+    public void UpsertSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now, bool replace = true)
     {
         EnsureNotCancelled();
+
+        if (!replace && Steps.Any(s => definitions.All(d => ExecutionStep.NormalizeKey(d.Key) != s.Key)))
+        {
+            PatchSteps(definitions, now);
+            return;
+        }
 
         var previous = Steps.OrderBy(s => s.Order).Select(s => s.Key).ToList();
         var seen = new HashSet<string>();
@@ -428,7 +437,8 @@ public class ExecutionPlan
             else
             {
                 step.Order = order;
-                step.SetTitle(def.Title);
+                if (!string.IsNullOrWhiteSpace(def.Title))
+                    step.SetTitle(def.Title);
                 if (def.Description is not null)
                     step.SetDescription(def.Description);
                 step.Touch(now);
@@ -458,6 +468,43 @@ public class ExecutionPlan
         if (requested.Count > 0)
             KeepRequestedInPlace(requested, previous);
 
+        Touch(now, fromExecutor: true);
+    }
+
+    /// <summary>Ajuste parcial (card 78728): muda só as etapas enviadas, sem tirar nem reordenar as outras.</summary>
+    private void PatchSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now)
+    {
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        var seen = new HashSet<string>();
+        ExecutionStep? last = null;
+        foreach (var def in definitions)
+        {
+            var key = ExecutionStep.NormalizeKey(def.Key);
+            if (!seen.Add(key))
+                throw new DomainException($"Etapa repetida no plano: '{key}'.");
+
+            var step = FindStep(key);
+            if (step is null)
+            {
+                step = new ExecutionStep(Id, key, 0, def.Title, def.Description, now);
+                Steps.Add(step);
+                ordered.Insert(last is null ? ordered.Count : ordered.IndexOf(last) + 1, step);
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(def.Title))
+                    step.SetTitle(def.Title);
+                if (def.Description is not null)
+                    step.SetDescription(def.Description);
+                step.Touch(now);
+            }
+            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn, def.TaskKind);
+            last = step;
+        }
+
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
         Touch(now, fromExecutor: true);
     }
 

@@ -136,7 +136,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         ExecutionActor actor, CancellationToken cancellationToken)
     {
         if (request.Steps.Count > 0)
-            await UpsertStepsAsync(open.Id, new UpsertExecutionStepsRequest { Steps = request.Steps }, actor, cancellationToken);
+            await UpsertStepsAsync(open.Id, new UpsertExecutionStepsRequest { Steps = request.Steps, Replace = true }, actor, cancellationToken);
         await AppendLogsAsync(open.Id, new AppendExecutionLogsRequest
         {
             Logs = [new ExecutionLogItem
@@ -265,7 +265,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (request.Steps.Count == 0)
             throw new DomainException("Informe ao menos uma etapa.");
 
-        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow), cancellationToken, actor);
+        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow, request.Replace), cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, null, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }

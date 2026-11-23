@@ -16,7 +16,7 @@ bash $PLAN contexto <card>                                           # 1 comando
 bash $PLAN usage <card>                                              # custo desta sessao no plano (vai sozinho ao mudar o status)
 bash ~/.claude/skills/analisar-bug/scripts/prmake-card.sh <card>     # (terminal) volta para a sessao do card ou abre uma nova
 bash $PLAN start <card> "Analise do bug <card>: <titulo curto>"      # cria OU retoma o plano aberto do card
-bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}, ...]'  # refina as etapas
+bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}, ...]'  # refina as etapas (lista parcial: so as enviadas mudam; STEPS_REPLACE=1 = plano inteiro, pendentes omitidas saem)
 bash $PLAN step <card> <key> running                                  # comecou a etapa
 bash $PLAN log <card> <key> progress "Lendo OrderService.cs (fluxo de aprovacao)"   # pedaco de andamento
 bash $PLAN log <card> <key> finding  "UserStatus = FORCE_CHANGE_PASSWORD no pool demo"

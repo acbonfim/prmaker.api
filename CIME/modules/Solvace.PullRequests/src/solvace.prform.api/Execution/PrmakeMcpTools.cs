@@ -115,14 +115,16 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_steps")]
-    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation; taskKind = tipo da sub-tarefa na Bancada (research, sql-query, sql-script, devops-action, notify, decision, task... — catalogo WorkItemTaskKinds; sem ele o PRMake deduz).")]
+    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation; taskKind = tipo da sub-tarefa na Bancada (research, sql-query, sql-script, devops-action, notify, decision, task... — catalogo WorkItemTaskKinds; sem ele o PRMake deduz). " +
+                 "Lista parcial so muda as etapas enviadas (title opcional nas que existem) — nenhuma sai nem muda de lugar; para tirar etapa pendente mande o plano inteiro com replace: true.")]
     public Task<string> Steps(
         string card,
         [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         string? phase = null,
+        [Description("true = a lista e o plano inteiro: pendentes omitidas saem (padrao false)")] bool replace = false,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var plan = await plans.UpsertStepsAsync(await PlanIdAsync(card, phase, ct), new UpsertExecutionStepsRequest { Steps = steps }, await ActorAsync(ct), ct);
+        var plan = await plans.UpsertStepsAsync(await PlanIdAsync(card, phase, ct), new UpsertExecutionStepsRequest { Steps = steps, Replace = replace }, await ActorAsync(ct), ct);
         return Serialize(new { plan.Status, steps = plan.Steps.OrderBy(s => s.Order).Select(s => new { s.Key, s.Status }) });
     });
 

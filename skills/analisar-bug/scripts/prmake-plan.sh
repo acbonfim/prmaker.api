@@ -611,7 +611,8 @@ case "$CMD" in
 
   steps)
     require_plan; read_steps_arg "${1:--}"
-    jq -n --slurpfile steps "$TMP/steps" '{steps:$steps[0]}' > "$TMP/body"
+    # Card 78728: lista parcial so muda as enviadas; STEPS_REPLACE=1 = a lista e o plano inteiro (pendentes omitidas saem).
+    jq -n --slurpfile steps "$TMP/steps" --arg r "${STEPS_REPLACE:-}" '{steps:$steps[0], replace:($r == "1")}' > "$TMP/body"
     send_or_queue PUT "/$PLAN/steps" "$TMP/body" && echo "OK etapas"
     ;;
 

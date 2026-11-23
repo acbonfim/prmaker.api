@@ -233,9 +233,12 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   da branch de QA mesclado); voce confere e, se ele avisar erro, move (`devops <card> dev-test-in-qa`, sem perguntar);
   `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano (a tela ja oferece mover) ou
   autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
-- **Fechamento antes da validacao em QA (0075)**: com codigo, root cause, classificacao, resumo PT/EN e Remaining zerado
-  vao na etapa `preparar-fechamento`, logo depois de abrir os PRs e **antes** de `validar-qa` — o Ready for QA exige o
-  card sem pendencias e o usuario move ao concluir a validacao. O `fechar-card` (depois de `validar-qa`) so confere e move.
+- **Fechamento com a correcao em QA (0075, card 78728)**: com codigo e QA no fluxo, root cause, classificacao, resumo
+  PT/EN e Remaining zerado vao na etapa `preparar-fechamento`, que depende das etapas `pr-*` — roda **so depois do merge**
+  (correcao em QA, card em Dev Test in QA), nunca com o PR aberto; nao troque `dependsOn` para adianta-la. Depois o plano
+  **espera** `validar-qa` (usuario); o `fechar-card` confere e move para Ready for QA — o fim do fluxo do dev. Card que
+  fecha em Test in Production: o `fechar-card` faz tudo. Ajustar uma etapa: `prmake_steps` so com ela (lista parcial nao
+  remove nada); `replace: true` so com o plano inteiro.
 - **Estimativa e horas sao da pessoa (0078)**: o PRMake pergunta na tela (assistente do card, sem travar o plano) se
   registra a estimativa inicial e sugere lancar horas em Completed conforme as etapas concluem — **nao** rode
   `initial-estimate` nem lance horas por conta propria; no fechamento siga o `zero-remaining` como sempre. A publicacao
