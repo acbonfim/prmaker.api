@@ -69,6 +69,7 @@ builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsDeskRunner>();
 builder.Services.AddScoped<solvace.prform.Execution.IEpicCardSource, solvace.prform.Execution.EpicCardSource>();
 builder.Services.AddScoped<solvace.prform.Execution.IDevOpsCardCreatedHook, solvace.prform.Execution.EpicCardCreatedHook>();
+builder.Services.AddScoped<solvace.prform.Execution.EpicStoryConverter>();  // 0099 ajustes 2: história do épico → card do DevOps
 // Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
 builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
@@ -106,6 +107,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.EpicMcpTools>()
     // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
     .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
+    // 0099 (ajustes 2): histórias e bugs do épico (rascunhos no PRMake → card do DevOps a pedido).
+    .WithTools<solvace.prform.Execution.EpicStoryMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f =>
     {

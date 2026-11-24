@@ -82,7 +82,8 @@ public static class PluginSettingsCatalog
             new("tipos", "Tipos de item e de sub-tarefa", "Os tipos de item, o que cada sub-tarefa faz e quem executa."),
             new("modelos", "Modelos de item", "Itens prontos para criar com um clique."),
             new("validacao", "Validação em ambiente", "Ambientes onde o Claude valida a demanda com prints (URL, usuário padrão, banco, somente leitura)."),
-            new("aws", "Deploy na AWS", "Ambientes da aba AWS (esteiras por ambiente e se o código do card já está em cada um) e o acompanhamento do deploy em andamento.")
+            new("aws", "Deploy na AWS", "Ambientes da aba AWS (esteiras por ambiente e se o código do card já está em cada um) e o acompanhamento do deploy em andamento."),
+            new("mesa", "Mesa de gestão", "Histórias e bugs escritos na Mesa de gestão e como viram card no DevOps.")
         ]),
         new("assistente", "Assistente e horas", "schedule", "Sugestões do assistente do card (estimativa inicial, lançar horas, publicar resumos) e as médias de horas do time.",
         [
@@ -414,6 +415,12 @@ public static class PluginSettingsCatalog
         new() { Section = "itens", Group = "aws", Plugin = Skills, Key = SkillsConfigurationKeys.AwsDeployFollowMax, Type = SettingTypes.Number, ReadBy = Api,
             Label = "Acompanhar deploy: coletas no máximo", Help = "Quantas coletas de acompanhamento por pedido (0 = não acompanha).",
             Default = AwsDeploy.AwsDeploySettings.DefaultFollowMax.ToString(), Min = 0, Max = 100 },
+        new() { Section = "itens", Group = "mesa", Plugin = Skills, Key = SkillsConfigurationKeys.DeskStoryFieldMap, Type = SettingTypes.Json, JsonRoot = "object", ReadBy = Api,
+            Label = "Histórias da Mesa → campos do card",
+            Help = "Para onde vai cada parte da história/bug ao virar card no DevOps, por tipo: {\"user-story\": {type, description, acceptanceCriteria}, " +
+                   "\"bug\": {type, description, reproSteps}} — valores são o referenceName do campo (markdown vira HTML). priority/severity opcionais " +
+                   "(padrão Microsoft.VSTS.Common.Priority/Severity; \"\" desliga). Texto sem campo (ex.: critérios de aceite num Bug) entra como seção da descrição.",
+            Default = Indented(Execution.DeskStoryFieldMap.DefaultJson), MultilineHint = true },
 
         // ============================================================== Assistente e horas
         new() { Section = "assistente", Group = "assistente", Plugin = Skills, Key = SkillsConfigurationKeys.AssistantEnabled, Type = SettingTypes.Bool, ReadBy = Api,

@@ -33,7 +33,8 @@ public class WorkItemMcpTools(
     CodeCitationGate citations,
     IExecutionQueueApplication queue,
     IWorkItemDeliverableApplication deliverables,
-    IEpicApplication epics)
+    IEpicApplication epics,
+    IEpicStoryApplication stories)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -90,8 +91,12 @@ public class WorkItemMcpTools(
         catch (ExecutionPlanNotFoundException)
         {
             // 0099: a numeração é a mesma dos épicos — #n de épico devolve o épico (detalhe em prmake_epic).
-            if (await epics.FindAsync(number, ct) is not { } epic) throw;
-            return Serialize(new { kind = "epic", note = $"#{number} é o épico {epic.Key} da Mesa de gestão — detalhe com prmake_epic({number}); itens do épico com card {epic.Key}.", epic });
+            if (await epics.FindAsync(number, ct) is { } epic)
+                return Serialize(new { kind = "epic", note = $"#{number} é o épico {epic.Key} da Mesa de gestão — detalhe com prmake_epic({number}); itens do épico com card {epic.Key}.", epic });
+            // Ajustes 2: #n de história/bug escrito na Mesa (rascunho do épico ou já convertido em card).
+            if (await stories.FindAsync(number, ct) is not { } story) throw;
+            var where = story.CardId is { } cardId ? $"já virou o card {cardId}" : "rascunho, ainda não é card";
+            return Serialize(new { kind = "story", note = $"#{number} é uma história/bug do épico {story.EpicKey} ({where}) — prmake_epic_stories({story.EpicNumber}).", story });
         }
         var otherCard = !string.Equals(item.CardNumber, RequireCard(card), StringComparison.Ordinal);
         return otherCard ? Serialize(new { otherCard = true, note = $"Item do card {item.CardNumber} — referencia; para altera-lo (so a pedido de uma pessoa), use card {item.CardNumber} nas ferramentas.", item }) : Serialize(item);
