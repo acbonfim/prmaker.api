@@ -42,6 +42,8 @@ public static class AwsStatusText
                     var label = Str(env, "label") ?? Str(env, "key") ?? "?";
                     var message = Str(env, "message") ?? VerdictText(Str(env, "verdict"), label);
                     sb.AppendLine($"- {label}: {message}");
+                    if (Str(env, "detail") is { Length: > 0 } detail)
+                        sb.AppendLine($"  {detail}");
                     if (!env.TryGetProperty("pipelines", out var pipes) || pipes.ValueKind != JsonValueKind.Array) continue;
                     var count = 0;
                     foreach (var p in pipes.EnumerateArray())
@@ -50,9 +52,11 @@ public static class AwsStatusText
                         var parts = new List<string> { Str(p, "status") ?? "sem execução" };
                         if (When(Date(p, "lastRunAt")) is { } last) parts.Add($"última {last}");
                         if (Str(p, "deployedSha") is { Length: > 0 } sha) parts.Add($"commit {Short(sha)}");
-                        if (p.TryGetProperty("deployed", out var dep) && dep.ValueKind is JsonValueKind.True) parts.Add("com o nosso código");
+                        if (Str(p, "verdict") == "broken") parts.Add("esteira quebrada antes do nosso código (não é do card)");
+                        else if (p.TryGetProperty("deployed", out var dep) && dep.ValueKind is JsonValueKind.True) parts.Add("com o nosso código");
                         else if (p.TryGetProperty("inBranch", out var inb) && inb.ValueKind is JsonValueKind.True) parts.Add("nosso código só na branch");
-                        sb.AppendLine($"  - {Str(p, "name") ?? "?"}: {string.Join(", ", parts)}");
+                        var app = Str(p, "app") is { Length: > 0 } a && a != Str(p, "name") ? $" ({a})" : "";
+                        sb.AppendLine($"  - {Str(p, "name") ?? "?"}{app}: {string.Join(", ", parts)}");
                     }
                     if (count > MaxPipelinesPerEnvironment)
                         sb.AppendLine($"  - (+{count - MaxPipelinesPerEnvironment} pipelines — veja a aba AWS)");
@@ -79,6 +83,7 @@ public static class AwsStatusText
         AwsVerdict.Deploying => $"Deploy em andamento em {label}",
         AwsVerdict.Failed => $"Deploy falhou em {label}",
         AwsVerdict.NotApplicable => "Não se aplica",
+        AwsVerdict.Broken => $"Ainda não está em {label} (esteira quebrada antes do nosso código)",
         _ => "Sem informação (sem permissão ou erro na coleta)",
     };
 

@@ -83,7 +83,8 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     /// </summary>
     [HttpGet("rules")]
     public async Task<ActionResult> Rules([FromQuery] string? card, [FromQuery] string? format, [FromQuery] string? repository,
-        [FromServices] SkillsRulesService rules, [FromServices] WorkItemToolsService tools, CancellationToken cancellationToken)
+        [FromServices] SkillsRulesService rules, [FromServices] WorkItemToolsService tools,
+        [FromServices] solvace.prform.Execution.DeskProfileService profile, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(SkillsRulesService.NormalizeCard(card)))
             return BadRequest(new { error = "Informe o card (?card=)." });
@@ -92,6 +93,9 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
         var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken))
                        + await rules.GovernanceMarkdownAsync(cancellationToken)
                        + await rules.StandardsMarkdownAsync(r.Card, cardRepositories, cancellationToken);
+        // 0099 (ajustes 2): no épico, o perfil de quem pede (persona PO/gestor de problemas ou dev).
+        if (SkillsRulesService.IsEpic(r))
+            markdown += await profile.MarkdownAsync(User, cancellationToken);
         var wantsText = string.Equals(format, "md", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
                         || Request.Headers.Accept.Any(a => a?.Contains("text/markdown", StringComparison.OrdinalIgnoreCase) == true);
         if (wantsText)

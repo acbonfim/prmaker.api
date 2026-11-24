@@ -18,7 +18,10 @@ public sealed record DevOpsFieldInfo(string ReferenceName, string Name, string T
 /// <summary>Área ou iteração (árvore achatada): <c>Path</c> no formato do campo (<c>Projeto\Time\Sub</c>).</summary>
 public sealed record DevOpsNodeInfo(string Path, string Name, int Depth);
 
-/// <summary>Pessoa (membro de algum time do projeto).</summary>
+/// <summary>
+/// Pessoa da organização (ajustes 1 da 0099: membros dos times, usuários da organização, busca de identidades e quem aparece em
+/// cards recentes — sem repetir pelo <c>UniqueName</c>).
+/// </summary>
 public sealed record DevOpsPersonInfo(string DisplayName, string UniqueName, string Id, string? ImageUrl);
 
 /// <summary>Time ou board (id + nome).</summary>
@@ -99,9 +102,42 @@ public sealed class DevOpsBoardItemsRequest
     public List<string>? Tags { get; set; }
     public List<string>? States { get; set; }
     public int? Top { get; set; }
+    /// <summary>
+    /// Ajustes 1 da 0099: com <c>Epic</c>, aplica no servidor os filtros salvos do épico (<see cref="DevOpsBoardFilters"/>) — padrão
+    /// false na REST (a tela filtra no navegador), true no MCP <c>prmake_devops_board</c>.
+    /// </summary>
+    public bool? UseEpicFilters { get; set; }
 }
 
-public sealed record DevOpsBoardItemsResponse(string ConfigHash, IReadOnlyList<DevOpsBoardItem> Items);
+/// <summary>
+/// Cartões do board. <c>FiltersApplied</c> (ajustes 1 da 0099): os filtros salvos do épico aplicados no servidor (null = nenhum —
+/// <c>useEpicFilters</c> desligado, sem épico ou épico sem filtro).
+/// </summary>
+public sealed record DevOpsBoardItemsResponse(string ConfigHash, IReadOnlyList<DevOpsBoardItem> Items, DevOpsBoardFilters? FiltersApplied = null);
+
+/// <summary>
+/// Ajustes 1 da 0099: filtros do board salvos no épico (a tela e o especialista usam os mesmos). Mesma semântica do filtro da tela
+/// (<c>board.logic.ts</c>): valores do mesmo filtro em OU (tags: todas as escolhidas, como o filtro de tags do DevOps), filtros
+/// diferentes em E; texto = todas as palavras em id/título/tags/responsável/estado/tipo, sem caixa nem acento. Lane padrão = <c>""</c>
+/// (o que <see cref="DevOpsBoardItem.Lane"/> devolve); responsável pelo <c>uniqueName</c> (<c>__unassigned__</c> = sem responsável).
+/// <c>HiddenColumns</c>: nomes das colunas que o épico não mostra (vazio = todas; coluna nova do DevOps aparece sozinha) — cards nelas
+/// ficam de fora.
+/// </summary>
+public sealed class DevOpsBoardFilters
+{
+    public List<string> Lanes { get; set; } = [];
+    public List<string> HiddenColumns { get; set; } = [];
+    public List<string> Types { get; set; } = [];
+    public List<string> States { get; set; } = [];
+    public List<string> AssignedTo { get; set; } = [];
+    public List<string> Tags { get; set; } = [];
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>Nenhum filtro ligado.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsEmpty => (Lanes?.Count ?? 0) == 0 && (HiddenColumns?.Count ?? 0) == 0 && (Types?.Count ?? 0) == 0 && (States?.Count ?? 0) == 0
+                           && (AssignedTo?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && string.IsNullOrWhiteSpace(Text);
+}
 
 /// <summary>Filtros da consulta (viram WIQL).</summary>
 public sealed class DevOpsQueryFilter

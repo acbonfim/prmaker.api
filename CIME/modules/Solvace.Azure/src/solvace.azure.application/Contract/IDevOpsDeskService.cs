@@ -22,8 +22,13 @@ public interface IDevOpsDeskService
     Task<IReadOnlyList<DevOpsNodeInfo>> GetAreasAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DevOpsNodeInfo>> GetIterationsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Membros dos times do projeto (cache de 10 min), filtro "contém" no nome ou no login.</summary>
-    Task<IReadOnlyList<DevOpsPersonInfo>> GetPeopleAsync(string? q, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Pessoas (ajustes 1 da 0099), sem repetir pelo <c>uniqueName</c>, em ordem de nome: membros dos times (cache 10 min), usuários da
+    /// organização pelo Graph (cache 1 h), busca de identidades com <paramref name="q"/> (≥ 2 letras) e quem aparece nos cards
+    /// alterados nos últimos 180 dias (cache 30 min) — só os times são obrigatórios; as outras fontes são melhor esforço. Filtro
+    /// <paramref name="q"/> sem caixa/acento no nome e no login; <paramref name="top"/> padrão 50 com <c>q</c>, sem <c>q</c> todos.
+    /// </summary>
+    Task<IReadOnlyList<DevOpsPersonInfo>> GetPeopleAsync(string? q, int? top = null, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<DevOpsNamedRef>> GetTeamsAsync(CancellationToken cancellationToken = default);
 
@@ -40,8 +45,12 @@ public interface IDevOpsDeskService
     /// Cartões do board. <paramref name="onlyIds"/> (escopo do épico) = só esses cards, nos tipos/estados do board; null =
     /// os do time (área do time), a coluna final só com os mais recentes.
     /// </summary>
+    /// <param name="epicFilters">
+    /// Ajustes 1 da 0099: filtros salvos do épico a aplicar no servidor (null/vazio = nenhum) — mesma semântica da tela; volta em
+    /// <see cref="DevOpsBoardItemsResponse.FiltersApplied"/>.
+    /// </param>
     Task<DevOpsBoardItemsResponse> GetBoardItemsAsync(DevOpsBoardItemsRequest request, IReadOnlyCollection<int>? onlyIds,
-        CancellationToken cancellationToken = default);
+        DevOpsBoardFilters? epicFilters = null, CancellationToken cancellationToken = default);
 
     /// <summary>Consulta por WIQL ou filtros (viram WIQL), com os campos escolhidos.</summary>
     Task<DevOpsQueryResponse> QueryAsync(DevOpsQueryRequest request, CancellationToken cancellationToken = default);

@@ -40,7 +40,9 @@ public partial class WorkItemsController : ExecutionControllerBase
     /// </summary>
     /// <remarks>0099: número de épico (mesma sequência) → <c>{kind:"epic", epic: EpicSummary}</c> (o popover do <c>#n</c> mostra o épico).</remarks>
     [HttpGet("{number:long}")]
-    public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, [FromServices] IEpicApplication epics, CancellationToken ct) =>
+    /// <remarks>Ajustes 2: número de história/bug do épico → <c>{kind:"story", number, story: EpicStoryResponse}</c>.</remarks>
+    public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, [FromServices] IEpicApplication epics,
+        [FromServices] IEpicStoryApplication stories, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () =>
         {
             try
@@ -51,6 +53,8 @@ public partial class WorkItemsController : ExecutionControllerBase
             {
                 if (await epics.FindAsync(number, ct) is { } epic)
                     return Ok(new { kind = "epic", number = epic.Number, epic });
+                if (await stories.FindAsync(number, ct) is { } story)
+                    return Ok(new { kind = "story", number = story.Number, story });
                 throw;
             }
         });

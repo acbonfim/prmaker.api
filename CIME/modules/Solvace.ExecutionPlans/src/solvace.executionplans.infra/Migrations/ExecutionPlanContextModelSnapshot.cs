@@ -623,6 +623,13 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BoardFiltersJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("BoardFilters")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.Property<DateTimeOffset?>("ClosedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -745,6 +752,113 @@ namespace solvace.executionplans.infra.Migrations
                         .IsUnique();
 
                     b.ToTable("EpicCards", "execution");
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.EpicStory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AcceptanceCriteria")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CardId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ConvertedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConvertedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("ConvertingAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EpicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("EpicNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FieldsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Fields")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('execution.work_item_number_seq')");
+
+                    b.Property<int?>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReproSteps")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TagsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Tags")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("EpicId", "Status");
+
+                    b.ToTable("EpicStories", "execution");
                 });
 
             modelBuilder.Entity("solvace.executionplans.domain.Entities.ExecutionArtifact", b =>
@@ -2418,6 +2532,15 @@ namespace solvace.executionplans.infra.Migrations
                 {
                     b.HasOne("solvace.executionplans.domain.Entities.Epic", null)
                         .WithMany("Cards")
+                        .HasForeignKey("EpicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("solvace.executionplans.domain.Entities.EpicStory", b =>
+                {
+                    b.HasOne("solvace.executionplans.domain.Entities.Epic", null)
+                        .WithMany()
                         .HasForeignKey("EpicId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

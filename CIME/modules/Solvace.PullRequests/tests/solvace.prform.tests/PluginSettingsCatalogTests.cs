@@ -159,6 +159,6 @@ public class PluginSettingsCatalogTests
         Assert.True(Fields.Count >= 125, $"só {Fields.Count} chaves no catálogo");
         // 46 do inventário + WorkItemTypes (0085 r4) + BranchNamePatternUserStory (0085 r6) + ValidationEnvironments (0092)
         // + ReverseEngineeringPracticalMinQuestions (0097) + AwsDeployEnvironments/FollowMinutes/FollowMax (0100).
-        Assert.Equal(53, Fields.Count(f => f.Plugin == PluginSettingsCatalog.Skills));
+        Assert.Equal(54, Fields.Count(f => f.Plugin == PluginSettingsCatalog.Skills));
     }
 }

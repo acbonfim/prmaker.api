@@ -203,6 +203,16 @@ public sealed class Runner(AgentConfig config)
             foreach (var old in _recent.Where(kv => DateTimeOffset.UtcNow - kv.Value > TimeSpan.FromMinutes(10)).Select(kv => kv.Key).ToList())
                 _recent.TryRemove(old, out _);
 
+            // A api-key da máquina passou a ser de outra pessoa (instalou as skills aqui): registra para ela e reinicia com a
+            // credencial nova — sem pedido rodando, para não largar trabalho de quem estava antes no meio.
+            if (_jobs.IsEmpty && Registration.OwnerChanged(config.Token, ConfigStore.UserToken()))
+            {
+                var before = config.WorkerId;
+                await Registration.EnsureOwnerAsync(config, ct);
+                if (config.WorkerId != before)
+                    Updater.Restart();
+            }
+
             if (config.AutoUpdate && _jobs.IsEmpty && state.LatestAgentVersion is { Length: > 0 } latest && Updater.IsNewer(latest, Agent.Version))
             {
                 Log.Info($"versão nova do executor publicada ({latest}) — atualizando");

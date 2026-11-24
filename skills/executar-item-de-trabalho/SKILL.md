@@ -69,7 +69,7 @@ PRMake fora: siga e diga no `result` que nao conferiu.
 ## MCP primeiro
 Carregue uma vez, no inicio:
 `ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_items,mcp__prmake__prmake_work_task,mcp__prmake__prmake_rules,mcp__prmake__prmake_card,mcp__prmake__prmake_devops,mcp__prmake__prmake_work_item_file,mcp__prmake__prmake_work_deliverable,mcp__prmake__prmake_standards,mcp__prmake__prmake_standards_check")`
-Item com kinds de gestao (0099): tambem `mcp__prmake__prmake_devops_query,mcp__prmake__prmake_devops_meta,mcp__prmake__prmake_devops_card_get,mcp__prmake__prmake_devops_card_create,mcp__prmake__prmake_devops_card_update,mcp__prmake__prmake_devops_card_move,mcp__prmake__prmake_epic,mcp__prmake__prmake_pdf,mcp__prmake__prmake_work_item_files`.
+Item com kinds de gestao (0099): tambem `mcp__prmake__prmake_devops_query,mcp__prmake__prmake_devops_board,mcp__prmake__prmake_devops_meta,mcp__prmake__prmake_devops_card_get,mcp__prmake__prmake_devops_card_create,mcp__prmake__prmake_devops_card_update,mcp__prmake__prmake_devops_card_move,mcp__prmake__prmake_epic,mcp__prmake__prmake_pdf,mcp__prmake__prmake_work_item_files`.
 (`prmake_timeline`, `prmake_pr_open`, `prmake_file`, `prmake_devops_config`, `prmake_base_impact`, `prmake_work_item_evidence`,
 `prmake_work_item_files`, `prmake_notes`, `prmake_case_context` so quando precisar).
 

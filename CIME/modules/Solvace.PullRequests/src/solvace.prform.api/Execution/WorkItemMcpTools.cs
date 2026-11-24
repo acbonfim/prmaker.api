@@ -33,7 +33,9 @@ public class WorkItemMcpTools(
     CodeCitationGate citations,
     IExecutionQueueApplication queue,
     IWorkItemDeliverableApplication deliverables,
-    IEpicApplication epics)
+    IEpicApplication epics,
+    IEpicStoryApplication stories,
+    DeskProfileService profile)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -48,8 +50,12 @@ public class WorkItemMcpTools(
     public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
-        return SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct)
-               + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct);
+        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct)
+                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct);
+        // 0099 (ajustes 2): no épico, o perfil de quem pede (o item de gestão roda na máquina de quem agiu).
+        if (SkillsRulesService.IsEpic(r) && http.HttpContext?.User is { } user)
+            markdown += await profile.MarkdownAsync(user, ct);
+        return markdown;
     });
 
     [McpServerTool(Name = "prmake_work_items", ReadOnly = true)]
@@ -91,8 +97,12 @@ public class WorkItemMcpTools(
         catch (ExecutionPlanNotFoundException)
         {
             // 0099: a numeração é a mesma dos épicos — #n de épico devolve o épico (detalhe em prmake_epic).
-            if (await epics.FindAsync(number, ct) is not { } epic) throw;
-            return Serialize(new { kind = "epic", note = $"#{number} é o épico {epic.Key} da Mesa de gestão — detalhe com prmake_epic({number}); itens do épico com card {epic.Key}.", epic });
+            if (await epics.FindAsync(number, ct) is { } epic)
+                return Serialize(new { kind = "epic", note = $"#{number} é o épico {epic.Key} da Mesa de gestão — detalhe com prmake_epic({number}); itens do épico com card {epic.Key}.", epic });
+            // Ajustes 2: #n de história/bug escrito na Mesa (rascunho do épico ou já convertido em card).
+            if (await stories.FindAsync(number, ct) is not { } story) throw;
+            var where = story.CardId is { } cardId ? $"já virou o card {cardId}" : "rascunho, ainda não é card";
+            return Serialize(new { kind = "story", note = $"#{number} é uma história/bug do épico {story.EpicKey} ({where}) — prmake_epic_stories({story.EpicNumber}).", story });
         }
         var otherCard = !string.Equals(item.CardNumber, RequireCard(card), StringComparison.Ordinal);
         return otherCard ? Serialize(new { otherCard = true, note = $"Item do card {item.CardNumber} — referencia; para altera-lo (so a pedido de uma pessoa), use card {item.CardNumber} nas ferramentas.", item }) : Serialize(item);

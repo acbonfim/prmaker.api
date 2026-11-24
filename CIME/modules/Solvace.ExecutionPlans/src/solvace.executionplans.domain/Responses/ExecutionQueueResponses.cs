@@ -95,6 +95,65 @@ public class ExecutionWorkerResponse
     public int Running { get; set; }
     /// <summary>Versão do executor publicada pelo PRMake (para avisar "desatualizado").</summary>
     public string? LatestAgentVersion { get; set; }
+
+    /// <summary>
+    /// 0099 (ajustes 2): perfil do dono para os primeiros passos e o doctor — <c>management</c> (só management, sem papel de dev
+    /// nem admin) ou <c>dev</c>. Preenchido nas respostas para o próprio dono (<c>GET ExecutionWorker/mine</c> e ações dele).
+    /// </summary>
+    public string? Profile { get; set; }
+
+    /// <summary>
+    /// 0099 (ajustes 2): para cada checagem do doctor (pelo nome), os perfis que precisam dela (<c>["dev","management"]</c> ou
+    /// <c>["dev"]</c>). Fora do perfil = "não necessário para o seu perfil" (nunca erro).
+    /// </summary>
+    public Dictionary<string, List<string>>? DoctorRequiredFor { get; set; }
+
+    /// <summary>0099 (ajustes 2): checagens que falharam e são necessárias para o <see cref="Profile"/>.</summary>
+    public int? ProfileDoctorProblems { get; set; }
+}
+
+/// <summary>
+/// 0099 (ajustes 2): o que o doctor exige por perfil. PO / gestor de problemas (<c>management</c>): Claude Code instalado e com
+/// login, skills do PRMake (+ api-key e MCP), executor registrado e as ferramentas que as skills usam (bash, jq, python3) — sem
+/// workspace/repositórios, git, AWS, NuGet/CodeArtifact nem bancos. O resto é só do perfil <c>dev</c>.
+/// </summary>
+public static class DoctorProfiles
+{
+    public const string Dev = "dev";
+    public const string Management = "management";
+
+    /// <summary>Checagens (nome exato do doctor do executor) que o perfil management também precisa.</summary>
+    public static readonly IReadOnlySet<string> ManagementChecks = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Claude Code", "Login do Claude Code", "MCP do PRMake", "Skills do PRMake", "api-key do usuário", "Credencial do executor",
+        "Ferramenta bash", "Ferramenta jq", "Ferramenta python3"
+    };
+
+    public static List<string> RequiredFor(string? check) =>
+        ManagementChecks.Contains((check ?? string.Empty).Trim()) ? [Dev, Management] : [Dev];
+
+    /// <summary>Preenche perfil, exigências por checagem e os problemas que contam para o perfil.</summary>
+    public static ExecutionWorkerResponse Apply(ExecutionWorkerResponse w, string profile)
+    {
+        w.Profile = profile;
+        var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var problems = 0;
+        if (w.Doctor is { ValueKind: System.Text.Json.JsonValueKind.Array } checks)
+            foreach (var c in checks.EnumerateArray())
+            {
+                if (c.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                var name = c.TryGetProperty("name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String ? n.GetString() ?? string.Empty : string.Empty;
+                var required = RequiredFor(name);
+                map[name] = required;
+                if (c.TryGetProperty("ok", out var ok) && ok.ValueKind == System.Text.Json.JsonValueKind.False && required.Contains(profile))
+                    problems++;
+            }
+        foreach (var name in ManagementChecks)
+            map.TryAdd(name, [Dev, Management]);
+        w.DoctorRequiredFor = map;
+        w.ProfileDoctorProblems = problems;
+        return w;
+    }
 }
 
 /// <summary>Registro do executor: a credencial só aparece aqui (guarde-a).</summary>

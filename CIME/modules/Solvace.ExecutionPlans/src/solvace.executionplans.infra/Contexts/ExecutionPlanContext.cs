@@ -45,6 +45,8 @@ public class ExecutionPlanContext : DbContext
     // 0099: épicos da Mesa de gestão e os cards do DevOps de cada um.
     public DbSet<Epic> Epics { get; set; }
     public DbSet<EpicCard> EpicCards { get; set; }
+    // 0099 (ajustes 2): histórias e bugs escritos no PRMake dentro do épico (viram card do DevOps uma vez só).
+    public DbSet<EpicStory> EpicStories { get; set; }
     // 0100: aba AWS — índice de pipelines (compartilhado), último retrato por card e fila de coleta da máquina.
     public DbSet<AwsPipeline> AwsPipelines { get; set; }
     public DbSet<AwsCardSnapshot> AwsCardSnapshots { get; set; }
@@ -640,6 +642,8 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Color).IsRequired().HasMaxLength(Epic.MaxColorLength);
             entity.Property(e => e.TagsJson).HasColumnName("Tags").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb");
+            // Ajustes 1: filtros do board salvos no épico.
+            entity.Property(e => e.BoardFiltersJson).HasColumnName("BoardFilters").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
             entity.Property(e => e.DevOpsTeam).HasMaxLength(Epic.MaxTeamLength);
             entity.Property(e => e.DevOpsBoard).HasMaxLength(Epic.MaxBoardLength);
             entity.Property(e => e.DevOpsCardId).HasMaxLength(Epic.MaxDevOpsCardLength);
@@ -647,6 +651,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.Key);
             entity.Ignore(e => e.Tags);
+            entity.Ignore(e => e.BoardFilters);
 
             entity.HasMany(e => e.Cards).WithOne().HasForeignKey(c => c.EpicId).OnDelete(DeleteBehavior.Cascade);
 
@@ -668,6 +673,37 @@ public class ExecutionPlanContext : DbContext
 
             entity.HasIndex(e => new { e.EpicId, e.CardNumber }).IsUnique();
             entity.HasIndex(e => e.CardNumber);
+        });
+
+        // 0099 (ajustes 2): histórias/bugs do épico — número da mesma sequência global (#n resolve a história).
+        modelBuilder.Entity<EpicStory>(entity =>
+        {
+            entity.ToTable("EpicStories");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Number).HasDefaultValueSql($"nextval('{Schema}.{WorkItemNumberSequence}')").ValueGeneratedOnAdd();
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(EpicStory.MaxTitleLength);
+            entity.Property(e => e.Description).HasColumnType("text");
+            entity.Property(e => e.AcceptanceCriteria).HasColumnType("text");
+            entity.Property(e => e.ReproSteps).HasColumnType("text");
+            entity.Property(e => e.Severity).HasMaxLength(EpicStory.MaxSeverityLength);
+            entity.Property(e => e.TagsJson).HasColumnName("Tags").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb");
+            entity.Property(e => e.FieldsJson).HasColumnName("Fields").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CardId).HasMaxLength(EpicStory.MaxCardLength);
+            entity.Property(e => e.ConvertedByName).HasMaxLength(200);
+            entity.Property(e => e.CreatedByName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Version).IsRowVersion();
+            entity.Ignore(e => e.Tags);
+            entity.Ignore(e => e.Fields);
+            entity.Ignore(e => e.IsConverted);
+
+            entity.HasOne<Epic>().WithMany().HasForeignKey(e => e.EpicId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.Number).IsUnique();
+            entity.HasIndex(e => new { e.EpicId, e.Status });
+            entity.HasIndex(e => e.CardId);
         });
 
         // 0100: aba AWS. O índice é por nome da pipeline; o retrato, um por card; a fila, por pessoa (executor de quem pediu).

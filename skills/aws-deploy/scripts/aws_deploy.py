@@ -49,7 +49,8 @@ DENIED = re.compile(r"AccessDenied|UnauthorizedOperation|not authorized|Authoriz
                     r"InvalidClientTokenId|ExpiredToken", re.I)
 SECRET_LINE = re.compile(r"(?i)((?:pass(?:word)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|pwd|"
                          r"connectionstring)\s*[:=]\s*)(\S+)")
-VERDICT_ORDER = ["failed", "deploying", "waiting", "absent", "deployed"]
+VERDICT_ORDER = ["failed", "deploying", "waiting", "absent", "deployed", "broken"]
+APP_PREFIX = re.compile(r"^(edv-solvace-|revamp-api-|revamp-|api-)", re.I)
 
 
 def log(msg):
@@ -491,6 +492,20 @@ def guess_repositories(card):
     return [r for r in pmap(probe, list(repos.items()), workers=8) if r]
 
 
+def app_of(p):
+    """Nome curto do app da esteira (edv-solvace-centerline-dev → centerline)."""
+    n = APP_PREFIX.sub("", p["name"])
+    return re.sub(r"-(" + "|".join(TIERS) + r")$", "", n, flags=re.I) or p["name"]
+
+
+def impact_of(p, files):
+    """direct = o card mexeu no projeto do próprio app; shared = só no código compartilhado (libs) que o gatilho inclui."""
+    own = [i for i in p.get("filePathsInclude") or [] if not re.match(r"projects/(lib-|environments)", i)]
+    if not own:
+        return None  # gatilho sem filtro de pasta: não dá para dizer
+    return "direct" if matches_paths(dict(p, filePathsInclude=own), files) else "shared"
+
+
 def matches_paths(p, files):
     inc, exc = p.get("filePathsInclude") or [], p.get("filePathsExclude") or []
     if not inc and not exc:
@@ -515,8 +530,8 @@ def summary_msg(rev):
         return (rev.get("revisionSummary") or "").strip()
 
 
-def pipeline_runs(aws, name, repo):
-    out = aws.call("codepipeline", "list-pipeline-executions", "--pipeline-name", name, "--max-items", "12") or {}
+def pipeline_runs(aws, name, repo, limit=12):
+    out = aws.call("codepipeline", "list-pipeline-executions", "--pipeline-name", name, "--max-items", str(limit)) or {}
     runs = []
     for e in out.get("pipelineExecutionSummaries", []):
         src = next((r for r in e.get("sourceRevisions", []) if r.get("actionName") == repo["action"]), None) \
@@ -594,8 +609,27 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
     deployed = repo.contains(dep_run["sha"]) if dep_run and dep_run.get("sha") else False
     latest_has = repo.contains(latest["sha"]) if latest and latest.get("sha") else False
     st = (latest or {}).get("status")
+    broken_since, broken_before_us = None, False
+    if st == "Failed" and not target:
+        # Esteira quebrada: desde quando falha (última vez que passou) e se já falhava antes do nosso código chegar
+        hist = pipeline_runs(aws, p["name"], src, limit=50) if len(runs) >= 12 else runs
+        streak = []
+        for r in hist:
+            if r["status"] == "Succeeded":
+                break
+            if r["status"] == "Failed":
+                streak.append(r)
+        if streak:
+            broken_since = streak[-1]["startedAt"]
+            ours = [r for r in streak if r.get("sha") and repo.contains(r["sha"])]
+            first_ours = ours[-1]["startedAt"] if ours else None
+            # falhou antes da 1ª execução com o nosso código (ou nem passou nas 50 últimas) → não é nosso
+            broken_before_us = bool(first_ours and broken_since < first_ours) or \
+                (len(streak) == len(hist) and any(not (r.get("sha") and repo.contains(r["sha"])) for r in streak))
     if deployed:
         verdict = "deployed"
+    elif latest_has and st == "Failed" and broken_before_us:
+        verdict = "broken"
     elif not in_branch and not latest_has:
         verdict = "absent"
     elif latest_has and st == "InProgress":
@@ -616,7 +650,8 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
             "consoleUrl": console_url(p["name"], region), "buildUrl": None,
             "action": f"{target['action']} → {target['target']}" if target else None,
             "latest": {"status": st, "sha": (latest or {}).get("sha"), "startedAt": started} if latest else None,
-            "failedLogTail": [], "stale": stale}
+            "failedLogTail": [], "stale": stale, "app": app_of(p), "brokenSince": broken_since,
+            "brokenBeforeUs": broken_before_us}
     if st == "Failed":
         tail = failed_tail(aws, p["name"])
         if tail:
@@ -624,29 +659,61 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
     return item
 
 
-def env_message(env, verdict, pipes):
+def ddmm(v):
+    d = parse_iso(v)
+    return d.astimezone(dt.timezone(dt.timedelta(hours=-3))).strftime("%d/%m") if d else "?"
+
+
+def env_summary(pipes):
+    """Contagem por app do que decide o ambiente (esteiras quebradas antes do nosso código ficam à parte)."""
+    out = {"apps": len(pipes), "withCode": 0, "broken": [], "failed": [], "deploying": [], "waiting": [], "absent": []}
+    for p in pipes:
+        if p["deployed"]:
+            out["withCode"] += 1
+        elif p["verdict"] in out:
+            out[p["verdict"]].append(p.get("app") or p["name"])
+    return out
+
+
+def env_message(env, verdict, pipes, pr=None):
+    """(título curto, detalhe): o título responde "o nosso código está lá?"; o detalhe diz onde falta e por quê."""
     label = env["label"]
-    branches = sorted({p["branch"] for p in pipes if p.get("branch")})
-    br = ", ".join(branches)
-    done = sum(1 for p in pipes if p["deployed"])
-    total = len(pipes)
-    of = lambda v: [p["name"] for p in pipes if p["verdict"] == v]
-    names = lambda ns: ", ".join(ns[:3]) + (f" e mais {len(ns) - 3}" if len(ns) > 3 else "")
-    if verdict == "deployed":
-        return f"Nosso código está em {label}"
-    if done:  # parcial: diz onde já está antes do problema
-        head = f"Nosso código está em {label} em {done} de {total} esteiras"
-        tail = {"failed": f"o deploy falhou em {names(of('failed'))}",
-                "deploying": f"deploy em andamento em {names(of('deploying'))}",
-                "waiting": f"aguardando o deploy em {names(of('waiting'))}",
-                "absent": f"ainda não chegou em {names(of('absent'))}"}[verdict]
-        return f"{head} — {tail}"
-    return {
-        "deploying": f"Deploy em andamento em {label} com o nosso código",
-        "waiting": f"Na branch {br} ({label}), aguardando o deploy",
-        "failed": f"Deploy falhou em {label} ({names(of('failed'))}) — nosso código ainda não está lá",
-        "absent": f"Ainda não está em {label}" + (f" (não chegou na branch {br})" if br else ""),
+    br = ", ".join(sorted({p["branch"] for p in pipes if p.get("branch")}))
+    sm = env_summary(pipes)
+    names = lambda ns: ", ".join(ns[:4]) + (f" e mais {len(ns) - 4}" if len(ns) > 4 else "")
+    many = sm["apps"] > 1
+    parts = []
+    if many and sm["withCode"]:
+        parts.append(f"{sm['withCode']} de {sm['apps']} apps com o nosso código.")
+    if sm["deploying"]:
+        parts.append(f"Deploy em andamento: {names(sm['deploying'])}.")
+    if sm["failed"]:
+        parts.append(f"O deploy com o nosso código falhou: {names(sm['failed'])} — veja o log do build.")
+    if sm["waiting"]:
+        parts.append(f"Falta o deploy: {names(sm['waiting'])} (o código já está na branch {br}; a esteira ainda não rodou).")
+    if sm["absent"] and verdict != "absent":
+        parts.append(f"Ainda não chegou: {names(sm['absent'])}.")
+    if sm["broken"]:
+        since = min((p["brokenSince"] for p in pipes if p["verdict"] == "broken" and p.get("brokenSince")), default=None)
+        parts.append(f"{names(sm['broken'])}: esteira quebrada desde {ddmm(since)}, antes do nosso código — não é do card.")
+    if verdict == "absent":
+        if pr:
+            state = {"merged": "mesclado", "open": "ainda aberto"}.get(pr.get("status"), pr.get("status") or "")
+            parts.insert(0, f"PR #{pr['number']} para {pr['base']} {state}.")
+        elif br:
+            parts.insert(0, f"Não chegou na branch {br}.")
+    partial = sm["withCode"] > 0 and verdict != "deployed"
+    title = {
+        "deployed": f"Nosso código está em {label}",
+        "deploying": f"Deploy em andamento em {label}",
+        "waiting": f"Na branch de {label}, falta o deploy",
+        "failed": f"O deploy com o nosso código falhou em {label}",
+        "absent": f"Ainda não está em {label}",
+        "broken": f"Ainda não está em {label} (esteira quebrada)",
     }[verdict]
+    if partial:
+        title = f"Parcial em {label}: {sm['withCode']} de {sm['apps']} apps"
+    return title, " ".join(parts)
 
 
 # ── logs, lambdas, alarmes ────────────────────────────────────────────────────────────────────────────────────────
@@ -747,9 +814,10 @@ def collect(args):
     if args.envs:
         keep = set(args.envs.split(","))
         envs = [e for e in envs if e["key"] in keep]
-    snap = {"version": 1, "card": args.card, "requestId": args.request, "collectedAt": None, "collectedBy": None,
+    snap = {"version": 2, "card": args.card, "requestId": args.request, "collectedAt": None, "collectedBy": None,
             "machine": socket.gethostname(), "durationMs": 0, "account": ACCOUNT, "region": REGION, "index": None,
-            "repositories": [], "environments": [], "resources": {"lambdas": [], "alarms": []}, "denied": [], "warnings": []}
+            "repositories": [], "environments": [], "resources": {"lambdas": [], "alarms": []}, "denied": [], "warnings": [],
+            "notes": []}
     if not args.skip_index and not args.index_dir:
         try:
             snap["index"] = refresh_index(aws)
@@ -796,6 +864,12 @@ def collect(args):
         info["files"] = len(files)
         all_files += files
         mine = [p for p in pipes if matches_paths(p, files)]
+        repo.changed = files
+        libs = sorted({f.split("/")[1] for f in files if re.match(r"projects/lib-[^/]+/", f)})
+        if libs and len({app_of(p) for p in mine}) > 3:
+            snap["notes"].append(
+                f"{full.split('/')[-1]} é um monorepo: o card mudou código compartilhado ({', '.join(libs)}), que entra no build "
+                f"de cada app — por isso cada app tem a sua esteira por ambiente e todas precisam levar o nosso código.")
         if not repo.commits:
             snap["warnings"].append(f"{full}: nenhum commit do card achado (nem SHA registrado nem commit citando {args.card})")
         repos.append((repo, mine))
@@ -804,6 +878,8 @@ def collect(args):
     jobs = [(e, p, target, repo) for e in envs for repo, mine in repos for p in mine for target in env_targets(e, p)]
     log(f"{len(jobs)} esteiras do card nos {len(envs)} ambientes")
     evaluated = pmap(lambda j: evaluate_pipeline(aws, j[0], j[1], j[2], j[3], REGION), jobs, workers=16)
+    for j, r in zip(jobs, evaluated):
+        r["impact"] = impact_of(j[1], getattr(j[3], "changed", []))
     for e in envs:
         results = [r for j, r in zip(jobs, evaluated) if j[0] is e]
         stale = [r for r in results if r["stale"]]
@@ -819,6 +895,7 @@ def collect(args):
         for r in live:
             r["primary"] = bool(r.get("action")) or r["repository"] not in eb_repos
         pipes_out = sorted(live, key=lambda r: (not r["primary"], VERDICT_ORDER.index(r["verdict"]), r["name"]))
+        pr, detail = None, ""
         if not repos:
             verdict, msg = "unknown", f"Sem código do card registrado para conferir {e['label']}"
         elif not pipes_out:
@@ -826,11 +903,16 @@ def collect(args):
             msg = f"Não se aplica — o código do card não vai para {e['label']} por estas esteiras"
         else:
             main = [p for p in pipes_out if p["primary"]] or pipes_out
-            verdict = next(v for v in VERDICT_ORDER if any(p["verdict"] == v for p in main))
-            msg = env_message(e, verdict, main)
+            counted = [p for p in main if p["verdict"] != "broken"] or main
+            verdict = next(v for v in VERDICT_ORDER if any(p["verdict"] == v for p in counted))
+            branches = {p.get("branch") for p in main}
+            pr = next((x for r in ctx_repos for x in r.get("prs") or [] if x.get("base") in branches), None)
+            msg, detail = env_message(e, verdict, main, pr)
         snap["environments"].append({
             "key": e["key"], "label": e["label"], "host": e.get("host"), "tier": e.get("tier"), "verdict": verdict,
-            "message": msg, "pipelines": pipes_out, "logs": [],
+            "message": msg, "detail": detail, "pipelines": pipes_out, "logs": [],
+            "summary": env_summary([p for p in pipes_out if p["primary"]] or pipes_out) if pipes_out else None,
+            "pr": pr if pipes_out else None,
             "resources": {"cloudfront": e.get("_cf"), "elasticBeanstalk": sorted(e["_eb"])}, "_env": e})
 
     tokens = module_tokens(all_pipes, all_files, len(envs))
@@ -879,7 +961,7 @@ def local_pipelines(folder, repository):
 def print_summary(snap):
     print(f"Card {snap['card']} — AWS ({snap.get('collectedAt')}, {snap['durationMs'] / 1000:.0f} s)")
     for e in snap["environments"]:
-        print(f"- {e['label']}: {e['message']}")
+        print(f"- {e['label']}: {e['message']}" + (f" — {e['detail']}" if e.get("detail") else ""))
         for p in e["pipelines"]:
             sha = (p.get("deployedSha") or "")[:8]
             print(f"    {p['name']} [{p.get('status') or '—'}] último: {p.get('lastRunAt') or '—'} implantado: {sha or '—'}"

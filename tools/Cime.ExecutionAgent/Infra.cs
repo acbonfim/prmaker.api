@@ -37,6 +37,27 @@ public static class Paths
         Directory.CreateDirectory(CardsRoot);
         return CardsRoot;
     }
+
+    /// <summary>
+    /// 0099 (ajustes 2): pasta neutra dos pedidos de épico (<c>E…</c> — especialista e itens de gestão da Mesa): não
+    /// precisam de workspace nem de repositórios (PO / gestor de problemas sem código na máquina).
+    /// </summary>
+    public static string DeskRoot => Path.Combine(PrmakeHome, "desk");
+
+    /// <summary>Cria a pasta neutra da Mesa e devolve o caminho.</summary>
+    public static string EnsureDeskRoot()
+    {
+        Directory.CreateDirectory(DeskRoot);
+        return DeskRoot;
+    }
+
+    /// <summary>Chave de épico do PRMake (<c>E123</c>, sem caixa) — o mesmo formato do <c>EpicKey</c> do servidor.</summary>
+    public static bool IsEpicKey(string? card)
+    {
+        var k = (card ?? string.Empty).Trim().TrimStart('#');
+        return k.Length is > 1 and <= 19 && (k[0] == 'E' || k[0] == 'e') && k.Skip(1).All(char.IsAsciiDigit);
+    }
+
     public static bool IsWindows => OperatingSystem.IsWindows();
     public static bool IsMac => OperatingSystem.IsMacOS();
 

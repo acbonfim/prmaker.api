@@ -10,9 +10,10 @@ namespace Services;
 /// usava valores aleatórios (mudavam a cada build) e a senha do admin fixa no código.
 /// <list type="bullet">
 /// <item>Papéis padrão (ids 1–4, como no seed antigo), se não houver nenhum papel.</item>
+/// <item>Papéis garantidos (0099): cada papel de <see cref="EnsuredRoles"/> que faltar é criado (idempotente por
+/// nome, sem caixa) — inclusive em produção, onde os dados vieram migrados do SQL Server.</item>
 /// <item>Admin inicial, se não houver nenhum usuário e <c>Seed:AdminPassword</c> estiver configurada.</item>
 /// </list>
-/// Em produção os dados vêm migrados do SQL Server, então nada aqui roda.
 /// </summary>
 public static class AuthSeeder
 {
@@ -23,6 +24,19 @@ public static class AuthSeeder
         (3, "external_client", "EXTERNALCLIENT"),
         (4, "support", "SUPPORT"),
     };
+
+    /// <summary>
+    /// Papéis que precisam existir em qualquer banco (0099): <c>gestor</c> (lançamentos/aprovações) e
+    /// <c>management</c> (Mesa de gestão — PO / gestor de problemas, sem Bancada).
+    /// </summary>
+    public static readonly string[] EnsuredRoles = { "admin", "user", "support", "gestor", "management" };
+
+    /// <summary>Papéis de <see cref="EnsuredRoles"/> que faltam entre os existentes (comparação sem caixa).</summary>
+    public static IReadOnlyList<string> MissingRoles(IEnumerable<string?> existing)
+    {
+        var have = new HashSet<string>(existing.Where(n => !string.IsNullOrWhiteSpace(n))!, StringComparer.OrdinalIgnoreCase);
+        return EnsuredRoles.Where(r => !have.Contains(r)).ToList();
+    }
 
     public static async Task SeedAsync(IServiceProvider services, ILogger logger)
     {
@@ -38,6 +52,8 @@ public static class AuthSeeder
                 $"SELECT setval(pg_get_serial_sequence('{DefaultContext.Schema}.\"AspNetRoles\"', 'Id'), (SELECT MAX(\"Id\") FROM {DefaultContext.Schema}.\"AspNetRoles\"))");
             logger.LogInformation("Seed: papéis padrão criados.");
         }
+
+        await EnsureRolesAsync(context, logger);
 
         if (await context.Users.AnyAsync())
             return;
@@ -70,5 +86,21 @@ public static class AuthSeeder
 
         await userManager.AddToRoleAsync(admin, "admin");
         logger.LogInformation("Seed: admin inicial criado.");
+    }
+
+    private static async Task EnsureRolesAsync(DefaultContext context, ILogger logger)
+    {
+        var existing = await context.Roles.AsNoTracking().Select(r => r.Name).ToListAsync();
+        var missing = MissingRoles(existing);
+        if (missing.Count == 0)
+            return;
+
+        // Banco migrado pode ter a sequência atrás do maior id: alinha antes de inserir sem id explícito.
+        await context.Database.ExecuteSqlRawAsync(
+            $"SELECT setval(pg_get_serial_sequence('{DefaultContext.Schema}.\"AspNetRoles\"', 'Id'), GREATEST((SELECT COALESCE(MAX(\"Id\"), 0) FROM {DefaultContext.Schema}.\"AspNetRoles\"), 1))");
+        foreach (var name in missing)
+            context.Roles.Add(new Role { Name = name, NormalizedName = name.ToUpperInvariant(), ConcurrencyStamp = Guid.NewGuid().ToString() });
+        await context.SaveChangesAsync();
+        logger.LogInformation("Seed: papéis garantidos criados: {Roles}.", string.Join(", ", missing));
     }
 }
