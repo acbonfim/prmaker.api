@@ -34,12 +34,13 @@ public static partial class SqlStandardChecks
     public const string DefaultName = "default-name";
     public const string CheckName = "check-name";
     public const string CreateOrAlterProcedure = "create-or-alter-procedure";
+    public const string MeaninglessId = "meaningless-id";
 
     public static readonly string[] All =
     [
         UnnamedConstraint, UnqualifiedObject, EfCascade, EfUnnamedDefault, ObjectUnderscore, ProcedurePrefix, ViewPrefix,
         SelectStar, MoneyType, SchemaName, NewObjectInDbo, TablePrefix, TableName, PkName, FkName, Cascade, NoCheck,
-        IndexName, DefaultName, CheckName, CreateOrAlterProcedure
+        IndexName, DefaultName, CheckName, CreateOrAlterProcedure, MeaninglessId
     ];
 
     private const string Name = @"(?:\[?(?<s>[A-Za-z_][\w]*)\]?\s*\.\s*)?\[?(?<n>[A-Za-z_#@][\w$#@]*)\]?";
@@ -224,9 +225,15 @@ public static partial class SqlStandardChecks
                 Hit(UnnamedConstraint, "Nomeie a constraint (CONSTRAINT PK_/FK_/DF_/CK_…) — sem nome gerado pelo sistema (G4, DF2, CK3, T7).");
 
             // Colunas.
-            if (custom && ColumnDefinition().Match(line) is { Success: true } coldef && SqlTypes.Contains(coldef.Groups["type"].Value.Trim('[', ']'))
-                && coldef.Groups["col"].Value.Contains('_'))
-                Hit(ObjectUnderscore, $"Coluna sem _ no nome (N4): {coldef.Groups["col"].Value}.");
+            if (custom)
+                foreach (var segment in ColumnSegments(line))
+                {
+                    if (ColumnDefinition().Match(segment) is not { Success: true } coldef || !SqlTypes.Contains(coldef.Groups["type"].Value.Trim('[', ']'))) continue;
+                    var colName = coldef.Groups["col"].Value;
+                    if (colName.Contains('_')) Hit(ObjectUnderscore, $"Coluna sem _ no nome (N4): {colName}.");
+                    if (colName.Equals("Id", StringComparison.Ordinal))
+                        Hit(MeaninglessId, $"Coluna Id sozinha não diz o que identifica: use {ctx.Table}Id (N12, T6).");
+                }
             if (Money().IsMatch(line) && (custom || target is "migration" or "code"))
                 Hit(MoneyType, "Sem MONEY/SMALLMONEY: use DECIMAL(p, s) com a precisão do negócio (C2).");
 
@@ -258,6 +265,25 @@ public static partial class SqlStandardChecks
             }
 
         return hits.GroupBy(h => (h.Check, h.Line, h.Hint)).Select(g => g.First()).ToList();
+    }
+
+    /// <summary>Definições de coluna da linha: o que vem depois do "(" do CREATE TABLE, separado por vírgula fora de parênteses.</summary>
+    private static IEnumerable<string> ColumnSegments(string line)
+    {
+        var start = TableContext().Match(line) is { Success: true } tc && line.IndexOf('(', tc.Index) is var open and >= 0 ? open + 1 : 0;
+        var depth = 0;
+        var from = start;
+        for (var i = start; i < line.Length; i++)
+        {
+            if (line[i] == '(') depth++;
+            else if (line[i] == ')') depth--;
+            else if (line[i] == ',' && depth == 0)
+            {
+                yield return line[from..i];
+                from = i + 1;
+            }
+        }
+        yield return line[from..];
     }
 
     private static void IndexHit(string index, string schema, string table, bool unique, Action<string, string> hit)

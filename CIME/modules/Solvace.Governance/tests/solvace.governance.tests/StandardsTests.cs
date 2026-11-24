@@ -93,6 +93,7 @@ public class StandardsTests
     [InlineData("CREATE TABLE dbo.NewThing (NewThingId INT)", SqlStandardChecks.NewObjectInDbo)]
     [InlineData("CREATE TABLE actionPlan.Action_Plan (ActionPlanId INT)", SqlStandardChecks.TableName)]
     [InlineData("CREATE TABLE actionPlan.ActionPlan (ActionPlanId INT NOT NULL CONSTRAINT PK_actionPlan_ActionPlan PRIMARY KEY,\n Due_Date DATETIME2 NULL)", SqlStandardChecks.ObjectUnderscore)]
+    [InlineData("CREATE TABLE language.Language (Id INT NOT NULL CONSTRAINT PK_language_Language PRIMARY KEY)", SqlStandardChecks.MeaninglessId)]
     public void Bad_ddl_is_found(string sql, string check)
     {
         var hits = SqlStandardChecks.Run(sql, SqlStandardChecks.All);

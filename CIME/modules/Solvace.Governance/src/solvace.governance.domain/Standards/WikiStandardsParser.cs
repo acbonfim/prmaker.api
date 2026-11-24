@@ -63,7 +63,8 @@ public static partial class WikiStandardsParser
         ["IX3"] = SqlStandardChecks.IndexName, ["IX4"] = SqlStandardChecks.IndexName, ["IX5"] = SqlStandardChecks.IndexName,
         ["IXU1"] = SqlStandardChecks.IndexName,
         ["DF1"] = SqlStandardChecks.DefaultName, ["CK1"] = SqlStandardChecks.CheckName,
-        ["P7"] = SqlStandardChecks.CreateOrAlterProcedure
+        ["P7"] = SqlStandardChecks.CreateOrAlterProcedure,
+        ["N12"] = SqlStandardChecks.MeaninglessId, ["T6"] = SqlStandardChecks.MeaninglessId
     };
 
     public static string Version(IEnumerable<WikiPage> pages) =>
