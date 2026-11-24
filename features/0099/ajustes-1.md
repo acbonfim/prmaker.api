@@ -31,6 +31,11 @@ Pedido do usuário, depois de usar a Mesa em produção:
   assignedTo: string[] (uniqueName), tags: string[], text: string }` — `SaveEpicRequest.boardFilters` (opcional; null = não
   mexe) e `PUT Epics/{n}/board-filters` (corpo = o objeto; publica `epicsUpdated` action `filters`). Respostas trazem
   `boardFilters` (sempre objeto, listas vazias por padrão).
+- **Acréscimo (pedido novo)**: `boardFilters.hiddenColumns: string[]` — nomes das colunas do board que o épico NÃO mostra (vazio =
+  todas; coluna nova do DevOps aparece sozinha). No servidor (`useEpicFilters` / `prmake_devops_board`) cards de coluna oculta
+  ficam fora (pelo nome ou id da coluna; coluna que não existe mais no board não esconde nada); `filtersApplied.hiddenColumns`
+  na resposta do board e, no MCP, `hiddenColumns` + `hidden: true` na coluna. O contexto do especialista lista as colunas
+  ocultas e as lanes escolhidas.
 - `POST DevOps/board/items` ganha `useEpicFilters?: bool` (padrão false na REST): com `epic`, aplica os filtros salvos do
   épico no servidor (lanes/tipos/estados/responsável/tags/texto em título ou id). Resposta ganha `filtersApplied` (o objeto
   aplicado, ou null).
@@ -40,6 +45,22 @@ Pedido do usuário, depois de usar a Mesa em produção:
 - Contexto do especialista (`CaseChat/E…/context`) mostra os filtros salvos e a regra: "no board do time, considere os
   filtros salvos do épico — `prmake_devops_board(epic)` já aplica; para ver além deles, passe useEpicFilters=false e diga
   isso na resposta". Skill `especialista-de-gestao` com a mesma regra.
+
+#### Notas do back (o que foi feito além/diferente do texto acima)
+- Semântica dos filtros no servidor = a do `board.logic.ts` do front: **tags exigem todas as escolhidas** (como o filtro de tags
+  do DevOps) e o **texto** casa todas as palavras em id/título/tags/responsável/estado/tipo (sem caixa/acento, `#` na frente
+  ignorado) — superconjunto de "título ou id". Lane padrão = `""` (`"(padrão)"`, `"padrão"`, `"default"` viram `""` ao salvar e
+  ao filtrar; lane desconhecida no card cai na padrão, como a tela agrupa); responsável `__unassigned__` (também aceita
+  `(unassigned)`, `-`, `sem responsável`).
+- `filtersApplied` = null quando o épico não tem filtro ligado (nada foi aplicado). Tipos/estados salvos também vão na WIQL (o
+  `top` não corta antes do filtro); o resto é aplicado depois da leitura.
+- `board/items` com `epic` e sem `team`/`board` usa os preferidos do épico (board só quando o time é o do épico).
+- Gravar os filtros **não mexe no `updatedAt`** do épico (preferência de visualização gravada com debounce — não reordena o trilho).
+  Limites: 50 valores por lista, 300 caracteres no texto (400 acima).
+- `meta/people`: fonte que falhou (PAT sem escopo do Graph/identidades, erro de rede) fica de fora por 10 min e loga 1x por
+  organização/fonte; busca de identidades com cache de 5 min por termo. Contas de serviço (Build Service, `Microsoft.*`,
+  `guid@guid`) ficam de fora. MCP `prmake_devops_meta(people)` usa top 100.
+- MCP `prmake_devops_board`: `top` padrão 200; colunas com `cards` (quantos no resultado) e `hidden: true` nas ocultas.
 
 ### Front (branch `fix/0099-mesa-ajustes`)
 - Componente novo `app-pm-combo` (`components/pm-combo/`): campo com digitação + filtro (sem acento/caixa) sobre
