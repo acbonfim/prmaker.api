@@ -181,6 +181,8 @@ public static class WorkTaskKind
     public const string EvidenceComment = "evidence-comment";
     /// <summary>Arquivo do item com o comentário das evidências (fica nos arquivos do card, com o número do card).</summary>
     public static string EvidenceCommentFileName(string card, long itemNumber) => $"comentario-evidencias-{card}-item-{itemNumber}.md";
+    /// <summary>0100: mapear o deploy na AWS (esteiras por ambiente e se o código do card já está em cada um) — somente leitura, coletado pela CLI da AWS da máquina.</summary>
+    public const string AwsDeployMap = "aws-deploy-map";
 
     /// <summary>Tipos de sub-tarefa: levantamento/consulta sem alterar nada (impacto na base, ler o card, mapear o código).</summary>
     public const string Research = "research";
@@ -191,7 +193,8 @@ public static class WorkTaskKind
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>
         { Branch, CherryPick, Code, PullRequest, DevOpsState, SqlScript, Validation, Comment, Manual, Ticket, Notify,
-          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation, EnvReproduction, EvidenceComment };
+          DevOpsAction, PrText, SqlQuery, PrReview, CardBrief, Research, Decision, Task, EnvValidation, EnvReproduction, EvidenceComment,
+          AwsDeployMap };
 
     /// <summary>
     /// Tipo da sub-tarefa que espelha uma etapa do plano: o <c>taskKind</c> que a skill informou; sem ele, pelo tipo da

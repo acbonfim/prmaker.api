@@ -118,6 +118,8 @@ public sealed partial class HomeCardsService(
         void Add(string card, DateTimeOffset? at)
         {
             if (string.IsNullOrWhiteSpace(card) || at is null) return;
+            // 0099: chave de épico (E123) é da Mesa de gestão, não um card da Bancada.
+            if (solvace.executionplans.domain.Entities.EpicKey.IsEpic(card)) return;
             if (!result.TryGetValue(card, out var current) || at.Value > current)
                 result[card] = at.Value;
         }

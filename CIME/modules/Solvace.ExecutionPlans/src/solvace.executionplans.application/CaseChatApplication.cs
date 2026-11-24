@@ -27,7 +27,8 @@ public class CaseChatApplication(
     IExecutionQueueApplication queue,
     IRealTimeNotifier realTime,
     IPrmakeRulesProvider? rules = null,
-    IWorkItemApplication? workItems = null)
+    IWorkItemApplication? workItems = null,
+    IEpicApplication? epics = null)
 {
     public const string SpecialistName = "Especialista do caso";
     private const int DefaultPageSize = 200;
@@ -620,9 +621,27 @@ public class CaseChatApplication(
     {
         var card = CaseChat.NormalizeCard(cardNumber);
         var sb = new StringBuilder();
-        sb.AppendLine($"# Caso {card}");
-        var summaries = await planApp.GetByCardAsync(card, cancellationToken);
-        if (summaries.Count == 0)
+        // 0099: chave de épico (E123) = caso da Mesa de gestão — o épico no lugar dos planos do card (épico não tem plano).
+        var epic = EpicKey.TryParse(card, out var epicNumber) && epics is not null;
+        if (epic)
+        {
+            card = EpicKey.Of(epicNumber);
+            sb.AppendLine($"# Caso {card} — épico da Mesa de gestão");
+            sb.AppendLine("Este caso é um ÉPICO do PRMake (não um card do DevOps): sem branch, PR, plano nem estado de card. Os itens de " +
+                          $"trabalho do épico usam a chave {card}; ações no DevOps vão para os cards (número do card, nunca {card}).");
+            try
+            {
+                sb.AppendLine().Append(await epics!.ContextMarkdownAsync(epicNumber, cancellationToken));
+            }
+            catch (ExecutionPlanNotFoundException)
+            {
+                sb.AppendLine().AppendLine($"O épico #{epicNumber} não existe (foi removido?) — confirme com a pessoa.");
+            }
+        }
+        else
+            sb.AppendLine($"# Caso {card}");
+        List<ExecutionPlanSummaryResponse> summaries = epic ? [] : await planApp.GetByCardAsync(card, cancellationToken);
+        if (summaries.Count == 0 && !epic)
             sb.AppendLine().AppendLine("O card ainda não tem plano de execução (nenhuma análise registrada no PRMake).");
 
         foreach (var phase in new[] { ExecutionPhase.Analysis, ExecutionPhase.Correction })
@@ -671,9 +690,11 @@ public class CaseChatApplication(
         // 0085: regras do card (o especialista não inventa nome de branch) e itens de trabalho (não repete item).
         if (rules is not null && await rules.RulesMarkdownAsync(card, summary: true, cancellationToken) is { Length: > 0 } rulesText)
         {
-            sb.AppendLine().AppendLine("## Regras do PRMake (resumo)");
+            sb.AppendLine().AppendLine(epic ? "## Regras de gestão do PRMake (resumo)" : "## Regras do PRMake (resumo)");
             sb.Append(rulesText);
-            sb.AppendLine("Nunca invente nome de branch, base ou destino: use estas regras (completas em prmake_rules).");
+            sb.AppendLine(epic
+                ? "Regras completas em prmake_rules (card " + card + ")."
+                : "Nunca invente nome de branch, base ou destino: use estas regras (completas em prmake_rules).");
         }
         if (workItems is not null)
         {
@@ -687,7 +708,7 @@ public class CaseChatApplication(
             {
                 itemsText = $"(não consegui listar os itens: {e.Message} — use prmake_work_items)";
             }
-            sb.AppendLine(string.IsNullOrWhiteSpace(itemsText) ? "Nenhum item de trabalho no card." : itemsText.TrimEnd());
+            sb.AppendLine(string.IsNullOrWhiteSpace(itemsText) ? (epic ? "Nenhum item de trabalho no épico." : "Nenhum item de trabalho no card.") : itemsText.TrimEnd());
             sb.AppendLine("Antes de propor ou criar um item, confira se já existe item com o mesmo objetivo (fingerprint/status) — " +
                           "pendente igual: ajuste com prmake_work_item_update; iniciado/concluído: não repita. Duplicata só com " +
                           "allowDuplicate + motivo, quando for de fato outro trabalho. Sub-tarefa a mais pedida no item da " +
@@ -751,7 +772,8 @@ public class CaseChatApplication(
         }
         sb.AppendLine().AppendLine("Arquivos da conversa: prmake-case.sh file <card> <n> baixa o arquivo #n (imagem/áudio/documento) para ler.");
         sb.AppendLine("Na conversa, `#123` é o item de trabalho 123 do PRMake (a tela vira link com o popover do item) — leia com " +
-                      "prmake_work_item; ao citar um item, escreva `#<número>`.");
+                      "prmake_work_item; ao citar um item, escreva `#<número>`. A numeração é a mesma dos épicos: `#n` que não é item " +
+                      "pode ser um épico (prmake_epic(n)); citar `#<épico>` na conversa de um card põe o card no épico.");
         return sb.ToString();
     }
 
@@ -887,6 +909,9 @@ public class CaseChatApplication(
 
     private async Task<List<string>> KnowsAsync(string card, CancellationToken cancellationToken)
     {
+        // 0099: no épico o especialista conhece o épico, os cards e o board do DevOps (não há card nem plano).
+        if (EpicKey.IsEpic(card))
+            return ["Épico + cards", "Board do DevOps", "Itens de trabalho", "Base Solvace", "Banco (só leitura)"];
         var knows = new List<string> { "Card + discussion" };
         var summaries = await planApp.GetByCardAsync(card, cancellationToken);
         if (summaries.Where(s => s.Phase == ExecutionPhase.Analysis).MaxBy(s => s.VersionNumber) is { } a)

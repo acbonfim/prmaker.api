@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using solvace.azure.application.Contract;
 using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Extensions;
 using solvace.prform.domain.Promotion;
@@ -128,9 +129,16 @@ public class SkillsRulesService(
         }
     }
 
+    /// <summary>0099: "tipo" do épico da Mesa de gestão nas regras (não é card do DevOps).</summary>
+    public const string EpicWorkItemType = "Épico (Mesa de gestão)";
+
     private async Task<CardRules> BuildAsync(string card, CancellationToken cancellationToken)
     {
         var settings = await SettingsAsync(cancellationToken);
+        // 0099: chave de épico (E123) — sem DevOps, branch nem fluxo: regras de gestão.
+        if (EpicKey.IsEpic(card))
+            return new CardRules(card, EpicWorkItemType, false, null, null, null, null, string.Empty, string.Empty,
+                new Dictionary<string, string>(), [], null, null, string.Empty, string.Empty, string.Empty, settings, null);
         string V(string k, string fallback = "") => settings.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : fallback;
 
         string? type = null, title = null, area = null, state = null, cardError = null;
@@ -340,8 +348,49 @@ public class SkillsRulesService(
     {
         var v = (card ?? string.Empty).Trim();
         if (v.StartsWith("AB#", StringComparison.OrdinalIgnoreCase)) v = v[3..];
-        return v.TrimStart('#').Trim();
+        v = v.TrimStart('#').Trim();
+        return EpicKey.Normalize(v) ?? v; // 0099: e12 → E12
     }
+
+    /// <summary>0099: o card é a chave de um épico da Mesa de gestão?</summary>
+    public static bool IsEpic(CardRules r) => EpicKey.IsEpic(r.Card);
+
+    private static readonly string[] ManagementRules =
+    [
+        "Toda gravação passa pelo PRMake — cards (`prmake_devops_card_create/update/move`), épico (`prmake_epic_save`, `prmake_epic_cards`), itens (`prmake_work_*`), arquivos e PDF (`prmake_work_item_file`, `prmake_pdf`); nada de PAT nem API direta do DevOps. Cada gravação no DevOps usa a integração pessoal de quem pediu.",
+        "Nunca mesclar PR; nunca fechar, remover nem mesclar/ligar como duplicado um card sem a pessoa decidir (estado/coluna de fechamento só com a decisão escrita).",
+        "Lote com mais de 10 cards gravando (criar, editar, mover): mostre a lista (card, o que muda, de → para) e espere a confirmação antes de gravar.",
+        "Antes de criar card, procure duplicado (`prmake_devops_query` com os termos do título, últimos 180 dias); antes de tag nova, procure a existente (`prmake_devops_meta(what: tags)`).",
+        "Picklists do DevOps são a lei: tipo, estado, coluna, lane, área, iteração, responsável e campos com valores permitidos sempre de `prmake_devops_meta` — nunca invente.",
+        "Números de relatório vêm da consulta (contagens do script/consulta), nunca estimados; diga a fonte, a data e se o `top` cortou.",
+        "PDF é gerado no servidor (`prmake_pdf` / `POST WorkItems/{n}/files/pdf`) a partir do markdown final do item.",
+        "Itens de trabalho: antes de criar, liste (`prmake_work_items`) e não duplique; kinds de gestão (devops-*, report, duplicates, understanding, rca-doc, pdf) seguem a skill `tarefas-de-gestao`.",
+        "Ações de card (Timeline, horas, estado, root cause) usam o NÚMERO DO CARD do DevOps, nunca a chave do épico."
+    ];
+
+    /// <summary>0099: regras do épico (Mesa de gestão) — o completo do <c>prmake_rules</c>/<c>Skills/rules</c>.</summary>
+    public static string ManagementMarkdown(CardRules r)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"# Regras do PRMake — épico {r.Card} (Mesa de gestão)");
+        sb.AppendLine();
+        sb.AppendLine($"`{r.Card}` é a chave de um **épico do PRMake** (tema de gestão), não um card do DevOps: não tem branch, PR, worktree, " +
+                      "plano de análise/correção nem estado de card. Os itens de trabalho, a conversa do especialista, os arquivos e os relatados " +
+                      $"do épico usam `{r.Card}` como card; o épico em si (dados, time/board preferido, cards) é `prmake_epic`.");
+        sb.AppendLine().AppendLine("## Regras de gestão");
+        foreach (var rule in ManagementRules) sb.AppendLine($"- {rule}");
+        sb.AppendLine().AppendLine("## Regras fixas");
+        sb.AppendLine("- Sub-tarefas de um item rodam em ordem; itens diferentes rodam em paralelo.");
+        sb.AppendLine("- `#n` é a mesma numeração de épicos, itens e sub-tarefas; citar `#<épico>` na conversa/Timeline de um card põe o card no épico.");
+        return sb.ToString();
+    }
+
+    /// <summary>0099: resumo das regras de gestão para o contexto do especialista do épico.</summary>
+    public static string ManagementSummaryMarkdown(CardRules r) =>
+        $"- `{r.Card}` é épico (Mesa de gestão): sem branch/PR/plano; ações de card usam o número do card.\n" +
+        "- Toda gravação pelo PRMake com a integração de quem pediu; nunca fechar/remover/mesclar card sem a pessoa decidir.\n" +
+        "- Lote > 10 cards: confirmar antes; criar card só depois de procurar duplicado; tag existente antes de tag nova; picklists de prmake_devops_meta.\n" +
+        "- Relatórios com números da consulta; PDF pelo servidor (prmake_pdf). Regras completas: prmake_rules.\n";
 
     // ── Markdown ─────────────────────────────────────────────────────────────────────────────────
 
@@ -414,6 +463,7 @@ public class SkillsRulesService(
 
     public static string Markdown(CardRules r, IReadOnlyList<RepositoryBranchPlan>? repositories = null)
     {
+        if (IsEpic(r)) return ManagementMarkdown(r);
         var sb = new StringBuilder();
         sb.AppendLine($"# Regras do PRMake — card {r.Card}");
         sb.AppendLine();
@@ -475,6 +525,7 @@ public class SkillsRulesService(
     /// <summary>Resumo para o contexto do Especialista do caso (o completo vem do prmake_rules).</summary>
     public static string SummaryMarkdown(CardRules r)
     {
+        if (IsEpic(r)) return ManagementSummaryMarkdown(r);
         var sb = new StringBuilder();
         sb.AppendLine($"- Tipo: {TypeText(r)} · área: {r.AreaPath ?? "?"} · fluxo: {(r.Flow is null ? "não identificado (perguntar)" : $"`{r.Flow}`")}");
         sb.AppendLine($"- Branch principal: `{r.MainBranch}`. Por destino: " +

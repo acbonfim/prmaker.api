@@ -8,6 +8,8 @@ namespace solvace.prform.Execution;
 public class ExecutionCardEvidenceSource(IAzureService azure) : IExecutionCardEvidenceSource
 {
     public async Task<IReadOnlyList<CardEvidence>> ListAsync(string cardNumber, CancellationToken cancellationToken) =>
+        // 0099: épico (E123) não é card do DevOps — sem evidências.
+        solvace.executionplans.domain.Entities.EpicKey.IsEpic(cardNumber) ? [] :
         (await azure.GetCardEvidenceAsync(cardNumber.Trim(), cancellationToken))
             .Select(e => new CardEvidence(e.Key, e.Url, e.FileName, e.Source, e.SourceDetail, e.At, e.Size, e.Comment))
             .ToList();

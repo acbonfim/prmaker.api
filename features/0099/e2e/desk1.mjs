@@ -1,0 +1,12 @@
+import { open, shot, sleep } from './lib.mjs';
+const epic = process.argv[2];
+const { browser, page, logs } = await open();
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}`, { waitUntil: 'networkidle2' });
+await sleep(2500);
+await shot(page, '01-desk-board');
+const cols = await page.$$eval('[class*="dvb-col"], .dvb-head', els => els.map(e => e.textContent.trim().replace(/\s+/g, ' ').slice(0, 60)));
+console.log('colunas', JSON.stringify(cols.slice(0, 12)));
+const cards = await page.$$eval('[class*="dvb-card"]', els => els.map(e => e.textContent.trim().replace(/\s+/g, ' ').slice(0, 50)));
+console.log('cards', cards.length, JSON.stringify(cards.slice(0, 8)));
+console.log('LOGS', logs.join('\n'));
+await browser.close();

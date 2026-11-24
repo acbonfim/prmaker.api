@@ -101,7 +101,10 @@ public static class WorkItemFileKind
     /// <summary>0092: prints da validação em ambiente (galeria na sub-tarefa).</summary>
     public const string Evidence = "evidence";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Script, Analysis, Ticket, Data, Attachment, Text, Evidence };
+    /// <summary>0099: PDF gerado no servidor a partir de um markdown (<c>WorkItems/{n}/files/pdf</c>, <c>prmake_pdf</c>).</summary>
+    public const string Pdf = "pdf";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Script, Analysis, Ticket, Data, Attachment, Text, Evidence, Pdf };
 
     /// <summary>Tipo informado (validado) ou inferido pelo nome; imagem vira anexo.</summary>
     public static string Normalize(string? kind, string fileName)
@@ -114,7 +117,7 @@ public static class WorkItemFileKind
         var k = kind.Trim().ToLowerInvariant();
         if (k == ExecutionArtifactKind.Image) return Attachment;
         if (!All.Contains(k))
-            throw new DomainException($"Tipo de arquivo inválido: '{kind}' (use script, analysis, ticket, data, attachment, text ou evidence).");
+            throw new DomainException($"Tipo de arquivo inválido: '{kind}' (use script, analysis, ticket, data, attachment, text, evidence ou pdf).");
         return k;
     }
 }

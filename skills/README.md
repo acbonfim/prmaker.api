@@ -11,6 +11,8 @@ Fonte única das skills (feature 0024). Cada deploy da API publica o conteúdo d
 | `desfazer-item-de-trabalho/` | 0085: desfaz um item cancelado (pedido `work-item-undo`): sub-tarefas feitas em ordem reversa — fecha PR, apaga branch criada, reverte commit, volta o card — sempre pelo PRMake |
 | `especialista-do-caso/`, `base-solvace/`, `engenharia-reversa/` | especialista do caso (0080), Base Solvace e engenharia reversa |
 | `validar-ambiente/` | 0092: validacao em ambiente (sub-tarefa `env-validation`): `scripts/env.sh` acha ambiente/planta/admin (configuracao `ValidationEnvironments` + banco corporativo), abre o Chrome da maquina logado (`env_browser.py`, Playwright no venv; senha so em `~/.claude/solvace-env-credentials.json`, gravada por `prmake-skills.sh env-credentials`) e sobe os prints como evidencia da sub-tarefa; DEMO/producao com gravacoes bloqueadas |
+| `especialista-de-gestao/` | 0099: especialista da **Mesa de gestao** — guardiao de um epico (chave `E<numero>`, mesma conversa/ferramentas `prmake_case_*` do `especialista-do-caso`, escolhido pela fila quando a chave e de epico): consulta, cria (checando duplicado), edita, move e comenta cards no DevOps pelo PRMake (`prmake_devops_*`), gere o epico (`prmake_epic*`), cria/executa itens de gestao sem duplicar; quebra em historias, triagem em lote, resumo semanal, cards parados. Confirma lote > 10 cards; nunca fecha/remove card sem a pessoa decidir |
+| `tarefas-de-gestao/` | 0099: guia dos kinds de gestao que a `executar-item-de-trabalho` delega (`devops-query`, `devops-create`, `devops-update`, `devops-move`, `report`, `duplicates`, `understanding`, `rca-doc`, `pdf`); `scripts/gestao.sh` (→ `gestao.py`, so stdlib): consulta pelo PRMake gravada como arquivo do item, numeros do relatorio, grupos de duplicados, parados por coluna, `save`/`pull` de arquivos do item, PDF pelo servidor e `rca-check` (o `rca_check.py` da `gerar-prmake`) |
 | `_tooling/install.sh` | instalador de um comando para macOS/Linux/Git Bash (servido em `/Skills/install.sh`); instala jq/unzip/python3 que faltarem |
 | `_tooling/install.ps1` | instalador do Windows no PowerShell (servido em `/Skills/install.ps1`): winget para Git/jq/Python e roda o `install.sh` no Git Bash |
 | `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` · `db-credentials` · `env-credentials` · `governance` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
@@ -52,6 +54,12 @@ Rodada 5: o `especialista-do-caso` **executa** as acoes que a pessoa pede (Timel
 criar/cancelar/executar item) com a integracao de quem pediu — nunca o plano; item com `sql-script` ganha sozinho as
 sub-tarefas do chamado (o `executar-item-de-trabalho` grava o chamado completo com `prmake_work_item_file`, kind `ticket`).
 
+**Mesa de gestao (0099)**: itens de trabalho de um **epico** usam a chave `E<numero>` como card (mesma numeracao `#n` de
+itens e sub-tarefas). A `executar-item-de-trabalho` roda o item e, nos kinds de gestao, segue a `tarefas-de-gestao` (sem
+branch/PR/estado de card no epico); a conversa da Mesa roda a `especialista-de-gestao`. Toda gravacao no DevOps passa pelo
+PRMake (`prmake_devops_card_create/update/move`, integracao pessoal de quem age); relatorios/RCAs viram arquivos do item e
+PDF gerado no servidor (`prmake_pdf` / `gestao.sh pdf`).
+
 **Mudar uma skill** = mudar aqui e fazer o deploy da API. A versão de cada skill é o hash do conteúdo (muda sozinha).
 `skill.json`: `requires` (comandos necessários) e `setup` (`check`/`run`, ex.: o `.venv` do `python-tds` da `analisar-bug`).
 
@@ -92,7 +100,7 @@ regras e os hooks ativos vêm do PRMake (`GET Governance/hooks/config`, cache em
 o Claude recebe "Barrado pela governança do PRMake: <motivo> (regra <key>)"; aviso, segue com o aviso no contexto. Os
 demais eventos vão em lote para `POST Governance/hooks/events` (fila `~/.prmake/governance-queue.jsonl`; nunca o texto
 do pedido, só o tamanho). Sem rede ou passou de `timeoutMs`: vale o `failOpen` (padrão: deixa passar); erros em
-`~/.prmake/governance.log`. O executor (1.5.0) põe o mesmo hook no settings dele (`--from-executor`) e mantém o
+`~/.prmake/governance.log`. O executor (1.7.0) põe o mesmo hook no settings dele (`--from-executor`) e mantém o
 `prmake-agent guard` como rede de segurança sem rede, que também reporta o bloqueio (`rules: ["executor-guard"]`).
 
 ```bash

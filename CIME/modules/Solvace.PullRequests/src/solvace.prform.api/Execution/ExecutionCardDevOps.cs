@@ -2,6 +2,7 @@ using System.Security.Claims;
 using solvace.azure.application.Contract;
 using solvace.azure.domain.Exceptions;
 using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Extensions;
 using solvace.prform.Skills;
@@ -44,6 +45,7 @@ public class ExecutionCardDevOps(
 
     public async Task<string?> MoveToDevTestInQaAsync(string cardNumber, CancellationToken cancellationToken)
     {
+        if (EpicKey.IsEpic(cardNumber)) return EpicMessage(cardNumber);
         try
         {
             await runner.RunAsync(cardNumber, a => a.MoveToDevTestInQaAsync(cardNumber, cancellationToken), User, cancellationToken);
@@ -64,10 +66,13 @@ public class ExecutionCardDevOps(
     }
 
     public Task<int> UpsertCommentAsync(string cardNumber, string html, int? commentId, CancellationToken cancellationToken) =>
-        azure.UpsertCommentAsync(cardNumber.Trim(), html, commentId, cancellationToken);
+        EpicKey.IsEpic(cardNumber)
+            ? throw new InvalidOperationException(EpicMessage(cardNumber))
+            : azure.UpsertCommentAsync(cardNumber.Trim(), html, commentId, cancellationToken);
 
     public async Task<CardEffort?> GetEffortAsync(string cardNumber, CancellationToken cancellationToken)
     {
+        if (EpicKey.IsEpic(cardNumber)) return null;
         try
         {
             var e = await runner.EffortAsync(cardNumber.Trim(), cancellationToken);
@@ -108,6 +113,7 @@ public class ExecutionCardDevOps(
     private async Task<(bool Ok, string Message)> RunAsync(string cardNumber, Func<IDevOpsActionsService, Task<solvace.azure.domain.Models.DevOpsActionResponse>> action,
         CancellationToken cancellationToken)
     {
+        if (EpicKey.IsEpic(cardNumber)) return (false, EpicMessage(cardNumber));
         try
         {
             var result = await runner.RunAsync(cardNumber.Trim(), action, User, cancellationToken);
@@ -131,6 +137,10 @@ public class ExecutionCardDevOps(
 
     private static decimal? Number(string? value) =>
         decimal.TryParse(value?.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : null;
+
+    /// <summary>0099: a chave de épico (E123) não é card do DevOps — ação de card não se aplica.</summary>
+    private static string EpicMessage(string key) =>
+        $"{key.Trim()} é um épico da Mesa de gestão, não um card do DevOps — use o número de um card do épico.";
 
     private ClaimsPrincipal User => http.HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity());
 

@@ -12,7 +12,7 @@
 | B5 — métricas e linha do tempo do card | ✅ | principal | 5570bee + eaec194 — testado com dados semeados (marcos, medianas, custo) |
 | B6 — gatilhos do servidor + prmake_rules | ✅ | principal | 4699cdb (timeline/webhook) + c94e301 (`prmake_rules` lista os guardrails ativos) |
 | S1 — script de hook + instalador | ✅ | agente skill | aa643f5 — JSON `permissionDecision`, `|| true`, fail-open, fila em lote |
-| S2 — executor 1.5.0 | ✅ | agente skill | 11c1b28 — hook com `--from-executor`; guard reporta bloqueio |
+| S2 — executor 1.7.0 | ✅ | agente skill | 11c1b28 — hook com `--from-executor`; guard reporta bloqueio |
 | S3 — SKILL.md | ✅ | agente skill | a79471c |
 | F1 — rota, menu, serviço, casca | ✅ | agente front | 95a7604 |
 | F2 — visão geral, usuários, cards, tarefas | ✅ | agente front | c36565a + d3f392f |
@@ -34,7 +34,7 @@
 - Q2 achou e corrigiu: horário do hook com fuso (-03:00) derrubava o lote inteiro (agora UTC); sub-tarefa sem item/card na
   trilha (enriquecedor pelo #n); evento de mudança da governança duplicado.
 - Timeline/ExecutionQueue levam o card no corpo: esses eventos ficam sem card na trilha (rodada 2: ler o card do corpo).
-- Executor 1.5.0 testado por testes de unidade e pelo mesmo hook no Claude Code; falta uma rodada com o prmake-agent de verdade.
+- Executor 1.7.0 testado por testes de unidade e pelo mesmo hook no Claude Code; falta uma rodada com o prmake-agent de verdade.
 
 - O deploy sobe o modo **monitor**: nada é barrado até o admin ligar o "Aplicando" na tela.
 - Todo mundo atualiza o `prmake-skills.sh` uma vez (a `toolVersion` passa a incluir o script de governança).

@@ -7,7 +7,7 @@ namespace Cime.ExecutionAgent;
 /// Perfil do Claude Code no modo headless (0039): sem prompt de permissão (<c>--permission-mode dontAsk</c>), mas com
 /// cerca — liberado o que a skill usa, negado merge/aprovação, push forçado ou em branch protegida, escrita em banco e
 /// Cognito. O hook <c>PreToolUse</c> chama <c>prmake-agent guard</c> como segunda checagem.
-/// 0098 (1.5.0): mais o hook de governança do PRMake (<see cref="GovernanceHook"/>) em PreToolUse (todas as ferramentas —
+/// 0098 (1.7.0): mais o hook de governança do PRMake (<see cref="GovernanceHook"/>) em PreToolUse (todas as ferramentas —
 /// o script só consulta o PRMake quando as regras casam), PostToolUse e Stop (trilha); o guard continua como rede de
 /// segurança sem rede.
 /// </summary>

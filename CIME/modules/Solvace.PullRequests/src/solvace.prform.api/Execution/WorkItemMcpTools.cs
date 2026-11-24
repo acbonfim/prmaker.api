@@ -32,7 +32,8 @@ public class WorkItemMcpTools(
     SpecialistActions specialist,
     CodeCitationGate citations,
     IExecutionQueueApplication queue,
-    IWorkItemDeliverableApplication deliverables)
+    IWorkItemDeliverableApplication deliverables,
+    IEpicApplication epics)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -81,7 +82,17 @@ public class WorkItemMcpTools(
                  "uma pessoa) chame as ferramentas com o card dele.")]
     public Task<string> Get(string card, [Description("Numero do item ou da sub-tarefa (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
     {
-        var item = await items.ResolveAsync(number, true, ct);
+        WorkItemResponse item;
+        try
+        {
+            item = await items.ResolveAsync(number, true, ct);
+        }
+        catch (ExecutionPlanNotFoundException)
+        {
+            // 0099: a numeração é a mesma dos épicos — #n de épico devolve o épico (detalhe em prmake_epic).
+            if (await epics.FindAsync(number, ct) is not { } epic) throw;
+            return Serialize(new { kind = "epic", note = $"#{number} é o épico {epic.Key} da Mesa de gestão — detalhe com prmake_epic({number}); itens do épico com card {epic.Key}.", epic });
+        }
         var otherCard = !string.Equals(item.CardNumber, RequireCard(card), StringComparison.Ordinal);
         return otherCard ? Serialize(new { otherCard = true, note = $"Item do card {item.CardNumber} — referencia; para altera-lo (so a pedido de uma pessoa), use card {item.CardNumber} nas ferramentas.", item }) : Serialize(item);
     });

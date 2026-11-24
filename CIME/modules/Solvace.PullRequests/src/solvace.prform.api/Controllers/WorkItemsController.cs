@@ -38,9 +38,22 @@ public partial class WorkItemsController : ExecutionControllerBase
     /// Item com sub-tarefas e histórico. Número de sub-tarefa (mesma numeração) → o item dono, com
     /// <c>matchedTaskNumber</c> (o <c>#n</c> citado na conversa pode ser de uma sub-tarefa).
     /// </summary>
+    /// <remarks>0099: número de épico (mesma sequência) → <c>{kind:"epic", epic: EpicSummary}</c> (o popover do <c>#n</c> mostra o épico).</remarks>
     [HttpGet("{number:long}")]
-    public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, CancellationToken ct) =>
-        RunItem<WorkItemResponse>(async () => Ok(await _items.ResolveAsync(number, withLogs: true, ct)));
+    public Task<ActionResult<WorkItemResponse>> Get([FromRoute] long number, [FromServices] IEpicApplication epics, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () =>
+        {
+            try
+            {
+                return Ok(await _items.ResolveAsync(number, withLogs: true, ct));
+            }
+            catch (ExecutionPlanNotFoundException)
+            {
+                if (await epics.FindAsync(number, ct) is { } epic)
+                    return Ok(new { kind = "epic", number = epic.Number, epic });
+                throw;
+            }
+        });
 
     /// <summary>
     /// Busca itens e sub-tarefas de qualquer card pelo começo do número, parte do título ou número do card — a lista do

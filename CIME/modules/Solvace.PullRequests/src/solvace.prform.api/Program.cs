@@ -61,9 +61,14 @@ builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
+builder.Services.AddScoped<solvace.prform.AwsDeploy.AwsDeployService>();  // 0100: aba AWS (índice, retrato, fila de coleta da máquina)
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
+// 0099: Mesa de gestão — gravações no DevOps (Timeline + devopsCardsUpdated) e os pontos que o épico (B1) liga no Q1.
+builder.Services.AddScoped<solvace.prform.Execution.DevOpsDeskRunner>();
+builder.Services.AddScoped<solvace.prform.Execution.IEpicCardSource, solvace.prform.Execution.EpicCardSource>();
+builder.Services.AddScoped<solvace.prform.Execution.IDevOpsCardCreatedHook, solvace.prform.Execution.EpicCardCreatedHook>();
 // Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
 builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
@@ -97,6 +102,10 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
     // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
     .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0099: épicos da Mesa de gestão e markdown → PDF nos arquivos do item.
+    .WithTools<solvace.prform.Execution.EpicMcpTools>()
+    // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
+    .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f =>
     {
@@ -106,6 +115,8 @@ builder.Services.AddMcpServer(o =>
     });
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
 builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
+// 0099: PDF gerado no servidor para os arquivos do item (REST WorkItems/{n}/files/pdf e MCP prmake_pdf).
+builder.Services.AddScoped<solvace.prform.Execution.WorkItemPdfService>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
@@ -141,6 +152,8 @@ builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceS
 builder.Services.AddHttpClient(solvace.prform.Governance.GovernanceServerHookRunner.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddScoped<solvace.prform.Governance.GovernanceMetrics>();
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
+// 0099: chave de épico (E123) nas rotas de card do DevOps → 404 limpo (a Mesa reaproveita componentes da Bancada).
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.EpicKeyCardFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
 
 // Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o

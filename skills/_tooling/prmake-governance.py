@@ -3,7 +3,7 @@
 
 Servido pela API (GET /api/v1/Skills/tool/governance) e instalado pelo prmake-skills.sh em
 ~/.claude/skills/.prmake/prmake-governance.py; registrado nos hooks SessionStart, UserPromptSubmit, PreToolUse,
-PostToolUse e Stop do ~/.claude/settings.json (e no settings do executor, 1.5.0 — com --from-executor).
+PostToolUse e Stop do ~/.claude/settings.json (e no settings do executor, 1.7.0 — com --from-executor).
 
 O que faz (a configuração vem do PRMake: GET Governance/hooks/config, com cache em ~/.prmake/governance.json):
 - PreToolUse: hook "evaluate" ativo e a ferramenta casa com as regras (toolMatchers) -> POST Governance/evaluate;
@@ -700,7 +700,7 @@ def handle(data):
 
 
 def run_hook(argv):
-    # Dentro do executor 1.5.0 o hook dele (--from-executor) faz o trabalho; o do ~/.claude/settings.json não repete.
+    # Dentro do executor 1.7.0 o hook dele (--from-executor) faz o trabalho; o do ~/.claude/settings.json não repete.
     if os.environ.get("PRMAKE_GOVERNANCE_HOOK") == "executor" and "--from-executor" not in argv:
         return 0
     try:

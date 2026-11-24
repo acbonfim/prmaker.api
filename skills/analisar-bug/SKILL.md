@@ -233,6 +233,11 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   da branch de QA mesclado); voce confere e, se ele avisar erro, move (`devops <card> dev-test-in-qa`, sem perguntar);
   `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano (a tela ja oferece mover) ou
   autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
+- **"Ja esta em QA/sandboxefeso/producao?" so com prova (0100)**: antes de afirmar que a correcao esta (ou nao) num
+  ambiente, ou de pedir a validacao em QA, consulte `prmake_aws_status(card)` (aba AWS: esteiras, commit implantado,
+  veredito por ambiente); sem retrato, velho (> 1 h) ou com deploy em andamento → `bash
+  ~/.claude/skills/aws-deploy/scripts/aws.sh collect <card>` (somente leitura). Deploy `failed` → leia o fim do log do
+  build antes de culpar o nosso codigo.
 - **Fechamento com a correcao em QA (0075, card 78728)**: com codigo e QA no fluxo, root cause, classificacao, resumo
   PT/EN e Remaining zerado vao na etapa `preparar-fechamento`, que depende das etapas `pr-*` — roda **so depois do merge**
   (correcao em QA, card em Dev Test in QA), nunca com o PR aberto; nao troque `dependsOn` para adianta-la. Depois o plano

@@ -57,6 +57,9 @@ public class WorkItemToolsService(
         var defaults = ParseArray(DefaultItemTypesJson);
         defaults.Add(JsonNode.Parse(solvace.prform.infra.Migrations.SeedEnvValidation0092.NewItemType));
         defaults.Add(JsonNode.Parse(solvace.prform.infra.Migrations.SeedEnvReproduction0093.NewItemType));
+        // 0099: tipos da Mesa de gestão (relatório, duplicados, entendimento, RCA, gestão de cards, planejamento).
+        foreach (var t in ParseArray(solvace.prform.infra.Migrations.SeedDesk0099.ItemTypes))
+            defaults.Add(t?.DeepClone());
         return defaults;
     }
 
@@ -73,7 +76,7 @@ public class WorkItemToolsService(
         return new WorkItemTemplateContext
         {
             Card = r.Card,
-            Type = r.WorkItemType is null ? null : r.IsUserStory ? "user-story" : "bug",
+            Type = TypeKey(r),
             Flow = r.Flow,
             State = r.State,
             MainBranch = r.MainBranch,
@@ -186,7 +189,7 @@ public class WorkItemToolsService(
         var result = new JsonObject
         {
             ["card"] = r?.Card,
-            ["type"] = r is null ? null : r.IsUserStory ? "user-story" : "bug",
+            ["type"] = r is null ? null : TypeKey(r),
             ["mainBranch"] = r?.MainBranch,
             ["branchesByTarget"] = r is null ? null : new JsonObject(r.Suffixes.Select(s =>
                 new KeyValuePair<string, JsonNode?>(s.Key, BranchRules.BranchFor(r.MainBranch, s.Key, r.Suffixes)))),
@@ -256,6 +259,10 @@ public class WorkItemToolsService(
     }
 
     // ── Util ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Tipo do dono para o <c>when.type</c> dos modelos: <c>epic</c> (0099, chave E…), <c>user-story</c>, <c>bug</c> ou null (não lido).</summary>
+    public static string? TypeKey(CardRules r) =>
+        SkillsRulesService.IsEpic(r) ? "epic" : r.WorkItemType is null ? null : r.IsUserStory ? "user-story" : "bug";
 
     private static string Value(IReadOnlyDictionary<string, string> settings, string key) =>
         settings.TryGetValue(key, out var v) ? v : string.Empty;

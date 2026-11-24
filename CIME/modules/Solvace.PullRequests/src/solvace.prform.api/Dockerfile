@@ -38,6 +38,11 @@ RUN set -e; PIDS=""; \
     test -s /app/agent/version.txt
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+# 0099: fontes do PDF gerado no servidor (POST WorkItems/{n}/files/pdf, Pdf/render) — o PDFsharp não acha fonte no Linux
+# sozinho; o SystemFontResolver procura DejaVu Sans/Mono em /usr/share/fonts.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish .
 # Skills do Claude Code servidas pela API (0024): GET /api/v1/Skills.
