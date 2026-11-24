@@ -35,18 +35,7 @@ try
             }
             var userToken = ConfigStore.UserToken()
                             ?? throw new InvalidOperationException($"api-key não encontrada (PRMAKE_TOKEN ou {Paths.UserTokenFile}) — instale as skills pela tela Skills do PRMake");
-            using var client = new PrmakeClient(ConfigStore.ResolveApiBase(config), userToken);
-            var registration = await client.RegisterAsync(new RegisterRequest
-            {
-                Host = Paths.HostName,
-                Name = Option("--name") ?? config.Name,
-                Os = Paths.OsDescription,
-                AgentVersion = Agent.Version
-            }, CancellationToken.None);
-            config.Token = registration.Token;
-            config.WorkerId = registration.Worker.Id;
-            config.Name = registration.Worker.Name;
-            ConfigStore.Save(config);
+            var registration = await Registration.RegisterAsync(config, userToken, Option("--name"), CancellationToken.None);
             Console.WriteLine($"máquina registrada: {registration.Worker.Name} ({registration.Worker.Id})");
             Console.WriteLine($"workspace: {ConfigStore.ResolveWorkspace(config)}");
             Console.WriteLine("próximo passo: prmake-agent install");
@@ -123,6 +112,9 @@ try
                         if (probe is not null) break;
                     await Task.Delay(2000);
                 }
+            // A api-key da máquina mudou de dono (outra pessoa instalou as skills aqui): registra para o dono novo antes de
+            // pegar pedidos — senão o executor seguiria trabalhando para quem estava antes.
+            config = await Registration.EnsureOwnerAsync(config, CancellationToken.None);
             return await new Runner(config).RunAsync(stop.Token);
         }
 
