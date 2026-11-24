@@ -46,6 +46,10 @@ public partial class WorkItem
     public Guid? ActiveRequestId { get; private set; }
     /// <summary>JSON (jsonb) de <see cref="WorkItemLink"/>.</summary>
     public string LinksJson { get; private set; } = "[]";
+    /// <summary>
+    /// 0100: a sub-tarefa <c>aws-deploy-map</c> já foi posta (sozinha ou pela pessoa) — se a pessoa tirar, não volta.
+    /// </summary>
+    public bool AwsDeployMapApplied { get; private set; }
     /// <summary>xmin.</summary>
     public uint Version { get; private set; }
 
