@@ -77,6 +77,15 @@ comando/ferramenta) — nao repita nem invente regras aqui.
   ferramenta equivalente. Diga na conversa o que precisa de uma pessoa (com a regra) e siga com o resto do pedido.
 - **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) na resposta.
 
+## Padroes (0101)
+
+Quando propuser script SQL, migracao ou objeto de banco: leia antes os padroes do card (`prmake_standards(card,
+repository?)` ou a secao "Padroes de banco e de aplicacao" do `prmake_rules`) e, antes de gravar o script
+(`prmake_case_file`, `prmake_work_item_file`, `prmake-case.sh upload`, que ja confere `.sql`), confira com
+`prmake_standards_check(card, text, target: sql|migration|code)`. **block**: corrija antes de gravar; **warn**: grave e
+cite o achado (codigo do padrao) na resposta; **monitor**/proposto: ajuste quando der. Legado no `dbo` mantem os nomes
+atuais. PRMake fora: siga e diga que nao conferiu.
+
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
 1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens — **compacto**: itens em
    andamento com as sub-tarefas abertas, pendentes e fechados numa linha, o resto so contado — e dos **relatados**, itens de

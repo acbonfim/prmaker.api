@@ -85,7 +85,16 @@
 #   rules       <card> [--refresh]                       0085: regras do PRMake para o card (fluxo, base, NOME DE BRANCH
 #                                                        POR DESTINO, padroes de commit/titulo, itens) em
 #                                                        $CARD_DIR/dados/regras.md (cache de 10 min)
-#   work-items  <card> [numero]                          0085: itens de trabalho do card (lista resumida com fingerprint e
+#   standards   <card> [--repo <r>] [--refresh]          0101: PADROES de banco e de aplicacao que valem para o card (nomes
+#                                                        de tabela/chave/indice/procedure/view, scripts, camadas/pastas) em
+#                                                        $CARD_DIR/dados/padroes.md (cache de 10 min) — leia antes de
+#                                                        escrever script SQL, migracao ou objeto de banco
+#   standards-check <card> <arquivo> [--target sql|migration|code] [--repo <r>]
+#                                                        0101: confere o arquivo nos padroes (POST Governance/standards/check)
+#                                                        e imprime os achados (codigo, linha, dica); exit 3 = efeito block
+#                                                        (corrija antes de gravar), 0 = ok/aviso ou PRMake fora (nao trava).
+#                                                        O upload/sync de .sql ja confere antes de enviar
+#   work-items  <card> [numero]                        0085: itens de trabalho do card (lista resumida com fingerprint e
 #                                                        sub-tarefas) ou o detalhe de um item (params, output, undo, logs)
 #   work-task   <card> <sub-tarefa> <start|complete|fail|skip> [resultado|-] [--output <json>] [--undo <json>]
 #                                                        0085 (reserva do MCP prmake_work_task): muda a sub-tarefa
@@ -380,6 +389,10 @@ send_or_queue() { # <METHOD> <path> <json-body-file>
 
 upload_or_queue() { # <file> <kind> <key> <desc>
   local file="$1" kind="$2" key="$3" desc="$4"
+  # 0101: script SQL passa pelos padroes antes de subir (efeito block = nao envia; PRMake fora = segue).
+  if [[ "$(printf '%s' "$file" | tr 'A-Z' 'a-z')" == *.sql ]]; then
+    standards_check_file "$file" sql || die "padrao com efeito block em $(basename "$file") — corrija os achados acima e envie de novo"
+  fi
   flush_quiet
   api_upload "/$PLAN/artifacts" "$file" "$kind" "$key" "$desc"
   if [[ "$CODE" =~ ^2 ]]; then echo "   enviado: $(basename "$file") ($(jq -r '.kind' "$TMP/resp"), $(jq -r '.size' "$TMP/resp") bytes)"; return 0; fi
@@ -535,6 +548,60 @@ executor_exit() { # <o que esperaria>
   echo "MODO EXECUTOR: nao espere ($1). Registre no plano o que falta (etapa waiting/pergunta) e ENCERRE A VEZ —"
   echo "o PRMake retoma esta sessao sozinho quando a pessoa responder, concluir a etapa ou o PR for mesclado."
   exit 12
+}
+
+# --- Padroes de banco e de aplicacao (0101) ----------------------------------------------------------
+# A conferencia e do PRMake (POST Governance/standards/check: efeito e modo de cada padrao, achados na trilha); aqui so
+# o envio e a impressao. Nunca trava por rede: PRMake fora/sem o recurso = segue com um AVISO.
+STANDARDS_MAX_BYTES=204800
+standards_target_for() { # <arquivo> -> sql | migration | code
+  local lower; lower="$(printf '%s' "$1" | tr '\\' '/' | tr 'A-Z' 'a-z')"
+  case "$lower" in *.sql) echo sql ;; */migrations/*|migrations/*) echo migration ;; *) echo code ;; esac
+}
+standards_source() {
+  if [[ "${PRMAKE_SPECIALIST:-0}" == 1 ]]; then echo specialist
+  elif [[ "${PRMAKE_EXECUTOR:-0}" == 1 ]]; then echo executor
+  else echo skill; fi
+}
+# Nome do repositorio pelo remote origin da pasta do arquivo (vazio fora de um repositorio).
+standards_repo_of() { # <arquivo>
+  local url; url="$(git -C "$(dirname "$1")" remote get-url origin 2>/dev/null | tr -d '\r')"
+  [[ -n "$url" ]] || return 0
+  url="${url%/}"; url="${url##*/}"; url="${url##*:}"; printf '%s' "${url%.git}"
+}
+# Confere um arquivo: imprime os achados; retorno 0 = ok/aviso/monitorar ou PRMake fora, 3 = efeito block.
+standards_check_file() { # <arquivo> <target> [repo]
+  local f="$1" target="$2" repo="${3:-}" src="$TMP/std-text" code bom
+  [[ -f "$f" ]] || { warn "arquivo nao encontrado: $f"; return 0; }
+  # Script salvo pelo SSMS costuma vir em UTF-16 (BOM FF FE / FE FF): converte para UTF-8 antes de mandar.
+  bom="$(head -c 2 "$f" | od -An -tx1 | tr -d ' \n')"
+  if [[ "$bom" == fffe || "$bom" == feff ]] && command -v iconv >/dev/null 2>&1; then
+    iconv -f UTF-16 -t UTF-8 "$f" 2>/dev/null | head -c "$STANDARDS_MAX_BYTES" > "$src"
+  else
+    head -c "$STANDARDS_MAX_BYTES" "$f" > "$src"
+  fi
+  [[ -n "$repo" ]] || repo="$(standards_repo_of "$f")"
+  jq -n --rawfile t "$src" --arg target "$target" --arg path "$(basename "$f")" --arg repo "$repo" --arg card "$CARD" \
+    --arg s "$(standards_source)" \
+    '{text:$t, target:$target, path:$path, source:$s} + (if $repo != "" then {repository:$repo} else {} end)
+      + (if ($card | test("^[0-9]+$")) then {card:($card | tonumber)} else {} end)' > "$TMP/std-body.json" || return 0
+  code="$(curl -s --max-time 20 -o "$TMP/std-resp" -w '%{http_code}' -X POST "$BASE/Governance/standards/check" \
+    -H "x-api-key: $TOKEN" -H 'accept: application/json' -H 'content-type: application/json' -H 'X-Execution-Client: skill' \
+    --data-binary "@$TMP/std-body.json" 2>/dev/null)"; code="${code:-000}"
+  if [[ ! "$code" =~ ^2 ]] || ! jq -e 'type == "object"' "$TMP/std-resp" >/dev/null 2>&1; then
+    warn "padroes (0101): nao conferi $(basename "$f") (HTTP $code) — segue sem a conferencia; diga isso no resultado"
+    return 0
+  fi
+  jq -r --arg f "$(basename "$f")" '
+    "padroes (0101) em \($f): decisao \(.decision // "allow") (modo \(.mode // "?")"
+      + (if (.wouldDecide // "") != "" and .wouldDecide != .decision then ", no enforce seria \(.wouldDecide)" else "" end)
+      + ") — \((.findings // []) | length) achado(s)",
+    ((.findings // [])[:20][] | "  - \(.code // .key) [\(.effect // "monitor")] linha \(.line // "-"): \(.title // "")"
+      + (if (.excerpt // "") != "" then "\n      trecho: \(.excerpt | gsub("\n"; " ") | .[0:160])" else "" end)
+      + (if (.hint // "") != "" then "\n      dica: \(.hint)" else "" end)),
+    (if ((.findings // []) | length) > 20 then "  ... e mais \((.findings | length) - 20)" else empty end)' "$TMP/std-resp"
+  [[ "$(jq -r '.decision // "allow"' "$TMP/std-resp" | tr 'A-Z' 'a-z')" == block ]] && return 3
+  return 0
 }
 
 case "$CMD" in
@@ -1807,6 +1874,53 @@ PY
     else
       die "HTTP $CODE ao ler as regras do card (GET Skills/rules): $(resp_error) — sem regras, nao invente nomes: use 'branches'"
     fi
+    ;;
+
+  standards)
+    # 0101: padroes de banco e de aplicacao que valem para o card (GET Governance/standards/for-card/{card}) — o
+    # mesmo markdown do MCP prmake_standards. Cache de 10 min em dados/padroes.md (por repositorio); --refresh forca.
+    REPO=""; REFRESH=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in --repo) REPO="${2:?repositorio}"; shift 2 ;; --refresh) REFRESH=1; shift ;; *) die "argumento desconhecido: $1" ;; esac
+    done
+    mkdir -p "$CARD_DIR/dados"
+    OUT="$CARD_DIR/dados/padroes${REPO:+-${REPO//\//_}}.md"
+    if [[ $REFRESH -eq 0 && -f "$OUT" && -n "$(find "$OUT" -mmin -10 2>/dev/null)" ]]; then
+      [[ -s "$OUT" ]] && cat "$OUT" || echo "Nenhum padrao de banco/aplicacao vale para o card $CARD."
+      exit 0
+    fi
+    Q=""; [[ -n "$REPO" ]] && Q="?repository=$(jq -rn --arg r "$REPO" '$r | @uri')"
+    CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' "$BASE/Governance/standards/for-card/$CARD$Q" \
+      -H "x-api-key: $TOKEN" -H 'accept: text/markdown, application/json' -H 'X-Execution-Client: skill' 2>/dev/null)"; CODE="${CODE:-000}"
+    if [[ "$CODE" =~ ^2 ]]; then
+      # Markdown puro ou JSON {markdown|text} / string.
+      if jq -e 'type == "object"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.markdown // .text // .content // ""' "$TMP/resp" > "$OUT"
+      elif jq -e 'type == "string"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.' "$TMP/resp" > "$OUT"
+      else cp "$TMP/resp" "$OUT"; fi
+      if [[ -n "$(tr -d '[:space:]' < "$OUT")" ]]; then cat "$OUT"; else : > "$OUT"; echo "Nenhum padrao de banco/aplicacao vale para o card $CARD."; fi
+    elif [[ -s "$OUT" ]]; then
+      warn "PRMake sem os padroes agora (HTTP $CODE) — usando o cache de $(date -r "$OUT" '+%d/%m %H:%M' 2>/dev/null || echo '?')"
+      cat "$OUT"
+    else
+      warn "padroes (0101) indisponiveis agora (HTTP $CODE) — siga as regras do card (prmake_rules) e diga no resultado que nao leu os padroes"
+    fi
+    ;;
+
+  standards-check)
+    # 0101: confere um arquivo (script SQL, migracao, codigo) nos padroes do PRMake. exit 3 = efeito block.
+    FILE="${1:?arquivo}"; shift; TARGET=""; REPO=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --target) TARGET="${2:?sql|migration|code}"; shift 2 ;;
+        --repo) REPO="${2:?repositorio}"; shift 2 ;;
+        *) die "argumento desconhecido: $1" ;;
+      esac
+    done
+    [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
+    [[ -n "$TARGET" ]] || TARGET="$(standards_target_for "$FILE")"
+    case "$TARGET" in sql|migration|code) ;; *) die "--target deve ser sql, migration ou code" ;; esac
+    standards_check_file "$FILE" "$TARGET" "$REPO"
+    exit $?
     ;;
 
   work-items)

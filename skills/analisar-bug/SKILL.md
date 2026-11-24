@@ -107,7 +107,7 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 ## Comandos do plano no dia a dia — MCP primeiro
 Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
 Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
-`ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
+`ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint,mcp__prmake__prmake_standards,mcp__prmake__prmake_standards_check")`
 (nova rodada de perguntas: `prmake_answers,prmake_cancel_questions`)
 (as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
 
@@ -278,6 +278,20 @@ comando/ferramenta) — nao repita nem invente regras aqui.
 - **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
   ferramenta equivalente. Registre no plano o que precisa de uma pessoa (com a regra) e siga com o resto.
 - **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da etapa.
+
+## Padroes (0101)
+
+Os padroes de banco e de aplicacao (nomes de tabela/coluna/chave/indice/procedure/view, scripts, camadas e pastas do
+modulo) vem do PRMake — nao repita nem invente padroes aqui.
+- **Antes de escrever** script SQL, migracao ou objeto de banco: leia os padroes do card — `prmake_standards(card,
+  repository?)` ou a secao "Padroes de banco e de aplicacao" do `prmake_rules` (script: `bash $PLAN standards <card>
+  [--repo <r>]`). Legado no `dbo` mantem os nomes atuais.
+- **Antes de gravar** pelo PRMake (`prmake_file`, `prmake_work_item_file`, PR do item): confira com
+  `prmake_standards_check(card, text, target: sql|migration|code, path?, repository?)` (script: `bash $PLAN
+  standards-check <card> <arquivo>`; o `upload`/`sync` de `.sql` ja confere) e corrija os achados. Efeito **block**
+  impede gravar — corrija e confira de novo; **warn** segue citando o achado (codigo do padrao) no resultado da etapa;
+  **monitor**/padrao proposto: ajuste quando der. O hook tambem confere `.sql`/migracoes ao editar ("Padroes do PRMake").
+- PRMake fora/conferencia indisponivel: siga e diga no resultado que nao conferiu.
 
 ## Fluxo
 **0. Atualizar a skill** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true`;

@@ -42,6 +42,16 @@ comando/ferramenta) — não repita nem invente regras aqui.
   ferramenta equivalente. Diga ao usuário o que precisa de uma pessoa (com a regra) e siga com o resto.
 - **Aviso** ("Aviso da governança do PRMake: ..."): siga e cite o aviso (com a regra) no resumo final.
 
+## Padrões (0101)
+
+Se o diff da branch tem script SQL (`.sql`), migração (`Migrations/`) ou objeto de banco: antes de publicar, confira
+cada arquivo nos padrões do card — `prmake_standards_check(card, text, target: sql|migration|code, path, repository)`
+(script: `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh standards-check <card> <arquivo> [--repo <r>]`; os
+padrões que valem: `prmake_standards(card, repository)` ou a seção "Padrões de banco e de aplicação" do `prmake_rules`).
+Efeito **block**: não publique — mostre os achados ao usuário (o código precisa mudar antes do PR); **warn**: publique e
+cite os achados (código do padrão) no resumo final; **monitor**/proposto: só cite. Legado no `dbo` mantém os nomes
+atuais. PRMake fora: siga e diga que não conferiu.
+
 ## Fluxo
 
 ### 1. Identificar o card pela branch
