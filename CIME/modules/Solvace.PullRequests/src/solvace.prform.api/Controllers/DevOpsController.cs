@@ -14,11 +14,14 @@ namespace solvace.prform.Controllers;
 /// consultas e criar/editar/mover/comentar cards. Tudo com a integração pessoal de quem age ("AzureDevOps Configurations").
 /// Gravações: Timeline do card + <c>devopsCardsUpdated</c> no grupo <c>devops</c> (<see cref="DevOpsDeskRunner"/>).
 /// Erros: 400/403/404/409/502 <c>{code, message}</c> com a mensagem do DevOps quando foi ele que recusou.
+/// Ajustes 2: só <c>admin</c>/<c>management</c> (<see cref="DeskAccessAttribute"/>); token do caso, executor e skill
+/// (<c>X-Execution-Client: skill</c>) continuam valendo.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
+[DeskAccess]
 public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner, IEpicCardSource epicCards) : ControllerBase
 {
     // ---------------------------------------------------------------- metadados

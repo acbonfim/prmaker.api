@@ -17,7 +17,7 @@ namespace solvace.prform.Execution;
 /// (<see cref="CaseSpecialistMiddleware"/>).
 /// </summary>
 [McpServerToolType]
-public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor http)
+public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor http, DeskProfileService profile)
 {
     // Acentos como estão (menos tokens que \u00E3) — o texto vai para o modelo, não para HTML.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -29,7 +29,14 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
     [Description("Contexto compacto do caso (Especialista do caso): planos e versoes (com o motivo de cancelamento), decisoes, perguntas abertas, " +
                  "divergencia, PRs, pontos combinados, propostas, acoes e as ultimas mensagens da conversa. Comece por aqui.")]
     public Task<string> Context(string card, CancellationToken ct = default) =>
-        Safe(async () => await chat.ContextAsync(Card(card), ct));
+        Safe(async () =>
+        {
+            var markdown = await chat.ContextAsync(Card(card), ct);
+            // 0099 (ajustes 2): no épico, o perfil de quem pediu (persona PO/gestor de problemas ou dev).
+            if (EpicKey.IsEpic(card) && http.HttpContext?.User is { } user)
+                markdown += await profile.MarkdownAsync(user, ct);
+            return markdown;
+        });
 
     [McpServerTool(Name = "prmake_case_messages", ReadOnly = true)]
     [Description("Mensagens novas da conversa do caso (depois da ultima que voce leu; 'after' = a partir do numero informado). Marca como lidas. " +

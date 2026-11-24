@@ -17,7 +17,7 @@ namespace solvace.prform.Controllers;
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-[Authorize(Roles = "admin, user, support")]
+[Authorize(Roles = "admin, user, support, management")]
 public class PluginConfigurationController : ControllerBase
 {
     private readonly IPluginApplication _application;

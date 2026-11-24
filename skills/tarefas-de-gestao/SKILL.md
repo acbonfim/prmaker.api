@@ -44,6 +44,12 @@ DIR=~/.prmake/cards/<chave>/gestao                          # consultas (.json),
    Leia texto grande de card (repro, discussion) so dos cards que a tarefa pede, nao do lote inteiro.
 9. Documentos para pessoas: **pt-BR com acentos**, sem emojis, tabelas markdown, cards citados pelo numero (78123), itens
    de trabalho por `#n`. Sem senha, token nem dado pessoal alem do necessario. RCA segue o idioma do modelo (ingles).
+10. **Perfil de quem pede (ajustes 2)**: `prmake_rules(card: "E<n>")` termina em "Perfil de quem pediu". Perfil
+    `management` (PO / gestor de problemas, maquina sem codigo/GitHub/banco/AWS) → **sem** `git`, `gh`, codigo dos
+    repositorios, `sql-query.sh`/banco do cliente e CLI da AWS: fontes = PRMake (`$GES`, `prmake_devops_*`,
+    `prmake_case_context`/`prmake_work_items` do card), Base Solvace (`prmake_base_*`), acompanhamento
+    (`prmake_epic_monitor`) e retrato de deploy (`prmake_aws_status`). O que so o codigo/banco responderia → escreva como
+    **lacuna** ("confirmar no codigo — pedir a um dev") e siga; nunca `fail` por falta de repositorio.
 
 ## Passagem de dados entre sub-tarefas
 - A consulta (`devops-query`) grava `consulta-<slug>.json` no item (kind `data`) e devolve `output.file`. As seguintes
@@ -175,7 +181,7 @@ Params usuais: `card` (ou `cards`), `focus`.
 1. Card inteiro (so leitura): `OUTDIR=~/.prmake/cards/<card>/dados bash $AB/bug-fetch.sh <card>` e leia **inteiros**
    `card-resumo.txt`, `description.txt`, `criterios-aceite.txt` (US) e `discussion.txt`. Ja tratado na Bancada?
    `prmake_case_context(<card>)` e `prmake_work_items(<card>)` (analise, decisoes, itens) — use, nao refaca.
-2. Base Solvace antes de codigo: `prmake_base_search(card: <card>, ...)` com os termos do pedido → `prmake_base_get` das
+2. Base Solvace antes de codigo (perfil `management`: so a Base — regra 10): `prmake_base_search(card: <card>, ...)` com os termos do pedido → `prmake_base_get` das
    regras/casos de uso que importam → `prmake_base_impact` se a mudanca afeta outros modulos.
 3. Escreva `entendimento-<card>.md` (pt-BR, para quem nao e desenvolvedor):
    - `## O que pede` — Bug: o que acontece × o esperado, quem sofre; US: o pedido e os criterios de aceite (lista).
@@ -192,7 +198,8 @@ Params usuais: `card` (ou `cards`), `focus`.
 Params usuais: `card` (ou `cards`), `language` (`pt` = tambem uma versao em portugues para leitura interna).
 1. Fontes: card inteiro (`bug-fetch.sh`, como no `understanding`), o que o PRMake ja sabe do card
    (`prmake_case_context(<card>)`: analise, causa raiz, PRs mesclados, chamado/script; `prmake_work_items(<card>)`) e a
-   Base Solvace. Causa nao confirmada em lugar nenhum → escreva como **provavel** e diga o que falta confirmar.
+   Base Solvace; entregas do card (PRs, ambientes) por `prmake_epic_monitor`/`prmake_aws_status` — sem git/AWS CLI no perfil
+   `management`. Causa nao confirmada em lugar nenhum → escreva como **provavel** e diga o que falta confirmar.
 2. Escreva `rca-<card>.md` **no "Modelo do RCA" do prompt de Bug do PRMake** — o mesmo da `analisar-bug`/`gerar-prmake`:
    ingles, um titulo em negrito por secao (Main Cause, Contributing Factors, Impact, Applied Solution, Action/Prevention
    Plan, Modified files/…/Altered data in the database, Ticket com o numero do card). Sem codigo: "No code changes" +
@@ -214,6 +221,8 @@ Params usuais: `file` (markdown do item; padrao: o `output.file` da sub-tarefa a
 - `result`: `**PDF gerado: <nome>.pdf.**` + de qual markdown e quantas paginas/bytes. `output {file:"<nome>.pdf", from:"<arquivo.md>"}` · `undo none {reason:"arquivo do item"}`
 
 ## Extras uteis (quando a descricao pedir)
+- **Acompanhamento das entregas** (descricao fala de PRs, deploy, ambientes, "o que subiu"): `prmake_epic_monitor(epic: <n>)`
+  → tabela `| Card | Estado/coluna | PRs (status → destino) | Ambientes |` com a data do retrato; sem retrato = "—".
 - **Parados por coluna**: `bash $GES stale $DIR/<consulta>.json --days 14` (abertos sem mudanca, agrupados pela coluna).
 - **Resumo semanal do epico**: consulta dos cards do epico (`prmake_epic` → ids) com `changedFrom = @today - 7` + itens do
   epico concluidos na semana (`prmake_work_items(E…)`) → o que andou, o que entrou, o que travou, proximos passos.

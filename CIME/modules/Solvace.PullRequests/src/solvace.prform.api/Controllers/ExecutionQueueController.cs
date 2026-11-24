@@ -241,7 +241,7 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
     /// <summary>Máquinas do usuário.</summary>
     [HttpGet("mine")]
     public Task<ActionResult<List<ExecutionWorkerResponse>>> Mine(CancellationToken ct) =>
-        Run<List<ExecutionWorkerResponse>>(async () => Ok(await queue.GetWorkersAsync(RequireUserId(), ct)));
+        Run<List<ExecutionWorkerResponse>>(async () => Ok((await queue.GetWorkersAsync(RequireUserId(), ct)).Select(WithProfile).ToList()));
 
     /// <summary>O executor pergunta quem ele é (status, concorrência, versão publicada).</summary>
     [HttpGet("me")]
@@ -279,24 +279,31 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
 
     [HttpPatch("{id:guid}")]
     public Task<ActionResult<ExecutionWorkerResponse>> Configure([FromRoute] Guid id, [FromBody] ConfigureExecutionWorkerRequest request, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.ConfigureWorkerAsync(id, request, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.ConfigureWorkerAsync(id, request, await GetActorAsync(ct), ct))));
 
     /// <summary>"Rodar diagnóstico agora": o executor roda o doctor no próximo sinal de vida (até 1 min).</summary>
     [HttpPost("{id:guid}/doctor-request")]
     public Task<ActionResult<ExecutionWorkerResponse>> RequestDoctor([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.RequestDoctorAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.RequestDoctorAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/pause")]
     public Task<ActionResult<ExecutionWorkerResponse>> Pause([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.PauseWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.PauseWorkerAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/resume")]
     public Task<ActionResult<ExecutionWorkerResponse>> Resume([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.ResumeWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.ResumeWorkerAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/revoke")]
     public Task<ActionResult<ExecutionWorkerResponse>> Revoke([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.RevokeWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.RevokeWorkerAsync(id, await GetActorAsync(ct), ct))));
+
+    /// <summary>
+    /// 0099 (ajustes 2): perfil do dono (quem chama é o dono — <c>mine</c> e as ações dele) e o que o doctor exige por perfil
+    /// (<see cref="DoctorProfiles"/>): <c>profile</c>, <c>doctorRequiredFor</c>, <c>profileDoctorProblems</c>.
+    /// </summary>
+    private ExecutionWorkerResponse WithProfile(ExecutionWorkerResponse worker) =>
+        DoctorProfiles.Apply(worker, DeskRoles.Profile(DeskRoles.Of(User)));
 
     /// <summary>Orçamento diário e regra automática do usuário.</summary>
     [HttpGet("settings")]

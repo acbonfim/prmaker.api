@@ -34,7 +34,8 @@ public class WorkItemMcpTools(
     IExecutionQueueApplication queue,
     IWorkItemDeliverableApplication deliverables,
     IEpicApplication epics,
-    IEpicStoryApplication stories)
+    IEpicStoryApplication stories,
+    DeskProfileService profile)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -49,7 +50,11 @@ public class WorkItemMcpTools(
     public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
-        return SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct);
+        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct);
+        // 0099 (ajustes 2): no épico, o perfil de quem pede (o item de gestão roda na máquina de quem agiu).
+        if (SkillsRulesService.IsEpic(r) && http.HttpContext?.User is { } user)
+            markdown += await profile.MarkdownAsync(user, ct);
+        return markdown;
     });
 
     [McpServerTool(Name = "prmake_work_items", ReadOnly = true)]

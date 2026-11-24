@@ -119,7 +119,7 @@ public partial class ExecutionQueueApplication
             : "\n\nResposta rapida: o que a pessoa precisa saber agora, com o minimo de leituras (aprofunde so se pedirem).";
         // 0099: chave de épico (E123) = Mesa de gestão — skill especialista-de-gestao (cards seguem com especialista-do-caso).
         if (EpicKey.IsEpic(r.CardNumber))
-            return ManagementSpecialistPrompt(r, fresh, deep);
+            return ManagementSpecialistPrompt(r, fresh);
         var start = fresh
             ? $"Voce e o Especialista do caso do card {r.CardNumber} no PRMake. Leia as instrucoes com " +
               "`cat ~/.claude/skills/especialista-do-caso/SKILL.md` (Bash) e siga-as — NAO use a ferramenta Skill. " +
@@ -136,6 +136,12 @@ public partial class ExecutionQueueApplication
                "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
     }
 
+    /// <summary>0099 (ajustes 2): "investigar a fundo" na Mesa respeita o perfil de quem pediu (código/banco só no perfil dev).</summary>
+    private static string DeskDeep(bool deep) => deep
+        ? "\n\nPediram para INVESTIGAR A FUNDO: confirme nas fontes (Base Solvace, engenharia reversa, DevOps, PRMake; codigo/banco so " +
+          "se o perfil de quem pediu for dev) antes de responder, sem pressa."
+        : "\n\nResposta rapida: o que a pessoa precisa saber agora, com o minimo de leituras (aprofunde so se pedirem).";
+
     /// <summary>0099: skills do Especialista de gestão (instala/atualiza as que faltam antes de ler o SKILL.md).</summary>
     public const string ManagementSkillsCommand =
         "bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet especialista-de-gestao tarefas-de-gestao";
@@ -144,7 +150,7 @@ public partial class ExecutionQueueApplication
     /// 0099: prompt do especialista num épico da Mesa de gestão — skill <c>especialista-de-gestao</c> (guardião do épico:
     /// cards do DevOps com a integração de quem pediu, relatórios, duplicados, entendimento, RCA, PDF, itens do épico).
     /// </summary>
-    private static string ManagementSpecialistPrompt(ExecutionRequest r, bool fresh, string deep)
+    private static string ManagementSpecialistPrompt(ExecutionRequest r, bool fresh)
     {
         var key = r.CardNumber;
         var start = fresh
@@ -160,7 +166,10 @@ public partial class ExecutionQueueApplication
                "de quem pediu — consultar, criar, editar e mover cards do DevOps (prmake_devops_*), gerir o epico e os cards dele " +
                "(prmake_epic*), itens de trabalho do epico (relatorios, duplicados, entendimento, RCA, PDF). Antes de criar card, procure " +
                "duplicado; lote com mais de 10 cards, confirme; nunca feche, remova nem mescle card sem a pessoa decidir. Acoes no card " +
-               $"(Timeline, horas, estado) usam o numero do card, nunca {key}." + deep +
+               $"(Timeline, horas, estado) usam o numero do card, nunca {key}. " +
+               "Veja \"Perfil de quem pediu\" no contexto: perfil management (PO / gestor de problemas) = sem git, gh, codigo, banco do " +
+               "cliente nem CLI da AWS — use Base Solvace, engenharia reversa, ferramentas do PRMake, prmake_epic_monitor, prmake_aws_status " +
+               "e validar-ambiente." + DeskDeep(r.Deep) +
                "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
     }
 
