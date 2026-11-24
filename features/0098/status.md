@@ -36,7 +36,6 @@
 - Timeline/ExecutionQueue levam o card no corpo: esses eventos ficam sem card na trilha (rodada 2: ler o card do corpo).
 - Executor 1.5.0 testado por testes de unidade e pelo mesmo hook no Claude Code; falta uma rodada com o prmake-agent de verdade.
 
-- Q2: hook real num Claude Code (terminal e executor 1.5.0) contra a API local.
 - O deploy sobe o modo **monitor**: nada é barrado até o admin ligar o "Aplicando" na tela.
 - Todo mundo atualiza o `prmake-skills.sh` uma vez (a `toolVersion` passa a incluir o script de governança).
 - Regras que só olham ações do servidor (`POST ...`, `mcp:...`) ficam fora dos `toolMatchers` do hook (não vão à rede).
