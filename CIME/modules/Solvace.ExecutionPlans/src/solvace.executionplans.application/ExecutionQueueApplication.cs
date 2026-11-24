@@ -368,7 +368,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             DoctorRequested = worker.DoctorPending,
             LatestAgentVersion = _agentInfo?.LatestVersion,
             ActiveRequestIds = active.Select(r => r.Id).ToList(),
-            QueueReady = (await ClaimableAsync(worker, DateTimeOffset.UtcNow, cancellationToken)).Requests.Count > 0,
+            // 0100: a coleta da AWS tem laço próprio no executor; o queueReady também o acorda (o aviso do relay pode se perder)
+            QueueReady = (await ClaimableAsync(worker, DateTimeOffset.UtcNow, cancellationToken)).Requests.Count > 0
+                         || await _queue.HasReadyAwsRefreshAsync(worker.OwnerUserId, DateTimeOffset.UtcNow, cancellationToken),
             WorkItemSlots = (await OptionsAsync(cancellationToken)).WorkItemSlots
         };
     }

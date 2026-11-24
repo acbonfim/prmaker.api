@@ -25,6 +25,9 @@ public interface IExecutionQueueRepository
     Task<List<ExecutionRequest>> GetStaleForOwnerAsync(Guid ownerUserId, DateTimeOffset now, DateTimeOffset queuedBefore, CancellationToken cancellationToken);
     /// <summary>Pedidos pegos/rodando do executor (rastreados).</summary>
     Task<List<ExecutionRequest>> GetActiveForWorkerAsync(Guid workerId, CancellationToken cancellationToken);
+
+    /// <summary>0100: há coleta da AWS na fila (pronta) pedida por este dono? Entra no <c>queueReady</c> do sinal de vida.</summary>
+    Task<bool> HasReadyAwsRefreshAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken);
     /// <summary>Quantos pedidos pegos/rodando cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>0080: quantos pedidos do especialista (pegos/rodando) cada executor do dono tem.</summary>
