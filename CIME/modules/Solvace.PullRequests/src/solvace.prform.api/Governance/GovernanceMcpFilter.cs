@@ -142,10 +142,10 @@ public static class GovernanceMcpFilter
             Machine = caller.Machine
         });
 
-    /// <summary>0101: gravação de arquivo (plano/item) que é script SQL ou migração → (nome, conteúdo, alvo da conferência).</summary>
+    /// <summary>0101: gravação de arquivo (plano/item/conversa do caso) que é script SQL ou migração → (nome, conteúdo, alvo da conferência).</summary>
     public static (string Name, string Text, string Target)? StandardsTarget(string tool, CallToolRequestParams? p)
     {
-        if (tool is not ("prmake_file" or "prmake_work_item_file")) return null;
+        if (tool is not ("prmake_file" or "prmake_work_item_file" or "prmake_case_file")) return null;
         var name = Str(p, "name");
         var content = Str(p, "content");
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrEmpty(content)) return null;

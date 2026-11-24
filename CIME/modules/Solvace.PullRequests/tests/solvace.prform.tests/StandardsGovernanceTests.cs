@@ -45,6 +45,7 @@ public class StandardsGovernanceTests
     [InlineData("prmake_file", "01_78720_cria-indice.sql", "CREATE INDEX x ON a.B (C)", "sql")]
     [InlineData("prmake_work_item_file", "20261124_AddPlan.cs", "migrationBuilder.CreateTable(...)", "migration")]
     [InlineData("prmake_file", "analise-inicial.md", "texto", null)]
+    [InlineData("prmake_case_file", "script.sql", "CREATE INDEX x ON a.B (C)", "sql")]
     [InlineData("prmake_log", "x.sql", "CREATE INDEX", null)]
     public void Only_sql_and_migrations_saved_through_prmake_are_checked(string tool, string name, string content, string? target)
     {
