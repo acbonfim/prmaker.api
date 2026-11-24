@@ -118,6 +118,9 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         psi.Environment["PRMAKE_WORKSPACE"] = workspace;
         if (Environment.GetEnvironmentVariable("PRMAKE_API_BASE") is null)
             psi.Environment["PRMAKE_API_BASE"] = ConfigStore.ResolveApiBase(config);
+        // 0098: o hook de governança do settings do executor faz o trabalho; o do ~/.claude/settings.json da pessoa não repete.
+        if (GovernanceHook.Command() is not null)
+            psi.Environment[GovernanceHook.EnvName] = "executor";
         if (IsSpecialist)
         {
             psi.Environment["PRMAKE_SPECIALIST"] = "1";
