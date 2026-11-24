@@ -28,6 +28,7 @@ public sealed class Runner(AgentConfig config)
     private readonly SemaphoreSlim _wake = new(0, 1);
     /// <summary>0074: aviso para a promoção de PRs (o mesmo sinal do relay; o laço da promoção é independente do limite de pedidos do Claude).</summary>
     private readonly SemaphoreSlim _wakePromotion = new(0, 1);
+    private readonly SemaphoreSlim _wakeAws = new(0, 1);
     private RelayListener? _relay;
 
     public async Task<int> RunAsync(CancellationToken stopping)
@@ -61,7 +62,8 @@ public sealed class Runner(AgentConfig config)
             Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
             Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)),
-            PromotionLoopAsync(client, stopping));
+            PromotionLoopAsync(client, stopping),
+            AwsDeployLoopAsync(client, stopping));
 
         var failures = 0;
         while (!stopping.IsCancellationRequested)
@@ -334,6 +336,60 @@ public sealed class Runner(AgentConfig config)
         catch (SemaphoreFullException)
         {
             // já avisado
+        }
+        try
+        {
+            if (_wakeAws.CurrentCount == 0) _wakeAws.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // já avisado
+        }
+    }
+
+    /// <summary>
+    /// 0100: coletas da AWS pedidas pela aba AWS da Bancada (ou o acompanhamento do deploy). Laço próprio, sem o Claude —
+    /// não ocupa vaga de execução nem espera o limite da conta. Acordado pelo relay; sem ele, no ritmo da fila.
+    /// </summary>
+    private async Task AwsDeployLoopAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var runner = new AwsDeployRunner(config, client);
+        await Delay(TimeSpan.FromSeconds(20), stopping);
+        var failures = 0;
+        while (!stopping.IsCancellationRequested)
+        {
+            if (_revoked || _state.Status != "active")
+            {
+                await Delay(TimeSpan.FromSeconds(30), stopping);
+                continue;
+            }
+            try
+            {
+                if (await runner.RunNextAsync(stopping))
+                {
+                    failures = 0;
+                    continue;
+                }
+                failures = 0;
+                try { await _wakeAws.WaitAsync(_relay?.Connected == true ? IdleWithRelay : NextPollEvery, stopping); }
+                catch (OperationCanceledException) { }
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (PrmakeException e) when (e.Status == System.Net.HttpStatusCode.NotFound)
+            {
+                // API ainda sem a 0100: tenta de novo bem mais tarde
+                await Delay(TimeSpan.FromMinutes(30), stopping);
+            }
+            catch (Exception e)
+            {
+                failures++;
+                var wait = TimeSpan.FromSeconds(Math.Min(120, 5 << Math.Min(failures, 5)));
+                Log.Warn($"coleta AWS: {e.Message} — nova tentativa em {wait.TotalSeconds:0} s");
+                await Delay(wait, stopping);
+            }
         }
     }
 

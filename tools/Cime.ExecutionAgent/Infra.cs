@@ -234,6 +234,28 @@ public sealed class PrmakeClient : IDisposable
         await EnsureAsync(response, ct);
     }
 
+    /// <summary>0100: próxima coleta da AWS pedida pelo dono deste executor; null = nada agora.</summary>
+    public async Task<AwsRefreshClaim?> NextAwsRefreshAsync(CancellationToken ct)
+    {
+        using var response = await _http.PostAsync("AwsDeployExecutor/next", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        await EnsureAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync(AgentJson.Default.AwsRefreshClaim, ct);
+    }
+
+    public async Task<AwsRefreshHeartbeat> AwsRefreshHeartbeatAsync(Guid id, CancellationToken ct)
+    {
+        using var response = await _http.PostAsync($"AwsDeployExecutor/{id}/heartbeat", null, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync(AgentJson.Default.AwsRefreshHeartbeat, ct)) ?? new AwsRefreshHeartbeat();
+    }
+
+    public async Task ReportAwsRefreshAsync(Guid id, AwsRefreshReport report, CancellationToken ct)
+    {
+        using var response = await _http.PostAsJsonAsync($"AwsDeployExecutor/{id}/report", report, AgentJson.Default.AwsRefreshReport, ct);
+        await EnsureAsync(response, ct);
+    }
+
     public async Task<PlanPending?> CurrentPlanAsync(string card, CancellationToken ct)
     {
         using var response = await _http.GetAsync($"ExecutionPlan/card/{Uri.EscapeDataString(card)}/current", ct);
@@ -300,7 +322,7 @@ public sealed class PrmakeClient : IDisposable
 public static class Shell
 {
     public static async Task<(int Code, string Output)> RunAsync(string file, IEnumerable<string> args, string? cwd = null,
-        TimeSpan? timeout = null, CancellationToken ct = default)
+        TimeSpan? timeout = null, CancellationToken ct = default, IReadOnlyDictionary<string, string>? env = null)
     {
         var psi = new ProcessStartInfo(file)
         {
@@ -311,6 +333,8 @@ public static class Shell
             WorkingDirectory = cwd ?? Environment.CurrentDirectory
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (env is not null)
+            foreach (var (k, v) in env) psi.Environment[k] = v;
         using var p = new Process { StartInfo = psi };
         try
         {
