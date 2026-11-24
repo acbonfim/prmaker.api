@@ -1,0 +1,10 @@
+import { open, shot, sleep } from './lib.mjs';
+const { browser, page, logs } = await open({ width: 1440, height: 900 });
+await page.goto(`http://localhost:4399/auth/desk?epic=${process.argv[2]}&tab=cards`, { waitUntil: 'networkidle2' });
+await sleep(2500); await shot(page, '08-aba-cards');
+await page.goto(`http://localhost:4399/auth/desk?epic=${process.argv[2]}&tab=items`, { waitUntil: 'networkidle2' });
+await sleep(2500); await shot(page, '09-aba-itens');
+await page.goto(`http://localhost:4399/auth/workbench?card=90001`, { waitUntil: 'networkidle2' });
+await sleep(3000); await shot(page, '10-bancada-chip');
+console.log('LOGS', logs.filter(l => !l.includes('NG0303')).join('\n'));
+await browser.close();

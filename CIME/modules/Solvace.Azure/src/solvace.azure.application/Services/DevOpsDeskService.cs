@@ -348,7 +348,35 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         return new DevOpsBoardItemsResponse(config.ConfigHash, items.Select(i => DevOpsDeskMapping.ParseBoardItem(i, config)).ToList());
     }
 
+    /// <summary>
+    /// Card criado sem área num time: recebe a área padrão do time (como o "+ New" do board do DevOps) — sem isso ele cai na
+    /// área raiz do projeto e não aparece no board. Time sem campo de time = área, ou área informada: não mexe.
+    /// </summary>
+    private async Task<Dictionary<string, JsonElement>?> WithTeamAreaAsync(Dictionary<string, JsonElement>? fields, string? team, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(team) || fields?.ContainsKey("System.AreaPath") == true) return fields;
+        try
+        {
+            var (field, _, defaultValue) = await TeamFieldValuesFullAsync(team.Trim(), ct);
+            if (string.IsNullOrWhiteSpace(defaultValue) || !string.Equals(field ?? "System.AreaPath", "System.AreaPath", StringComparison.OrdinalIgnoreCase))
+                return fields;
+            var withArea = fields is null ? new Dictionary<string, JsonElement>() : new Dictionary<string, JsonElement>(fields);
+            withArea["System.AreaPath"] = JsonSerializer.SerializeToElement(defaultValue);
+            return withArea;
+        }
+        catch (DevOpsActionException)
+        {
+            return fields;
+        }
+    }
+
     private async Task<(string? Field, IReadOnlyList<(string Value, bool IncludeChildren)> Values)> TeamFieldValuesAsync(string team, CancellationToken ct)
+    {
+        var (field, values, _) = await TeamFieldValuesFullAsync(team, ct);
+        return (field, values);
+    }
+
+    private async Task<(string? Field, IReadOnlyList<(string Value, bool IncludeChildren)> Values, string? DefaultValue)> TeamFieldValuesFullAsync(string team, CancellationToken ct)
     {
         using var doc = await GetAsync($"{TeamApi(team)}/work/teamsettings/teamfieldvalues?api-version={Api}",
             $"O DevOps não devolveu as áreas do time {team}", ct);
@@ -362,7 +390,8 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                 .Select(x => (x.GetProperty("value").GetString()!, x.TryGetProperty("includeChildren", out var ic) && ic.ValueKind == JsonValueKind.True))
                 .ToList()
             : [];
-        return (field, values);
+        var defaultValue = root.TryGetProperty("defaultValue", out var dv) && dv.ValueKind == JsonValueKind.String ? dv.GetString() : null;
+        return (field, values, defaultValue);
     }
 
     private async Task<List<int>> WiqlAsync(string wiql, int top, CancellationToken ct)
@@ -425,7 +454,8 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
             throw DevOpsDeskException.Invalid("Informe o tipo do card (type).");
         await EnsureConfigAsync(cancellationToken);
         var type = request.Type.Trim();
-        var ops = DevOpsDeskMapping.BuildCreatePatch(request.Title, request.Fields, request.Tags, request.ParentId, OrganizationUrl);
+        var fields = await WithTeamAreaAsync(request.Fields, request.Team, cancellationToken);
+        var ops = DevOpsDeskMapping.BuildCreatePatch(request.Title, fields, request.Tags, request.ParentId, OrganizationUrl);
 
         DevOpsCardDetail card;
         using (var doc = await SendAsync(HttpMethod.Post, $"{ProjectApi}/wit/workitems/${Uri.EscapeDataString(type)}?$expand=relations&api-version={Api}", ops,

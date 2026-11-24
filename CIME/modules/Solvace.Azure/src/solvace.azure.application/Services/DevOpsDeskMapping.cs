@@ -62,7 +62,8 @@ public static class DevOpsDeskMapping
         var result = new Dictionary<string, ProjectField>(StringComparer.OrdinalIgnoreCase);
         foreach (var f in Values(root))
             if (Str(f, "referenceName") is { Length: > 0 } reference)
-                result[reference] = new ProjectField(Str(f, "type") ?? "string", Bool(f, "readOnly"), Bool(f, "isPicklist"));
+                // Responsável/criado por: versões da API que devolvem "string" marcam a identidade só em isIdentity.
+                result[reference] = new ProjectField(Bool(f, "isIdentity") ? "identity" : Str(f, "type") ?? "string", Bool(f, "readOnly"), Bool(f, "isPicklist"));
         return result;
     }
 
