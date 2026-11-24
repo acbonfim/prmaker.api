@@ -47,7 +47,7 @@ public class WorkItemMcpTools(
     public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
-        return SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct));
+        return SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct);
     });
 
     [McpServerTool(Name = "prmake_work_items", ReadOnly = true)]

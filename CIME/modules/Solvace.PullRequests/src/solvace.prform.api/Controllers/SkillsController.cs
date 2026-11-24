@@ -89,7 +89,8 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
             return BadRequest(new { error = "Informe o card (?card=)." });
         var r = await rules.GetAsync(card!, cancellationToken);
         var cardRepositories = await tools.CardRepositoriesAsync(r.Card, cancellationToken);
-        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken));
+        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken))
+                       + await rules.GovernanceMarkdownAsync(cancellationToken);
         var wantsText = string.Equals(format, "md", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
                         || Request.Headers.Accept.Any(a => a?.Contains("text/markdown", StringComparison.OrdinalIgnoreCase) == true);
         if (wantsText)

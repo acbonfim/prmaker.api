@@ -112,3 +112,19 @@ public class GovernanceMetricsTests
     public void Only_rules_that_can_match_a_hook_go_to_the_hook_matchers(string[] actions, bool expected) =>
         Assert.Equal(expected, GovernanceApplication.CanMatchHook(new RuleMatch { Actions = [.. actions], Patterns = ["x"] }));
 }
+
+/// <summary>0098: o prmake_rules lista os guardrails ativos da governança (o que o hook e o servidor vão aplicar).</summary>
+public class GovernanceRulesMarkdownTests
+{
+    [Fact]
+    public void Lists_active_non_monitor_rules_and_nothing_when_off()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var rules = solvace.governance.domain.GovernanceDefaults.Rules.Select(d => solvace.governance.domain.GovernanceDefaults.CreateRule(d, now)).ToList();
+        var md = solvace.prform.Skills.SkillsRulesService.GovernanceMarkdown("enforce", rules);
+        Assert.Contains("## Governança (modo aplicando)", md);
+        Assert.Contains("`no-merge`", md);
+        Assert.DoesNotContain("`config-changes-audited`", md); // só monitora
+        Assert.Equal(string.Empty, solvace.prform.Skills.SkillsRulesService.GovernanceMarkdown("off", rules));
+    }
+}

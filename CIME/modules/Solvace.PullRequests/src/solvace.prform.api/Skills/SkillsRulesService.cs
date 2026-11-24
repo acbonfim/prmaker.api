@@ -82,7 +82,8 @@ public class SkillsRulesService(
     IPluginConfigurationResolver resolver,
     IAzureService azure,
     IMemoryCache cache,
-    ILogger<SkillsRulesService> logger) : IPrmakeRulesProvider
+    ILogger<SkillsRulesService> logger,
+    solvace.governance.application.Contracts.IGovernancePolicyProvider governance) : IPrmakeRulesProvider
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(2);
 
@@ -105,7 +106,7 @@ public class SkillsRulesService(
         try
         {
             var rules = await GetAsync(cardNumber, cancellationToken);
-            return summary ? SummaryMarkdown(rules) : Markdown(rules);
+            return summary ? SummaryMarkdown(rules) : Markdown(rules) + await GovernanceMarkdownAsync(cancellationToken);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -374,6 +375,42 @@ public class SkillsRulesService(
         "Itens de trabalho: edição só com o item `pending` (todas as sub-tarefas `pending`); iniciado/concluído → criar um novo a partir dele.",
         "Sub-tarefas de um item rodam em ordem; itens diferentes rodam em paralelo. Branch nunca é reaproveitada e nunca há force-push."
     ];
+
+    /// <summary>
+    /// 0098: guardrails ativos da governança (as mesmas regras que o hook PreToolUse e o servidor aplicam), para a skill
+    /// saber de antemão o que será barrado ou avisado. Vazio com a governança desligada.
+    /// </summary>
+    public async Task<string> GovernanceMarkdownAsync(CancellationToken ct)
+    {
+        try
+        {
+            var p = await governance.GetAsync(ct);
+            return GovernanceMarkdown(p.Settings.Mode, p.Rules);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Governança indisponível para as regras do card");
+            return string.Empty;
+        }
+    }
+
+    public static string GovernanceMarkdown(string mode, IEnumerable<solvace.governance.domain.Entities.GovernanceRule> rules)
+    {
+        if (mode == solvace.governance.domain.GovernanceMode.Off) return string.Empty;
+        var active = rules.Where(r => r.Enabled && r.Effect != solvace.governance.domain.GovernanceEffect.Monitor)
+            .OrderBy(r => r.Category).ThenBy(r => r.Order).ToList();
+        if (active.Count == 0) return string.Empty;
+        var sb = new StringBuilder();
+        sb.AppendLine().AppendLine($"## Governança (modo {(mode == solvace.governance.domain.GovernanceMode.Enforce ? "aplicando" : "monitorando")})");
+        sb.AppendLine("Ação barrada: não contorne (nem por comando equivalente) — registre no plano o que precisa de uma pessoa e siga com o resto. Aviso: siga e cite o aviso no resultado.");
+        foreach (var r in active)
+        {
+            var effect = r.Effect switch { "block" => "barra", "approval" => "precisa de aprovação", _ => "avisa" };
+            var scope = r.Scope.Sources.Count > 0 ? $" (só {string.Join(", ", r.Scope.Sources)})" : string.Empty;
+            sb.AppendLine($"- **{r.Name}** — {effect}{scope}: {solvace.governance.domain.Engine.GovernanceRuleEngine.MessageOf(r)} (`{r.Key}`)");
+        }
+        return sb.ToString();
+    }
 
     public static string Markdown(CardRules r, IReadOnlyList<RepositoryBranchPlan>? repositories = null)
     {
