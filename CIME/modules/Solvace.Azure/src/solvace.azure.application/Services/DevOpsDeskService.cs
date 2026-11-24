@@ -71,11 +71,15 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
     private async Task<JsonDocument> SendAsync(HttpMethod method, string url, object? body, string what, CancellationToken ct,
         string contentType = "application/json")
     {
-        using var request = new HttpRequestMessage(method, url);
-        if (body is not null)
-            request.Content = new StringContent(JsonSerializer.Serialize(body, BodyJson), Encoding.UTF8, contentType);
-        using var response = await CreateClient().SendAsync(request, ct);
-        var text = await response.Content.ReadAsStringAsync(ct);
+        var (response, text) = await SendOnceAsync(method, url, body, contentType, ct);
+        // Organização que ainda não tem a 7.1 GA de alguma API: tenta a preview (como os estados do tipo no AzureService).
+        var gaVersion = url.Contains($"api-version={Api}&", StringComparison.Ordinal) || url.EndsWith($"api-version={Api}", StringComparison.Ordinal);
+        if (response.StatusCode == HttpStatusCode.BadRequest && gaVersion && text.Contains("VssVersionOutOfRange", StringComparison.OrdinalIgnoreCase))
+        {
+            response.Dispose();
+            (response, text) = await SendOnceAsync(method, url.Replace($"api-version={Api}", $"api-version={Api}-preview"), body, contentType, ct);
+        }
+        using var _ = response;
         // PAT inválido/vencido: o DevOps responde 203 com a página de login (HTML).
         if (response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
             || (response.IsSuccessStatusCode && text.TrimStart().StartsWith('<')))
@@ -84,6 +88,16 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         if (!response.IsSuccessStatusCode)
             throw DevOpsDeskException.FromDevOps((int)response.StatusCode, $"{what}: {ExtractDevOpsError(text)}");
         return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+    }
+
+    private async Task<(HttpResponseMessage Response, string Text)> SendOnceAsync(HttpMethod method, string url, object? body, string contentType,
+        CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, url);
+        if (body is not null)
+            request.Content = new StringContent(JsonSerializer.Serialize(body, BodyJson), Encoding.UTF8, contentType);
+        var response = await CreateClient().SendAsync(request, ct);
+        return (response, await response.Content.ReadAsStringAsync(ct));
     }
 
     private Task<JsonDocument> GetAsync(string url, string what, CancellationToken ct) => SendAsync(HttpMethod.Get, url, null, what, ct);
@@ -511,7 +525,7 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         }
         else if (plan.Ops.Count == 0)
             throw DevOpsDeskException.Invalid($"O card #{id} já está na coluna {plan.Column}{(plan.Lane is null ? string.Empty : $" / lane {plan.Lane}")}.");
-        return new DevOpsCardWriteResult(card, summary.ToString());
+        return new DevOpsCardWriteResult(card, summary.ToString(), plan.Ops.Count == 0 ? "reordered" : "moved");
     }
 
     public async Task<int> CommentAsync(int id, string markdown, CancellationToken cancellationToken = default)

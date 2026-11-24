@@ -116,7 +116,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_work_deliverable", "prmake_work_item_evidence",
         // 0096: mudanças do plano a pedido da pessoa.
         "prmake_step", "prmake_advance", "prmake_unblock", "prmake_plan_status", "prmake_answer", "prmake_cancel_questions",
-        "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link", "prmake_evidence", "prmake_log", "prmake_code_ref"
+        "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link", "prmake_evidence", "prmake_log", "prmake_code_ref",
+        // 0099: cards do DevOps pela Mesa de gestão (épico: qualquer card; card: só ele — DevOpsMcpTools.CaseScopeError).
+        "prmake_devops_card_create", "prmake_devops_card_update", "prmake_devops_card_move"
     };
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]

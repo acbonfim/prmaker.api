@@ -194,5 +194,8 @@ public sealed class DevOpsCommentRequest
     public string Text { get; set; } = string.Empty;
 }
 
-/// <summary>Resultado de uma gravação: o card como ficou e o resumo legível (Timeline, cartão do especialista).</summary>
-public sealed record DevOpsCardWriteResult(DevOpsCardDetail Card, string Summary);
+/// <summary>
+/// Resultado de uma gravação: o card como ficou, o resumo legível (Timeline, cartão do especialista) e a ação do tempo real
+/// quando não é a padrão da operação (ex.: <c>reordered</c> — só mudou a ordem).
+/// </summary>
+public sealed record DevOpsCardWriteResult(DevOpsCardDetail Card, string Summary, string? Action = null);

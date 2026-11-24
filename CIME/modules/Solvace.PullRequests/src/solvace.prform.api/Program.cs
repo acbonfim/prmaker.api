@@ -63,6 +63,10 @@ builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
+// 0099: Mesa de gestão — gravações no DevOps (Timeline + devopsCardsUpdated) e os pontos que o épico (B1) liga no Q1.
+builder.Services.AddScoped<solvace.prform.Execution.DevOpsDeskRunner>();
+builder.Services.AddScoped<solvace.prform.Execution.IEpicCardSource, solvace.prform.Execution.NoEpicCardSource>();
+builder.Services.AddScoped<solvace.prform.Execution.IDevOpsCardCreatedHook, solvace.prform.Execution.NoDevOpsCardCreatedHook>();
 // Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
 builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
@@ -96,6 +100,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
     // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
     .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
+    .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f => f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter));
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
