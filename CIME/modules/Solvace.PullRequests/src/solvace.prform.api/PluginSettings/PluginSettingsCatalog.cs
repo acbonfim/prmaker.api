@@ -529,8 +529,8 @@ public static class PluginSettingsCatalog
 
         // ============================================================== Engenharia reversa — Aprovação e cobertura
         new() { Section = "engenharia-reversa", Group = "aprovacao", Plugin = Skills, Key = SkillsConfigurationKeys.ReverseEngineeringApproverRoles, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
-            Label = "Papéis que aprovam e publicam", Help = "Papéis do PRMake (admin, gestor, support, user).",
-            Options = [new("admin", "admin"), new("gestor", "gestor"), new("support", "support"), new("user", "user")],
+            Label = "Papéis que aprovam e publicam", Help = "Papéis do PRMake (admin, gestor, management, support, user).",
+            Options = [new("admin", "admin"), new("gestor", "gestor"), new("management", "management"), new("support", "support"), new("user", "user")],
             Default = string.Join(",", ReverseSettings.Default.ApproverRoles) },
         new() { Section = "engenharia-reversa", Group = "aprovacao", Plugin = Skills, Key = SkillsConfigurationKeys.ReverseEngineeringRequiredDocs, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
             Label = "Documentos exigidos", Help = "Documentos que o módulo precisa ter publicados para contar como completo. Design e visão foram descontinuados (0097); a visão prática é sob demanda e o índice técnico nunca conta.",
