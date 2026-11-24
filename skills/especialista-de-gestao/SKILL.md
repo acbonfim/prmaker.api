@@ -168,6 +168,20 @@ Tipos de item: `report` (Relatorio), `duplicates` (Duplicados), `understanding` 
 - **Entendimento rapido de um card** ("do que se trata o 78123?"): `prmake_devops_card_get` e responda em 3–5 linhas;
   entendimento completo (regras da Base, duvidas) ou varios cards → item `understanding` (`entendimento-card`).
 
+## Historias e bugs no PRMake (aba Historias)
+- O epico guarda **rascunhos** de User Story/Bug (o contexto do caso lista "rascunhos x convertidas"). Pedido para
+  escrever/planejar historias ou bugs → **rascunho primeiro**: `prmake_epic_stories(epic)` (nao duplique; edite o que ja
+  existe) e `prmake_epic_story_save(epic, type, title, ...)` (com `number` edita; campos nao enviados ficam).
+- **User Story**: `description` (o que, para quem, por que) + `acceptanceCriteria` claros e verificaveis (checklist ou
+  "Dado/Quando/Entao"). **Bug**: `description` (impacto, ambiente/cliente) + `reproSteps` numerados com **esperado x
+  obtido**, `severity` do picklist (`prmake_devops_meta(what: "fields", type: "Bug")`). `priority` 1–4, `tags` existentes
+  (regra 5), `fields` = `{referenceName: valor}` (area/iteracao/responsavel validos pelo `prmake_devops_meta`).
+- **Converter em card so quando a pessoa pedir** ("cria o card", "converte a #812"): antes, a checagem de duplicado de
+  "Criar card" (passo 2); depois `prmake_epic_story_convert(number, column?, lane?)` — cria no DevOps com a integracao de
+  quem pediu, o card entra no epico (`created`) e a historia vira `converted` (nao se edita mais; ajustes vao no card
+  com `prmake_devops_card_update`). Ja convertida → o erro traz o card: responda com ele, nunca crie outro.
+- Lista grande para virar cards (> 10) → confirmacao da regra 4; responda sempre com `#n` da historia e o card criado.
+
 ## Exemplos
 - **"Quantos bugs abertos temos do Kaizen?"** → `prmake_devops_meta(what: "areas")` (area exata) → `prmake_devops_query`
   (tipo Bug, area `UNDER`, estados abertos, `fields` id/titulo/estado/responsavel, `top` 50) → "37 bugs abertos
