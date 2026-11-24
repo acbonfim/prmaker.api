@@ -104,4 +104,11 @@ public static class SkillsConfigurationKeys
 
     /// <summary>0092: ambientes de validação (JSON: {environments: [{key, label, url, user?, kind?, readOnly?, database?}], plantAdminPattern, corporate, defaults}).</summary>
     public const string ValidationEnvironments = "ValidationEnvironments";
+
+    /// <summary>0100: ambientes da aba AWS (JSON: [{key, label, host, tier?, order}]) — host do CloudFront de cada ambiente; tier fixo vence a descoberta.</summary>
+    public const string AwsDeployEnvironments = "AwsDeployEnvironments";
+    /// <summary>0100: deploy em andamento no retrato → nova coleta (mesma máquina) daqui a N minutos.</summary>
+    public const string AwsDeployFollowMinutes = "AwsDeployFollowMinutes";
+    /// <summary>0100: quantas coletas de acompanhamento no máximo por pedido.</summary>
+    public const string AwsDeployFollowMax = "AwsDeployFollowMax";
 }

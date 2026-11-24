@@ -80,6 +80,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Deliverable = "deliverable";
         /// <summary>0094: relatado do card mudou (menção automática ou inserção/remoção manual) — a aba Relatado recarrega.</summary>
         public const string Related = "related";
+        /// <summary>0100: retrato da AWS do card ou o pedido de coleta mudou — a aba AWS refaz <c>GET AwsDeploy/card/{card}</c>.</summary>
+        public const string Aws = "aws";
     }
 
     public static class CaseActions

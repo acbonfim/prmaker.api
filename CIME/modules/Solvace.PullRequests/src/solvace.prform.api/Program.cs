@@ -60,6 +60,7 @@ builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
+builder.Services.AddScoped<solvace.prform.AwsDeploy.AwsDeployService>();  // 0100: aba AWS (índice, retrato, fila de coleta da máquina)
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();

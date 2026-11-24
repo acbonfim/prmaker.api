@@ -245,6 +245,7 @@ ensure_hook() {
 
 # Permissões do Claude Code para os comandos das skills que não podem ficar presos no prompt/auto mode:
 # - devops-v1: fechamento pelo PRMake (`prmake-plan.sh devops ...`: root cause, resumo, classificação, mover o card);
+# - awsdeploy-v1 (0100): coleta das esteiras do card na AWS (`aws.sh collect`), somente leitura — sub-tarefa aws-deploy-map;
 # - readonly-v2 (0037): consultas somente leitura da análise (`sql-query.sh`, `cognito-query.sh`) — o auto mode barrava
 #   a leitura do banco de produção e a análise ficava parada (card 74669). O próprio script só aceita SELECT/WITH e
 #   sempre faz ROLLBACK.
@@ -254,6 +255,7 @@ PERMISSION_GROUPS=(
   "devops-v1|analisar-bug/scripts/prmake-plan.sh devops:*|fechamento pelo PRMake (prmake-plan.sh devops)"
   "readonly-v2|analisar-bug/scripts/sql-query.sh:*;analisar-bug/scripts/cognito-query.sh:*|consultas somente leitura (sql-query.sh, cognito-query.sh)"
   "envvalidation-v1|validar-ambiente/scripts/env.sh:*|validacao em ambiente (env.sh: navegador com prints, somente leitura na DEMO/producao)"
+  "awsdeploy-v1|aws-deploy/scripts/aws.sh:*|esteiras de deploy na AWS (aws.sh: somente leitura, CLI da AWS + git local)"
 )
 # Regras (JSON) de uma lista de scripts separados por ';' — nas formas de caminho que o Claude usa (~, $HOME, absoluto).
 permission_rules() {
