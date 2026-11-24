@@ -43,7 +43,8 @@ jobs:
             secrets: cime-auth-secrets
             # A auth.api não referencia outros projetos: só o próprio módulo e o que é da raiz do build.
             watch: "CIME/modules/Cime.Auth Directory.Build.props global.json .dockerignore"
-            migrations: "CIME/modules/Cime.Auth/src/cime.auth.api/Migrations"
+            # O seed (papéis garantidos, ex.: management da 0099) roda no mesmo "--migrate": mudança nele também migra.
+            migrations: "CIME/modules/Cime.Auth/src/cime.auth.api/Migrations CIME/modules/Cime.Auth/src/cime.auth.api/Services/AuthSeeder.cs"
 
     steps:
       - uses: actions/checkout@v4
