@@ -133,7 +133,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]
     private static partial Regex CaseChatPath();
 
-    [GeneratedRegex(@"^/api/v[\d.]+/Governance/(evaluate|hooks/events)/?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^/api/v[\d.]+/Governance/(evaluate|hooks/events|standards/check)/?$", RegexOptions.IgnoreCase)]
     private static partial Regex GovernanceHookPath();
 
     public async Task InvokeAsync(HttpContext context, IExecutionQueueApplication queue, IMemoryCache cache)

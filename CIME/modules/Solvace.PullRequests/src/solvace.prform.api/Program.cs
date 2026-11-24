@@ -102,6 +102,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
     // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
     .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0101: padrões de banco e de aplicação (ler os do card e conferir antes de gravar).
+    .WithTools<solvace.prform.Execution.StandardsMcpTools>()
     // 0099: épicos da Mesa de gestão e markdown → PDF nos arquivos do item.
     .WithTools<solvace.prform.Execution.EpicMcpTools>()
     // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).

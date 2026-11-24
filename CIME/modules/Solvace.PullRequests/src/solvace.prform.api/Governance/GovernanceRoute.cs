@@ -86,7 +86,7 @@ public static partial class GovernanceRoute
             "Timeline" => "timeline",
             "CaseChat" or "Case" => "case",
             "PluginConfiguration" or "PluginSettings" or "Skills" => "config",
-            "Governance" => "governance",
+            "Governance" or "GovernanceStandards" or "GovernanceMetrics" => "governance",
             "ReverseEngineering" or "Knowledge" or "Architecture" => "knowledge",
             "Handover" => "handover",
             "Teams" => "timeline",

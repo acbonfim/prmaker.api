@@ -84,7 +84,8 @@ public class SkillsRulesService(
     IAzureService azure,
     IMemoryCache cache,
     ILogger<SkillsRulesService> logger,
-    solvace.governance.application.Contracts.IGovernancePolicyProvider governance) : IPrmakeRulesProvider
+    solvace.governance.application.Contracts.IGovernancePolicyProvider governance,
+    solvace.governance.application.IGovernanceStandardsApplication standards) : IPrmakeRulesProvider
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(2);
 
@@ -439,6 +440,20 @@ public class SkillsRulesService(
         catch (Exception e) when (e is not OperationCanceledException)
         {
             logger.LogWarning(e, "Governança indisponível para as regras do card");
+            return string.Empty;
+        }
+    }
+
+    /// <summary>0101: padrões de banco/aplicação que valem para os repositórios do card (vazio quando nenhum).</summary>
+    public async Task<string> StandardsMarkdownAsync(string card, IReadOnlyCollection<string> repositories, CancellationToken ct)
+    {
+        try
+        {
+            return await standards.ForCardMarkdownAsync(null, repositories, null, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Padrões indisponíveis para o card {Card}", card);
             return string.Empty;
         }
     }

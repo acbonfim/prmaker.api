@@ -25,7 +25,9 @@ public sealed class GovernanceMiddleware(RequestDelegate next)
         "POST ExecutionPlan/{id}/logs", "* ExecutionPlan/{id}/session", "* ExecutionPlan/{id}/usage",
         "POST CaseChat/{card}/seen", "POST CaseChat/{card}/typing",
         // Mudanças da própria governança: a aplicação registra o evento com o antes/depois (sem duplicar aqui).
-        "* Governance/rules", "* Governance/rules/{id}", "* Governance/hooks", "* Governance/hooks/{id}", "PUT Governance/settings"
+        "* Governance/rules", "* Governance/rules/{id}", "* Governance/hooks", "* Governance/hooks/{id}", "PUT Governance/settings",
+        // 0101: padrões — a aplicação registra mudanças e achados da conferência.
+        "* Governance/standards", "* Governance/standards/{id}", "POST Governance/standards/check", "POST Governance/standards/import/*"
     ];
 
     public async Task InvokeAsync(HttpContext http, IGovernanceApplication governance, IGovernanceEventSink sink)

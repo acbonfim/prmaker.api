@@ -413,7 +413,8 @@ public class WorkItemTemplateRendererTests
             ? Task.FromResult<AzureWorkItem?>(new AzureWorkItem { Error = null, Fields = new WorkItemFields { WorkItemType = "Bug", AreaPath = @"Solvace\Product Development Team", State = "Active" } })
             : null);
         var rules = new SkillsRulesService(resolver, azure, new MemoryCache(new MemoryCacheOptions()), NullLogger<SkillsRulesService>.Instance,
-            Stub<solvace.governance.application.Contracts.IGovernancePolicyProvider>((_, _) => null));
+            Stub<solvace.governance.application.Contracts.IGovernancePolicyProvider>((_, _) => null),
+            Stub<solvace.governance.application.IGovernanceStandardsApplication>((_, _) => null));
         var github = Stub<IPullRequestGithubApplication>((m, _) => m.Name == nameof(IPullRequestGithubApplication.ListByCard)
             ? Task.FromResult<IReadOnlyList<PullRequestGithubResponse>>(prs) : null);
         var planApp = Stub<IExecutionPlanApplication>((m, _) => m.Name switch
