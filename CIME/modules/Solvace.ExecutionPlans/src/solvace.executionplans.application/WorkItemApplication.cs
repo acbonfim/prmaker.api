@@ -318,6 +318,8 @@ public class WorkItemApplication : IWorkItemApplication
         var type = ResolveType(req.Type, req.TemplateKey, settings);
         // r5: item com script ganha as sub-tarefas do chamado (gerar o arquivo + abrir no sistema de chamados).
         var tasks = WorkItemTicketRule.Apply(req.Tasks ?? [], settings?.TicketSystem);
+        // 0100: item que muda código ganha o mapa do deploy na AWS depois da última sub-tarefa de código.
+        tasks = WorkItemAwsDeployRule.Apply(tasks);
         var now = DateTimeOffset.UtcNow;
         var item = new WorkItem(cardNumber, type, req.Title, req.Description, o, req.TemplateKey, planId, tasks,
             actor.UserId, actor.Name, now);
@@ -344,8 +346,10 @@ public class WorkItemApplication : IWorkItemApplication
     public async Task<WorkItemResponse> UpdateAsync(long number, UpdateWorkItemRequest req, ExecutionActor actor, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(req);
+        // 0100: a lista nova que muda código ganha o mapa do deploy na AWS — só se o item ainda não o teve (tirado = fica fora).
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
-            i => i.Update(req.Title ?? i.Title, req.Description, req.Tasks, actor.Name, DateTimeOffset.UtcNow), ct);
+            i => i.Update(req.Title ?? i.Title, req.Description,
+                req.Tasks is null ? null : WorkItemAwsDeployRule.Apply(req.Tasks, i.AwsDeployMapApplied), actor.Name, DateTimeOffset.UtcNow), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
         await CaptureItemRefAsync(item.CardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
@@ -386,8 +390,9 @@ public class WorkItemApplication : IWorkItemApplication
         var settings = TypeSource is { } source ? await source.GetAsync(ct) : null;
         // Como na criação: sub-tarefa de script ganha as do chamado (gerar o arquivo + abrir no sistema de chamados).
         var tasks = WorkItemTicketRule.Apply(req.Tasks ?? [], settings?.TicketSystem);
+        // 0100: sub-tarefa nova de código num item que ainda não teve o mapa do deploy na AWS leva ele junto.
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
-            i => i.AddTasks(tasks, req.Before, actor.Name, DateTimeOffset.UtcNow,
+            i => i.AddTasks(WorkItemAwsDeployRule.ApplyToAdded(i, tasks), req.Before, actor.Name, DateTimeOffset.UtcNow,
                 first: string.Equals(req.Position?.Trim(), TaskPosition.First, StringComparison.OrdinalIgnoreCase)), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
         await CaptureItemRefAsync(item.CardNumber, item.Number, null, tasks.Select(t => t.Description), actor, ct);

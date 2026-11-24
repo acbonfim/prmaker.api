@@ -183,6 +183,14 @@ public partial class WorkItem
         foreach (var t in kept.Where(t => !Tasks.Contains(t)))
             Tasks.Add(t);
         Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        NoteAwsDeployMap();
+    }
+
+    /// <summary>0100: o item tem (ou teve) a sub-tarefa <c>aws-deploy-map</c> — se ela sair depois, a regra não põe de novo.</summary>
+    private void NoteAwsDeployMap()
+    {
+        if (Tasks.Any(t => t.Kind == WorkTaskKind.AwsDeployMap))
+            AwsDeployMapApplied = true;
     }
 
     // ---------------------------------------------------------------- plano → item
@@ -232,6 +240,7 @@ public partial class WorkItem
         {
             Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
             UpdatedAt = now;
+            NoteAwsDeployMap();
         }
         return added;
     }
@@ -608,6 +617,7 @@ public partial class WorkItem
             AddLog(null, actor, WorkItemLogKind.Updated, $"Sub-tarefa acrescentada: {task.Title}.", now);
         }
         Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
+        NoteAwsDeployMap();
         Recalculate(actor, now, failedUndo: false);
         UpdatedAt = now;
         return added;
