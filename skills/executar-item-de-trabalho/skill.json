@@ -11,6 +11,7 @@
   "depends": [
     "analisar-bug",
     "gerar-prmake",
-    "validar-ambiente"
+    "validar-ambiente",
+    "tarefas-de-gestao"
   ]
 }

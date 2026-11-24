@@ -40,6 +40,10 @@ public static class ExecutionPlanModuleExtensions
         services.AddScoped<IWorkItemFileApplication, WorkItemFileApplication>();
         services.AddScoped<IWorkItemDeliverableRepository, WorkItemDeliverableRepository>();
         services.AddScoped<IWorkItemDeliverableApplication, WorkItemDeliverableApplication>();
+        // 0099: épicos da Mesa de gestão e o PDF gerado no servidor (markdown → PDF).
+        services.AddScoped<IEpicRepository, EpicRepository>();
+        services.AddScoped<IEpicApplication, EpicApplication>();
+        services.AddSingleton<IMarkdownPdfRenderer, solvace.executionplans.infra.Pdf.MarkdownPdfRenderer>();
 
         return services;
     }

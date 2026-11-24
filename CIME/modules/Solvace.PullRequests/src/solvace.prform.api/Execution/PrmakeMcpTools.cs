@@ -326,6 +326,7 @@ public partial class PrmakeMcpTools(
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
+        DevOpsActionRunner.EnsureCard(id); // 0099: épico (E…) não é card do DevOps
         if (specialist.Via is { } via && !string.IsNullOrWhiteSpace(reason))
             reason = $"{reason.Trim()} ({via})";
         Func<IDevOpsActionsService, Task<DevOpsActionResponse>> run = action.Trim().ToLowerInvariant() switch
@@ -436,6 +437,8 @@ public partial class PrmakeMcpTools(
     public Task<string> Card(string card, [Description("Quantos comentarios (do mais recente), padrao 10")] int comments = 10,
         CancellationToken ct = default) => Safe(async () =>
     {
+        if (solvace.executionplans.domain.Entities.EpicKey.IsEpic(card))
+            throw new McpException($"{card.Trim()} é um épico da Mesa de gestão, não um card do DevOps — detalhe com prmake_epic; cards do épico com prmake_devops_card_get(id).");
         AzureCardFullResponse? full;
         try
         {

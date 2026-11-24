@@ -13,7 +13,7 @@ namespace solvace.prform.Skills;
 public sealed record WorkItemTemplateContext
 {
     public string Card { get; init; } = string.Empty;
-    /// <summary><c>bug</c> | <c>user-story</c>; null = tipo não lido (o <c>when.type</c> não filtra).</summary>
+    /// <summary><c>bug</c> | <c>user-story</c> | <c>epic</c> (0099, chave E…); null = tipo não lido (o <c>when.type</c> não filtra).</summary>
     public string? Type { get; init; }
     public string? Flow { get; init; }
     public string? State { get; init; }
@@ -191,10 +191,16 @@ public static partial class WorkItemTemplateRenderer
     /// </summary>
     public static (bool Applicable, string? Reason) Evaluate(JsonObject template, WorkItemTemplateContext ctx, string? repository = null)
     {
-        if (template["when"] is not JsonObject when) return (true, null);
+        // 0099: no épico (Mesa de gestão) só valem os modelos que dizem when.type "epic" — os de card (PR, mover o card,
+        // chamado) não têm branch/estado de card para usar.
+        var isEpic = string.Equals(ctx.Type, EpicType, StringComparison.OrdinalIgnoreCase);
+        if (template["when"] is not JsonObject when)
+            return isEpic ? (false, EpicOnlyReason) : (true, null);
         var repo = Clean(repository) ?? ctx.Repository;
 
         var types = Strings(when["type"]);
+        if (isEpic && !types.Contains(EpicType, StringComparer.OrdinalIgnoreCase))
+            return (false, EpicOnlyReason);
         if (types.Count > 0 && ctx.Type is { Length: > 0 } type && !types.Contains(type, StringComparer.OrdinalIgnoreCase))
             return (false, $"Só para cards do tipo {string.Join(" ou ", types.Select(TypeLabel))} (este card é {TypeLabel(type)}).");
 
@@ -232,9 +238,15 @@ public static partial class WorkItemTemplateRenderer
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToList();
 
+    /// <summary>0099: tipo do dono quando a chave é de épico (<c>when.type: ["epic"]</c>).</summary>
+    public const string EpicType = "epic";
+
+    private const string EpicOnlyReason = "Modelo de card do DevOps — no épico (Mesa de gestão) valem os modelos de gestão.";
+
     private static string TypeLabel(string type) =>
         string.Equals(type, "user-story", StringComparison.OrdinalIgnoreCase) ? "User Story"
-        : string.Equals(type, "bug", StringComparison.OrdinalIgnoreCase) ? "Bug" : type;
+        : string.Equals(type, "bug", StringComparison.OrdinalIgnoreCase) ? "Bug"
+        : string.Equals(type, "epic", StringComparison.OrdinalIgnoreCase) ? "Épico (Mesa de gestão)" : type;
 
     // ── ask ──────────────────────────────────────────────────────────────────────────────────────
 

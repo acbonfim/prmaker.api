@@ -44,6 +44,8 @@ public class WorkItemApplication : IWorkItemApplication
     private IExecutionQueueRepository? QueueRepository => (IExecutionQueueRepository?)_services.GetService(typeof(IExecutionQueueRepository));
     private IWorkItemTypeSource? TypeSource => (IWorkItemTypeSource?)_services.GetService(typeof(IWorkItemTypeSource));
     private IPrmakeRulesProvider? Rules => (IPrmakeRulesProvider?)_services.GetService(typeof(IPrmakeRulesProvider));
+    /// <summary>0099: épicos (menção <c>#épico</c>, resolve do número) — sob demanda, como os outros.</summary>
+    private IEpicApplication? Epics => (IEpicApplication?)_services.GetService(typeof(IEpicApplication));
 
     // ================================================================ leitura
 
@@ -168,14 +170,22 @@ public class WorkItemApplication : IWorkItemApplication
     public async Task<WorkItemRelatedResponse> AddRelatedManualAsync(string card, long number, ExecutionActor actor, CancellationToken ct)
     {
         var cardNumber = NormalizeCard(card);
-        var resolved = await _items.ResolveNumberAsync(number, ct) ?? throw NotFound(number);
-        await UpsertRelatedAsync(cardNumber, resolved.ItemNumber, resolved.TaskNumber,
+        var resolved = await _items.ResolveNumberAsync(number, ct);
+        if (resolved is null)
+        {
+            // 0099: número de épico (mesma sequência) não é relatado — o card entra no épico pela Mesa de gestão.
+            if (Epics is { } epics && await epics.FindAsync(number, ct) is { } epic)
+                throw new DomainException($"#{number} é o épico {epic.Key} ({epic.Title}), não um item de trabalho — " +
+                                          "para ligar o card ao épico, adicione o card no épico (Mesa de gestão) ou cite #" + number + " na conversa do card.");
+            throw NotFound(number);
+        }
+        await UpsertRelatedAsync(cardNumber, resolved.Value.ItemNumber, resolved.Value.TaskNumber,
             WorkItemRelatedSource.Manual, context: null, actor, ct);
-        await NotifyRelatedAsync(cardNumber, resolved.ItemNumber, ct);
+        await NotifyRelatedAsync(cardNumber, resolved.Value.ItemNumber, ct);
 
-        var relation = await _items.GetRelatedAsync(cardNumber, resolved.ItemNumber, ct) ?? throw NotFound(number);
-        var items = await _items.ListByNumbersAsync([resolved.ItemNumber], ct);
-        var item = (await ToResponsesAsync(items, ct)).FirstOrDefault() ?? throw NotFound(resolved.ItemNumber);
+        var relation = await _items.GetRelatedAsync(cardNumber, resolved.Value.ItemNumber, ct) ?? throw NotFound(number);
+        var items = await _items.ListByNumbersAsync([resolved.Value.ItemNumber], ct);
+        var item = (await ToResponsesAsync(items, ct)).FirstOrDefault() ?? throw NotFound(resolved.Value.ItemNumber);
         return WorkItemRelatedResponse.From(relation, item);
     }
 
@@ -199,24 +209,42 @@ public class WorkItemApplication : IWorkItemApplication
         var numbers = MentionRegex.Matches(text)
             .Select(m => long.TryParse(m.Groups[1].Value, out var n) ? n : 0L)
             .Where(n => n > 0).Distinct().ToList();
-        if (numbers.Count == 0) return 0;
+        // 0099: #E123 também cita o épico 123.
+        var epicNumbers = EpicMentionRegex.Matches(text)
+            .Select(m => long.TryParse(m.Groups[1].Value, out var n) ? n : 0L)
+            .Where(n => n > 0).Distinct().ToList();
+        if (numbers.Count == 0 && epicNumbers.Count == 0) return 0;
 
         var changed = 0;
         var seenItems = new HashSet<long>(); // duas sub-tarefas do mesmo item resolvem para o mesmo item dono: uma relação só.
+        var unresolved = new List<long>(epicNumbers);
         foreach (var n in numbers)
         {
             var resolved = await _items.ResolveNumberAsync(n, ct);
+            if (resolved is null) unresolved.Add(n); // pode ser número de épico (mesma sequência)
             // Só item de OUTRO card vira relatado automático (o do próprio card já está na aba Itens).
             if (resolved is not { } r || string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal)) continue;
             if (!seenItems.Add(r.ItemNumber)) continue;
             if (await UpsertRelatedAsync(cardNumber, r.ItemNumber, r.TaskNumber, source, context, actor, ct, save: false))
                 changed++;
         }
-        if (changed == 0) return 0;
-        await _items.SaveChangesAsync(ct);
-        await NotifyRelatedAsync(cardNumber, null, ct);
+        if (changed > 0)
+        {
+            await _items.SaveChangesAsync(ct);
+            await NotifyRelatedAsync(cardNumber, null, ct);
+        }
+        // 0099: #<épico> na conversa/Timeline/nota de um card do DevOps põe o card no épico (mentioned).
+        if (unresolved.Count > 0 && !EpicKey.IsEpic(cardNumber) && Epics is { } epics)
+        {
+            try { changed += await epics.CaptureMentionsAsync(cardNumber, unresolved.Distinct().ToList(), actor, ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { /* best-effort */ }
+        }
         return changed;
     }
+
+    /// <summary>0099: menção explícita a épico (<c>#E123</c>).</summary>
+    private static readonly System.Text.RegularExpressions.Regex EpicMentionRegex =
+        new(@"#[Ee](\d{1,9})\b", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>Cria a relação ou reafirma a existente (manual nunca é rebaixado por auto). Devolve se criou/mudou.</summary>
     private async Task<bool> UpsertRelatedAsync(string cardNumber, long relatedItemNumber, long? relatedTaskNumber, string source,

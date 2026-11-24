@@ -47,6 +47,24 @@ public static class ExecutionPlanRealTimeEvents
     /// </summary>
     public const string EventWorkItemsUpdated = "workItemsUpdated";
 
+    /// <summary>0099: grupo de quem está na Mesa de gestão (lista de épicos). Assinado pelo front com <c>AddToGroup("epics")</c>.</summary>
+    public const string EpicsGroup = "epics";
+
+    /// <summary>
+    /// 0099: algum épico mudou — no grupo <see cref="EpicsGroup"/>. Payload: <c>{ number, action }</c> (ver
+    /// <see cref="EpicActions"/>). É só sinal: a tela refaz <c>GET Epics</c> / <c>GET Epics/{number}</c>.
+    /// </summary>
+    public const string EventEpicsUpdated = "epicsUpdated";
+
+    public static class EpicActions
+    {
+        public const string Created = "created";
+        public const string Updated = "updated";
+        public const string Status = "status";
+        /// <summary>Cards do épico mudaram (adicionado, removido, mencionado).</summary>
+        public const string Cards = "cards";
+    }
+
     public static class WorkItemActions
     {
         public const string Created = "created";
