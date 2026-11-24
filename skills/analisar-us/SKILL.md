@@ -73,6 +73,17 @@ comando/ferramenta) — nao repita nem invente regras aqui.
   ferramenta equivalente. Registre no plano o que precisa de uma pessoa (com a regra) e siga com o resto.
 - **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da etapa.
 
+## Padroes (0101)
+
+Igual a `analisar-bug` (secao "Padroes (0101)"): **antes de escrever** script SQL, migracao, objeto de banco ou codigo
+em pasta nova da US, leia os padroes do card (`prmake_standards(card, repository?)` ou a secao "Padroes de banco e de
+aplicacao" do `prmake_rules`; script: `bash $PLAN standards <card> [--repo <r>]`) e desenhe a solucao dentro deles (cite
+os codigos dos padroes que a solucao segue); **antes de gravar** pelo PRMake (`prmake_file`, `prmake_work_item_file`, PR
+do item) confira com `prmake_standards_check(card, text, target: sql|migration|code, path?, repository?)` (script: `bash
+$PLAN standards-check <card> <arquivo>`) — **block** impede gravar (corrija e confira de novo), **warn** segue citando o
+achado, **monitor**/proposto ajusta quando der. Legado no `dbo` mantem os nomes atuais. PRMake fora: siga e diga que nao
+conferiu.
+
 ## Fluxo
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-us analisar-bug 2>/dev/null || true`;
 se atualizar, releia esta SKILL.md.

@@ -18,6 +18,8 @@ public class GovernanceContext : DbContext
     public DbSet<GovernanceRule> Rules { get; set; }
     public DbSet<GovernanceHook> Hooks { get; set; }
     public DbSet<GovernanceSettings> Settings { get; set; }
+    public DbSet<GovernanceStandard> Standards { get; set; }
+    public DbSet<GovernanceStandardDraft> StandardDrafts { get; set; }
 
     public const string Schema = "governance";
 
@@ -85,6 +87,43 @@ public class GovernanceContext : DbContext
             e.Property(x => x.Action).HasMaxLength(20).IsRequired();
             e.Property(x => x.Config).HasColumnType("jsonb").HasConversion(JsonConverter<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
             e.Property(x => x.UpdatedBy).HasMaxLength(200);
+        });
+
+        // 0101: padrões de banco e de aplicação.
+        modelBuilder.Entity<GovernanceStandard>(e =>
+        {
+            e.ToTable("GovernanceStandards");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Key).HasMaxLength(80).IsRequired();
+            e.HasIndex(x => x.Key).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Area).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Topic).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            e.Property(x => x.TextPt).HasColumnType("text").IsRequired();
+            e.Property(x => x.TextEn).HasColumnType("text");
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Effect).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Examples).HasColumnType("jsonb").HasConversion(JsonConverter<StandardExamples>(), JsonComparer<StandardExamples>());
+            e.Property(x => x.AppliesTo).HasColumnType("jsonb").HasConversion(JsonConverter<StandardScope>(), JsonComparer<StandardScope>());
+            e.Property(x => x.Source).HasColumnType("jsonb").HasConversion(JsonConverter<StandardSource>(), JsonComparer<StandardSource>());
+            e.Property(x => x.Check).HasColumnType("jsonb").HasConversion(JsonConverter<StandardCheck>(), JsonComparer<StandardCheck>());
+            e.Property(x => x.UpdatedBy).HasMaxLength(200);
+            e.Ignore(x => x.EffectiveEffect);
+            e.HasIndex(x => new { x.Area, x.Topic });
+        });
+
+        modelBuilder.Entity<GovernanceStandardDraft>(e =>
+        {
+            e.ToTable("GovernanceStandardDrafts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(30).IsRequired();
+            e.Property(x => x.Version).HasMaxLength(40);
+            e.Property(x => x.Url).HasMaxLength(1000);
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Items).HasColumnType("jsonb").HasConversion(JsonConverter<List<StandardDraftItem>>(), JsonComparer<List<StandardDraftItem>>());
+            e.Property(x => x.CreatedBy).HasMaxLength(200).IsRequired();
+            e.Property(x => x.AppliedBy).HasMaxLength(200);
         });
 
         modelBuilder.Entity<GovernanceSettings>(e =>

@@ -34,12 +34,14 @@ public sealed class GovernancePolicyProvider(IServiceScopeFactory scopes, TimePr
                 var rules = await db.Rules.AsNoTracking().OrderBy(r => r.Order).ToListAsync(ct);
                 var hooks = await db.Hooks.AsNoTracking().OrderBy(h => h.Order).ToListAsync(ct);
                 var settings = await db.Settings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new GovernanceSettings();
+                var standards = await db.Standards.AsNoTracking().Where(x => x.Status != StandardStatus.Deprecated).OrderBy(x => x.Order).ToListAsync(ct);
                 var stamp = string.Join(';',
                     rules.Select(r => $"{r.Key}:{r.UpdatedAt?.ToUnixTimeMilliseconds()}")
                         .Concat(hooks.Select(h => $"{h.Key}:{h.UpdatedAt?.ToUnixTimeMilliseconds()}"))
-                        .Append($"s:{settings.UpdatedAt?.ToUnixTimeMilliseconds()}"));
+                        .Append($"s:{settings.UpdatedAt?.ToUnixTimeMilliseconds()}")
+                        .Append($"p:{standards.Count}:{standards.Select(x => x.UpdatedAt).DefaultIfEmpty().Max()?.ToUnixTimeMilliseconds()}"));
                 var version = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(stamp)))[..12].ToLowerInvariant();
-                _current = new GovernancePolicy(rules, hooks, settings, version);
+                _current = new GovernancePolicy(rules, hooks, settings, version) { Standards = standards };
             }
             catch (Exception) when (_current is not null)
             {

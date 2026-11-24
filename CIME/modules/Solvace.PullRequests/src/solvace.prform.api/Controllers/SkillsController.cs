@@ -91,7 +91,8 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
         var r = await rules.GetAsync(card!, cancellationToken);
         var cardRepositories = await tools.CardRepositoriesAsync(r.Card, cancellationToken);
         var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken))
-                       + await rules.GovernanceMarkdownAsync(cancellationToken);
+                       + await rules.GovernanceMarkdownAsync(cancellationToken)
+                       + await rules.StandardsMarkdownAsync(r.Card, cardRepositories, cancellationToken);
         // 0099 (ajustes 2): no épico, o perfil de quem pede (persona PO/gestor de problemas ou dev).
         if (SkillsRulesService.IsEpic(r))
             markdown += await profile.MarkdownAsync(User, cancellationToken);

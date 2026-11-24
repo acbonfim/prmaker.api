@@ -50,7 +50,8 @@ public class WorkItemMcpTools(
     public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
-        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct);
+        var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct)
+                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct);
         // 0099 (ajustes 2): no épico, o perfil de quem pede (o item de gestão roda na máquina de quem agiu).
         if (SkillsRulesService.IsEpic(r) && http.HttpContext?.User is { } user)
             markdown += await profile.MarkdownAsync(user, ct);

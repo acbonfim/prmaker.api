@@ -7,6 +7,7 @@ using solvace.governance.application.Contracts;
 using solvace.governance.domain;
 using solvace.governance.domain.Engine;
 using solvace.governance.domain.Entities;
+using solvace.governance.domain.Standards;
 
 namespace solvace.prform.Governance;
 
@@ -71,9 +72,38 @@ public static class GovernanceMcpFilter
                 };
             }
 
+            // 0101: script SQL/migração gravado pelo PRMake passa pelos padrões antes de gravar.
+            var standardsNote = (string?)null;
+            if (StandardsTarget(tool, context.Params) is { } std)
+            {
+                StandardCheckResult? check = null;
+                try
+                {
+                    check = await services.GetRequiredService<IGovernanceStandardsApplication>().CheckAsync(new StandardCheckInput
+                    {
+                        Text = std.Text, Target = std.Target, Path = std.Name, Card = Int(context.Params, "card"),
+                        Source = caller.Source is GovernanceSource.Executor or GovernanceSource.Specialist ? caller.Source : GovernanceSource.Skill
+                    }, caller.Actor, ct);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // Padrões indisponíveis: grava (a governança nunca derruba o fluxo).
+                }
+                if (check is { Decision: GovernanceDecisionKind.Block })
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = $"Arquivo {std.Name} não gravado — {solvace.prform.Execution.StandardsMcpTools.Format(check)}" }]
+                    };
+                if (check is { Findings.Count: > 0 })
+                    standardsNote = $"Padrões ({std.Name}): {solvace.prform.Execution.StandardsMcpTools.Format(check)}";
+            }
+
             try
             {
                 var result = await next(context, ct);
+                if (standardsNote is not null && result.IsError != true)
+                    result.Content = [.. result.Content, new TextContentBlock { Text = standardsNote }];
                 if (decision.Decision == GovernanceDecisionKind.Warn && decision.Reason is { } warning)
                     result.Content = [.. result.Content, new TextContentBlock { Text = $"Aviso da governança do PRMake: {warning}" }];
                 if (record)
@@ -111,6 +141,19 @@ public static class GovernanceMcpFilter
             Detail = detail ?? (decision.Rules.Count > 0 ? decision.Reason ?? decision.Rules[0].Message : Summary(p)),
             Machine = caller.Machine
         });
+
+    /// <summary>0101: gravação de arquivo (plano/item/conversa do caso) que é script SQL ou migração → (nome, conteúdo, alvo da conferência).</summary>
+    public static (string Name, string Text, string Target)? StandardsTarget(string tool, CallToolRequestParams? p)
+    {
+        if (tool is not ("prmake_file" or "prmake_work_item_file" or "prmake_case_file")) return null;
+        var name = Str(p, "name");
+        var content = Str(p, "content");
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrEmpty(content)) return null;
+        if (name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase)) return (name, content, "sql");
+        if (name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && content.Contains("MigrationBuilder", StringComparison.Ordinal))
+            return (name, content, "migration");
+        return null;
+    }
 
     public static string Category(string tool) => tool switch
     {

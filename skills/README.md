@@ -109,3 +109,18 @@ bash ~/.claude/skills/.prmake/prmake-skills.sh governance test "git push --force
 bash ~/.claude/skills/.prmake/prmake-skills.sh governance off        # remove só os nossos hooks (o update não reinstala)
 bash ~/.claude/skills/.prmake/prmake-skills.sh governance on         # religa
 ```
+
+**Padrões de banco e de aplicação (0101)**: os padrões (nomes de tabela/chave/índice/procedure/view, scripts, camadas e
+pastas — carga da wiki "Data Nomenclature and Rules" e da engenharia reversa) ficam na governança do PRMake; nada fixo
+nas skills. As skills que escrevem SQL/migração/código (`analisar-bug`, `analisar-us`, `executar-item-de-trabalho`,
+`gerar-prmake`, `especialista-do-caso`) leem os padrões do card antes (`prmake_standards` / seção do `prmake_rules` /
+`prmake-plan.sh standards <card> [--repo r]`) e conferem antes de gravar (`prmake_standards_check` /
+`prmake-plan.sh standards-check <card> <arquivo> [--target sql|migration|code] [--repo r]`, exit 3 = block); o
+`upload`/`sync` do `prmake-plan.sh` e o `upload` do `prmake-case.sh` conferem `.sql` sozinhos (block não envia; PRMake
+fora segue com aviso). O hook de governança, só com o hook `evaluate` ativo: no `PostToolUse` de Write/Edit/MultiEdit em
+`.sql` ou migração (pasta `migrations`/`Migrations`, sem `*.Designer.cs`/`*ModelSnapshot.cs`) lê o arquivo (até 200 KB),
+chama `POST Governance/standards/check` (repositório pelo remote origin, card pela branch, caminho relativo à raiz) e
+devolve até 10 achados ao Claude ("Padrões do PRMake (0101) em <arquivo>: ..."); no `PreToolUse` de Write de `.sql`
+com decisão block, nega com os achados (a conferência do Pre vale para o Post — não grava o achado duas vezes). PRMake
+fora ou sem o recurso: deixa passar sempre (404 não pergunta de novo por 10 min); `"standards": false` na config dos
+hooks desliga só esta parte.

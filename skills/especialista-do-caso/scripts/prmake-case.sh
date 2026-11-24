@@ -3,6 +3,7 @@
 #
 #   prmake-case.sh file   <card> <n>          baixa o arquivo #n da conversa (imagem, áudio, documento) e imprime o caminho
 #   prmake-case.sh upload <card> <arquivo>    sobe um arquivo gerado (imagem do mock, script, CSV) e imprime "arquivo #n"
+#                                             (.sql: confere antes nos padroes do PRMake, 0101 — block nao envia)
 #   prmake-case.sh context <card>             contexto compacto do caso (o mesmo de prmake_case_context)
 #   prmake-case.sh rules   <card> [--refresh] regras do PRMake para o card (o mesmo de prmake_rules), cache 10 min
 #   prmake-case.sh items   <card> [--refresh] itens de trabalho do card (resumo + fingerprint), cache 10 min
@@ -102,6 +103,25 @@ case "$CMD" in
   upload)
     F="${3:-}"
     [[ -f "$F" ]] || die "uso: prmake-case.sh upload <card> <arquivo>"
+    # 0101: script SQL passa pelos padroes do PRMake antes de subir (block = nao envia; PRMake fora = segue com aviso).
+    if [[ "$(printf '%s' "$F" | tr 'A-Z' 'a-z')" == *.sql ]]; then
+      SRC="$TMP/std-text"
+      if [[ "$(head -c 2 "$F" | od -An -tx1 | tr -d ' \n')" =~ ^(fffe|feff)$ ]] && command -v iconv >/dev/null 2>&1; then
+        iconv -f UTF-16 -t UTF-8 "$F" 2>/dev/null | head -c 204800 > "$SRC"
+      else head -c 204800 "$F" > "$SRC"; fi
+      jq -n --rawfile t "$SRC" --arg p "$(basename "$F")" --arg card "$CARD" \
+        '{text:$t, target:"sql", path:$p, source:"specialist"} + (if ($card | test("^[0-9]+$")) then {card:($card | tonumber)} else {} end)' > "$TMP/std.json"
+      code="$(curl -s --max-time 20 -o "$TMP/std-resp" -w '%{http_code}' -X POST "$BASE/Governance/standards/check" \
+        -H "x-api-key: $TOKEN" -H 'content-type: application/json' --data-binary "@$TMP/std.json" 2>/dev/null)"
+      if [[ "$code" =~ ^2 ]] && jq -e 'type == "object"' "$TMP/std-resp" >/dev/null 2>&1; then
+        jq -r '"padroes (0101): decisao \(.decision // "allow") (modo \(.mode // "?")) — \((.findings // []) | length) achado(s)",
+          ((.findings // [])[:20][] | "  - \(.code // .key) [\(.effect // "monitor")] linha \(.line // "-"): \(.title // "")"
+            + (if (.hint // "") != "" then " — dica: \(.hint)" else "" end))' "$TMP/std-resp"
+        [[ "$(jq -r '.decision // "allow"' "$TMP/std-resp")" == block ]] && die "padrao com efeito block em $(basename "$F") — corrija os achados e envie de novo"
+      else
+        warn "padroes (0101): nao conferi $(basename "$F") (HTTP ${code:-000}) — segue sem a conferencia"
+      fi
+    fi
     code="$(curl -s --max-time 120 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" -F "file=@$F" "$BASE/CaseChat/$CARD/files")"
     [[ "$code" == 200 ]] || die "upload: HTTP $code $(head -c 300 "$TMP/resp" 2>/dev/null)"
     jq -r '"arquivo #\(.number) \(.name)"' "$TMP/resp"

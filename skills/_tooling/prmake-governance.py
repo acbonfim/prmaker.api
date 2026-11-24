@@ -13,6 +13,11 @@ O que faz (a configuração vem do PRMake: GET Governance/hooks/config, com cach
 - PostToolUse/SessionStart/UserPromptSubmit/Stop: hook "record" ativo -> o evento vai para a fila
   ~/.prmake/governance-queue.jsonl e segue em lote para POST Governance/hooks/events (30 eventos, 60 s, Stop/SessionStart).
   Nunca manda o texto do pedido (só o tamanho); do Bash manda o comando cortado.
+- Padrões de banco e de aplicação (0101), só com o hook "evaluate" ativo para a ferramenta: PostToolUse de
+  Write/Edit/MultiEdit em .sql ou migração (pasta migrations/Migrations; sem Designer/ModelSnapshot) -> lê o arquivo
+  (até 200 KB), POST Governance/standards/check (target sql|migration, repositório pelo remote origin, card pela branch)
+  e devolve até 10 achados ao Claude (additionalContext). PreToolUse de Write de .sql: block -> nega com os achados.
+  PRMake fora ou sem o recurso: deixa passar sempre.
 - Rede fora/tempo esgotado: respeita failOpen (padrão: deixa passar) e nunca trava a sessão. Erros vão para
   ~/.prmake/governance.log (curto, rotacionado). Só a biblioteca padrão do Python 3; funciona no Windows/Git Bash.
 
@@ -54,6 +59,12 @@ LOG_MAX_BYTES = 200_000
 STARTS_TTL_S = 6 * 3600
 CARD_BRANCH = re.compile(r"(?:^|/)(?:hotfix|bugfix|feature)/(\d+)", re.IGNORECASE)
 RECORD_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop")
+# 0101: padrões de banco e de aplicação (POST Governance/standards/check) em .sql e migrações.
+STANDARDS_TOOLS = ("Write", "Edit", "MultiEdit")
+STANDARDS_MAX_BYTES = 200 * 1024      # lido do arquivo/enviado
+STANDARDS_MAX_FINDINGS = 10           # devolvidos ao Claude
+STANDARDS_MISSING_S = 600             # PRMake sem o recurso (404): não pergunta de novo por 10 min
+MIGRATION_EXTS = (".cs", ".ts", ".js", ".py", ".java", ".sql")
 
 
 # --------------------------------------------------------------------------------------------------- caminhos e base
@@ -185,35 +196,85 @@ def norm_path(path):
     return path.replace("\\", "/") if path else path
 
 
-def branch_of(cwd):
-    """Branch atual lendo o .git direto (sem subprocesso): pasta .git ou arquivo .git de worktree (gitdir: ...)."""
-    if not cwd:
-        return None
-    d = os.path.abspath(cwd)
+def git_dir_of(start):
+    """(pasta .git, raiz do repositório) lendo o disco (sem subprocesso): pasta .git ou arquivo .git de worktree
+    (gitdir: ...). Fora de um repositório: (None, None)."""
+    if not start:
+        return None, None
+    d = os.path.abspath(start)
     for _ in range(40):
         dot = os.path.join(d, ".git")
-        head = None
         if os.path.isdir(dot):
-            head = os.path.join(dot, "HEAD")
-        elif os.path.isfile(dot):
+            return dot, d
+        if os.path.isfile(dot):
             try:
                 with open(dot, encoding="utf-8") as fh:
                     m = re.match(r"\s*gitdir:\s*(.+?)\s*$", fh.read())
-                if m:
-                    gd = m.group(1)
-                    head = os.path.join(gd if is_abs(gd) else os.path.join(d, gd), "HEAD")
             except OSError:
-                head = None
-        if head:
-            try:
-                with open(head, encoding="utf-8") as fh:
-                    return branch_from_head(fh.read())
-            except OSError:
-                return None
+                m = None
+            if m:
+                gd = m.group(1)
+                return (gd if is_abs(gd) else os.path.normpath(os.path.join(d, gd))), d
         parent = os.path.dirname(d)
         if parent == d:
-            return None
+            return None, None
         d = parent
+    return None, None
+
+
+def branch_of(cwd):
+    """Branch atual lendo o .git direto (sem subprocesso): pasta .git ou arquivo .git de worktree (gitdir: ...)."""
+    gd, _ = git_dir_of(cwd)
+    if not gd:
+        return None
+    try:
+        with open(os.path.join(gd, "HEAD"), encoding="utf-8") as fh:
+            return branch_from_head(fh.read())
+    except OSError:
+        return None
+
+
+def repo_name_from_url(url):
+    """Nome do repositório pela URL do remote: https://github.com/org/prform.api.git -> prform.api;
+    https://dev.azure.com/org/proj/_git/edv-solvace-api -> edv-solvace-api; git@host:org/repo.git -> repo."""
+    url = (url or "").strip().rstrip("/")
+    if not url:
+        return None
+    name = re.split(r"[/:]", url)[-1]
+    if name.lower().endswith(".git"):
+        name = name[:-4]
+    return name or None
+
+
+def origin_repo(start):
+    """Nome do repositório pelo remote origin (config do .git; worktree usa o commondir). None se não der."""
+    gd, _ = git_dir_of(start)
+    if not gd:
+        return None
+    common = gd
+    try:
+        with open(os.path.join(gd, "commondir"), encoding="utf-8") as fh:
+            c = fh.read().strip()
+        if c:
+            common = c if is_abs(c) else os.path.normpath(os.path.join(gd, c))
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(common, "config"), encoding="utf-8", errors="replace") as fh:
+            config = fh.read()
+    except OSError:
+        return None
+    section = None
+    for line in config.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            m = re.match(r'\[\s*remote\s+"([^"]+)"\s*\]', s)
+            section = m.group(1) if m else None
+            continue
+        if section == "origin":
+            m = re.match(r"url\s*=\s*(.+)$", s)
+            if m:
+                return repo_name_from_url(m.group(1))
     return None
 
 
@@ -265,7 +326,9 @@ def tool_path(tool_input):
 
 # ------------------------------------------------------------------------------------------------------------ HTTP
 class Offline(Exception):
-    pass
+    def __init__(self, msg, code=None):
+        super().__init__(msg)
+        self.code = code   # HTTP de erro (None = rede/tempo)
 
 
 def http(method, path, body=None, timeout_ms=1500):
@@ -286,7 +349,7 @@ def http(method, path, body=None, timeout_ms=1500):
             raw = resp.read()
             status = resp.status
     except urllib.error.HTTPError as e:
-        raise Offline("HTTP %s em %s %s" % (e.code, method, path))
+        raise Offline("HTTP %s em %s %s" % (e.code, method, path), e.code)
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise Offline("%s em %s %s" % (getattr(e, "reason", e), method, path))
     if not raw:
@@ -620,6 +683,178 @@ def decision_output(resp, fail_open=True):
     return None
 
 
+# ------------------------------------------------------------------------------------------- padrões (0101)
+def standards_target(path):
+    """'sql' (.sql) ou 'migration' (arquivo de código numa pasta migrations/Migrations) — os que o hook confere; None
+    nos demais. Designer/ModelSnapshot do EF ficam fora (gerados: repetiriam os achados da migração)."""
+    if not path:
+        return None
+    low = norm_path(path).lower()
+    parts = low.split("/")
+    name = parts[-1]
+    if name.endswith(".sql"):
+        return "sql"
+    if "migrations" in parts[:-1]:
+        if name.endswith(".designer.cs") or name.endswith("modelsnapshot.cs"):
+            return None
+        if name.endswith(MIGRATION_EXTS):
+            return "migration"
+    return None
+
+
+def standards_wanted(cfg, tool):
+    """Só com o hook "evaluate" ativo para a ferramenta (modo off já saiu antes); "standards": false na config desliga."""
+    if (cfg or {}).get("standards") is False:
+        return False
+    return bool(hooks_for(cfg, "PreToolUse", "evaluate", tool))
+
+
+def decode_text(raw):
+    """Bytes do arquivo -> texto (UTF-16 com BOM, comum em script salvo pelo SSMS; senão UTF-8)."""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", "replace")
+    return raw.decode("utf-8-sig", "replace")
+
+
+def read_head(path):
+    try:
+        with open(path, "rb") as fh:
+            return decode_text(fh.read(STANDARDS_MAX_BYTES))
+    except OSError as e:
+        log("padrões: não li %s: %s" % (path, e))
+        return None
+
+
+def standards_payload(text, target, path, cwd):
+    """Corpo do POST Governance/standards/check: caminho relativo à raiz do repositório do arquivo, repositório pelo
+    remote origin e card pela branch desse repositório (PRMAKE_CARD vence)."""
+    full = path if is_abs(path) else os.path.join(cwd or os.getcwd(), path)
+    folder = os.path.dirname(full)
+    _, root = git_dir_of(folder)
+    rel = norm_path(path)
+    if root:
+        try:
+            rel = norm_path(os.path.relpath(full, root))
+        except ValueError:  # outro drive no Windows
+            rel = norm_path(path)
+        if rel.startswith("../"):
+            rel = norm_path(path)
+    payload = {"text": text, "target": target, "path": rel, "repository": origin_repo(folder),
+               "card": card_number(folder) or card_number(cwd), "source": source()}
+    return {k: v for k, v in payload.items() if v not in (None, "")}
+
+
+def standards_check(cfg, payload):
+    """Resposta do PRMake ({decision, mode, wouldDecide, findings}) ou None. Sempre deixa passar sem resposta (não usa o
+    failOpen das regras); 404/405/501 = PRMake sem o recurso, não pergunta de novo por 10 min. Tempo esgotado não marca
+    a rede como fora (o evaluate das regras segue valendo)."""
+    cache = read_json(cache_file(), {}) or {}
+    if offline_recently(cache) or time.time() - float(cache.get("standardsMissingAt") or 0) < STANDARDS_MISSING_S:
+        return None
+    timeout = min(5000, max(3000, int((cfg or {}).get("timeoutMs") or 1500)))
+    try:
+        status, data = http("POST", "Governance/standards/check", payload, timeout_ms=timeout)
+    except Offline as e:
+        if e.code in (404, 405, 501):
+            cache = read_json(cache_file(), {}) or {}
+            cache["standardsMissingAt"] = time.time()
+            write_json(cache_file(), cache)
+        log("padrões: %s" % e)
+        return None
+    if status != 200 or not isinstance(data, dict):
+        log("padrões: resposta inesperada (HTTP %s)" % status)
+        return None
+    return data
+
+
+def standards_message(resp, path):
+    """Texto curto para o Claude (até 10 achados: código, efeito, linha, título e dica); None sem achados."""
+    findings = [f for f in (resp or {}).get("findings") or [] if isinstance(f, dict)]
+    if not findings:
+        return None
+    decision = str(resp.get("decision") or "allow").lower()
+    would = str(resp.get("wouldDecide") or "").lower()
+    mode = resp.get("mode") or "?"
+    head = "Padrões do PRMake (0101) em %s: %d achado(s) — decisão %s (modo %s%s)." % (
+        os.path.basename(norm_path(path) or "") or "arquivo", len(findings), decision, mode,
+        ", no enforce seria %s" % would if would and would != decision else "")
+    lines = [head]
+    for f in findings[:STANDARDS_MAX_FINDINGS]:
+        line = "- %s [%s]%s: %s" % (f.get("code") or f.get("key") or "?", str(f.get("effect") or "monitor").lower(),
+                                     " linha %s" % f["line"] if f.get("line") else "", cut(f.get("title") or "", 160))
+        if f.get("hint"):
+            line += " — dica: %s" % cut(str(f["hint"]).replace("\n", " "), 200)
+        lines.append(line)
+    if len(findings) > STANDARDS_MAX_FINDINGS:
+        lines.append("- … e mais %d (lista completa: prmake-plan.sh standards-check <card> <arquivo>)"
+                     % (len(findings) - STANDARDS_MAX_FINDINGS))
+    if decision == "block":
+        lines.append("Efeito block: corrija antes de gravar (o PRMake recusa o script/arquivo); não contorne.")
+    elif decision == "warn":
+        lines.append("Corrija os achados; se seguir assim, cite os códigos dos padrões no resultado.")
+    else:
+        lines.append("Padrões em monitorar/propostos: ajuste quando der (legado no dbo mantém os nomes atuais).")
+    return "\n".join(lines)
+
+
+def _stash_key(data):
+    return "std:" + use_key(data)
+
+
+def standards_pre(cfg, data, cwd):
+    """PreToolUse do Write de .sql: confere o conteúdo; block -> saída de negação. A resposta fica guardada para o
+    PostToolUse (não confere duas vezes nem grava o achado duas vezes na trilha)."""
+    tool_input = data.get("tool_input") or {}
+    path = tool_path(tool_input)
+    if standards_target(path) != "sql" or not isinstance(tool_input.get("content"), str):
+        return None
+    text = tool_input["content"][:STANDARDS_MAX_BYTES]
+    resp = standards_check(cfg, standards_payload(text, "sql", path, cwd))
+    if resp is None:
+        return None
+    if str(resp.get("decision") or "").lower() == "block":
+        msg = standards_message(resp, path) or "Padrões do PRMake (0101): o script não segue os padrões do card."
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                       "permissionDecisionReason": "Barrado pelos padrões do PRMake. " + msg}}
+    try:
+        os.makedirs(starts_dir(), exist_ok=True)
+        with open(_start_path(_stash_key(data)), "w", encoding="utf-8") as fh:
+            json.dump({"t": time.time(), "resp": resp}, fh)
+    except OSError:
+        pass
+    return None
+
+
+def standards_post(cfg, data, cwd):
+    """PostToolUse de Write/Edit/MultiEdit em .sql/migração: confere o arquivo gravado (até 200 KB) e devolve os achados
+    ao Claude (additionalContext; warn/block também à pessoa)."""
+    tool_input = data.get("tool_input") or {}
+    path = tool_path(tool_input)
+    target = standards_target(path)
+    stash = read_json(_start_path(_stash_key(data)))
+    try:
+        os.remove(_start_path(_stash_key(data)))
+    except OSError:
+        pass
+    if not target:
+        return None
+    resp = stash.get("resp") if isinstance(stash, dict) and isinstance(stash.get("resp"), dict) else None
+    if resp is None:
+        full = path if is_abs(path) else os.path.join(cwd or os.getcwd(), path)
+        text = read_head(full)
+        if not text or not text.strip():
+            return None
+        resp = standards_check(cfg, standards_payload(text, target, path, cwd))
+    msg = standards_message(resp, path)
+    if not msg:
+        return None
+    out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}}
+    if str(resp.get("decision") or "").lower() in ("warn", "block"):
+        codes = [str(f.get("code") or f.get("key")) for f in resp.get("findings") or [] if isinstance(f, dict)]
+        out["systemMessage"] = "%s Padrões: %s." % (msg.splitlines()[0], ", ".join(codes[:STANDARDS_MAX_FINDINGS]))
+    return out
+
+
 # ------------------------------------------------------------------------------------------------------------- hook
 def emit(obj):
     if obj:
@@ -664,7 +899,15 @@ def handle(data):
             if resp is None:
                 log("evaluate sem resposta (%s): %s" % ("deixei passar" if cfg.get("failOpen", True) else "barrei",
                                                        cut(payload.get("input"), 120)))
+        # 0101: Write de .sql passa pelos padrões antes de gravar (block nega; o resto o PostToolUse devolve).
+        denied = bool(out and out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny")
+        if tool == "Write" and not denied and standards_wanted(cfg, tool):
+            out = standards_pre(cfg, data, cwd) or out
     elif event == "PostToolUse":
+        if tool in STANDARDS_TOOLS and standards_wanted(cfg, tool):
+            resp = data.get("tool_response")
+            if not (isinstance(resp, dict) and (resp.get("is_error") is True or bool(resp.get("error")))):
+                out = standards_post(cfg, data, cwd)
         started = pop_start(use_key(data))
         if hooks_for(cfg, "PostToolUse", "record", tool):
             resp = data.get("tool_response")

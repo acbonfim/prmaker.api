@@ -20,6 +20,14 @@ public interface IGovernanceRepository
     /// <summary>Configurações (cria a linha padrão em memória quando ainda não existe; grava no SaveChanges).</summary>
     Task<GovernanceSettings> GetSettingsAsync(CancellationToken ct = default);
 
+    // 0101: padrões e rascunhos de importação.
+    Task<List<GovernanceStandard>> GetStandardsAsync(CancellationToken ct = default);
+    Task<GovernanceStandard?> GetStandardAsync(Guid id, CancellationToken ct = default);
+    void AddStandard(GovernanceStandard standard);
+    void RemoveStandard(GovernanceStandard standard);
+    Task<GovernanceStandardDraft?> GetDraftAsync(Guid id, CancellationToken ct = default);
+    void AddDraft(GovernanceStandardDraft draft);
+
     void AddEvents(IEnumerable<GovernanceEvent> events);
     Task<(int Total, List<GovernanceEvent> Items)> QueryEventsAsync(GovernanceEventFilter filter, CancellationToken ct = default);
     Task<int> PurgeEventsAsync(DateTimeOffset before, CancellationToken ct = default);
@@ -32,7 +40,11 @@ public sealed record GovernancePolicy(
     IReadOnlyList<GovernanceRule> Rules,
     IReadOnlyList<GovernanceHook> Hooks,
     GovernanceSettings Settings,
-    string Version);
+    string Version)
+{
+    /// <summary>0101: padrões de banco/aplicação (sem os descontinuados).</summary>
+    public IReadOnlyList<GovernanceStandard> Standards { get; init; } = [];
+}
 
 public interface IGovernancePolicyProvider
 {

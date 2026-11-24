@@ -22,6 +22,7 @@ public static class GovernanceModuleExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IGovernanceRepository, GovernanceRepository>();
         services.AddScoped<IGovernanceApplication, GovernanceApplication>();
+        services.AddScoped<IGovernanceStandardsApplication, GovernanceStandardsApplication>();
         services.AddSingleton<IGovernancePolicyProvider, GovernancePolicyProvider>();
         services.AddSingleton<GovernanceEventSink>();
         services.AddSingleton<IGovernanceEventSink>(sp => sp.GetRequiredService<GovernanceEventSink>());

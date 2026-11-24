@@ -696,6 +696,61 @@ public class AzureService : IAzureService
         return new AzureAttachmentDownload(buffer.ToArray(), contentType, false, buffer.Length);
     }
 
+    public async Task<IReadOnlyList<AzureWikiPage>> GetWikiPagesAsync(string url, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var organization = Config.GetConfigurationValue("Organization") ?? string.Empty;
+        var (org, project, wiki, pageId) = ParseWikiUrl(url);
+        if (!org.Equals(organization, StringComparison.OrdinalIgnoreCase))
+            throw new DevOpsActionException(400, "Wiki fora da organização do DevOps configurada — não lida.");
+
+        var api = $"https://dev.azure.com/{Uri.EscapeDataString(org)}/{Uri.EscapeDataString(project)}/_apis/wiki/wikis/{Uri.EscapeDataString(wiki)}/pages";
+        var client = CreateClient();
+        async Task<System.Text.Json.JsonElement> GetAsync(string target)
+        {
+            using var response = await client.GetAsync(target, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new DevOpsActionException(502, $"O DevOps recusou a leitura da wiki (HTTP {(int)response.StatusCode}).");
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return doc.RootElement.Clone();
+        }
+
+        var root = await GetAsync($"{api}/{pageId}?includeContent=true&recursionLevel=full&api-version=7.1");
+        var pages = new List<AzureWikiPage> { WikiPage(root) };
+        // As subpáginas vêm sem o conteúdo na árvore: uma leitura por página (limite de 60).
+        var paths = new List<string>();
+        void Collect(System.Text.Json.JsonElement node)
+        {
+            if (!node.TryGetProperty("subPages", out var subs) || subs.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+            foreach (var sub in subs.EnumerateArray())
+            {
+                if (sub.TryGetProperty("path", out var p) && p.GetString() is { Length: > 0 } path) paths.Add(path);
+                Collect(sub);
+            }
+        }
+        Collect(root);
+        foreach (var path in paths.Take(60))
+            pages.Add(WikiPage(await GetAsync($"{api}?path={Uri.EscapeDataString(path)}&includeContent=true&api-version=7.1")));
+        return pages;
+    }
+
+    private static AzureWikiPage WikiPage(System.Text.Json.JsonElement e) => new(
+        e.TryGetProperty("path", out var p) ? p.GetString() ?? "/" : "/",
+        e.TryGetProperty("content", out var c) ? c.GetString() ?? string.Empty : string.Empty,
+        e.TryGetProperty("remoteUrl", out var u) ? u.GetString() : null);
+
+    /// <summary>URL de navegador da wiki → organização, projeto, wiki e id da página.</summary>
+    public static (string Org, string Project, string Wiki, int PageId) ParseWikiUrl(string url)
+    {
+        if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || !uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase))
+            throw new DevOpsActionException(400, "Informe a URL da página da wiki no dev.azure.com.");
+        var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToArray();
+        var i = Array.FindIndex(parts, x => x.Equals("_wiki", StringComparison.OrdinalIgnoreCase));
+        if (i != 2 || parts.Length < 6 || !parts[3].Equals("wikis", StringComparison.OrdinalIgnoreCase) || !int.TryParse(parts[5], out var id))
+            throw new DevOpsActionException(400, "URL de wiki não reconhecida (esperado …/_wiki/wikis/<wiki>/<id>/<página>).");
+        return (parts[0], parts[1], parts[4], id);
+    }
+
     private static string? StripHtml(string? s)
         => string.IsNullOrEmpty(s)
             ? s
