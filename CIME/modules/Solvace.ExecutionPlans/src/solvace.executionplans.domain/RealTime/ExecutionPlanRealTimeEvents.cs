@@ -63,6 +63,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Status = "status";
         /// <summary>Cards do épico mudaram (adicionado, removido, mencionado).</summary>
         public const string Cards = "cards";
+        /// <summary>Ajustes 1: filtros do board salvos no épico mudaram (<c>PUT Epics/{n}/board-filters</c>).</summary>
+        public const string Filters = "filters";
     }
 
     public static class WorkItemActions

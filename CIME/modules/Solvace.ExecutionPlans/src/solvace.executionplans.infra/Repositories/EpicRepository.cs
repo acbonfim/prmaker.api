@@ -52,6 +52,9 @@ public class EpicRepository(ExecutionPlanContext context) : IEpicRepository
     public Task<List<Epic>> GetByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken ct) =>
         context.Epics.Include(e => e.Cards).Where(e => numbers.Contains(e.Number)).OrderBy(e => e.Number).ToListAsync(ct);
 
+    public Task<List<string>> ListTagsJsonAsync(CancellationToken ct) =>
+        context.Epics.AsNoTracking().Select(e => e.TagsJson).ToListAsync(ct);
+
     public Task<List<Epic>> ListByCardAsync(string card, CancellationToken ct) =>
         context.Epics.AsNoTracking()
             .Where(e => context.EpicCards.Any(c => c.EpicId == e.Id && c.CardNumber == card))

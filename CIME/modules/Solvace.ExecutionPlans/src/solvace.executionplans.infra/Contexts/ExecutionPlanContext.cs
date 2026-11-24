@@ -640,6 +640,8 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Color).IsRequired().HasMaxLength(Epic.MaxColorLength);
             entity.Property(e => e.TagsJson).HasColumnName("Tags").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb");
+            // Ajustes 1: filtros do board salvos no épico.
+            entity.Property(e => e.BoardFiltersJson).HasColumnName("BoardFilters").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
             entity.Property(e => e.DevOpsTeam).HasMaxLength(Epic.MaxTeamLength);
             entity.Property(e => e.DevOpsBoard).HasMaxLength(Epic.MaxBoardLength);
             entity.Property(e => e.DevOpsCardId).HasMaxLength(Epic.MaxDevOpsCardLength);
@@ -647,6 +649,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.Key);
             entity.Ignore(e => e.Tags);
+            entity.Ignore(e => e.BoardFilters);
 
             entity.HasMany(e => e.Cards).WithOne().HasForeignKey(c => c.EpicId).OnDelete(DeleteBehavior.Cascade);
 

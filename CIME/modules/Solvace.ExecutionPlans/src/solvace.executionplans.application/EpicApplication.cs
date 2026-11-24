@@ -58,8 +58,10 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) 
         sb.AppendLine($"- Status: **{epic.Status}** · criado por {epic.CreatedByName} em {epic.CreatedAt:dd/MM/yyyy} · atualizado {epic.UpdatedAt:dd/MM HH:mm} UTC");
         if (epic.Tags.Count > 0) sb.AppendLine($"- Tags: {string.Join(", ", epic.Tags)}");
         sb.AppendLine($"- Board preferido do DevOps: time {(epic.DevOpsTeam ?? "(não definido — pergunte ou use o padrão)")}, " +
-                      $"board {(epic.DevOpsBoard ?? "(não definido)")}. Colunas, lanes e mapeamento coluna→estado: prmake_devops_meta(what: board).");
+                      $"board {(epic.DevOpsBoard ?? "(não definido)")}. Cards do board (com os filtros salvos do épico): prmake_devops_board(epic: {epic.Number}); " +
+                      "colunas, lanes e mapeamento coluna→estado: prmake_devops_meta(what: board).");
         if (epic.DevOpsCardId is { Length: > 0 } rep) sb.AppendLine($"- Card do DevOps que representa o épico: {rep}");
+        AppendBoardFilters(sb, epic);
         sb.AppendLine($"- Itens de trabalho: {counts.Items} ({counts.OpenItems} abertos) · cards: {counts.Cards}");
         if (!string.IsNullOrWhiteSpace(epic.Description))
         {
@@ -89,6 +91,7 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) 
         ArgumentNullException.ThrowIfNull(req);
         var epic = new Epic(req.Title, req.Description, req.Color, req.Tags, req.DevOpsTeam, req.DevOpsBoard, req.DevOpsCardId,
             actor.UserId, actor.Name, DateTimeOffset.UtcNow);
+        if (req.BoardFilters is not null) epic.SetBoardFilters(req.BoardFilters);
         epics.Add(epic);
         await epics.SaveChangesAsync(ct);
         await NotifyAsync(epic.Number, ExecutionPlanRealTimeEvents.EpicActions.Created, ct);
@@ -98,10 +101,67 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) 
     public async Task<EpicResponse> UpdateAsync(long number, SaveEpicRequest req, ExecutionActor actor, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(req);
-        var epic = await MutateAsync(number, e => e.Update(req.Title, req.Description, req.Color, req.Tags, req.DevOpsTeam, req.DevOpsBoard,
-            req.DevOpsCardId, DateTimeOffset.UtcNow), ct);
+        var epic = await MutateAsync(number, e =>
+        {
+            e.Update(req.Title, req.Description, req.Color, req.Tags, req.DevOpsTeam, req.DevOpsBoard, req.DevOpsCardId, DateTimeOffset.UtcNow);
+            // Ajustes 1: filtros do board só quando vierem (null = não mexe).
+            if (req.BoardFilters is not null) e.SetBoardFilters(req.BoardFilters);
+        }, ct);
         await NotifyAsync(number, ExecutionPlanRealTimeEvents.EpicActions.Updated, ct);
         return await ResponseAsync(epic, ct);
+    }
+
+    public async Task<EpicResponse> SetBoardFiltersAsync(long number, EpicBoardFilters? filters, ExecutionActor actor, CancellationToken ct)
+    {
+        var changed = false;
+        var epic = await MutateAsync(number, e => changed = e.SetBoardFilters(filters ?? new EpicBoardFilters()), ct);
+        if (changed)
+            await NotifyAsync(number, ExecutionPlanRealTimeEvents.EpicActions.Filters, ct);
+        return await ResponseAsync(epic, ct);
+    }
+
+    public async Task<IReadOnlyList<string>> TagsAsync(string? query, CancellationToken ct) =>
+        CountTags(await epics.ListTagsJsonAsync(ct), query);
+
+    /// <summary>
+    /// Tags dos épicos (todas as situações) sem repetir (sem caixa; fica a grafia mais usada), mais usadas primeiro e depois pelo
+    /// nome; <paramref name="query"/> filtra por "contém" sem caixa/acento.
+    /// </summary>
+    public static IReadOnlyList<string> CountTags(IEnumerable<string?> tagsJson, string? query)
+    {
+        var counts = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var json in tagsJson)
+        {
+            List<string>? tags;
+            try { tags = string.IsNullOrWhiteSpace(json) ? null : System.Text.Json.JsonSerializer.Deserialize<List<string>>(json); }
+            catch (System.Text.Json.JsonException) { tags = null; }
+            foreach (var raw in (tags ?? []).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var tag = raw?.Trim();
+                if (string.IsNullOrEmpty(tag)) continue;
+                if (!counts.TryGetValue(tag, out var spellings)) counts[tag] = spellings = new Dictionary<string, int>(StringComparer.Ordinal);
+                spellings[tag] = spellings.GetValueOrDefault(tag) + 1;
+            }
+        }
+        var term = Fold(query);
+        return counts
+            .Select(c => (Tag: c.Value.OrderByDescending(s => s.Value).ThenBy(s => s.Key, StringComparer.Ordinal).First().Key, Count: c.Value.Values.Sum()))
+            .Where(t => term.Length == 0 || Fold(t.Tag).Contains(term, StringComparison.Ordinal))
+            .OrderByDescending(t => t.Count)
+            .ThenBy(t => t.Tag, StringComparer.OrdinalIgnoreCase)
+            .Select(t => t.Tag)
+            .ToList();
+    }
+
+    /// <summary>Sem acento e em minúsculas (busca das tags).</summary>
+    private static string Fold(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var sb = new StringBuilder();
+        foreach (var ch in text.Trim().Normalize(NormalizationForm.FormD))
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(char.ToLowerInvariant(ch));
+        return sb.ToString();
     }
 
     public async Task<EpicResponse> SetStatusAsync(long number, string? status, ExecutionActor actor, CancellationToken ct)
@@ -222,6 +282,30 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) 
     {
         try { await action(); }
         catch (Exception e) when (e is not OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Ajustes 1: filtros do board salvos no épico (a tela grava; o especialista considera no board do time) e a regra de uso.
+    /// </summary>
+    private static void AppendBoardFilters(StringBuilder sb, Epic epic)
+    {
+        var f = epic.BoardFilters;
+        if (!f.HasAny())
+        {
+            sb.AppendLine("- Filtros salvos do board: nenhum (o board do time aparece inteiro, todas as colunas e lanes).");
+            return;
+        }
+        var parts = new List<string>();
+        if (f.HiddenColumns.Count > 0) parts.Add("colunas ocultas " + string.Join(", ", f.HiddenColumns));
+        if (f.Lanes.Count > 0) parts.Add("lanes escolhidas " + string.Join(", ", f.Lanes.Select(l => l.Length == 0 ? "(padrão)" : l)));
+        if (f.Types.Count > 0) parts.Add("tipos " + string.Join(", ", f.Types));
+        if (f.States.Count > 0) parts.Add("estados " + string.Join(", ", f.States));
+        if (f.AssignedTo.Count > 0) parts.Add("responsável " + string.Join(", ", f.AssignedTo.Select(a => a == "__unassigned__" ? "(sem responsável)" : a)));
+        if (f.Tags.Count > 0) parts.Add("tags (todas) " + string.Join(", ", f.Tags));
+        if (!string.IsNullOrWhiteSpace(f.Text)) parts.Add($"texto \"{f.Text}\"");
+        sb.AppendLine($"- Filtros salvos do board: {string.Join(" · ", parts)}.");
+        sb.AppendLine("  No board do time, considere os filtros salvos do épico — `prmake_devops_board(epic)` já aplica; para ver além deles, " +
+                      "passe useEpicFilters=false e diga isso na resposta.");
     }
 
     private static string RoleText(string role) => role switch
