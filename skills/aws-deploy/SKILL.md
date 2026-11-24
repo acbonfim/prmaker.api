@@ -28,6 +28,23 @@ bash ~/.claude/skills/aws-deploy/scripts/aws.sh index              # só o índi
 - Em `failed`, mostre o fim do log do build (`failedLogTail`) e o link do build; não conclua que a falha é do nosso
   código sem ler o log (a esteira pode quebrar por outro commit ou por infraestrutura).
 
+## Governanca
+
+As regras de governanca vem do PRMake (`prmake_rules` e, com a governanca ligada, o hook `PreToolUse`, que consulta o
+PRMake antes de cada comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao
+  contorne, nem por outro comando, script ou ferramenta equivalente. Registre na sub-tarefa o que precisa de uma pessoa
+  (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da sub-tarefa.
+- A coleta so le: nunca leia `~/.aws/credentials` nem rode `aws` fora do `aws.sh` para "completar" um dado.
+
+## Itens ja concluidos e cards antigos
+
+O retrato e do **card**, nao do item: o botao Atualizar da aba AWS (ou `aws.sh collect <card>`) funciona em qualquer
+card, com itens concluidos, cancelados ou sem item. O PRMake junta os PRs do card e as entregas de codigo de todos os
+itens; card tratado fora do PRMake (sem PR/entrega registrados) → o script procura nos clones da maquina os commits que
+citam o card (ou informe `--repo <nome>`). A sub-tarefa automatica so entra em item ainda aberto.
+
 ## Como funciona (para explicar a quem pergunta)
 
 1. **Índice de pipelines** compartilhado no PRMake: cada coleta faz `list-pipelines` e busca a definição só das

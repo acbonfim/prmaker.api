@@ -463,6 +463,34 @@ def repo_path(name):
     return None
 
 
+def guess_repositories(card):
+    """Card sem PR/entrega no PRMake (tratado fora dele, itens antigos): clones da máquina (mapa de repositórios) com
+    commit citando o card nas refs locais — sem fetch, rápido; a coleta busca as branches depois."""
+    try:
+        repos = json.load(open(os.path.join(HOME, ".prmake", "repos.json"), encoding="utf-8")).get("repos") or {}
+    except (OSError, ValueError):
+        return []
+    rx = r"(^|[^0-9])" + str(card) + r"([^0-9]|$)"
+
+    def probe(item):
+        name, info = item
+        path = (info or {}).get("path")
+        if not path or not os.path.isdir(os.path.join(path, ".git")):
+            return None
+        try:
+            p = subprocess.run(["git", "-C", path, "log", "--remotes=origin", "--since=400 days ago", "-E", "-i", f"--grep={rx}",
+                                "-n", "1", "--format=%H"], capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            return None
+        if not p.stdout.strip():
+            return None
+        r = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
+        m = re.search(r"[:/]([^/:]+/[^/]+?)(\.git)?$", r.stdout.strip())
+        return {"repository": m.group(1) if m else name, "branches": [], "shas": [], "prs": []}
+
+    return [r for r in pmap(probe, list(repos.items()), workers=8) if r]
+
+
 def matches_paths(p, files):
     inc, exc = p.get("filePathsInclude") or [], p.get("filePathsExclude") or []
     if not inc and not exc:
@@ -733,7 +761,16 @@ def collect(args):
             snap["warnings"].append(f"{e['label']}: host {e.get('host')} não achado no CloudFront — informe o tier na configuração")
 
     repos, all_pipes, all_files = [], [], []
-    for r in ctx.get("repositories") or []:
+    ctx_repos = ctx.get("repositories") or []
+    if args.repo:
+        ctx_repos += [{"repository": r if "/" in r else f"electradv/{r}", "branches": [], "shas": [], "prs": []}
+                      for r in args.repo if not any(c["repository"].split("/")[-1] == r.split("/")[-1] for c in ctx_repos)]
+    if not ctx_repos:
+        ctx_repos = guess_repositories(args.card)
+        if ctx_repos:
+            snap["warnings"].append("Sem PR/entrega do card no PRMake: repositórios achados pelos commits que citam o card nesta "
+                                    "máquina (" + ", ".join(r["repository"] for r in ctx_repos) + ")")
+    for r in ctx_repos:
         name = r["repository"]
         full = name if "/" in name else f"electradv/{name}"
         pipes = local_pipelines(args.index_dir, full) if args.index_dir else \
@@ -872,6 +909,7 @@ def main():
     c.add_argument("--skip-index", action="store_true")
     c.add_argument("--no-logs", action="store_true")
     c.add_argument("--envs", help="só estes ambientes (chaves separadas por vírgula)")
+    c.add_argument("--repo", action="append", help="repositório a mais (ex.: edv-solvace-apps), além dos do PRMake")
     c.add_argument("--context-file", help="teste: contexto do card em JSON (em vez de GET AwsDeploy/card/{card}/context)")
     c.add_argument("--index-dir", help="teste: pasta com saídas do get-pipeline (em vez do índice do PRMake)")
     i = sub.add_parser("index")

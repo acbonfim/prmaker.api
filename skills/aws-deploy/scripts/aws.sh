@@ -2,7 +2,7 @@
 # Esteiras de deploy do card na AWS (feature 0100) — SOMENTE LEITURA (CLI da AWS + git local).
 #
 # Uso:
-#   aws.sh collect <card> [--request <id>] [--dry-run] [--out <arquivo>] [--skip-index] [--no-logs] [--envs dev,qa]
+#   aws.sh collect <card> [--request <id>] [--dry-run] [--out <arquivo>] [--skip-index] [--no-logs] [--envs dev,qa] [--repo <nome>]
 #                         coleta e grava o retrato no PRMake (aba AWS da Bancada; MCP prmake_aws_status)
 #   aws.sh index [--full] [--seed-dir <pasta>]   só o índice de pipelines do PRMake (novas/alteradas/removidas)
 #   aws.sh show <card>                           o retrato gravado no PRMake, resumido
