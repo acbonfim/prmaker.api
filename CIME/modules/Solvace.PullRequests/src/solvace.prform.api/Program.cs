@@ -21,6 +21,7 @@ using solvace.vacations.infra.Extensions;
 using solvace.timeline.infra.Extensions;
 using solvace.executionplans.infra.Extensions;
 using solvace.knowledge.infra.Extensions;
+using solvace.governance.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -150,7 +151,8 @@ builder.Services
     .AddVacationModule(builder.Configuration)
     .AddTimelineModule(builder.Configuration)
     .AddExecutionPlanModule(builder.Configuration)
-    .AddKnowledgeModule(builder.Configuration);
+    .AddKnowledgeModule(builder.Configuration)
+    .AddGovernanceModule(builder.Configuration);
 
 
 

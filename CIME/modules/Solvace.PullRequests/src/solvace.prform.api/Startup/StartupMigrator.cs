@@ -43,6 +43,11 @@ public static class StartupMigrator
                 await MigrateAsync<TimelineContext>(sp, logger);
                 await MigrateAsync<ExecutionPlanContext>(sp, logger);
                 await MigrateAsync<solvace.knowledge.infra.Contexts.KnowledgeContext>(sp, logger);
+                await MigrateAsync<solvace.governance.infra.Contexts.GovernanceContext>(sp, logger);
+                // 0098: regras/hooks embutidos e configurações da governança (só o que falta; nunca sobrescreve o admin).
+                var seeded = await solvace.governance.infra.GovernanceSeeder.SeedAsync(
+                    sp.GetRequiredService<solvace.governance.infra.Contexts.GovernanceContext>(), DateTimeOffset.UtcNow);
+                logger.LogInformation("Governança: {Count} itens embutidos semeados.", seeded);
             });
         }
         finally
