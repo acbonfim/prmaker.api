@@ -46,7 +46,7 @@ Tipos (camelCase no JSON; datas sem `Z`, como no resto da API):
 type Source = 'screen' | 'api' | 'mcp' | 'skill' | 'executor' | 'specialist' | 'hook' | 'system';
 type Effect = 'monitor' | 'warn' | 'block' | 'approval';
 type Mode = 'off' | 'monitor' | 'enforce';
-type Outcome = 'ok' | 'error' | 'blocked' | 'warned';
+type Outcome = 'ok' | 'error' | 'blocked' | 'warned' | 'monitored';   // monitored = casou regra, mas o modo/efeito só registra
 
 interface GovernanceEvent {
   id: number; startedAt: string; finishedAt: string | null; durationMs: number | null;
@@ -67,7 +67,8 @@ interface GovernanceRule {
   match: {
     actions: string[];      // glob sobre GovernanceEvent.action (ex.: 'POST Azure/card/*/actions/*', 'mcp:prmake_pr_*')
     tools: string[];        // glob sobre a ferramenta do Claude Code (ex.: 'Bash', 'mcp__prmake__*', 'Write')
-    patterns: string[];     // regex (case-insensitive) sobre o comando/entrada da ferramenta ou o corpo resumido
+    patterns: string[];     // regex (case-insensitive) sobre o comando/entrada da ferramenta ou o corpo resumido — basta UMA casar
+    allOf: string[];        // regex que precisam casar TODAS, além de patterns (ex.: cliente de banco + comando de escrita)
     paths: string[];        // glob sobre caminho de arquivo (Read/Write/Edit)
   };
   updatedAt: string | null; updatedBy: string | null;
@@ -106,6 +107,11 @@ interface EvaluateResponse {
   rules: { key: string; name: string; effect: Effect; message: string }[];   // todas as que casaram (inclusive monitor)
 }
 ```
+
+Casamento: a regra casa quando está ativa, o escopo vale e **cada dimensão preenchida** (`actions`, `tools`, `paths`,
+`patterns`, `allOf`) casa; regra sem nenhuma dimensão preenchida nunca casa. Decisão = o efeito mais forte entre as que
+casaram (`block`/`approval` > `warn` > `monitor`); em modo `monitor` a decisão é sempre `allow` e o evento sai com
+`outcome = monitored`. `EvaluateResponse` ganha `wouldDecide` (a decisão se o modo fosse `enforce`).
 
 Endpoints:
 
