@@ -15,7 +15,8 @@ Fonte única das skills (feature 0024). Cada deploy da API publica o conteúdo d
 | `tarefas-de-gestao/` | 0099: guia dos kinds de gestao que a `executar-item-de-trabalho` delega (`devops-query`, `devops-create`, `devops-update`, `devops-move`, `report`, `duplicates`, `understanding`, `rca-doc`, `pdf`); `scripts/gestao.sh` (→ `gestao.py`, so stdlib): consulta pelo PRMake gravada como arquivo do item, numeros do relatorio, grupos de duplicados, parados por coluna, `save`/`pull` de arquivos do item, PDF pelo servidor e `rca-check` (o `rca_check.py` da `gerar-prmake`) |
 | `_tooling/install.sh` | instalador de um comando para macOS/Linux/Git Bash (servido em `/Skills/install.sh`); instala jq/unzip/python3 que faltarem |
 | `_tooling/install.ps1` | instalador do Windows no PowerShell (servido em `/Skills/install.ps1`): winget para Git/jq/Python e roda o `install.sh` no Git Bash |
-| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` · `db-credentials` · `env-credentials` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
+| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` · `db-credentials` · `env-credentials` · `governance` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
+| `_tooling/prmake-governance.py` | 0098: hook único de governança do Claude Code (servido em `/Skills/tool/governance`, mesma versão da ferramenta) |
 
 **Instalar** (o comando com a api-key está na tela *Skills* do PRMake):
 
@@ -90,3 +91,21 @@ bash ~/.claude/skills/.prmake/prmake-skills.sh repos path <repo>      # pasta (e
   do executor) — repositórios lá: `repos set` ou `PRMAKE_REPOS_ROOTS`.
 - Usam o mapa: `revamp-repos.sh` (`list`/`where`/`grep`), `prmake-plan.sh branches`/`worktree`, `arch.sh stale` e o
   executor (pasta onde abre o Claude, `--add-dir` dos repositórios fora dela, "Meus executores" e o doctor).
+
+**Governança (0098)**: o `install`/`update` baixa `prmake-governance.py` para `~/.claude/skills/.prmake/` e registra o
+mesmo comando nos hooks `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` e `Stop` do
+`~/.claude/settings.json` (idempotente; os hooks de terceiros e o `SessionStart` de atualização ficam como estão). As
+regras e os hooks ativos vêm do PRMake (`GET Governance/hooks/config`, cache em `~/.prmake/governance.json` por
+`cacheSeconds`): no `PreToolUse` a ferramenta que casa com as regras é avaliada (`POST Governance/evaluate`) — barrada,
+o Claude recebe "Barrado pela governança do PRMake: <motivo> (regra <key>)"; aviso, segue com o aviso no contexto. Os
+demais eventos vão em lote para `POST Governance/hooks/events` (fila `~/.prmake/governance-queue.jsonl`; nunca o texto
+do pedido, só o tamanho). Sem rede ou passou de `timeoutMs`: vale o `failOpen` (padrão: deixa passar); erros em
+`~/.prmake/governance.log`. O executor (1.7.0) põe o mesmo hook no settings dele (`--from-executor`) e mantém o
+`prmake-agent guard` como rede de segurança sem rede, que também reporta o bloqueio (`rules: ["executor-guard"]`).
+
+```bash
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance            # status: hooks instalados, versão e modo da config, fila
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance test "git push --force"   # o que as regras decidem (não executa)
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance off        # remove só os nossos hooks (o update não reinstala)
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance on         # religa
+```

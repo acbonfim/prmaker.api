@@ -29,6 +29,14 @@ REPOS=~/.claude/skills/analisar-bug/scripts/revamp-repos.sh # where <repo>
 4. Idempotente: o que ja esta desfeito (PR ja fechado, branch ja apagada) conta como desfeito — `revert` com o resultado.
 5. Modo executor (`PRMAKE_EXECUTOR=1`): sem perguntas no chat; o que precisa de decisao vira `fail` explicado.
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Deixe a sub-tarefa para uma pessoa desfazer (com a regra) e siga com as demais.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da sub-tarefa.
+
 ## MCP primeiro
 `ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_task,mcp__prmake__prmake_card,mcp__prmake__prmake_devops")`
 

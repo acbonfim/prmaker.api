@@ -7,6 +7,9 @@ namespace Cime.ExecutionAgent;
 /// Perfil do Claude Code no modo headless (0039): sem prompt de permissão (<c>--permission-mode dontAsk</c>), mas com
 /// cerca — liberado o que a skill usa, negado merge/aprovação, push forçado ou em branch protegida, escrita em banco e
 /// Cognito. O hook <c>PreToolUse</c> chama <c>prmake-agent guard</c> como segunda checagem.
+/// 0098 (1.7.0): mais o hook de governança do PRMake (<see cref="GovernanceHook"/>) em PreToolUse (todas as ferramentas —
+/// o script só consulta o PRMake quando as regras casam), PostToolUse e Stop (trilha); o guard continua como rede de
+/// segurança sem rede.
 /// </summary>
 public static class ClaudeSettings
 {
@@ -20,6 +23,7 @@ public static class ClaudeSettings
         var target = specialist ? Paths.CaseClaudeSettings : Paths.ClaudeSettings;
         var self = Environment.ProcessPath ?? Paths.Bin;
         var guard = Paths.IsWindows ? $"\"{self.Replace("\\", "/")}\" guard" : $"'{self.Replace("'", "'\\''")}' guard";
+        var governance = GovernanceHook.Command();
         using var buffer = new MemoryStream();
         using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
@@ -44,16 +48,18 @@ public static class ClaudeSettings
             w.WriteEndObject();
             w.WriteStartObject("hooks");
             w.WriteStartArray("PreToolUse");
-            w.WriteStartObject();
-            w.WriteString("matcher", "Bash");
-            w.WriteStartArray("hooks");
-            w.WriteStartObject();
-            w.WriteString("type", "command");
-            w.WriteString("command", guard);
-            w.WriteEndObject();
+            HookGroup(w, "Bash", guard, null);
+            if (governance is not null) HookGroup(w, "*", governance, GovernanceHook.TimeoutSeconds);
             w.WriteEndArray();
-            w.WriteEndObject();
-            w.WriteEndArray();
+            if (governance is not null)
+            {
+                w.WriteStartArray("PostToolUse");
+                HookGroup(w, "*", governance, GovernanceHook.TimeoutSeconds);
+                w.WriteEndArray();
+                w.WriteStartArray("Stop");
+                HookGroup(w, null, governance, GovernanceHook.TimeoutSeconds);
+                w.WriteEndArray();
+            }
             w.WriteEndObject();
             w.WriteEndObject();
         }
@@ -61,6 +67,131 @@ public static class ClaudeSettings
         if (!File.Exists(target) || File.ReadAllText(target) != json)
             File.WriteAllText(target, json);
         return target;
+    }
+
+    private static void HookGroup(Utf8JsonWriter w, string? matcher, string command, int? timeoutSeconds)
+    {
+        w.WriteStartObject();
+        if (matcher is not null) w.WriteString("matcher", matcher);
+        w.WriteStartArray("hooks");
+        w.WriteStartObject();
+        w.WriteString("type", "command");
+        w.WriteString("command", command);
+        if (timeoutSeconds is { } t) w.WriteNumber("timeout", t);
+        w.WriteEndObject();
+        w.WriteEndArray();
+        w.WriteEndObject();
+    }
+}
+
+/// <summary>
+/// 0098: hook de governança do PRMake (<c>prmake-governance.py</c>, instalado com as skills em
+/// <c>~/.claude/skills/.prmake/</c>). No executor ele roda com <c>--from-executor</c> e o pedido leva
+/// <c>PRMAKE_GOVERNANCE_HOOK=executor</c>: o mesmo hook vindo do <c>~/.claude/settings.json</c> da pessoa sai sem repetir.
+/// Sem o script ou sem Python 3 não entra (o guard continua).
+/// </summary>
+public static class GovernanceHook
+{
+    public const int TimeoutSeconds = 10;
+    public const string EnvName = "PRMAKE_GOVERNANCE_HOOK";
+
+    public static string Script => Path.Combine(Paths.ClaudeHome, "skills", ".prmake", "prmake-governance.py");
+
+    /// <summary>Comando do hook, ou null sem o script/Python. "|| true": script sumido faria o python sair com 2 (= barrar).</summary>
+    public static string? Command()
+    {
+        var script = Script;
+        if (!File.Exists(script)) return null;
+        var python = Python();
+        if (python is null) return null;
+        return Paths.IsWindows
+            ? $"\"{python.Replace('\\', '/')}\" \"{script.Replace('\\', '/')}\" --from-executor || true"
+            : $"{Quote(python)} {Quote(script)} --from-executor || true";
+    }
+
+    private static string Quote(string s) => $"'{s.Replace("'", "'\\''")}'";
+
+    /// <summary>Python 3 da máquina (caminho absoluto: o serviço do executor não tem o PATH do terminal). PRMAKE_PYTHON vale por cima.</summary>
+    public static string? Python()
+    {
+        if (Environment.GetEnvironmentVariable("PRMAKE_PYTHON") is { Length: > 0 } forced)
+            return File.Exists(forced) ? forced : null;
+        var path = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        if (Paths.IsWindows)
+        {
+            // O python.exe de WindowsApps é o atalho da Microsoft Store (não roda).
+            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var installed = Directory.Exists(Path.Combine(local, "Programs", "Python"))
+                ? Directory.GetDirectories(Path.Combine(local, "Programs", "Python"), "Python3*").OrderByDescending(d => d, StringComparer.Ordinal)
+                : Enumerable.Empty<string>();
+            return path.Where(d => !d.Contains("WindowsApps", StringComparison.OrdinalIgnoreCase)).Concat(installed)
+                .Select(d => Path.Combine(d, "python.exe")).FirstOrDefault(File.Exists);
+        }
+        // macOS: /usr/bin/python3 sem as ferramentas de linha de comando abre a janela de instalação a cada chamada.
+        var macStubOk = !Paths.IsMac || Directory.Exists("/Library/Developer/CommandLineTools") || Directory.Exists("/Applications/Xcode.app");
+        return path.Concat(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])
+            .Select(d => Path.Combine(d, "python3"))
+            .Where(p => p != "/usr/bin/python3" || macStubOk)
+            .FirstOrDefault(File.Exists);
+    }
+}
+
+/// <summary>
+/// 0098: bloqueio do <see cref="Guard"/> reportado à governança do PRMake (<c>POST Governance/hooks/events</c>, regra
+/// <c>executor-guard</c>) — a trilha do admin mostra também o que o executor barrou sem rede. Nunca trava: sem token,
+/// sem rede ou passou de 3 s, só desiste.
+/// </summary>
+public static class GovernanceReport
+{
+    public static void Blocked(string command, string reason, string? sessionId)
+    {
+        try
+        {
+            var token = ConfigStore.UserToken();
+            if (token is null) return;
+            var apiBase = Environment.GetEnvironmentVariable("PRMAKE_API_BASE") is { Length: > 0 } b
+                ? b.TrimEnd('/')
+                : ConfigStore.ResolveApiBase(ConfigStore.Load());
+            using var http = new HttpClient { BaseAddress = new Uri(apiBase + "/"), Timeout = TimeSpan.FromSeconds(3) };
+            http.DefaultRequestHeaders.Add("x-api-key", token);
+            using var content = new StringContent(Body(command, reason, sessionId, DateTimeOffset.Now), System.Text.Encoding.UTF8, "application/json");
+            using var response = http.PostAsync("Governance/hooks/events", content).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                Log.Warn($"governança: bloqueio do guard não reportado (HTTP {(int)response.StatusCode})");
+        }
+        catch (Exception e)
+        {
+            Log.Warn($"governança: bloqueio do guard não reportado ({e.GetType().Name}: {e.Message})");
+        }
+    }
+
+    /// <summary>Lote de um evento (sem serialização por reflexão — executor trimmed).</summary>
+    public static string Body(string command, string reason, string? sessionId, DateTimeOffset at)
+    {
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer))
+        {
+            w.WriteStartArray();
+            w.WriteStartObject();
+            w.WriteString("event", "PreToolUse");
+            w.WriteString("tool", "Bash");
+            w.WriteString("input", command.Length > 500 ? command[..499] + "…" : command);
+            w.WriteString("startedAt", at.ToString("yyyy-MM-ddTHH:mm:ss.fffzzz", System.Globalization.CultureInfo.InvariantCulture));
+            w.WriteNumber("durationMs", 0);
+            w.WriteString("outcome", "blocked");
+            w.WriteStartArray("rules");
+            w.WriteStringValue("executor-guard");
+            w.WriteEndArray();
+            w.WriteString("detail", $"Bloqueado pelo executor do PRMake: {reason}");
+            if (int.TryParse((Environment.GetEnvironmentVariable("PRMAKE_CARD") ?? "").TrimStart('#'), out var card) && card > 0)
+                w.WriteNumber("cardNumber", card);
+            if (!string.IsNullOrWhiteSpace(sessionId)) w.WriteString("sessionId", sessionId);
+            w.WriteString("machine", Paths.HostName);
+            w.WriteString("source", Environment.GetEnvironmentVariable("PRMAKE_SPECIALIST") == "1" ? "specialist" : "executor");
+            w.WriteEndObject();
+            w.WriteEndArray();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 }
 
@@ -99,12 +230,14 @@ public static partial class Guard
     /// <summary>Hook PreToolUse: lê o JSON do stdin; exit 2 + stderr bloqueia o comando e diz o motivo ao Claude.</summary>
     public static int Run()
     {
-        string? command = null;
+        string? command = null, sessionId = null;
         try
         {
             using var doc = JsonDocument.Parse(Console.In.ReadToEnd());
             if (doc.RootElement.TryGetProperty("tool_input", out var input) && input.TryGetProperty("command", out var c))
                 command = c.GetString();
+            if (doc.RootElement.TryGetProperty("session_id", out var sid) && sid.ValueKind == JsonValueKind.String)
+                sessionId = sid.GetString();
         }
         catch (JsonException)
         {
@@ -117,6 +250,8 @@ public static partial class Guard
         Console.Error.WriteLine($"Bloqueado pelo executor do PRMake: {reason}. Registre no plano o que precisa de uma pessoa e siga com o resto.");
         Log.Console = false;
         Log.Warn($"guard bloqueou: {reason} — {(command.Length > 200 ? command[..200] : command)}");
+        // 0098: a governança do PRMake também vê o que o guard barrou (sem travar se a rede falhar).
+        GovernanceReport.Blocked(command, reason, sessionId);
         return 2;
     }
 

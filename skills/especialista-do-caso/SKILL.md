@@ -69,6 +69,14 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
    tambem — itens de trabalho, especificacao da US, Timeline, DevOps — passando `card: <outro>` na ferramenta, como quem
    pediu. O cartao da acao fica na SUA conversa ("card 78525: ..."). So o que a pessoa pediu.
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Diga na conversa o que precisa de uma pessoa (com a regra) e siga com o resto do pedido.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) na resposta.
+
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
 1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens — **compacto**: itens em
    andamento com as sub-tarefas abertas, pendentes e fechados numa linha, o resto so contado — e dos **relatados**, itens de

@@ -34,6 +34,14 @@ EN-US) na **discussion** do card, a partir da branch atualmente em checkout.
   Ações DevOps): o PRMake usa a integração do Azure que o usuário configurou em **Minhas integrações**, registra
   na Timeline e mantém as configurações por usuário. **Não é preciso PAT do Azure na máquina.**
 
+## Governança (0098)
+
+As regras de governança vêm do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — não repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governança do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): não contorne, nem por outro comando, script ou
+  ferramenta equivalente. Diga ao usuário o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governança do PRMake: ..."): siga e cite o aviso (com a regra) no resumo final.
+
 ## Fluxo
 
 ### 1. Identificar o card pela branch

@@ -21,6 +21,7 @@ using solvace.vacations.infra.Extensions;
 using solvace.timeline.infra.Extensions;
 using solvace.executionplans.infra.Extensions;
 using solvace.knowledge.infra.Extensions;
+using solvace.governance.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -106,7 +107,12 @@ builder.Services.AddMcpServer(o =>
     // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
     .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
-    .WithRequestFilters(f => f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter));
+    .WithRequestFilters(f =>
+    {
+        // 0098: governança primeiro (barra antes do especialista pausar o tratamento) e registra toda chamada.
+        f.AddCallToolFilter(solvace.prform.Governance.GovernanceMcpFilter.Filter);
+        f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter);
+    });
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
 builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
 // 0099: PDF gerado no servidor para os arquivos do item (REST WorkItems/{n}/files/pdf e MCP prmake_pdf).
@@ -140,6 +146,11 @@ builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IPluginCo
 // Pedido de aprovação de PR no Teams via Workflow (feature 0007).
 builder.Services.AddScoped<solvace.prform.application.Teams.ITeamsApprovalService, solvace.prform.application.Teams.TeamsApprovalService>();
 builder.Services.AddHttpClient(solvace.prform.application.Teams.TeamsApprovalService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
+// 0098: governança — completa o lote da trilha (card/fase pelo plano ou item) e roda os gatilhos do servidor.
+builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceEventEnricher, solvace.prform.Governance.GovernanceEventEnricher>();
+builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceServerHookRunner, solvace.prform.Governance.GovernanceServerHookRunner>();
+builder.Services.AddHttpClient(solvace.prform.Governance.GovernanceServerHookRunner.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddScoped<solvace.prform.Governance.GovernanceMetrics>();
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
 // 0099: chave de épico (E123) nas rotas de card do DevOps → 404 limpo (a Mesa reaproveita componentes da Bancada).
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.EpicKeyCardFilter>());
@@ -163,7 +174,8 @@ builder.Services
     .AddVacationModule(builder.Configuration)
     .AddTimelineModule(builder.Configuration)
     .AddExecutionPlanModule(builder.Configuration)
-    .AddKnowledgeModule(builder.Configuration);
+    .AddKnowledgeModule(builder.Configuration)
+    .AddGovernanceModule(builder.Configuration);
 
 
 
@@ -228,7 +240,9 @@ app.UseHttpsRedirection()
     // 0039: credencial do executor só na fila/plano/skills/MCP e revogável na hora.
     .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>()
     // 0080: o que o token do Especialista do caso pode fazer (0096: inclusive ajustar o plano atual a pedido).
-    .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>();
+    .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>()
+    // 0098: regras da governança e trilha de toda gravação HTTP (depois de saber quem é o especialista/executor).
+    .UseMiddleware<solvace.prform.Governance.GovernanceMiddleware>();
 
 // Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware
 // rode cedo no pipeline (antes da execução dos endpoints).

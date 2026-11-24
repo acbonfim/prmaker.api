@@ -271,6 +271,14 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - PII: o que vai para o plano/Timeline e visivel no PRMake — so o necessario.
 - `PLANO INDISPONIVEL` no `start`/`contexto`: siga normalmente (os comandos do plano viram no-op).
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre no plano o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da etapa.
+
 ## Fluxo
 **0. Atualizar a skill** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true`;
 se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.

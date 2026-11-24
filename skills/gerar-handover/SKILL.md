@@ -34,6 +34,14 @@ lê o layout do formulário configurado, cruza os dados do card e salva o formul
 | **Salvar** (upsert por card) | `POST /Handover` `{cardNumber, content, repositoryId?, isPublic}` |
 | Visibilidade (opcional) | `PUT /Handover/{card}/visibility` `{isPublic}` |
 
+## Governança (0098)
+
+As regras de governança vêm do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — não repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governança do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): não contorne, nem por outro comando, script ou
+  ferramenta equivalente. Diga ao usuário o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governança do PRMake: ..."): siga e cite o aviso (com a regra) no resumo final.
+
 ## Fluxo
 
 ### 1. Identificar o card
