@@ -96,13 +96,16 @@ public sealed class GovernanceEventWriter(
         if (p.Settings.Mode == GovernanceMode.Off) return;
         var sources = p.Settings.RecordSources.Count == 0 ? GovernanceSource.All : [.. p.Settings.RecordSources];
         // Mudança na própria governança sempre fica registrada (transparência para o admin).
-        var events = batch
-            .Where(d => d.Category == "governance" || sources.Contains(d.Source))
-            .Select(d => new GovernanceEvent(d))
-            .ToList();
-        if (events.Count == 0) return;
+        IReadOnlyList<GovernanceEventData> kept = batch.Where(d => d.Category == "governance" || sources.Contains(d.Source)).ToList();
+        if (kept.Count == 0) return;
 
         using var scope = scopes.CreateScope();
+        if (scope.ServiceProvider.GetService<IGovernanceEventEnricher>() is { } enricher)
+        {
+            try { kept = await enricher.EnrichAsync(kept, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogWarning(ex, "Governança: falha ao completar o lote."); }
+        }
+        var events = kept.Select(d => new GovernanceEvent(d)).ToList();
         var db = scope.ServiceProvider.GetRequiredService<GovernanceContext>();
         db.Events.AddRange(events);
         await db.SaveChangesAsync(ct);

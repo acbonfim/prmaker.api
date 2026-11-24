@@ -47,6 +47,12 @@ public interface IGovernanceEventSink
     void Enqueue(GovernanceEventData data);
 }
 
+/// <summary>Completa o lote antes de gravar (ex.: card e fase a partir do plano ou do item) — implementado no host.</summary>
+public interface IGovernanceEventEnricher
+{
+    Task<IReadOnlyList<GovernanceEventData>> EnrichAsync(IReadOnlyList<GovernanceEventData> batch, CancellationToken ct);
+}
+
 /// <summary>Gatilhos do servidor (server:*): executados pelo sink depois de gravar o lote.</summary>
 public interface IGovernanceServerHookRunner
 {
