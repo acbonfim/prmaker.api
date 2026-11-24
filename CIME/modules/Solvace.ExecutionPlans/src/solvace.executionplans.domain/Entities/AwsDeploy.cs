@@ -45,6 +45,8 @@ public static class AwsVerdict
     public const string Deployed = "deployed";
     public const string NotApplicable = "not-applicable";
     public const string Unknown = "unknown";
+    /// <summary>Esteira que já falhava antes do nosso código chegar — não conta contra o card.</summary>
+    public const string Broken = "broken";
 }
 
 /// <summary>
