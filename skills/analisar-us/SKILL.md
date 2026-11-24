@@ -65,6 +65,14 @@ handoff, itens, PR, respostas): US = **plano de implementacao**, **implementar**
 referencias da `analisar-bug` (`$REF correcao ...`) dizem "correcao", leia "implementacao". Titulo do plano:
 **"Implementacao <card>: <o que entrega>"** (o PRMake ajusta sozinho se vier "Correcao ...").
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre no plano o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da etapa.
+
 ## Fluxo
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-us analisar-bug 2>/dev/null || true`;
 se atualizar, releia esta SKILL.md.

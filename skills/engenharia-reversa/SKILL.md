@@ -80,6 +80,14 @@ subetapa por area → checagem → envio), a linha "agora" e um registro curto. 
 - Terminou a leitura: `bash $RE etapa <m> <doc> leitura completed --detail "<itens por tipo>"`.
 Agrupe numa chamada de Bash (`... && ...`) para nao gastar turnos so com andamento.
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre no andamento o que precisa de uma pessoa (com a regra) e siga com o resto do documento.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resumo do documento.
+
 ## Fluxo de um documento
 **0. Atualizar** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet engenharia-reversa 2>/dev/null || true`
 (se atualizou, releia esta SKILL.md).

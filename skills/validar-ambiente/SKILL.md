@@ -84,6 +84,14 @@ descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/
 5. **Prints sem dado sensivel alem do necessario**: nada de tela de senha, token, dados pessoais que nao provem a
    validacao. Prefira a tela com o resultado (mensagem de sucesso, registro na lista, valor calculado).
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre na sub-tarefa o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da sub-tarefa.
+
 ## Onde esta cada coisa
 - **Ambientes conhecidos**: `bash $ENV envs` (configuracao `ValidationEnvironments` do PRMake: chave, URL, usuario padrao,
   somente leitura, banco). `bash $ENV resolve <chave|url|cliente>` resolve qualquer um; fora da configuracao, procura

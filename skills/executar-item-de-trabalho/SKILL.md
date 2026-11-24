@@ -42,6 +42,14 @@ CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dad
 7. Modo executor (`PRMAKE_EXECUTOR=1`): ninguem le o chat. O que depende de alguem vira `wait` na sub-tarefa (com o
    que a pessoa precisa fazer/decidir) e voce **encerra a vez** — o PRMake retoma quando ela agir.
 
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre na sub-tarefa (`wait`, com a regra) o que precisa de uma pessoa e siga com as sub-tarefas que nao dependem dela.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da sub-tarefa.
+
 ## MCP primeiro
 Carregue uma vez, no inicio:
 `ToolSearch("select:mcp__prmake__prmake_work_item,mcp__prmake__prmake_work_items,mcp__prmake__prmake_work_task,mcp__prmake__prmake_rules,mcp__prmake__prmake_card,mcp__prmake__prmake_devops,mcp__prmake__prmake_work_item_file,mcp__prmake__prmake_work_deliverable")`
