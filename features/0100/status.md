@@ -1,7 +1,7 @@
 # Status 0100
 
 - Branch: `feature/0100` (prform.api-0100 e prform-app-0100), a partir de origin/master.
-- Merge: **não autorizado** ainda — abrir PRs e pedir ok (back e front juntos).
+- Merge: autorizado pelo usuário em 2026-11-24 (back e front juntos, depois do Q1).
 
 | Fase | Estado | Responsável | Notas |
 |---|---|---|---|
