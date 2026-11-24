@@ -12,6 +12,8 @@ namespace solvace.prform.Controllers;
 /// 0099: épicos da Mesa de gestão. Os itens, a conversa do especialista, os arquivos e os relatados do épico usam as rotas de
 /// card com a chave <c>E{número}</c> (<see cref="EpicKey"/>). Tempo real: <c>epicsUpdated</c> no grupo <c>epics</c>.
 /// Token do caso: só lê, e só o próprio épico (as gravações do especialista vão pelo MCP <c>prmake_epic*</c>).
+/// Ajustes 2: gravar exige <c>admin</c>/<c>management</c> (<see cref="DeskAccessAttribute"/>); ler (lista, épico, tags,
+/// <c>by-card</c> dos chips da Bancada) e o acompanhamento seguem para todo usuário logado.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
@@ -50,11 +52,13 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
         });
 
     /// <summary>Cria o épico (201). Número da sequência global dos itens.</summary>
+    [DeskAccess]
     [HttpPost]
     public Task<ActionResult<EpicResponse>> Create([FromBody] SaveEpicRequest request, CancellationToken ct) =>
         Run<EpicResponse>(async () =>
             StatusCode(StatusCodes.Status201Created, await epics.CreateAsync(request, await GetActorAsync(ct), ct)));
 
+    [DeskAccess]
     [HttpPut("{number:long}")]
     public Task<ActionResult<EpicResponse>> Update([FromRoute] long number, [FromBody] SaveEpicRequest request, CancellationToken ct) =>
         Run<EpicResponse>(async () =>
@@ -64,6 +68,7 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
         });
 
     /// <summary><c>{status}</c>: active | paused | done | archived.</summary>
+    [DeskAccess]
     [HttpPost("{number:long}/status")]
     public Task<ActionResult<EpicResponse>> SetStatus([FromRoute] long number, [FromBody] EpicStatusRequest request, CancellationToken ct) =>
         Run<EpicResponse>(async () =>
@@ -76,6 +81,7 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
     /// Ajustes 1: grava os filtros do board do épico (corpo = <c>{lanes, types, states, assignedTo, tags, text}</c>; lane padrão =
     /// <c>""</c>) — a tela grava com debounce e o especialista usa no board do time. <c>epicsUpdated</c> action <c>filters</c>.
     /// </summary>
+    [DeskAccess]
     [HttpPut("{number:long}/board-filters")]
     public Task<ActionResult<EpicResponse>> SetBoardFilters([FromRoute] long number, [FromBody] EpicBoardFilters? request, CancellationToken ct) =>
         Run<EpicResponse>(async () =>
@@ -85,6 +91,7 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
         });
 
     /// <summary>Põe um card do DevOps no épico (<c>role</c> padrão <c>linked</c>; papel só sobe).</summary>
+    [DeskAccess]
     [HttpPost("{number:long}/cards")]
     public Task<ActionResult<EpicCardResponse>> AddCard([FromRoute] long number, [FromBody] AddEpicCardRequest request, CancellationToken ct) =>
         Run<EpicCardResponse>(async () =>
@@ -94,6 +101,7 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
         });
 
     /// <summary>Tira o card do épico (não mexe no card). Idempotente.</summary>
+    [DeskAccess]
     [HttpDelete("{number:long}/cards/{card}")]
     public Task<ActionResult<object>> RemoveCard([FromRoute] long number, [FromRoute] string card, CancellationToken ct) =>
         Run<object>(async () =>
@@ -101,6 +109,19 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
             EnsureSpecialistEpic(number);
             await epics.RemoveCardAsync(number, card, await GetActorAsync(ct), ct);
             return NoContent();
+        });
+
+    /// <summary>
+    /// Ajustes 2: acompanhamento das entregas — por card do épico: estado/coluna/responsável (DevOps), PRs do registro do PRMake
+    /// (status gravado, sem consultar o GitHub) e ambientes do retrato da AWS (<c>null</c> sem retrato). Uma chamada, lotes internos.
+    /// </summary>
+    [HttpGet("{number:long}/monitor")]
+    public Task<ActionResult<IReadOnlyList<EpicMonitorCard>>> Monitor([FromRoute] long number, [FromServices] EpicMonitorService monitor,
+        CancellationToken ct) =>
+        Run<IReadOnlyList<EpicMonitorCard>>(async () =>
+        {
+            EnsureSpecialistEpic(number);
+            return Ok(await monitor.GetAsync(number, ct));
         });
 
     /// <summary>Épicos em que o card está (chips na Bancada).</summary>
