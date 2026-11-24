@@ -20,7 +20,7 @@
 | F4 — regras, hooks, configurações | ✅ | agente front | 40fc4d4 |
 | F5 — ação barrada nas telas | ✅ | agente front | 8bf733c + CORS do `X-Governance-Warning` (5570bee) |
 | Q1 — testes | ✅ | | governance 44 · prform 456 · SkillTests 98 · ExecutionAgent 40 · specs da governança 34 · ng build ok |
-| Q2 — e2e local | 🟡 | principal | API + Postgres 18 isolado + front real (`.t0098`): 8 abas sem erro, bloqueio 403, aviso, hooks/events, métricas. Falta: Claude Code de verdade com o hook instalado |
+| Q2 — e2e local | ✅ | principal | `.t0098`: Claude Code real com o hook (barra merge/push, registra sessão/pedido/comandos/fim com card da branch); **A/B da Bancada master × 0098 em enforce** (user 21 passos, admin 22, leituras da tela e MCP leitura/escrita): status idênticos, só o aviso do reset a mais; regra de teste barrando a conversa → diálogo, tela segue usável, sem a regra volta a enviar |
 | Q3 — deploy em monitor | ⏳ | | precisa de ok do usuário |
 
 ## Log
@@ -30,6 +30,11 @@
   monitored, wouldDecide, simulador com corpo plano, `users/{id}` = `{ user, cards, recent }`); e2e local com prints.
 
 ## Pendente / observações
+
+- Q2 achou e corrigiu: horário do hook com fuso (-03:00) derrubava o lote inteiro (agora UTC); sub-tarefa sem item/card na
+  trilha (enriquecedor pelo #n); evento de mudança da governança duplicado.
+- Timeline/ExecutionQueue levam o card no corpo: esses eventos ficam sem card na trilha (rodada 2: ler o card do corpo).
+- Executor 1.5.0 testado por testes de unidade e pelo mesmo hook no Claude Code; falta uma rodada com o prmake-agent de verdade.
 
 - Q2: hook real num Claude Code (terminal e executor 1.5.0) contra a API local.
 - O deploy sobe o modo **monitor**: nada é barrado até o admin ligar o "Aplicando" na tela.

@@ -37,8 +37,9 @@ public class GovernanceEvent
 
     public GovernanceEvent(GovernanceEventData d)
     {
-        StartedAt = d.StartedAt;
-        FinishedAt = d.FinishedAt;
+        // O Npgsql só grava timestamptz em UTC; o hook manda o horário com o fuso da máquina (-03:00).
+        StartedAt = d.StartedAt.ToUniversalTime();
+        FinishedAt = d.FinishedAt?.ToUniversalTime();
         DurationMs = d.DurationMs ?? (d.FinishedAt is { } f ? (int)Math.Clamp((f - d.StartedAt).TotalMilliseconds, 0, int.MaxValue) : null);
         UserId = d.UserId;
         UserName = Clean(d.UserName, MaxNameLength) ?? "Desconhecido";

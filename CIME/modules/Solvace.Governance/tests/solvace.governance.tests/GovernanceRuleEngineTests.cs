@@ -188,4 +188,15 @@ public class GovernanceRuleEngineTests
         var order = 0;
         foreach (var h in GovernanceDefaults.Hooks) GovernanceDefaults.CreateHook(h, order += 10, Now);
     }
+
+    [Fact]
+    public void Events_are_stored_in_utc_with_duration_from_the_machine_clock()
+    {
+        var local = new DateTimeOffset(2026, 11, 24, 17, 15, 0, TimeSpan.FromHours(-3));
+        var e = new GovernanceEvent(new GovernanceEventData { StartedAt = local, FinishedAt = local.AddSeconds(2), Action = "hook:Stop" });
+        Assert.Equal(TimeSpan.Zero, e.StartedAt.Offset);
+        Assert.Equal(TimeSpan.Zero, e.FinishedAt!.Value.Offset);
+        Assert.Equal(local, e.StartedAt);
+        Assert.Equal(2000, e.DurationMs);
+    }
 }

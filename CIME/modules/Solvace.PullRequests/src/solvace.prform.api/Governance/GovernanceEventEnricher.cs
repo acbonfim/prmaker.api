@@ -17,7 +17,16 @@ public sealed class GovernanceEventEnricher(ExecutionPlanContext db) : IGovernan
             .Select(e => e.PlanId!.Value).Distinct().ToList();
         var items = batch.Where(e => e.WorkItemNumber is not null && e.CardNumber is null)
             .Select(e => (long)e.WorkItemNumber!.Value).Distinct().ToList();
-        if (planIds.Count == 0 && items.Count == 0) return batch;
+        // Sub-tarefa (#n é único no PRMake): rota WorkItems/tasks/{taskNumber}/... não traz item nem card.
+        var taskNumbers = batch.Where(e => e.TaskNumber is not null && (e.WorkItemNumber is null || e.CardNumber is null))
+            .Select(e => (long)e.TaskNumber!.Value).Distinct().ToList();
+        if (planIds.Count == 0 && items.Count == 0 && taskNumbers.Count == 0) return batch;
+
+        var taskItems = taskNumbers.Count == 0
+            ? []
+            : await db.WorkItemTasks.AsNoTracking().Where(t => taskNumbers.Contains(t.Number))
+                .Join(db.WorkItems, t => t.WorkItemId, w => w.Id, (t, w) => new { t.Number, Item = w.Number, w.CardNumber })
+                .ToDictionaryAsync(x => x.Number, ct);
 
         var plans = planIds.Count == 0
             ? []
@@ -34,6 +43,8 @@ public sealed class GovernanceEventEnricher(ExecutionPlanContext db) : IGovernan
                 e = e with { CardNumber = e.CardNumber ?? Card(plan.CardNumber), Phase = e.Phase ?? plan.Phase };
             if (e.CardNumber is null && e.WorkItemNumber is { } n && workItems.TryGetValue(n, out var card))
                 e = e with { CardNumber = Card(card) };
+            if (e.TaskNumber is { } tn && taskItems.TryGetValue(tn, out var ti))
+                e = e with { WorkItemNumber = e.WorkItemNumber ?? (int)ti.Item, CardNumber = e.CardNumber ?? Card(ti.CardNumber) };
             return e;
         }).ToList();
     }
