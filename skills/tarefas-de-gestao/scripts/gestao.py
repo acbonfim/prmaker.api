@@ -78,7 +78,8 @@ def token():
 
 def api(method, path, body=None, raw=False, timeout=120):
     data = None
-    headers = {"x-api-key": token(), "Accept": "application/json"}
+    # X-Execution-Client: skill — chamada do Claude (executor/terminal); a Mesa (DevOps/*) aceita a skill de qualquer papel.
+    headers = {"x-api-key": token(), "Accept": "application/json", "X-Execution-Client": "skill"}
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"

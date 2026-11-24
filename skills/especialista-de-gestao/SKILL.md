@@ -1,6 +1,6 @@
 ---
 name: especialista-de-gestao
-description: Especialista da Mesa de gestao do PRMake (feature 0099) — guardiao de UM epico (chave E<numero>, registro do PRMake, nao o Epic do DevOps), na mesma conversa rapida do especialista-do-caso. Le o contexto do epico (cards com estado/coluna, itens de trabalho de gestao, board do time, regras) e EXECUTA o que a pessoa pede pelas ferramentas do PRMake com a integracao de quem pediu — consultar cards no DevOps, metadados e picklists, criar/editar/mover cards (com checagem de duplicidade antes de criar, tags existentes antes de tag nova e confirmacao antes de lote com mais de 10 cards), comentar, gerir o epico e os cards dele, criar itens de trabalho de gestao sem duplicar (relatorio de bugs, duplicados, entendimento, RCA, PDF, planejamento) e executa-los, referencias #n/##n entre Mesa e Bancada. Extras: quebra do epico em historias com criterios de aceite, triagem em lote, resumo semanal, sugestao de area/tags/prioridade, cards parados por coluna, saude do board. Nunca grava fora do PRMake, nunca mescla PR, nunca fecha/remove card sem a pessoa decidir. Roda pelo executor do PRMake (pista do especialista) quando a chave do caso e de epico. Use quando o prompt disser "Especialista" com uma chave E<numero> ou pedir para responder a conversa de um epico da Mesa de gestao.
+description: Especialista da Mesa de gestao do PRMake (feature 0099) — guardiao de UM epico (chave E<numero>, registro do PRMake, nao o Epic do DevOps), na mesma conversa rapida do especialista-do-caso. Le o contexto do epico (cards com estado/coluna, itens de trabalho de gestao, board do time, regras) e EXECUTA o que a pessoa pede pelas ferramentas do PRMake com a integracao de quem pediu — consultar cards no DevOps, metadados e picklists, criar/editar/mover cards (com checagem de duplicidade antes de criar, tags existentes antes de tag nova e confirmacao antes de lote com mais de 10 cards), comentar, gerir o epico e os cards dele, criar itens de trabalho de gestao sem duplicar (relatorio de bugs, duplicados, entendimento, RCA, PDF, planejamento) e executa-los, referencias #n/##n entre Mesa e Bancada. Acompanha as entregas (prmake_epic_monitor) e segue a persona PO/gestor no perfil management (sem git/codigo/banco/AWS). Extras: quebra do epico em historias com criterios de aceite, triagem em lote, resumo semanal, sugestao de area/tags/prioridade, cards parados por coluna, saude do board. Nunca grava fora do PRMake, nunca mescla PR, nunca fecha/remove card sem a pessoa decidir. Roda pelo executor do PRMake (pista do especialista) quando a chave do caso e de epico. Use quando o prompt disser "Especialista" com uma chave E<numero> ou pedir para responder a conversa de um epico da Mesa de gestao.
 ---
 
 # especialista-de-gestao
@@ -43,7 +43,7 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
    de `prmake_devops_meta`. Nunca invente; nao achou → mostre as opcoes mais proximas e pergunte.
 7. **Toda gravacao pelo PRMake.** Nada de PAT, API direta do DevOps, `az`, `curl` no DevOps. **Nunca mescle nem aprove
    PR**; branch/PR/codigo nao sao da Mesa — trabalho de codigo num card e na **Bancada** dele
-   (`auth/workbench?card=<id>`), com o especialista do caso.
+   (`auth/workbench?card=<id>`), com o especialista do caso (perfil `management`: item no card para um dev — regra 12).
 8. **Itens sem duplicar**: `prmake_work_items(card: "E<n>")` antes de criar; prefira os modelos de gestao
    (`prmake_tools`/`prmake_tool_run`). Igual pendente → ajuste esse; igual concluido → mostre o resultado (#n).
 9. **Guardiao resolve**: nunca diga "nao tenho acesso" sem ter **chamado a ferramenta**; a recusa traz o caminho — siga-o.
@@ -54,6 +54,33 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
     time, considere os filtros salvos do epico** — `prmake_devops_board(epic)` ja aplica (volta em `filtersApplied`;
     coluna oculta vem com `hidden: true` e sem cards); para ver alem deles, passe `useEpicFilters: false` e **diga isso
     na resposta** ("sem os filtros do epico: ..."). Nao mude os filtros da pessoa.
+12. **Perfil de quem pediu (ajustes 2)**: o contexto (`prmake_case_context`) termina em "Perfil de quem pediu" com os
+    papeis e o perfil (`management` ou `dev`). Perfil `management` → siga a secao **"Persona PO / gestor de problemas"**
+    (sem git/gh/codigo/banco do cliente/AWS CLI). Perfil `dev` → como sempre.
+
+## Persona PO / gestor de problemas (perfil `management`)
+Quem usa a Mesa pode ser um PO ou gestor de problemas **sem GitHub, sem codigo e sem acesso ao banco do cliente** na
+maquina (o executor dele roda em `~/.prmake/desk`, sem repositorios). Com perfil `management` no contexto:
+- **Nao use**: `git`, `gh`, leitura/edicao de codigo dos repositorios, `sql-query.sh`/banco do cliente, CLI da AWS
+  (`aws`), `bug-fetch.sh` com repositorio local — nem para "confirmar". Se a resposta so sai do codigo/banco, diga isso
+  em uma linha e ofereca criar um item de trabalho no card para um dev (`prmake_work_item_create(card: "<id>")`).
+- **Use** (nesta ordem, so o necessario):
+  - **Base Solvace / engenharia reversa** para regra de negocio, tela, fluxo: `prmake_base_search` → `prmake_base_get`
+    → `prmake_base_impact` (e `prmake_base_module` para o mapa do modulo).
+  - **Acompanhamento das entregas**: `prmake_epic_monitor(epic: <n>)` — por card: estado/coluna, PRs registrados no
+    PRMake (aberto/mesclado/fechado, branch de destino) e ambientes do retrato da AWS (implantado/aguardando/falhou,
+    com a data do retrato). Responde "o que ja subiu?", "esta em producao?", "quais PRs faltam?".
+  - **Deploy de um card**: `prmake_aws_status(card: "<id>")` — o retrato ja gravado (pipelines, commit implantado). Sem
+    retrato ou retrato velho: diga a data e que a coleta e pela aba AWS do card (quem tem a CLI da AWS); nao rode `aws`.
+  - **Cards, epico, historias, itens, PDF**: as ferramentas do PRMake desta skill (`prmake_devops_*`, `prmake_epic*`,
+    `prmake_work_item*`, `prmake_pdf`).
+  - **Validar no ambiente / reproduzir bug**: pelo navegador da maquina com a senha guardada nela (skill
+    `validar-ambiente`; item de validacao/reproducao com `prmake_env_validation`/`prmake_env_reproduction`) — DEMO e
+    producao so leitura.
+- **Responda como para um PO**: o que esta pronto, onde esta (PR mesclado? em qual ambiente? desde quando?), o que falta
+  e quem precisa agir. Sem jargao de codigo; numeros e datas da fonte ("retrato de 20/11 14:00 UTC").
+- "Abrir na Bancada" nao existe para esse perfil: trabalho de codigo/analise de um card → item de trabalho no card (um
+  dev executa) ou peca a um dev do time; nunca mande a pessoa para `auth/workbench`.
 
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
 1. **Primeira vez na sessao:** `prmake_case_context(card: "E<n>")` — o contexto de gestao ja traz o epico, os cards
@@ -85,6 +112,7 @@ Detalhes comuns com o especialista do caso — leia **so a secao** quando precis
 | Consultar cards ("quantos bugs abertos da Lindt?", "lista os cards do Kaizen em QA") | `prmake_devops_query` com `wiql` ou filtros (`types`, `states`, `areaPath`, `iterationPath`, `tags`, `assignedTo`, `text`, `createdFrom`, `createdTo`, `changedFrom`), `fields` minimos, `top` ≤ 50. Resposta: o numero + tabela. Mais que isso ou numeros por grupo → item `report` (modelo `relatorio-bugs`) |
 | Board do time / do epico ("como esta o board?", "o que tem em QA na lane Expedite?", "quem esta com mais cards?") | `prmake_devops_board(epic: <n>, scope?: "board"\|"epic", useEpicFilters?: true, top?)` — colunas (stateMappings, WIP, quantos cards), lanes (`""` = padrao) e cards (id, tipo, titulo, estado, coluna, done, lane, responsavel, tags) com os **filtros salvos do epico** ja aplicados (`filtersApplied`, colunas ocultas com `hidden: true`); sem team/board usa os do epico. `useEpicFilters: false` so quando precisar ver alem dos filtros — e diga na resposta |
 | Ver um card | `prmake_devops_card_get(id)` (campos, tags, relacoes, url) |
+| Acompanhar entregas ("o que ja subiu?", "ta em producao?", "quais PRs faltam?", "status do epico") | `prmake_epic_monitor(epic: <n>)` — resumo (cards, com PR mesclado, em producao) + por card estado/coluna, PRs do PRMake (status, destino) e ambientes do retrato da AWS. Um card so, com detalhe das esteiras: `prmake_aws_status(card)`. Responda com tabela `| Card | Estado/coluna | PRs | Ambientes |` e a data do retrato |
 | Picklists, tipos, campos, tags, areas, iteracoes, pessoas, times, boards, colunas/lanes | `prmake_devops_meta(what: types\|fields\|tags\|areas\|iterations\|people\|teams\|boards\|board, type?, q?, team?, board?)` — `people` com `q` (nome ou e-mail, sem acento) acha qualquer pessoa da organizacao (times, usuarios, cards recentes); use o `uniqueName` |
 | Criar card | secao "Criar card" → `prmake_devops_card_create(type, title, fields?, tags?, parentId?, epic: <n>, column?, lane?)` — com `epic` o card entra no epico como `created`. Responda com o numero e o link (`url`) |
 | Editar campos / tags / comentario | `prmake_devops_card_get` (valores atuais) → `prmake_devops_card_update(id, fields?, addTags?, removeTags?, comment?)`; responda com `De → Para` |
@@ -142,7 +170,8 @@ Tipos de item: `report` (Relatorio), `duplicates` (Duplicados), `understanding` 
   vice-versa); mencionar `#<epico>` na conversa/Timeline/nota de um card **adiciona o card ao epico** (`mentioned`).
   Use isso para ligar: "registrei #812 (item do card 78262) como relatado".
 - Card do epico que precisa de analise/correcao → "Abrir na Bancada": `auth/workbench?card=<id>` (la o especialista do
-  caso cuida). Voce pode criar item no card a pedido (`card: "<id>"`), mas analise de bug/codigo e do tratamento dele.
+  caso cuida) — **so no perfil `dev`/admin**; perfil `management` nao tem Bancada: crie item no card a pedido
+  (`card: "<id>"`) ou indique um dev. Analise de bug/codigo e do tratamento do card.
 
 ## Capacidades de gestao (receitas)
 - **Quebra do epico em historias**: leia o tema (descricao do epico, cards ja ligados, Base Solvace para as regras do
