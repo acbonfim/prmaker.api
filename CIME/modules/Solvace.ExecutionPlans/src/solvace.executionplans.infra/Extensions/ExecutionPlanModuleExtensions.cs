@@ -43,6 +43,9 @@ public static class ExecutionPlanModuleExtensions
         // 0099: épicos da Mesa de gestão e o PDF gerado no servidor (markdown → PDF).
         services.AddScoped<IEpicRepository, EpicRepository>();
         services.AddScoped<IEpicApplication, EpicApplication>();
+        // 0099 (ajustes 2): histórias/bugs do épico (a conversão em card é do host — EpicStoryConverter).
+        services.AddScoped<IEpicStoryRepository, EpicStoryRepository>();
+        services.AddScoped<IEpicStoryApplication, EpicStoryApplication>();
         services.AddSingleton<IMarkdownPdfRenderer, solvace.executionplans.infra.Pdf.MarkdownPdfRenderer>();
 
         return services;

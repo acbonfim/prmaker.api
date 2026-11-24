@@ -13,7 +13,7 @@ namespace solvace.executionplans.application;
 /// Bancada, pela chave <see cref="EpicKey"/> (<c>E{número}</c>) no lugar do número do card. Tempo real: <c>epicsUpdated</c>
 /// no grupo <c>epics</c> (sinal; a tela refaz o GET).
 /// </summary>
-public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) : IEpicApplication
+public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, IEpicStoryRepository? stories = null) : IEpicApplication
 {
     private const int ListLimit = 300;
     private const int Retries = 4;
@@ -81,6 +81,9 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime) 
         if (epic.Cards.Count > ContextCards)
             sb.AppendLine($"- … mais {epic.Cards.Count - ContextCards} card(s) — lista completa em prmake_epic({epic.Number}).");
         sb.AppendLine("Estado/coluna atuais dos cards: prmake_devops_query (filtro por ids) ou prmake_devops_card_get(id) — a lista acima é só a foto de quando entraram.");
+        // Ajustes 2: histórias/bugs escritos no PRMake (rascunhos × convertidas em card).
+        if (stories is not null)
+            sb.AppendLine().Append(EpicStoryApplication.ContextMarkdown(epic.Number, await stories.ListByEpicAsync(epic.Id, null, ct), DateTimeOffset.UtcNow));
         return sb.ToString();
     }
 

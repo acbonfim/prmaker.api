@@ -65,6 +65,8 @@ public static class ExecutionPlanRealTimeEvents
         public const string Cards = "cards";
         /// <summary>Ajustes 1: filtros do board salvos no épico mudaram (<c>PUT Epics/{n}/board-filters</c>).</summary>
         public const string Filters = "filters";
+        /// <summary>Ajustes 2: histórias/bugs do épico mudaram (criada, editada, descartada, convertida) — payload com <c>story</c> (número).</summary>
+        public const string Stories = "stories";
     }
 
     public static class WorkItemActions
