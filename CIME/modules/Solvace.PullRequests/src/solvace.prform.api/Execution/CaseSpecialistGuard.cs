@@ -116,8 +116,17 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         "prmake_work_deliverable", "prmake_work_item_evidence",
         // 0096: mudanças do plano a pedido da pessoa.
         "prmake_step", "prmake_advance", "prmake_unblock", "prmake_plan_status", "prmake_answer", "prmake_cancel_questions",
-        "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link", "prmake_evidence", "prmake_log", "prmake_code_ref"
+        "prmake_handoff", "prmake_situation_publish", "prmake_file", "prmake_link", "prmake_evidence", "prmake_log", "prmake_code_ref",
+        // 0099: Mesa de gestão — épico, cards do épico e PDF nos arquivos do item.
+        "prmake_epic_save", "prmake_epic_cards", "prmake_pdf"
     };
+
+    /// <summary>
+    /// 0099: REST que grava e o token do caso pode chamar — arquivo/PDF de um item (o controller confere que o item é do card
+    /// ou épico do caso) e gerar PDF para baixar (não grava nada).
+    /// </summary>
+    [GeneratedRegex(@"^/api/v[\d.]+/(WorkItems/\d+/files(/pdf)?|Pdf/render)/?$", RegexOptions.IgnoreCase)]
+    private static partial Regex CaseWritablePath();
 
     [GeneratedRegex(@"^/api/v[\d.]+/CaseChat/(?<card>[^/]+)(/|$)", RegexOptions.IgnoreCase)]
     private static partial Regex CaseChatPath();
@@ -162,6 +171,13 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
                 await DenyAsync(context, StatusCodes.Status403Forbidden, "O especialista só conversa no card dele.");
                 return;
             }
+            await next(context);
+            return;
+        }
+
+        if (HttpMethods.IsPost(method) && CaseWritablePath().IsMatch(path))
+        {
+            context.User = WithRequester(context.User, requester, actAsRequester: true);
             await next(context);
             return;
         }

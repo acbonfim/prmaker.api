@@ -96,10 +96,14 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
     // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
     .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0099: épicos da Mesa de gestão e markdown → PDF nos arquivos do item.
+    .WithTools<solvace.prform.Execution.EpicMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f => f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter));
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
 builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
+// 0099: PDF gerado no servidor para os arquivos do item (REST WorkItems/{n}/files/pdf e MCP prmake_pdf).
+builder.Services.AddScoped<solvace.prform.Execution.WorkItemPdfService>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
@@ -130,6 +134,8 @@ builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IPluginCo
 builder.Services.AddScoped<solvace.prform.application.Teams.ITeamsApprovalService, solvace.prform.application.Teams.TeamsApprovalService>();
 builder.Services.AddHttpClient(solvace.prform.application.Teams.TeamsApprovalService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
+// 0099: chave de épico (E123) nas rotas de card do DevOps → 404 limpo (a Mesa reaproveita componentes da Bancada).
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.EpicKeyCardFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
 
 // Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o
