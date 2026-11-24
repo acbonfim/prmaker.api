@@ -65,6 +65,12 @@ public static class Doctor
             Add($"Ferramenta {tool}", found is not null, found ?? "não encontrada no PATH");
         }
 
+        // 0100: aba AWS da Bancada — a coleta das esteiras usa a CLI da AWS desta máquina (só leitura).
+        var aws = Shell.Which("aws");
+        Add("CLI da AWS (aba AWS)", aws is not null, aws ?? "não encontrada no PATH — sem ela a aba AWS não coleta nesta máquina", warning: true);
+        if (!File.Exists(AwsDeployRunner.Script))
+            Add("Skill aws-deploy", false, "não instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update aws-deploy", warning: true);
+
         if (await CodeArtifactCheckAsync(ct) is { } codeArtifact)
             checks.Add(codeArtifact);
 

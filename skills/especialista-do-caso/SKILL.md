@@ -82,6 +82,10 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
    Recarregue com `--refresh` quando a mensagem/contexto indicar mudanca (item criado, executado ou cancelado, PR
    aberto, plano ajustado, card mudou de estado/area) e logo apos criar/editar um item. Sem cache (script falhou):
    `prmake_rules(card)` e `prmake_work_items(card)` sao a fonte.
+   **Esta em QA/sandboxefeso/producao? o deploy rodou? a esteira falhou?** (0100) → `prmake_aws_status(card)` antes de
+   responder (retrato da aba AWS: veredito por ambiente, esteiras, commit implantado, erros dos logs). Sem retrato, mais
+   velho que 1 h ou com deploy em andamento → `bash ~/.claude/skills/aws-deploy/scripts/aws.sh collect <card>` (so
+   leitura) e responda com o resultado; nunca afirme que algo esta num ambiente sem essa prova.
 2. Entenda o que a pessoa quer. Imagem/arquivo citado como "arquivo #n" → `bash $CASE file <card> <n>` e `Read` no
    caminho impresso (imagem voce ve; audio: use a transcricao da mensagem; documento: leia).
 3. Busque **so o necessario**, nesta ordem (economia de tokens — cada leitura e relida em toda resposta seguinte):

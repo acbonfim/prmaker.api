@@ -83,7 +83,11 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             plan.RegisterSession(session.SessionId, session.Host, running is null ? parentSession.Cwd : null, now);
         }
         if (request.Steps.Count > 0)
+        {
             plan.UpsertSteps(request.Steps, now);
+            // 0100: correção que muda código ganha a etapa do mapa do deploy na AWS (o item espelho ganha a sub-tarefa).
+            WorkItemAwsDeployRule.EnsurePlanStep(plan, now);
+        }
 
         _repository.AddPlan(plan);
         await _repository.SaveChangesAsync(cancellationToken);
@@ -265,7 +269,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (request.Steps.Count == 0)
             throw new DomainException("Informe ao menos uma etapa.");
 
-        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow, request.Replace), cancellationToken, actor);
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            p.UpsertSteps(request.Steps, now, request.Replace);
+            // 0100: etapa de código/PR nova → a etapa do mapa do deploy na AWS entra depois dela (uma vez; fica fixa no lugar).
+            WorkItemAwsDeployRule.EnsurePlanStep(p, now);
+        }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, null, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
@@ -275,7 +285,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     {
         ArgumentNullException.ThrowIfNull(definition);
         ExecutionStep? step = null;
-        var plan = await MutateAsync(planId, p => step = p.AddStep(definition, beforeKey, DateTimeOffset.UtcNow, position), cancellationToken, actor);
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            step = p.AddStep(definition, beforeKey, now, position);
+            // 0100: etapa de código/PR pedida por alguém também leva o mapa do deploy na AWS (se o plano ainda não tem).
+            WorkItemAwsDeployRule.EnsurePlanStep(p, now);
+        }, cancellationToken, actor);
         // Steps: o item espelho ganha a sub-tarefa na sincronização (SyncWorkItemsAsync).
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, step!.Key, cancellationToken);
         return step.ToResponse();

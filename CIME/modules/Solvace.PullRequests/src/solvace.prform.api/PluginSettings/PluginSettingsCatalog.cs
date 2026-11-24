@@ -81,7 +81,8 @@ public static class PluginSettingsCatalog
         [
             new("tipos", "Tipos de item e de sub-tarefa", "Os tipos de item, o que cada sub-tarefa faz e quem executa."),
             new("modelos", "Modelos de item", "Itens prontos para criar com um clique."),
-            new("validacao", "Validação em ambiente", "Ambientes onde o Claude valida a demanda com prints (URL, usuário padrão, banco, somente leitura).")
+            new("validacao", "Validação em ambiente", "Ambientes onde o Claude valida a demanda com prints (URL, usuário padrão, banco, somente leitura)."),
+            new("aws", "Deploy na AWS", "Ambientes da aba AWS (esteiras por ambiente e se o código do card já está em cada um) e o acompanhamento do deploy em andamento.")
         ]),
         new("assistente", "Assistente e horas", "schedule", "Sugestões do assistente do card (estimativa inicial, lançar horas, publicar resumos) e as médias de horas do time.",
         [
@@ -399,6 +400,20 @@ public static class PluginSettingsCatalog
                    "defaults por tipo do card (bug, user-story). readOnly = o navegador da validação bloqueia gravações (DEMO, produção); " +
                    "readOnlyAllow (geral) e allow (por ambiente) = trechos de rota que podem gravar mesmo assim porque só guardam preferência/filtro do usuário (ex.: user-report-preferences). Senha nunca aqui: só na máquina de quem valida.",
             Default = Indented(ValidationEnvironments.DefaultJson), MultilineHint = true },
+        new() { Section = "itens", Group = "aws", Plugin = Skills, Key = SkillsConfigurationKeys.AwsDeployEnvironments, Type = SettingTypes.Table, ReadBy = ApiSkFe,
+            Label = "Ambientes da aba AWS",
+            Help = "Ambientes mostrados na aba AWS da Bancada, na ordem. host = domínio do ambiente (o script descobre no CloudFront o tier das " +
+                   "esteiras e o Elastic Beanstalk do legado); tier (dev, qa, edge, rc, rt, prod) é opcional e vence a descoberta.",
+            Columns = [new("key", "Chave", SettingTypes.Text, Required: true, Width: "sm"), new("label", "Nome", SettingTypes.Text, Required: true, Width: "sm"),
+                new("host", "Host", SettingTypes.Text, Required: true, Width: "md"), new("tier", "Tier (opcional)", SettingTypes.Text, Width: "sm"),
+                new("order", "Ordem", SettingTypes.Number, Width: "sm")],
+            Default = Compact(AwsDeploy.AwsDeploySettings.DefaultEnvironmentsJson) },
+        new() { Section = "itens", Group = "aws", Plugin = Skills, Key = SkillsConfigurationKeys.AwsDeployFollowMinutes, Type = SettingTypes.Number, ReadBy = Api,
+            Label = "Acompanhar deploy: intervalo", Help = "Retrato com deploy em andamento pede outra coleta à mesma máquina depois deste intervalo.",
+            Default = AwsDeploy.AwsDeploySettings.DefaultFollowMinutes.ToString(), Min = 1, Max = 60, Unit = "min" },
+        new() { Section = "itens", Group = "aws", Plugin = Skills, Key = SkillsConfigurationKeys.AwsDeployFollowMax, Type = SettingTypes.Number, ReadBy = Api,
+            Label = "Acompanhar deploy: coletas no máximo", Help = "Quantas coletas de acompanhamento por pedido (0 = não acompanha).",
+            Default = AwsDeploy.AwsDeploySettings.DefaultFollowMax.ToString(), Min = 0, Max = 100 },
 
         // ============================================================== Assistente e horas
         new() { Section = "assistente", Group = "assistente", Plugin = Skills, Key = SkillsConfigurationKeys.AssistantEnabled, Type = SettingTypes.Bool, ReadBy = Api,
