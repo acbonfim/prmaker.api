@@ -292,7 +292,7 @@ public sealed class GovernanceMetrics(
             .Where(n => !string.IsNullOrWhiteSpace(n) && n != "Desconhecido").Distinct().Take(20).ToList();
         return new CardRow(a.Card, latest?.Title ?? a.WorkItems.FirstOrDefault()?.Title ?? string.Empty, latest?.Kind, users, first, lastAt,
             milestones.Select(m => new { key = m.Key, label = m.Label, at = m.At }).ToList<object>(),
-            Sum("analysis"), Sum("correction"), GovernanceMetricsMath.Ms(first, closed ?? lastAt),
+            Sum("analysis"), Sum("correction"), GovernanceMetricsMath.Ms(first, closed ?? lastAt) is > 0 and var lead ? lead : null,
             a.WorkItems.Count, a.Tasks.Count(t => t.Status == "completed"), a.Events.Count(e => e.Outcome == "blocked"),
             latest?.Status ?? a.WorkItems.OrderByDescending(w => w.CreatedAt).FirstOrDefault()?.Status);
     }
