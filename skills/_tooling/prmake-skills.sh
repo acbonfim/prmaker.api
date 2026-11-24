@@ -20,6 +20,9 @@
 #                                                  executor do PRMake (0039): roda a analise pela tela, sem terminal
 #   prmake-skills.sh repos [scan [--quiet] | set <repo> <pasta> | unset <repo> | path <repo>]
 #                                                  repositórios desta máquina (0048): mapa remote → pasta em ~/.prmake/repos.json
+#   prmake-skills.sh governance [on | off | status | test "<comando>"]
+#                                                  hooks de governança do PRMake (0098) no Claude Code: on (re)instala,
+#                                                  off remove só os nossos, test avalia um comando nas regras
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -241,6 +244,113 @@ ensure_hook() {
       + [{"hooks": [{"type": "command", "command": $c, "timeout": 60}]}])' \
     "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
+}
+
+# Governança do PRMake (0098): um script só (prmake-governance.py) nos hooks SessionStart, UserPromptSubmit,
+# PreToolUse, PostToolUse e Stop — consulta as regras do PRMake antes de cada ferramenta e registra a trilha. As regras e
+# os hooks ativos vêm do PRMake (GET Governance/hooks/config); aqui só o registro no settings.json. Nossos hooks são os
+# que chamam prmake-governance.py: nunca mexe nos de terceiros nem no SessionStart de atualização (prmake-skills.sh).
+# `governance off` grava $GOV_OFF e o update não reinstala; PRMAKE_SKIP_GOVERNANCE=1 não mexe em nada.
+GOV_SCRIPT="$TOOL_DIR/prmake-governance.py"
+GOV_OFF="$TOOL_DIR/.governance-off"
+GOV_EVENTS=(SessionStart UserPromptSubmit PreToolUse PostToolUse Stop)
+GOV_TIMEOUT=10  # segundos (o script corta a rede em timeoutMs e nunca segura a sessão)
+
+# Python que roda o hook: python3; no Windows o executável real (o atalho ~/bin/python3 não está no PATH dos hooks).
+gov_python() {
+  python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' >/dev/null 2>&1 || return 1
+  if [[ $WINDOWS -eq 1 ]]; then
+    local exe; exe="$(python3 -c 'import sys; print(sys.executable)' 2>/dev/null | tr -d '\r')"
+    [[ -n "$exe" ]] || return 1
+    command -v cygpath >/dev/null 2>&1 && exe="$(cygpath -m "$exe")"
+    printf '"%s"' "$exe"
+  else
+    printf 'python3'
+  fi
+}
+# Comando do hook. "|| true": se o script sumir, o python sai com 2 — que no PreToolUse barraria toda ferramenta.
+gov_command() {
+  local py script; py="$(gov_python)" || return 1
+  if [[ $WINDOWS -eq 1 ]] && command -v cygpath >/dev/null 2>&1; then script="\"$(cygpath -m "$GOV_SCRIPT")\""
+  elif [[ "$TOOL_DIR" == "$HOME/.claude/skills/.prmake" ]]; then script='"$HOME/.claude/skills/.prmake/prmake-governance.py"'
+  else script="\"$GOV_SCRIPT\""; fi
+  printf '%s %s || true' "$py" "$script"
+}
+
+# Baixa o prmake-governance.py quando falta ou é de outra versão da ferramenta (mesma versão do prmake-skills.sh).
+ensure_governance_script() {
+  [[ "${PRMAKE_SKIP_GOVERNANCE:-0}" == 1 ]] && return 0
+  local published installed code
+  published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json" 2>/dev/null)"
+  installed="$(sed -n 's/^TOOL_VERSION = "\(.*\)"$/\1/p' "$GOV_SCRIPT" 2>/dev/null | head -1)"
+  [[ -f "$GOV_SCRIPT" && ( -z "$published" || "$installed" == "$published" ) ]] && return 0
+  code="$(get "/tool/governance" "$TMP/governance.py")"
+  if [[ "$code" != 200 ]] || ! grep -q '^TOOL_VERSION = ' "$TMP/governance.py" 2>/dev/null; then
+    [[ -f "$GOV_SCRIPT" ]] || say "   hook de governança ainda não publicado no PRMake (HTTP $code) — fica para o próximo update"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1 && ! python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$TMP/governance.py" >/dev/null 2>&1; then
+    warn "prmake-governance.py baixado com erro de sintaxe — mantive o atual"
+    return 0
+  fi
+  mkdir -p "$TOOL_DIR"
+  cp "$TMP/governance.py" "$GOV_SCRIPT.new" && chmod +x "$GOV_SCRIPT.new" && mv -f "$GOV_SCRIPT.new" "$GOV_SCRIPT"
+}
+
+# Registra os 5 hooks (idempotente): exatamente um nosso por evento, com o comando atual.
+ensure_governance_hooks() { # [force=0]
+  [[ "${PRMAKE_SKIP_GOVERNANCE:-0}" == 1 ]] && return 0
+  [[ "${1:-0}" != 1 && -f "$GOV_OFF" ]] && return 0
+  [[ -f "$GOV_SCRIPT" ]] || return 0
+  local cmd; cmd="$(gov_command)" || { warn "Python 3 não encontrado — hooks de governança do PRMake não instalados"; return 0; }
+  mkdir -p "$(dirname "$SETTINGS")"
+  [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    warn "$SETTINGS não é um JSON válido — não instalei os hooks de governança"
+    return 0
+  fi
+  local events; events="$(printf '%s\n' "${GOV_EVENTS[@]}" | jq -R . | jq -s -c .)"
+  if jq -e --arg c "$cmd" --argjson ev "$events" '. as $root | all($ev[]; . as $e
+      | [($root.hooks[$e] // [])[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))]
+      | length == 1 and .[0].command == $c)' "$SETTINGS" >/dev/null 2>&1; then
+    return 0
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  jq --arg c "$cmd" --argjson ev "$events" --argjson t "$GOV_TIMEOUT" '
+    reduce $ev[] as $e (.;
+      .hooks[$e] = ([(.hooks[$e] // [])[]
+          | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-governance.py")) | not)]
+          | select((.hooks | length) > 0)]
+        + [(if ($e == "PreToolUse" or $e == "PostToolUse") then {"matcher": "*"} else {} end)
+           + {"hooks": [{"type": "command", "command": $c, "timeout": $t}]}]))' \
+    "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
+  say "   hooks de governança do PRMake instalados em $SETTINGS (${GOV_EVENTS[*]})"
+}
+
+# Remove só os nossos (de qualquer evento); grupos e eventos que ficarem vazios saem.
+remove_governance_hooks() {
+  [[ -f "$SETTINGS" ]] && jq -e . "$SETTINGS" >/dev/null 2>&1 || return 0
+  jq -e '[.hooks // {} | .[]?[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))] | length > 0' "$SETTINGS" >/dev/null 2>&1 || return 0
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  jq '.hooks |= ((. // {}) | with_entries(
+        .value = [(.value // [])[]
+          | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-governance.py")) | not)]
+          | select((.hooks | length) > 0)]
+        | select((.value | length) > 0)))' "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
+}
+
+# Linha do doctor/status: em quais eventos o hook está e a última config lida do PRMake.
+governance_report() {
+  local installed cfg
+  installed="$(jq -r '[.hooks // {} | to_entries[] | select([.value[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))] | length > 0) | .key] | join(", ")' "$SETTINGS" 2>/dev/null)"
+  if [[ -f "$GOV_OFF" ]]; then installed="desligados (prmake-skills.sh governance on religa)${installed:+ — ainda em: $installed}"
+  elif [[ -z "$installed" ]]; then installed="NÃO instalados — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh governance on"
+  fi
+  printf '  %-28s %s\n' "hooks de governança" "$installed"
+  printf '  %-28s %s\n' "script de governança" "$([[ -f "$GOV_SCRIPT" ]] && echo "$GOV_SCRIPT ($(sed -n 's/^TOOL_VERSION = "\(.*\)"$/\1/p' "$GOV_SCRIPT" | head -1))" || echo 'não baixado (rode: prmake-skills.sh update)')"
+  cfg="$(jq -r 'if .config then "versão \(.config.version // "?"), modo \(.config.mode // "?"), failOpen \(.config.failOpen), lida em \(.fetchedAt | floor | todate)" else "ainda não lida" end
+      + (if .lastError then " — último erro: \(.lastError)" else "" end)' "$PRMAKE_HOME/governance.json" 2>/dev/null)"
+  printf '  %-28s %s\n' "governança (config)" "${cfg:-ainda não lida}"
 }
 
 # Permissões do Claude Code para os comandos das skills que não podem ficar presos no prompt/auto mode:
@@ -901,6 +1011,8 @@ case "$cmd" in
       install_one "$name" "$v" install && say "✔ $name ($v)"
     done
     ensure_hook
+    ensure_governance_script
+    ensure_governance_hooks
     ensure_permissions
     ensure_mcp force
     sync_kb
@@ -939,6 +1051,9 @@ case "$cmd" in
       [[ -d "$SKILLS_DIR/$name" ]] && install_depends "$name"
     done
     ensure_hook
+    # 0098: quem já tinha as skills ganha os hooks de governança no update (menos quem desligou: governance off).
+    ensure_governance_script
+    ensure_governance_hooks
     ensure_permissions
     # MCP do PRMake: uma vez por máquina (quem removeu de propósito não ganha de volta).
     [[ -f "$TOOL_DIR/.mcp-registered" ]] || { ensure_mcp && touch "$TOOL_DIR/.mcp-registered"; }
@@ -967,6 +1082,7 @@ case "$cmd" in
     done
     echo "ferramenta: $TOOL_VERSION (publicada: $(jq -r '.toolVersion' "$TMP/catalog.json"))"
     echo "repositórios: $(repos_summary)"
+    governance_report
     ;;
 
   doctor)
@@ -982,6 +1098,7 @@ case "$cmd" in
     ok "API ($BASE)" "HTTP $(get "" "$TMP/catalog.json")"
     ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
     ok "hook esperado" "$HOOK_CMD"
+    governance_report
     permissions_report
     creds_report
     env_creds_report
@@ -1048,5 +1165,36 @@ case "$cmd" in
     esac
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|env-credentials|mcp|agent|repos [--quiet] [--force] [skill...]" ;;
+  governance)
+    command -v jq >/dev/null || die "precisa do jq"
+    case "${ARGS[0]:-status}" in
+      on)
+        rm -f "$GOV_OFF"
+        if [[ ! -f "$GOV_SCRIPT" ]] || [[ "${ARGS[1]:-}" == --download ]]; then
+          catalog && ensure_governance_script || warn "não consegui ler o catálogo do PRMake (token? internet?)"
+        fi
+        [[ -f "$GOV_SCRIPT" ]] || die "prmake-governance.py não encontrado em $TOOL_DIR (rode: prmake-skills.sh update)"
+        gov_command >/dev/null || die "Python 3 não encontrado — os hooks de governança precisam dele"
+        ensure_governance_hooks 1
+        governance_report
+        ;;
+      off)
+        mkdir -p "$TOOL_DIR"; : > "$GOV_OFF"
+        remove_governance_hooks
+        say "hooks de governança do PRMake removidos de $SETTINGS (os demais hooks ficaram). Religar: prmake-skills.sh governance on"
+        ;;
+      status)
+        governance_report
+        [[ -f "$GOV_SCRIPT" ]] && python3 "$GOV_SCRIPT" status
+        ;;
+      test)
+        [[ -n "${ARGS[1]:-}" ]] || die 'uso: prmake-skills.sh governance test "<comando>"'
+        [[ -f "$GOV_SCRIPT" ]] || die "prmake-governance.py não encontrado (rode: prmake-skills.sh update)"
+        python3 "$GOV_SCRIPT" test "${ARGS[@]:1}"
+        ;;
+      *) die 'uso: prmake-skills.sh governance [on | off | status | test "<comando>"]' ;;
+    esac
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|env-credentials|mcp|agent|repos|governance [--quiet] [--force] [skill...]" ;;
 esac

@@ -41,6 +41,10 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     [HttpGet("tool")]
     public ContentResult Tool() => Content(catalog.Tool(ApiBase()), "text/x-shellscript; charset=utf-8");
 
+    /// <summary>0098: hook de governança do Claude Code (prmake-governance.py), instalado pelo prmake-skills.sh.</summary>
+    [HttpGet("tool/governance")]
+    public ContentResult GovernanceTool() => Content(catalog.GovernanceScript(ApiBase()), "text/x-python; charset=utf-8");
+
     /// <summary>Instalador: curl -fsSL -H "x-api-key: …" …/Skills/install.sh | PRMAKE_TOKEN=… bash</summary>
     [HttpGet("install.sh")]
     public ContentResult Install() => Content(catalog.Installer(ApiBase()), "text/x-shellscript; charset=utf-8");
