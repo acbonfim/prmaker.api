@@ -98,21 +98,15 @@ public partial class ExecutionQueueApplication : IWorkItemQueue
                 : "O item está sendo desfeito — espere terminar.");
         }
 
-        // Dono: quem pediu (se tiver executor); senão quem criou o item; senão quem pediu (o pedido espera uma máquina).
-        var candidates = new List<(Guid UserId, string Name)>();
-        if (actor.UserId is { } requester && requester != Guid.Empty) candidates.Add((requester, actor.Name));
-        if (item.CreatedBy is { } creator && creator != Guid.Empty) candidates.Add((creator, item.CreatedByName));
-        candidates = candidates.DistinctBy(c => c.UserId).ToList();
-        if (candidates.Count == 0)
+        // Dono: SEMPRE quem pediu — o item roda na máquina dele, com o token, o gh e as integrações dele (card 78723: nunca
+        // na máquina de quem criou o item). Sem executor, o pedido espera uma máquina dele.
+        if (actor.UserId is not { } owner || owner == Guid.Empty)
             throw new DomainException("Seu usuário não tem identificação no PRMake — entre de novo.");
-        var withWorkers = await _queue.GetOwnersWithWorkersAsync(candidates.Select(c => c.UserId).ToList(), ct);
-        var owner = candidates.FirstOrDefault(c => withWorkers.Contains(c.UserId));
-        if (owner == default) owner = candidates[0];
 
         var source = actor.IsExecutor ? ExecutionRequestSource.Api : ExecutionRequestSource.Button;
-        var request = ExecutionRequest.ForWorkItem(item, undo, source, owner.UserId, owner.Name, actor.UserId, actor.Name, null, null, now);
+        var request = ExecutionRequest.ForWorkItem(item, undo, source, owner, actor.Name, actor.UserId, actor.Name, null, null, now);
         var saved = await AddRequestAsync(request, ct) ?? request;
-        await UpdateWaitReasonsAsync(owner.UserId, now, ct);
+        await UpdateWaitReasonsAsync(owner, now, ct);
         return saved.Id;
     }
 

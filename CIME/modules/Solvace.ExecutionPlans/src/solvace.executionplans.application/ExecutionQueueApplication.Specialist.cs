@@ -186,8 +186,12 @@ public partial class ExecutionQueueApplication
             if (again)
             {
                 _queue.ClearTracking();
+                // Card 78723: a nova vez roda na máquina de quem pediu (pedidos antigos podiam ter dono diferente).
+                var home = r.RequestedByUserId is { } requester && requester != Guid.Empty
+                    ? (requester, r.RequestedBy)
+                    : (r.OwnerUserId, r.OwnerName);
                 await EnqueueSpecialistAsync(r.CardNumber, new ExecutionActor(r.RequestedByUserId, r.RequestedBy, false),
-                    [(r.OwnerUserId, r.OwnerName)], r.Deep, cancellationToken);
+                    [home], r.Deep, cancellationToken);
             }
         }
         catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException)

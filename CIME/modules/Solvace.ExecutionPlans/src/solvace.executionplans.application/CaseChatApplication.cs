@@ -776,13 +776,11 @@ public class CaseChatApplication(
 
     private async Task AskSpecialistAsync(string card, CaseActor actor, bool deep, CancellationToken cancellationToken)
     {
-        // Máquina: de quem escreveu (se tiver executor), senão do dono do plano atual.
-        var candidates = new List<(Guid, string)>();
-        if (actor.UserId is { } me) candidates.Add((me, actor.Name));
-        if (await CurrentPlanAsync(card, cancellationToken) is { CreatedByUserId: { } owner } plan)
-            candidates.Add((owner, plan.CreatedBy));
-        if (candidates.Count == 0)
+        // Máquina: SEMPRE de quem escreveu — o especialista age com o token, o gh e as integrações do dono da máquina (card
+        // 78723: nunca na máquina do dono do plano). Sem executor, o pedido espera uma máquina de quem escreveu.
+        if (actor.UserId is not { } me || me == Guid.Empty)
             return;
+        var candidates = new List<(Guid, string)> { (me, actor.Name) };
         try
         {
             await queue.EnqueueSpecialistAsync(card, actor.AsExecutionActor(), candidates, deep, cancellationToken);
