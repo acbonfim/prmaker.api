@@ -126,13 +126,24 @@ public class GovernanceStandardsController(IGovernanceStandardsApplication stand
             ? Ok(new { added = r.Added, changed = r.Changed, removed = r.Removed })
             : NotFound());
 
+    /// <summary>Rascunho no formato da tela: novos como padrão, alterados como {before, after}, removidos pela chave.</summary>
     private static object Summary(GovernanceStandardDraft d, int? sources) => new
     {
         d.Id, d.Kind, d.Version, d.Url, d.Status, d.CreatedAt, d.CreatedBy, sources,
-        added = d.Items.Where(i => i.Change == "added").ToList(),
-        changed = d.Items.Where(i => i.Change == "changed").ToList(),
-        removed = d.Items.Where(i => i.Change == "removed").ToList(),
+        added = d.Items.Where(i => i.Change == "added" && i.Data is not null).Select(i => AsStandard(i.Key, i.Data!)).ToList(),
+        changed = d.Items.Where(i => i.Change == "changed" && i.Data is not null).Select(i => new
+        {
+            before = new { key = i.Key, code = i.Data!.Code, area = i.Data.Area, topic = i.Data.Topic, title = i.PreviousTitle, textPt = i.PreviousTextPt, status = i.PreviousStatus },
+            after = AsStandard(i.Key, i.Data)
+        }).ToList(),
+        removed = d.Items.Where(i => i.Change == "removed").Select(i => i.Key).ToList(),
         unchanged = d.Items.Count(i => i.Change == "same")
+    };
+
+    private static object AsStandard(string key, StandardData x) => new
+    {
+        key, code = x.Code, area = x.Area, topic = x.Topic, title = x.Title, textPt = x.TextPt, textEn = x.TextEn,
+        examples = x.Examples, appliesTo = x.AppliesTo, source = x.Source, status = x.Status, effect = x.Effect, check = x.Check, order = x.Order
     };
 
     private solvace.governance.application.Contracts.GovernanceActor Actor() => GovernanceCaller.From(HttpContext).Actor;

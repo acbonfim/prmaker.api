@@ -143,7 +143,7 @@ public class GovernanceStandardsApplication(
                 CardNumber = input.Card,
                 Outcome = result.Outcome,
                 Rules = result.Findings.Select(f => f.Key).Distinct().ToList(),
-                Detail = $"{input.Repository ?? "-"} {input.Path ?? ""}\n{detail}"
+                Detail = $"repo: {input.Repository ?? "-"}{(input.Path is { Length: > 0 } path ? $" · arquivo: {path}" : "")}\n{detail}"
             });
         }
         return result;
