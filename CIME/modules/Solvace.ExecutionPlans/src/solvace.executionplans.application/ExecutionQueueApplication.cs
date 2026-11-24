@@ -472,8 +472,13 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             return null;
         // Card 78723 (segurança): a retomada roda na máquina de QUEM AGIU na tela — o executor usa o token, o gh e as
         // integrações do dono da máquina. Nunca na máquina de quem criou o plano: a ação sairia com o nome de outra pessoa.
-        if (actor.UserId is not { } owner || owner == Guid.Empty)
+        // Automação do PRMake (PR mesclado, CI falhou: sem pessoa) → quem está tratando o card.
+        (Guid UserId, string Name)? handler = actor.UserId is { } person && person != Guid.Empty
+            ? (person, actor.Name)
+            : await HandlerOfAsync(plan, cancellationToken);
+        if (handler is not { } who)
             return null;
+        var (owner, ownerName) = who;
 
         var workers = (await _queue.GetWorkersByOwnerAsync(owner, cancellationToken)).Where(w => !w.IsRevoked).ToList();
         if (workers.Count == 0)
@@ -497,12 +502,24 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             : null;
         // 0080: sem espera depois de comentário — a conversa é do Especialista do caso; o que chega ao plano é decisão
         // explícita (proposta aceita, "Levar para o plano") e começa na hora.
-        var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, actor.Name,
+        var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, ownerName,
             actor.UserId, actor.Name, plan.Id, session, target, null, false, now);
         var saved = await AddRequestAsync(request, cancellationToken);
         if (saved is not null && saved.Id == request.Id)
             await UpdateWaitReasonsAsync(owner, now, cancellationToken);
         return saved;
+    }
+
+    /// <summary>
+    /// Card 78723: quem está tratando o card = a última pessoa que pediu execução nele (pedidos do PRMake não contam);
+    /// sem histórico, quem criou o plano (rodou na máquina dele).
+    /// </summary>
+    private async Task<(Guid UserId, string Name)?> HandlerOfAsync(ExecutionPlan plan, CancellationToken cancellationToken)
+    {
+        var recent = await _queue.GetRecentRequestsForCardAsync(plan.CardNumber, 20, cancellationToken);
+        if (recent.FirstOrDefault(r => r.RequestedByUserId is { } id && id != Guid.Empty) is { } last)
+            return (last.RequestedByUserId!.Value, last.RequestedBy);
+        return plan.CreatedByUserId is { } creator && creator != Guid.Empty ? (creator, plan.CreatedBy) : null;
     }
 
     public Task<HashSet<Guid>> OwnersWithWorkersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
