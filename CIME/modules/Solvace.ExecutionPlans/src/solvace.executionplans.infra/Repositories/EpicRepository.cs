@@ -14,7 +14,7 @@ public class EpicRepository(ExecutionPlanContext context) : IEpicRepository
     public Task<Epic?> GetByNumberAsync(long number, CancellationToken ct) =>
         context.Epics.Include(e => e.Cards).FirstOrDefaultAsync(e => e.Number == number, ct);
 
-    public Task<List<Epic>> ListAsync(IReadOnlyCollection<string>? statuses, string? query, Guid? createdBy, int limit, CancellationToken ct)
+    public async Task<List<Epic>> ListAsync(IReadOnlyCollection<string>? statuses, string? query, Guid? createdBy, int limit, CancellationToken ct)
     {
         var q = context.Epics.AsNoTracking();
         if (statuses is { Count: > 0 })
@@ -33,12 +33,17 @@ public class EpicRepository(ExecutionPlanContext context) : IEpicRepository
             }
             else
             {
-                // Texto: título ou tag (PostgreSQL compara com caixa — ToLower nos dois lados).
+                // Texto: título ou tag. Tags são jsonb (lower() não se aplica): projeção leve e filtro em memória — épicos são
+                // poucos; depois só os que casaram, inteiros.
                 var lower = text.ToLowerInvariant();
-                q = q.Where(e => e.Title.ToLower().Contains(lower) || e.TagsJson.ToLower().Contains(lower));
+                var heads = await q.Select(e => new { e.Id, e.Title, e.TagsJson }).ToListAsync(ct);
+                var ids = heads.Where(h => h.Title.Contains(lower, StringComparison.OrdinalIgnoreCase)
+                                           || h.TagsJson.Contains(lower, StringComparison.OrdinalIgnoreCase))
+                    .Select(h => h.Id).ToList();
+                q = context.Epics.AsNoTracking().Where(e => ids.Contains(e.Id));
             }
         }
-        return q.OrderByDescending(e => e.UpdatedAt).ThenByDescending(e => e.Number).Take(Math.Clamp(limit, 1, 1000)).ToListAsync(ct);
+        return await q.OrderByDescending(e => e.UpdatedAt).ThenByDescending(e => e.Number).Take(Math.Clamp(limit, 1, 1000)).ToListAsync(ct);
     }
 
     public Task<List<Epic>> ListByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken ct) =>
