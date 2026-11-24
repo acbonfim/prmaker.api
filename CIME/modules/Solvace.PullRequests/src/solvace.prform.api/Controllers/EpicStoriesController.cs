@@ -17,7 +17,8 @@ namespace solvace.prform.Controllers;
 /// <c>management</c>. Token do caso (especialista de gestão): só lê, e só o próprio épico — as gravações dele vão pelo MCP
 /// <c>prmake_epic_story_*</c>.</para>
 /// Erros: 400/403/404 <c>{error}</c>; 409 <c>{code, error, cardId?}</c> com <c>code</c> <c>alreadyConverted</c> | <c>notEditable</c> |
-/// <c>converting</c>; recusa do DevOps na conversão = <c>{code, message, error}</c> com o status do DevOps (como o DevOpsController).
+/// <c>converting</c>; recusa do DevOps na conversão = <c>{code, message, error}</c> com o status do DevOps (como o DevOpsController);
+/// DevOps fora do ar = 502 <c>{code: "devops_error"}</c>.
 /// Tempo real: <c>epicsUpdated</c> <c>{number, key, action: "stories", story}</c> no grupo <c>epics</c>.
 /// </summary>
 [ApiController]
@@ -137,6 +138,12 @@ public class EpicStoriesController(IEpicStoryApplication stories, solvace.timeli
                 _ => "devops_error"
             };
             return StatusCode(e.StatusCode, new { code, message = e.Message, error = e.Message });
+        }
+        catch (HttpRequestException e)
+        {
+            // DevOps fora do ar na conversão: a trava já foi solta (a história continua editável) — 502 em vez de 500 genérico.
+            var message = $"O DevOps não respondeu: {e.Message}";
+            return StatusCode(StatusCodes.Status502BadGateway, new { code = "devops_error", message, error = message });
         }
     });
 }
