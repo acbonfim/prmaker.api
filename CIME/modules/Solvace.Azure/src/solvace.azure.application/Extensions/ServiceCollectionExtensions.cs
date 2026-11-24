@@ -17,6 +17,8 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient();
         services.AddScoped<IAzureService, AzureService>();
         services.AddScoped<IDevOpsActionsService, DevOpsActionsService>();
+        // 0099: Mesa de gestão — board, metadados e cards do DevOps pela integração de quem age.
+        services.AddScoped<IDevOpsDeskService, DevOpsDeskService>();
         services.Configure<AzureDevOpsOptions>(configuration.GetSection(AzureDevOpsOptions.SectionName));
         services.AddOptions<AzureDevOpsOptions>()
             .ValidateOnStart();
