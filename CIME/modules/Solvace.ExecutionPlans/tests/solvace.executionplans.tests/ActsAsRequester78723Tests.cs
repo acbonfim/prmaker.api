@@ -86,6 +86,39 @@ public class ActsAsRequester78723Tests
         Assert.Equal("Wagner Macedo", request.OwnerName);
     }
 
+    [Fact]
+    public async Task Automation_resumes_on_the_machine_of_who_is_handling_the_card()
+    {
+        var queue = FakeQueue.Create(Machine(Alex, "Alex Carlos", "mac-alex"), Machine(Wagner, "Wagner Macedo", "mac-wagner"));
+        // Histórico do 78723: análise do Alex, depois o Wagner agiu (pedidos antigos ainda com dono Alex).
+        queue.Recent.Add(new ExecutionRequest("78723", ExecutionRequestKind.Resume, ExecutionRequestSource.Answers, Alex, "Alex Carlos",
+            Wagner, "Wagner Macedo", null, null, null, null, false, Created.AddHours(2)));
+        queue.Recent.Add(new ExecutionRequest("78723", ExecutionRequestKind.Analyze, ExecutionRequestSource.Button, Alex, "Alex Carlos",
+            Alex, "Alex Carlos", null, null, null, null, false, Created));
+        var app = new ExecutionQueueApplication(queue.Repository, Fake<IExecutionPlanRepository>.Create(), Fake<IRealTimeNotifier>.Create());
+
+        var request = await app.PlanChangedAsync(PlanByAlex(), ExecutionRequestSource.PullRequest, new ExecutionActor(null, "PRMake", false),
+            true, CancellationToken.None);
+
+        Assert.NotNull(request);
+        Assert.Equal(Wagner, request.OwnerUserId);
+        Assert.Equal("Wagner Macedo", request.OwnerName);
+        Assert.Null(request.RequestedByUserId);
+    }
+
+    [Fact]
+    public async Task Automation_without_history_resumes_for_the_plan_creator()
+    {
+        var queue = FakeQueue.Create(Machine(Alex, "Alex Carlos", "mac-alex"));
+        var app = new ExecutionQueueApplication(queue.Repository, Fake<IExecutionPlanRepository>.Create(), Fake<IRealTimeNotifier>.Create());
+
+        var request = await app.PlanChangedAsync(PlanByAlex(), ExecutionRequestSource.Checks, new ExecutionActor(null, "PRMake", false),
+            true, CancellationToken.None);
+
+        Assert.NotNull(request);
+        Assert.Equal(Alex, request.OwnerUserId);
+    }
+
     // ---------------------------------------------------------------- fakes
 
     /// <summary>Repositório da fila em memória: só as máquinas e os pedidos novos; o resto devolve vazio.</summary>
@@ -93,6 +126,8 @@ public class ActsAsRequester78723Tests
     {
         public List<ExecutionWorker> Workers { get; private set; } = [];
         public List<ExecutionRequest> Added { get; } = [];
+        /// <summary>Pedidos anteriores do card, do mais novo para o mais antigo.</summary>
+        public List<ExecutionRequest> Recent { get; } = [];
         public IExecutionQueueRepository Repository { get; private set; } = null!;
 
         public static FakeQueue Create(params ExecutionWorker[] workers)
@@ -113,6 +148,8 @@ public class ActsAsRequester78723Tests
                     return null;
                 case nameof(IExecutionQueueRepository.GetWorkersByOwnerAsync):
                     return Task.FromResult(Workers.Where(w => w.OwnerUserId == (Guid)args![0]!).ToList());
+                case nameof(IExecutionQueueRepository.GetRecentRequestsForCardAsync):
+                    return Task.FromResult(Recent.Where(r => r.CardNumber == (string)args![0]!).Take((int)args[1]!).ToList());
                 case nameof(IExecutionQueueRepository.GetOwnersWithWorkersAsync):
                     var ids = (IEnumerable<Guid>)args![0]!;
                     return Task.FromResult(ids.Where(id => Workers.Any(w => w.OwnerUserId == id)).ToHashSet());
