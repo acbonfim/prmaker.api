@@ -329,7 +329,7 @@ def resolve_hosts(aws, envs):
             by_alias[a.lower()] = d
     for e in envs:
         d = by_alias.get((e.get("host") or "").lower())
-        e["_eb"], e["_cf"] = set(), None
+        e["_eb"], e["_cf"], e["_s3"] = set(), None, set()
         if not d:
             continue
         counts = {}
@@ -338,6 +338,8 @@ def resolve_hosts(aws, envs):
             m = re.match(r"^[a-z0-9-]+-(" + "|".join(TIERS) + r")\.solvacelabs\.s3", dom)
             if m:
                 counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+            if ".s3" in dom:
+                e["_s3"].add(dom.split(".s3")[0])
             if "elasticbeanstalk.com" in dom:
                 e["_eb"].add(dom.split(".")[0])
         if not e.get("tier") and counts:
@@ -504,6 +506,56 @@ def impact_of(p, files):
     if not own:
         return None  # gatilho sem filtro de pasta: não dá para dizer
     return "direct" if matches_paths(dict(p, filePathsInclude=own), files) else "shared"
+
+
+KIND_LABELS = {
+    "revamp-frontend": "Front Angular do revamp (monorepo: um app por pasta em projects/, uma esteira por app e ambiente)",
+    "legacy": "Legado (Solvace clássico, publicado no Elastic Beanstalk de cada ambiente)",
+    "revamp-backend": "API .NET do revamp (um serviço por módulo)",
+    "integration-api": "API de integrações (.NET)",
+}
+
+
+def repo_kind(full):
+    """Tipo do repositório pelo mapa da máquina (prmake-skills.sh repos scan); sem mapa, pelo nome."""
+    short = full.split("/")[-1]
+    try:
+        kind = (json.load(open(os.path.join(HOME, ".prmake", "repos.json"), encoding="utf-8")).get("repos") or {}).get(short, {}).get("kind")
+    except (OSError, ValueError):
+        kind = None
+    if not kind:
+        kind = ("revamp-frontend" if short == "edv-solvace-apps" else "legacy" if short == "edv-solvace" else
+                "integration-api" if short == "edv-solvace-api" else "revamp-backend" if short.startswith("revamp-") else None)
+    return kind, KIND_LABELS.get(kind or "", "")
+
+
+def describe_pipelines(aws, items, envs_by_key):
+    """O que cada esteira faz, em português: o que compila (CodeBuild: MODULO + buildspec) e onde publica (Elastic
+    Beanstalk do host ou o bucket do app que o CloudFront do host serve)."""
+    projects = sorted({r.pop("_build") for r in items if r.get("_build")})
+    info = {}
+    for i in range(0, len(projects), 100):
+        out = aws.call("codebuild", "batch-get-projects", "--names", *projects[i:i + 100]) or {}
+        for pr in out.get("projects", []):
+            env = {v.get("name", "").upper(): v.get("value") for v in (pr.get("environment") or {}).get("environmentVariables") or []
+                   if v.get("type", "PLAINTEXT") == "PLAINTEXT"}
+            spec = str((pr.get("source") or {}).get("buildspec") or "")
+            info[pr["name"]] = {"module": env.get("MODULO") or env.get("MODULE"), "angular": "angular" in spec.lower() or "node" in spec.lower()}
+    for r in items:
+        b = info.get(r.pop("_buildName", None) or "", {})
+        e = envs_by_key.get(r.pop("_env", ""), {})
+        app = b.get("module") or r.get("app")
+        if r.get("action"):
+            what = f"Compila o legado e publica no Elastic Beanstalk {r['action'].split('→')[-1].strip()} (servidor de {e.get('host')})"
+            kind = "Legado"
+        elif b.get("angular"):
+            bucket = next((x for x in e.get("_s3", ()) if x.startswith(f"{app}-")), None)
+            where = f"{e.get('host')}" + (f" (bucket {bucket})" if bucket else "")
+            what = f"Compila o app Angular {app} e publica em {where}"
+            kind = "Front Angular"
+        else:
+            what, kind = "", None
+        r["kind"], r["what"] = kind, what
 
 
 def matches_paths(p, files):
@@ -844,7 +896,8 @@ def collect(args):
         pipes = local_pipelines(args.index_dir, full) if args.index_dir else \
             api("GET", "AwsDeploy/pipelines?repository=" + urllib.parse.quote(full)) or []
         path = repo_path(full)
-        info = {"repository": full, "localPath": bool(path), "fetchedAt": None, "commits": [], "files": 0,
+        kind, kind_label = repo_kind(full)
+        info = {"repository": full, "kind": kind, "kindLabel": kind_label, "localPath": bool(path), "fetchedAt": None, "commits": [], "files": 0,
                 "branches": r.get("branches") or []}
         snap["repositories"].append(info)
         if not path:
@@ -880,6 +933,10 @@ def collect(args):
     evaluated = pmap(lambda j: evaluate_pipeline(aws, j[0], j[1], j[2], j[3], REGION), jobs, workers=16)
     for j, r in zip(jobs, evaluated):
         r["impact"] = impact_of(j[1], getattr(j[3], "changed", []))
+        builds = j[1].get("_builds") or [t["target"] for t in j[1].get("deployTargets") or [] if t.get("provider") == "CodeBuild"]
+        r["_build"] = r["_buildName"] = next((b for b in builds if b), None) or j[1]["name"]
+        r["_env"] = j[0]["key"]
+    describe_pipelines(aws, evaluated, {e["key"]: e for e in envs})
     for e in envs:
         results = [r for j, r in zip(jobs, evaluated) if j[0] is e]
         stale = [r for r in results if r["stale"]]
