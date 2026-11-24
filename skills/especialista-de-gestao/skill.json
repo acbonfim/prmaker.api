@@ -1,0 +1,14 @@
+{
+  "requires": [
+    "curl",
+    "jq"
+  ],
+  "optional": [
+    "python3"
+  ],
+  "depends": [
+    "especialista-do-caso",
+    "tarefas-de-gestao",
+    "base-solvace"
+  ]
+}
