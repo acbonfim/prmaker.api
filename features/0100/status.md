@@ -14,7 +14,7 @@
 | S3 — executor 1.5.0 (laço AWS) | ✅ | sessão principal | a2febd0 — laço próprio (padrão da promoção), api-key da pessoa, heartbeat, doctor (CLI da AWS, skill) |
 | F1 — layout (abas, horas, tela cheia da Execução) | ✅ | agente front | front f7bf67c — abas esticadas na linha inteira (longo → curto → só ícone), horas/situação/sugestões em linha própria, seção Execução inteira em tela cheia (`FullscreenPanel`, plano com `[showExpand]=false` e `[wide]` = layout etapas \| detalhes); tour v11 |
 | F2 — aba AWS | ✅ | agente front | front a075839 — `AwsDeployService` + `app-aws-deploy-panel` (veredito grande por ambiente, esteiras principais/secundárias, lista longa recolhida, nosso código, logs, outros recursos, negados, comando manual com 409/executor desligado), `?focus=aws`, ponto na aba (falhou/deploy), `listenAws` (`action: "aws"`; `listenWorkItems` ignora "aws"); ng build ok, spec 8/8; prints com os retratos reais 77971/78721 (harness interceptado) |
-| Q1 — build/testes/e2e | ⏳ | | |
+| Q1 — build/testes/e2e | ✅ | sessão principal | testes do agente back (executionplans 330, prform 449) + ng build/spec 8/8; e2e com API local: índice 1.078 pipes (semente 7 s, incremental 5 s, 0 alterações), coleta real 78721 gravada e lida (GET/`show`) |
 | Q2 — PRs | ⏳ | | |
 
 ## Log
@@ -23,3 +23,4 @@
 - 2026-11-24 — S1–S3: coletor validado contra a conta real (somente leitura), executor 1.5.0.
 - 2026-11-24 — F1–F2: layout da Bancada (abas/horas/tela cheia da Execução) e aba AWS no front (f7bf67c, a075839).
 - 2026-11-24 — B1–B4 (agente back): API da aba AWS, fila de coleta do executor de quem pediu, acompanhamento do deploy, sub-tarefa/etapa automática `aws-deploy-map`, `prmake_aws_status`. Atenção S2: o plano de correção ganha a etapa `mapear-deploy-aws` — a analisar-bug/analisar-us precisam saber executá-la (rodar aws.sh collect e concluir com o resumo). S3: claim `{id, card, requestedBy, attempt, source}`; heartbeat opcional estende a trava de 5 min (índice inteiro passa disso).
+- 2026-11-24 — Q1 ok; etapa `mapear-deploy-aws` do plano documentada na correção (dd30e00). PRs back + front.
