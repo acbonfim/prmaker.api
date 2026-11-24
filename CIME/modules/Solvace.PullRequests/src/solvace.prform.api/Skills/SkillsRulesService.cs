@@ -362,6 +362,7 @@ public class SkillsRulesService(
         "Lote com mais de 10 cards gravando (criar, editar, mover): mostre a lista (card, o que muda, de → para) e espere a confirmação antes de gravar.",
         "Antes de criar card, procure duplicado (`prmake_devops_query` com os termos do título, últimos 180 dias); antes de tag nova, procure a existente (`prmake_devops_meta(what: tags)`).",
         "Picklists do DevOps são a lei: tipo, estado, coluna, lane, área, iteração, responsável e campos com valores permitidos sempre de `prmake_devops_meta` — nunca invente.",
+        "No board do time, considere os filtros salvos do épico (colunas ocultas, lanes, tipos, estados, responsável, tags, texto) — `prmake_devops_board(epic)` já aplica; para ver além deles, passe `useEpicFilters=false` e diga isso na resposta.",
         "Números de relatório vêm da consulta (contagens do script/consulta), nunca estimados; diga a fonte, a data e se o `top` cortou.",
         "PDF é gerado no servidor (`prmake_pdf` / `POST WorkItems/{n}/files/pdf`) a partir do markdown final do item.",
         "Itens de trabalho: antes de criar, liste (`prmake_work_items`) e não duplique; kinds de gestão (devops-*, report, duplicates, understanding, rca-doc, pdf) seguem a skill `tarefas-de-gestao`.",
@@ -390,6 +391,7 @@ public class SkillsRulesService(
         $"- `{r.Card}` é épico (Mesa de gestão): sem branch/PR/plano; ações de card usam o número do card.\n" +
         "- Toda gravação pelo PRMake com a integração de quem pediu; nunca fechar/remover/mesclar card sem a pessoa decidir.\n" +
         "- Lote > 10 cards: confirmar antes; criar card só depois de procurar duplicado; tag existente antes de tag nova; picklists de prmake_devops_meta.\n" +
+        "- Board do time: considere os filtros salvos do épico (prmake_devops_board(epic) já aplica; useEpicFilters=false para ver além — diga na resposta).\n" +
         "- Relatórios com números da consulta; PDF pelo servidor (prmake_pdf). Regras completas: prmake_rules.\n";
 
     // ── Markdown ─────────────────────────────────────────────────────────────────────────────────

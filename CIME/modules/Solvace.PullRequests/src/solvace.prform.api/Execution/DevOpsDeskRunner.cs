@@ -32,7 +32,16 @@ public interface IEpicCardSource
 {
     /// <summary>Números dos cards do DevOps do épico (null = épico não existe).</summary>
     Task<IReadOnlyList<string>?> GetCardsAsync(long epic, CancellationToken ct);
+
+    /// <summary>
+    /// Ajustes 1: time/board preferidos e filtros do board salvos no épico (null = épico não existe) — o board e o MCP
+    /// <c>prmake_devops_board</c> aplicam no servidor sem o módulo do DevOps conhecer o épico.
+    /// </summary>
+    Task<EpicBoardInfo?> GetBoardInfoAsync(long epic, CancellationToken ct);
 }
+
+/// <summary>Ajustes 1 da 0099: board preferido do épico (time/board, podem faltar) e os filtros salvos.</summary>
+public sealed record EpicBoardInfo(string? Team, string? Board, DevOpsBoardFilters Filters);
 
 /// <summary>
 /// 0099: card criado pela Mesa dentro de um épico — <see cref="EpicCardCreatedHook"/> grava o <c>EpicCard</c> (role <c>created</c>, foto do

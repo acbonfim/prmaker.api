@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using solvace.azure.application.Contract;
+using solvace.azure.application.Services;
 using solvace.azure.domain.Exceptions;
 using solvace.azure.domain.Models;
 using solvace.prform.application.UserIntegrations;
@@ -19,7 +20,8 @@ namespace solvace.prform.Execution;
 /// épico (<c>E123</c>) ⇒ qualquer card; chave de card ⇒ só o próprio card (criar só como filho dele).
 /// </summary>
 [McpServerToolType]
-public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner runner, SpecialistActions specialist, IHttpContextAccessor http)
+public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner runner, SpecialistActions specialist, IHttpContextAccessor http,
+    IEpicCardSource epicCards)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -31,7 +33,8 @@ public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner 
     [McpServerTool(Name = "prmake_devops_meta", ReadOnly = true)]
     [Description("Metadados do Azure DevOps do projeto (com a integracao de quem age). what: types (tipos com cor) | fields (campos do 'type' com " +
                  "tipo, obrigatorio, somente leitura e allowedValues do picklist) | tags (do projeto, 'q' filtra por contem) | areas | iterations " +
-                 "(caminhos no formato do campo) | people (membros dos times, 'q' filtra) | teams | boards ('team'; sem time = o padrao) | board " +
+                 "(caminhos no formato do campo) | people (pessoas da organizacao: membros dos times, usuarios, busca de identidades e quem aparece " +
+                 "em cards recentes; 'q' filtra sem caixa/acento no nome ou login — use o uniqueName) | teams | boards ('team'; sem time = o padrao) | board " +
                  "(colunas com stateMappings tipo->estado, limite WIP, coluna dividida, lanes, campos coluna/lane/done, campo de ordem; 'team'/'board'). " +
                  "Use antes de criar/editar/mover: valores de picklist, tags e colunas existentes.")]
     public Task<string> Meta(
@@ -47,12 +50,90 @@ public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner 
         "tags" => Serialize(await devops.GetTagsAsync(q, ct)),
         "areas" => Serialize((await devops.GetAreasAsync(ct)).Select(n => n.Path)),
         "iterations" => Serialize((await devops.GetIterationsAsync(ct)).Select(n => n.Path)),
-        "people" => Serialize((await devops.GetPeopleAsync(q, ct)).Take(100).Select(p => new { p.DisplayName, p.UniqueName })),
+        "people" => Serialize((await devops.GetPeopleAsync(q, 100, ct)).Select(p => new { p.DisplayName, p.UniqueName })),
         "teams" => Serialize((await devops.GetTeamsAsync(ct)).Select(t => t.Name)),
         "boards" => Serialize((await devops.GetBoardsAsync(team, ct)).Select(b => b.Name)),
         "board" => Serialize(await devops.GetBoardAsync(team, board, null, ct)),
         _ => throw new McpException($"what desconhecido: {what} (types|fields|tags|areas|iterations|people|teams|boards|board).")
     });
+
+    [McpServerTool(Name = "prmake_devops_board", ReadOnly = true)]
+    [Description("Board do DevOps como a tela da Mesa mostra: colunas (tipo, coluna dividida, limite WIP, stateMappings tipo->estado, quantos cards), " +
+                 "lanes (\"\" = lane padrao) e os cards (id, tipo, titulo, estado, coluna, done, lane, responsavel, tags) na ordem do board. " +
+                 "epic = numero do epico (#n ou E<n>; padrao: o epico do caso) — sem team/board usa os preferidos do epico; useEpicFilters (padrao " +
+                 "true) aplica os FILTROS SALVOS do epico (colunas ocultas, lanes, tipos, estados, responsavel, tags, texto — os mesmos da tela; " +
+                 "volta em filtersApplied/hiddenColumns; coluna oculta vem com hidden=true e sem cards). Para ver alem deles, useEpicFilters=false " +
+                 "e diga isso na resposta. scope: board (o board do time, padrao) | epic " +
+                 "(so os cards do epico). top padrao 200 (max 1000; a coluna final traz so os 50 mais recentes, como o DevOps).")]
+    public Task<string> Board(
+        [Description("Numero do epico (#n ou E<n>); padrao: o epico do caso")] string? epic = null,
+        [Description("Time (padrao: o do epico ou o time padrao do projeto)")] string? team = null,
+        [Description("Board (padrao: o do epico ou o do backlog de requisitos)")] string? board = null,
+        [Description("board | epic")] string? scope = "board",
+        [Description("Aplicar os filtros salvos do epico (padrao true)")] bool? useEpicFilters = true,
+        int? top = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        long? epicNumber = null;
+        if (!string.IsNullOrWhiteSpace(epic))
+            epicNumber = ParseEpic(epic) ?? throw new McpException($"epic invalido: {epic} (use o numero #n ou E<n>).");
+        else
+            epicNumber = EpicNumber(OwnCard());
+        var s = string.IsNullOrWhiteSpace(scope) ? "board" : scope.Trim().ToLowerInvariant();
+        if (s is not ("board" or "epic")) throw new McpException($"scope desconhecido: {scope} (board|epic).");
+        var request = new DevOpsBoardItemsRequest
+        {
+            Epic = epicNumber, Team = team, Board = board, Scope = s, UseEpicFilters = epicNumber is > 0 && useEpicFilters != false,
+            Top = Math.Clamp(top ?? 200, 1, 1000)
+        };
+        var result = await solvace.prform.Controllers.DevOpsController.LoadBoardItemsAsync(devops, epicCards, request, ct);
+        var config = await devops.GetBoardAsync(request.Team, request.Board, null, ct);
+        return Serialize(BoardView(config, result, epicNumber, request.UseEpicFilters == true, s));
+    });
+
+    /// <summary>Board + cartões enxutos para o modelo (responsável "Nome &lt;login&gt;", lane padrão = "").</summary>
+    public static object BoardView(DevOpsBoardConfig config, DevOpsBoardItemsResponse result, long? epic, bool useEpicFilters, string scope)
+    {
+        var byColumn = result.Items.GroupBy(i => i.Column ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        var hidden = (result.FiltersApplied?.HiddenColumns ?? [])
+            .Select(c => DevOpsDeskMapping.FindColumn(config, c)?.Name ?? c).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new
+        {
+            config.Team,
+            config.Board,
+            scope,
+            epic,
+            filtersApplied = result.FiltersApplied,
+            filters = result.FiltersApplied is not null
+                ? "filtros salvos do epico aplicados (os mesmos da tela)"
+                : useEpicFilters ? "o epico nao tem filtros salvos — board sem filtro" : epic is > 0 ? "sem os filtros salvos do epico (useEpicFilters=false)" : "sem epico — board sem filtro",
+            columns = config.Columns.Select(c => new
+            {
+                c.Name, c.ColumnType, c.IsSplit, c.ItemLimit, states = c.StateMappings,
+                cards = byColumn.GetValueOrDefault(c.Name),
+                hidden = hidden.Contains(c.Name) ? true : (bool?)null
+            }),
+            hiddenColumns = hidden.Count > 0 ? hidden.ToList() : null,
+            lanes = config.Lanes.Select(l => l.IsDefault ? string.Empty : l.Name),
+            count = result.Items.Count,
+            items = result.Items.Select(i => new
+            {
+                i.Id, i.Type, i.Title, i.State, i.Column, i.Done, lane = i.Lane ?? string.Empty,
+                assignedTo = i.AssignedTo is null ? null
+                    : string.IsNullOrEmpty(i.AssignedTo.UniqueName) ? i.AssignedTo.DisplayName : $"{i.AssignedTo.DisplayName} <{i.AssignedTo.UniqueName}>",
+                tags = i.Tags.Count > 0 ? i.Tags : null
+            })
+        };
+    }
+
+    /// <summary>Número do épico em <c>#n</c>, <c>n</c> ou <c>E&lt;n&gt;</c>.</summary>
+    public static long? ParseEpic(string? value)
+    {
+        var v = (value ?? string.Empty).Trim().TrimStart('#').Trim();
+        if (solvace.executionplans.domain.Entities.EpicKey.TryParse(v, out var n)) return n;
+        return long.TryParse(v, NumberStyles.None, CultureInfo.InvariantCulture, out var m) && m > 0 ? m : null;
+    }
 
     [McpServerTool(Name = "prmake_devops_query", ReadOnly = true)]
     [Description("Consulta cards do DevOps: 'wiql' pronta OU filtros (types, states, areaPath/iterationPath (UNDER), tags (qualquer uma), assignedTo " +

@@ -63,12 +63,16 @@ builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 007
 builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
 builder.Services.AddScoped<solvace.prform.AwsDeploy.AwsDeployService>();  // 0100: aba AWS (índice, retrato, fila de coleta da máquina)
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
+// 0099 (ajustes 2): acompanhamento do épico (PRs, DevOps, AWS em lote) e perfil de quem pede (papéis do schema auth).
+builder.Services.AddScoped<solvace.prform.Execution.EpicMonitorService>();
+builder.Services.AddScoped<solvace.prform.Execution.DeskProfileService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
 // 0099: Mesa de gestão — gravações no DevOps (Timeline + devopsCardsUpdated) e os pontos que o épico (B1) liga no Q1.
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsDeskRunner>();
 builder.Services.AddScoped<solvace.prform.Execution.IEpicCardSource, solvace.prform.Execution.EpicCardSource>();
 builder.Services.AddScoped<solvace.prform.Execution.IDevOpsCardCreatedHook, solvace.prform.Execution.EpicCardCreatedHook>();
+builder.Services.AddScoped<solvace.prform.Execution.EpicStoryConverter>();  // 0099 ajustes 2: história do épico → card do DevOps
 // Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
 builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
 builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
@@ -106,6 +110,10 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.EpicMcpTools>()
     // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
     .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
+    // 0099 (ajustes 2): histórias e bugs do épico (rascunhos no PRMake → card do DevOps a pedido).
+    .WithTools<solvace.prform.Execution.EpicStoryMcpTools>()
+    // 0099 (ajustes 2): acompanhamento das entregas do épico (prmake_epic_monitor).
+    .WithTools<solvace.prform.Execution.EpicMonitorMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f =>
     {

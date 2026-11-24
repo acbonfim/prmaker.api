@@ -1,3 +1,5 @@
+using solvace.executionplans.domain.Entities;
+
 namespace solvace.executionplans.domain.Requests;
 
 /// <summary>0099: corpo do <c>POST Epics</c> / <c>PUT Epics/{number}</c> (campos null limpam no PUT, título obrigatório).</summary>
@@ -12,6 +14,8 @@ public class SaveEpicRequest
     public string? DevOpsBoard { get; set; }
     /// <summary>Card do DevOps que representa o épico (Epic/Feature), opcional.</summary>
     public string? DevOpsCardId { get; set; }
+    /// <summary>Ajustes 1: filtros do board salvos no épico — opcional (null = não mexe; <c>{}</c> limpa).</summary>
+    public EpicBoardFilters? BoardFilters { get; set; }
 }
 
 /// <summary>0099: <c>POST Epics/{number}/status</c>.</summary>

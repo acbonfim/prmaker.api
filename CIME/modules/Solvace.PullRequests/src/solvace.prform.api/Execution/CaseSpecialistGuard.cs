@@ -120,7 +120,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         // 0099: Mesa de gestão — épico, cards do épico e PDF nos arquivos do item.
         "prmake_epic_save", "prmake_epic_cards", "prmake_pdf",
         // 0099: cards do DevOps pela Mesa de gestão (épico: qualquer card; card: só ele — DevOpsMcpTools.CaseScopeError).
-        "prmake_devops_card_create", "prmake_devops_card_update", "prmake_devops_card_move"
+        "prmake_devops_card_create", "prmake_devops_card_update", "prmake_devops_card_move",
+        // 0099 (ajustes 2): histórias/bugs do épico (rascunho como quem pediu; conversão com a integração do DevOps de quem pediu).
+        "prmake_epic_story_save", "prmake_epic_story_convert"
     };
 
     /// <summary>

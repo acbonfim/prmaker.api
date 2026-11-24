@@ -174,9 +174,16 @@ public class CaseChatController(CaseChatApplication chat, IExecutionQueueApplica
 
     // ── Especialista (token do caso) ─────────────────────────────────────────────────────────────
 
+    /// <summary>Ajustes 2 (0099): no épico, + "Perfil de quem pediu" (papéis → persona PO/gestor ou dev).</summary>
     [HttpGet("{card}/context")]
-    public Task<ActionResult> Context([FromRoute] string card, CancellationToken ct) =>
-        RunPlain(async () => Content(await chat.ContextAsync(card, ct), "text/markdown; charset=utf-8"));
+    public Task<ActionResult> Context([FromRoute] string card, [FromServices] DeskProfileService profile, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var markdown = await chat.ContextAsync(card, ct);
+            if (solvace.executionplans.domain.Entities.EpicKey.IsEpic(card))
+                markdown += await profile.MarkdownAsync(User, ct);
+            return Content(markdown, "text/markdown; charset=utf-8");
+        });
 
     [HttpGet("{card}/messages/new")]
     public Task<ActionResult<List<CaseMessageResponse>>> NewMessages([FromRoute] string card, [FromQuery] int? after, CancellationToken ct) =>

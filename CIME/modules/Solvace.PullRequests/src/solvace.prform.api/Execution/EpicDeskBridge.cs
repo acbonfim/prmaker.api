@@ -15,6 +15,20 @@ public sealed class EpicCardSource(IEpicApplication epics) : IEpicCardSource
         var detail = await epics.GetAsync(epic, ct);
         return detail.Cards.Select(c => c.Card).Where(c => !EpicKey.IsEpic(c)).ToList();
     }
+
+    public async Task<EpicBoardInfo?> GetBoardInfoAsync(long epic, CancellationToken ct)
+    {
+        if (await epics.FindAsync(epic, ct) is not { } summary) return null;
+        return new EpicBoardInfo(summary.DevOpsTeam, summary.DevOpsBoard, ToDevOps(summary.BoardFilters));
+    }
+
+    /// <summary>Filtros do épico (módulo dos planos) → filtros do board (módulo do DevOps), já limpos.</summary>
+    public static DevOpsBoardFilters ToDevOps(EpicBoardFilters? f) =>
+        solvace.azure.application.Services.DevOpsDeskMapping.NormalizeBoardFilters(f is null ? null : new DevOpsBoardFilters
+        {
+            Lanes = [.. f.Lanes], HiddenColumns = [.. f.HiddenColumns], Types = [.. f.Types], States = [.. f.States], AssignedTo = [.. f.AssignedTo], Tags = [.. f.Tags],
+            Text = f.Text ?? string.Empty
+        });
 }
 
 /// <summary>0099 (Q1): card criado pela Mesa dentro de um épico entra nele como <c>created</c> (foto do título e do tipo).</summary>

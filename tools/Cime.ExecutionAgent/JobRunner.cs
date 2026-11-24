@@ -46,6 +46,10 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     public string Card => claim.Request.CardNumber;
     public int? Pid { get; private set; }
 
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+            Paths.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
     /// <summary>Encerra o processo (cancelamento local, desligando o executor).</summary>
     public void Kill(string reason)
     {
@@ -70,6 +74,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var workspace = ConfigStore.ResolveWorkspace(config);
         _workspace = workspace;
         _repos = RepoMap.Load()?.Repos ?? [];
+        // 0099 (ajustes 2): pedido de épico (E…) roda na pasta neutra da Mesa, sem workspace/repositórios.
+        var desk = Paths.IsEpicKey(r.CardNumber);
         if (IsSpecialist && string.IsNullOrEmpty(claim.CaseToken))
         {
             await FinishAsync(new FinishRequest { Outcome = "failed", Retryable = false, Error = "O PRMake não mandou o token do caso para o especialista" });
@@ -79,7 +85,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var resume = (r.Kind == "resume" || IsSpecialist) && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
         var sessionId = resume ? r.SessionId! : Guid.NewGuid().ToString();
         _sessionId = sessionId;
-        var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : workspace;
+        var home = desk ? Paths.EnsureDeskRoot() : workspace;
+        var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : home;
 
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
@@ -93,7 +100,10 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             _caseMcp = caseMcp;
             args.AddRange(["--mcp-config", caseMcp, "--strict-mcp-config"]);
         }
-        if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
+        // 0099 (ajustes 2): no épico o workspace só entra se for de verdade (sem código na máquina ele cai na home, que
+        // não é liberada); os repositórios do mapa entram como sempre (máquina de PO/gestor não tem mapa).
+        var addWorkspace = !desk || !SamePath(workspace, Paths.Home);
+        if (addWorkspace && !SamePath(cwd, workspace))
             args.AddRange(["--add-dir", workspace]);
         // 0048: repositórios do mapa fora do workspace (em dontAsk o Claude não lê fora das pastas liberadas).
         foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))

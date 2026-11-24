@@ -23,6 +23,13 @@ public interface IEpicApplication
     Task<EpicResponse> CreateAsync(SaveEpicRequest req, ExecutionActor actor, CancellationToken ct);
     Task<EpicResponse> UpdateAsync(long number, SaveEpicRequest req, ExecutionActor actor, CancellationToken ct);
     Task<EpicResponse> SetStatusAsync(long number, string? status, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// Ajustes 1: grava os filtros do board do épico (<c>PUT Epics/{n}/board-filters</c>; null = limpa) — <c>epicsUpdated</c> action
+    /// <c>filters</c> quando mudou; não mexe na data de atualização do épico.
+    /// </summary>
+    Task<EpicResponse> SetBoardFiltersAsync(long number, EpicBoardFilters? filters, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Ajustes 1: tags usadas nos épicos (todas as situações), mais usadas primeiro e depois pelo nome; <paramref name="query"/> filtra.</summary>
+    Task<IReadOnlyList<string>> TagsAsync(string? query, CancellationToken ct);
     /// <summary>Põe (ou reafirma) o card no épico — papel só sobe (mentioned → linked → created).</summary>
     Task<EpicCardResponse> AddCardAsync(long number, AddEpicCardRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>Tira o card do épico. Idempotente.</summary>
@@ -51,6 +58,8 @@ public interface IEpicRepository
     Task<List<Epic>> ListByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken ct);
     /// <summary>Épicos (com os cards, rastreados) com esses números — para a menção <c>#épico</c>.</summary>
     Task<List<Epic>> GetByNumbersAsync(IReadOnlyCollection<long> numbers, CancellationToken ct);
+    /// <summary>Ajustes 1: o JSON das tags de todos os épicos (só essa coluna).</summary>
+    Task<List<string>> ListTagsJsonAsync(CancellationToken ct);
     /// <summary>Épicos (sem rastrear) em que o card está.</summary>
     Task<List<Epic>> ListByCardAsync(string card, CancellationToken ct);
     /// <summary>Contagens por épico (cards no banco; itens pela chave <c>E{n}</c>) — uma consulta por grupo.</summary>

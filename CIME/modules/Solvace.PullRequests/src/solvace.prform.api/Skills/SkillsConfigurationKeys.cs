@@ -111,4 +111,10 @@ public static class SkillsConfigurationKeys
     public const string AwsDeployFollowMinutes = "AwsDeployFollowMinutes";
     /// <summary>0100: quantas coletas de acompanhamento no máximo por pedido.</summary>
     public const string AwsDeployFollowMax = "AwsDeployFollowMax";
+
+    /// <summary>
+    /// 0099 (ajustes 2): campos do card do DevOps para cada parte da história/bug escrita na Mesa de gestão (JSON:
+    /// {"user-story": {type, description, acceptanceCriteria}, "bug": {type, description, reproSteps}}; priority/severity opcionais).
+    /// </summary>
+    public const string DeskStoryFieldMap = "DeskStoryFieldMap";
 }
