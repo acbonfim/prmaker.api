@@ -53,12 +53,25 @@ public static class DeskRoles
     /// <summary>
     /// Chamada automática que continua valendo como antes (ajustes 2): token do caso (especialista), credencial do executor
     /// ou skill rodando pelo executor/terminal (header <c>X-Execution-Client: skill</c> — o <c>gestao.sh</c> dos itens de
-    /// gestão usa <c>DevOps/query</c> com a api-key de quem roda, que pode ser dev num item de card).
+    /// gestão usa <c>DevOps/query</c> com a api-key de quem roda, que pode ser dev num item de card). O header qualquer um
+    /// manda, então ele só vale para LEITURA (GET, <c>DevOps/query</c>, <c>DevOps/board/items</c>) — gravar na Mesa continua
+    /// exigindo o papel ou um token do caso/executor.
     /// </summary>
     public static bool IsAutomation(HttpContext http) =>
         CaseClaims.RequestOf(http.User) is not null
         || ExecutorClaims.WorkerIdOf(http.User) is not null
-        || string.Equals(http.Request.Headers[GovernanceCaller.SkillHeader], "skill", StringComparison.OrdinalIgnoreCase);
+        || (string.Equals(http.Request.Headers[GovernanceCaller.SkillHeader], "skill", StringComparison.OrdinalIgnoreCase)
+            && IsReadCall(http.Request));
+
+    /// <summary>Chamada de leitura da Mesa (o POST de consulta do DevOps também só lê).</summary>
+    public static bool IsReadCall(HttpRequest request)
+    {
+        if (HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method)) return true;
+        var path = request.Path.Value?.TrimEnd('/') ?? string.Empty;
+        return HttpMethods.IsPost(request.Method)
+               && (path.EndsWith("/DevOps/query", StringComparison.OrdinalIgnoreCase)
+                   || path.EndsWith("/DevOps/board/items", StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>A chamada alcança a Mesa? admin/management ou automação.</summary>
     public static bool CanUseDesk(HttpContext http) => IsAutomation(http) || HasDeskAccess(Of(http.User));

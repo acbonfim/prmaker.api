@@ -25,10 +25,13 @@ public class Mesa0099Ajustes2Tests
 {
     // ---------------------------------------------------------------- acesso
 
-    private static HttpContext Http(IEnumerable<Claim> claims, string? header = null, bool authenticated = true)
+    private static HttpContext Http(IEnumerable<Claim> claims, string? header = null, bool authenticated = true,
+        string method = "POST", string path = "/api/v1/DevOps/query")
     {
         var identity = authenticated ? new ClaimsIdentity(claims, "test") : new ClaimsIdentity();
         var http = new DefaultHttpContext { User = new ClaimsPrincipal(identity) };
+        http.Request.Method = method;
+        http.Request.Path = path;
         if (header is not null) http.Request.Headers["X-Execution-Client"] = header;
         return http;
     }
@@ -75,6 +78,20 @@ public class Mesa0099Ajustes2Tests
         Assert.Null(Authorize(Http(Roles("support"), header: "skill")));
         Assert.NotNull(Authorize(Http(Roles("support"), header: "outro")));
     }
+
+    [Theory]
+    [InlineData("POST", "/api/v1/DevOps/workitems")]
+    [InlineData("PATCH", "/api/v1/DevOps/workitems/123")]
+    [InlineData("POST", "/api/v1/DevOps/workitems/123/move")]
+    [InlineData("POST", "/api/v1/Epics")]
+    public void Skill_header_does_not_open_writes(string method, string path) =>
+        Assert.NotNull(Authorize(Http(Roles("support"), header: "skill", method: method, path: path)));
+
+    [Theory]
+    [InlineData("GET", "/api/v1/DevOps/meta/tags")]
+    [InlineData("POST", "/api/v1/DevOps/board/items")]
+    public void Skill_header_opens_reads(string method, string path) =>
+        Assert.Null(Authorize(Http(Roles("support"), header: "skill", method: method, path: path)));
 
     [Fact]
     public void Anonymous_is_left_to_Authorize() => Assert.Null(Authorize(Http([], authenticated: false)));
