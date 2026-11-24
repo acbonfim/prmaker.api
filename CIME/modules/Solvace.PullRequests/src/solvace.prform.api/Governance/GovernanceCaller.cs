@@ -39,7 +39,7 @@ public sealed record GovernanceCaller(GovernanceActor Actor, string Source, stri
         else source = GovernanceSource.Api;
 
         var machine = user.FindFirst(ExecutorClaims.WorkerId)?.Value;
-        return new GovernanceCaller(new GovernanceActor(id, string.IsNullOrWhiteSpace(name) ? "Desconhecido" : name, roles), source,
+        return new GovernanceCaller(new GovernanceActor(id, string.IsNullOrWhiteSpace(name) ? "Desconhecido" : name, roles, source), source,
             roles.FirstOrDefault(), machine);
     }
 }

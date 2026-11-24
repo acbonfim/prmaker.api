@@ -123,13 +123,13 @@ Endpoints:
 | GET | `events` | admin | `?from&to&user&card&source&category&outcome&action&search&page&size` → `{ total, items: GovernanceEvent[] }` (ordem: mais recente primeiro) |
 | GET | `overview` | admin | `?from&to&tzOffsetMinutes` → `{ kpis: {events, users, cards, plansStarted, analysesDone, correctionsDone, workItemsDone, tasksDone, blocked, warned, errors, medianAnalysisMs, medianCorrectionMs, medianFirstAnalysisMs, aiCostUsd}, perDay: {day, events, blocked, warned, errors}[], bySource: {key,count}[], topActions: {key,count,medianMs}[], topRules: {key,name,count,blocked}[] }` |
 | GET | `users` | admin | `?from&to` → `{ userId, userName, events, cards, plansStarted, analysesDone, medianAnalysisMs, workItems, tasksDone, medianTaskMs, blocked, warned, errors, aiCostUsd, lastActivityAt }[]` |
-| GET | `users/{userId}` | admin | resumo acima + `cards: CardRow[]` + `recent: GovernanceEvent[]` (50) |
+| GET | `users/{userId}` | admin | `{ user: <linha de users>, cards: CardRow[], recent: GovernanceEvent[] (50) }` |
 | GET | `cards` | admin | `?from&to&search&user&page&size` → `{ total, items: CardRow[] }` com `CardRow = { cardNumber, title, kind, users: string[], firstActivityAt, lastActivityAt, milestones: {key,label,at}[], analysisMs, correctionMs, leadTimeMs, workItems, tasksDone, blocked, status }` |
 | GET | `cards/{card}` | admin | `{ card: CardRow, timeline: TimelineRow[] }`, `TimelineRow = { at, endAt, durationMs, kind: 'milestone'|'plan'|'step'|'work-item'|'task'|'request'|'event', title, user, outcome, ref }` (ordem cronológica) |
 | GET | `tasks` | admin | `?from&to` → `{ kind, source: 'step'|'task'|'request', count, done, failed, medianMs, p90Ms, users }[]` (etapas agrupadas por `Kind`/`Key` sem sufixo numérico, sub-tarefas por `Kind`, pedidos do executor por `Kind`) |
 | GET/POST | `rules` | admin | lista / cria (`key` único, slug) |
 | PUT/DELETE | `rules/{id}` | admin | altera (embutida: não muda `key`/`builtin`) / apaga (embutida → 409) |
-| POST | `rules/test` | admin | `EvaluateRequest` + `rule?: GovernanceRule` (rascunho) → `EvaluateResponse` sem gravar |
+| POST | `rules/test` | admin | corpo plano `{ ...EvaluateRequest, rule?: GovernanceRule (rascunho), roles?: string[] }` → `EvaluateResponse` sem gravar |
 | GET/POST | `hooks` | admin | idem regras |
 | PUT/DELETE | `hooks/{id}` | admin | idem |
 | GET/PUT | `settings` | admin | `GovernanceSettings` |

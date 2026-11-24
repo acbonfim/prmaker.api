@@ -56,7 +56,8 @@ public class GovernanceApplication(
                 .Select(h => new HookConfigItem(h.Key, h.Event, h.Matcher, h.Action, h.PublicConfig()))
                 .ToList();
         // O script só chama o evaluate quando a ferramenta casa com alguma regra ativa (ou com regra sem ferramenta).
-        var matchers = p.Rules.Where(r => r.Enabled && !r.Match.IsEmpty)
+        // Regra só de ações do servidor (POST ..., mcp:...) nunca casa num hook: fica fora (evita ida à rede à toa).
+        var matchers = p.Rules.Where(r => r.Enabled && !r.Match.IsEmpty && CanMatchHook(r.Match))
             .SelectMany(r => r.Match.Tools.Count > 0 ? r.Match.Tools : ["*"])
             .Distinct()
             .ToList();
@@ -65,6 +66,10 @@ public class GovernanceApplication(
     }
 
     public Task<List<GovernanceRule>> GetRulesAsync(CancellationToken ct = default) => repository.GetRulesAsync(ct);
+
+    /// <summary>A ação de um hook é "hook:&lt;evento&gt;:&lt;ferramenta&gt;": sem glob que possa casar com isso, a regra é do servidor.</summary>
+    public static bool CanMatchHook(RuleMatch m) =>
+        m.Actions.Count == 0 || m.Actions.Any(a => a.Split('|').Any(part => part.Trim() is var g && (g.StartsWith('*') || g.StartsWith("hook", StringComparison.OrdinalIgnoreCase))));
 
     public async Task<GovernanceRule> CreateRuleAsync(RuleRequest request, GovernanceActor actor, CancellationToken ct = default)
     {
@@ -103,7 +108,7 @@ public class GovernanceApplication(
 
     public async Task<EvaluateResponse> TestRuleAsync(RuleTestRequest request, GovernanceActor actor, CancellationToken ct = default)
     {
-        var req = ToEngineRequest(request.Request, request.Request.Source, actor with { Roles = request.Roles ?? actor.Roles });
+        var req = ToEngineRequest(request.ToEvaluate(), request.Source, actor with { Roles = request.Roles ?? actor.Roles });
         if (request.Rule is null) return EvaluateResponse.From(await EvaluateAsync(req, ct));
 
         // Rascunho: avaliado sozinho, ativo e em enforce (o admin quer ver o efeito da regra, não o modo atual).
@@ -211,7 +216,7 @@ public class GovernanceApplication(
             UserId = actor.UserId,
             UserName = actor.Name,
             Role = actor.Roles.FirstOrDefault(),
-            Source = GovernanceSource.Screen,
+            Source = GovernanceSource.IsValid(actor.Source) ? actor.Source : GovernanceSource.Screen,
             Action = action,
             Category = "governance",
             Outcome = GovernanceOutcome.Ok,

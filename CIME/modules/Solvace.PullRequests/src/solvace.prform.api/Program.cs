@@ -139,6 +139,7 @@ builder.Services.AddHttpClient(solvace.prform.application.Teams.TeamsApprovalSer
 builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceEventEnricher, solvace.prform.Governance.GovernanceEventEnricher>();
 builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceServerHookRunner, solvace.prform.Governance.GovernanceServerHookRunner>();
 builder.Services.AddHttpClient(solvace.prform.Governance.GovernanceServerHookRunner.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddScoped<solvace.prform.Governance.GovernanceMetrics>();
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
 

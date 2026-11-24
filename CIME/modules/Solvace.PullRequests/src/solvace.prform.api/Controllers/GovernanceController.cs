@@ -61,10 +61,10 @@ public class GovernanceController(IGovernanceApplication governance, IGovernance
     {
         if (events is null || events.Count == 0) return NoContent();
         if (events.Count > MaxHookEvents) return BadRequest(new { message = $"No máximo {MaxHookEvents} eventos por lote." });
-        var caller = Caller(GovernanceSource.Hook);
         var now = DateTimeOffset.UtcNow;
         foreach (var e in events.Where(e => !string.IsNullOrWhiteSpace(e.Event)))
         {
+            var caller = Caller(e.Source ?? GovernanceSource.Hook);
             var evt = e.Event.StartsWith("claude:") ? e.Event["claude:".Length..] : e.Event;
             var started = e.StartedAt is { } s && s <= now.AddMinutes(5) && s > now.AddDays(-7) ? s : now;
             sink.Enqueue(new GovernanceEventData
@@ -194,7 +194,7 @@ public class GovernanceController(IGovernanceApplication governance, IGovernance
         // O hook diz de onde vem (especialista/executor no executor); o token manda quando é mais específico.
         if (caller.Source is GovernanceSource.Executor or GovernanceSource.Specialist) return caller;
         return requested is GovernanceSource.Hook or GovernanceSource.Executor or GovernanceSource.Specialist or GovernanceSource.Skill
-            ? caller with { Source = requested }
+            ? caller with { Source = requested, Actor = caller.Actor with { Source = requested } }
             : caller;
     }
 

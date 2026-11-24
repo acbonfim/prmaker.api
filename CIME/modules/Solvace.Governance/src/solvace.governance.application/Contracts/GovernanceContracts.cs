@@ -75,7 +75,7 @@ public sealed record GovernanceEventFilter
     public int Size { get; init; } = 50;
 }
 
-public sealed record GovernanceActor(Guid? UserId, string Name, IReadOnlyCollection<string> Roles);
+public sealed record GovernanceActor(Guid? UserId, string Name, IReadOnlyCollection<string> Roles, string Source = "screen");
 
 public sealed record RuleRequest
 {
@@ -131,12 +131,25 @@ public sealed record EvaluateRequest
     public string? Cwd { get; init; }
 }
 
+/// <summary>Simulador: a entrada no mesmo formato do evaluate (plano) + rascunho opcional de regra e papéis simulados.</summary>
 public sealed record RuleTestRequest
 {
-    public EvaluateRequest Request { get; init; } = new();
+    public string Source { get; init; } = "hook";
+    public string? Event { get; init; }
+    public string? Tool { get; init; }
+    public string? Input { get; init; }
+    public string? Path { get; init; }
+    public string? Action { get; init; }
+    public int? CardNumber { get; init; }
+    public string? CardType { get; init; }
     /// <summary>Rascunho de regra: testa só ela (ativa, modo enforce) em vez das regras gravadas.</summary>
     public RuleRequest? Rule { get; init; }
     public List<string>? Roles { get; init; }
+
+    public EvaluateRequest ToEvaluate() => new()
+    {
+        Source = Source, Event = Event, Tool = Tool, Input = Input, Path = Path, Action = Action, CardNumber = CardNumber, CardType = CardType
+    };
 }
 
 public sealed record EvaluateResponse(string Decision, string Mode, string? Reason, IReadOnlyList<GovernanceRuleHit> Rules, string WouldDecide)
@@ -147,6 +160,8 @@ public sealed record EvaluateResponse(string Decision, string Mode, string? Reas
 public sealed record HookEventRequest
 {
     public string Event { get; init; } = string.Empty;
+    /// <summary>hook | executor | specialist (o script sabe se roda no executor/especialista).</summary>
+    public string? Source { get; init; }
     public string? Tool { get; init; }
     public string? Input { get; init; }
     public DateTimeOffset? StartedAt { get; init; }

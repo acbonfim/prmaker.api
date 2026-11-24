@@ -23,7 +23,9 @@ public sealed class GovernanceMiddleware(RequestDelegate next)
         "POST Usage/batch", "POST Governance/evaluate", "POST Governance/hooks/events", "POST Governance/rules/test",
         "POST ExecutionQueue/{id}/heartbeat", "* ExecutionQueue/next", "POST ExecutionWorker/report", "POST ExecutionWorker/doctor",
         "POST ExecutionPlan/{id}/logs", "* ExecutionPlan/{id}/session", "* ExecutionPlan/{id}/usage",
-        "POST CaseChat/{card}/seen", "POST CaseChat/{card}/typing"
+        "POST CaseChat/{card}/seen", "POST CaseChat/{card}/typing",
+        // Mudanças da própria governança: a aplicação registra o evento com o antes/depois (sem duplicar aqui).
+        "* Governance/rules", "* Governance/rules/{id}", "* Governance/hooks", "* Governance/hooks/{id}", "PUT Governance/settings"
     ];
 
     public async Task InvokeAsync(HttpContext http, IGovernanceApplication governance, IGovernanceEventSink sink)
