@@ -38,8 +38,12 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
     [HttpGet("meta/iterations")]
     public Task<IActionResult> Iterations(CancellationToken ct) => Run(() => devops.GetIterationsAsync(ct));
 
+    /// <summary>
+    /// Pessoas (ajustes 1): membros dos times + usuários da organização + busca de identidades (com <c>q</c> ≥ 2 letras) + quem
+    /// aparece nos cards recentes, sem repetir. <c>q</c> sem caixa/acento; <c>top</c> padrão 50 com <c>q</c>, sem <c>q</c> todos.
+    /// </summary>
     [HttpGet("meta/people")]
-    public Task<IActionResult> People([FromQuery] string? q, CancellationToken ct) => Run(() => devops.GetPeopleAsync(q, ct));
+    public Task<IActionResult> People([FromQuery] string? q, [FromQuery] int? top, CancellationToken ct) => Run(() => devops.GetPeopleAsync(q, top, ct));
 
     [HttpGet("teams")]
     public Task<IActionResult> Teams(CancellationToken ct) => Run(() => devops.GetTeamsAsync(ct));
@@ -53,27 +57,50 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
         Run(() => devops.GetBoardAsync(team, board, null, ct));
 
     /// <summary>
-    /// Cartões do board. <c>scope=epic</c>: só os cards do épico (<c>ids</c> da tela ou os do épico); senão os do time.
+    /// Cartões do board. <c>scope=epic</c>: só os cards do épico (<c>ids</c> da tela ou os do épico); senão os do time. Ajustes 1:
+    /// <c>useEpicFilters=true</c> com <c>epic</c> aplica no servidor os filtros salvos do épico (<c>filtersApplied</c> na resposta);
+    /// sem time/board, os preferidos do épico.
     /// </summary>
     [HttpPost("board/items")]
     public Task<IActionResult> BoardItems([FromBody] DevOpsBoardItemsRequest request, CancellationToken ct) =>
-        Run(async () =>
+        Run(() => LoadBoardItemsAsync(devops, epicCards, request, ct));
+
+    /// <summary>
+    /// Cartões do board com o épico resolvido (REST e MCP <c>prmake_devops_board</c>): cards do escopo <c>epic</c>, time/board
+    /// preferidos quando faltam e, com <c>useEpicFilters</c>, os filtros salvos.
+    /// </summary>
+    public static async Task<DevOpsBoardItemsResponse> LoadBoardItemsAsync(IDevOpsDeskService devops, IEpicCardSource epicCards,
+        DevOpsBoardItemsRequest request, CancellationToken ct)
+    {
+        EpicBoardInfo? epic = null;
+        if (request.Epic is > 0 && (request.UseEpicFilters == true || string.IsNullOrWhiteSpace(request.Team) || string.IsNullOrWhiteSpace(request.Board)))
         {
-            IReadOnlyCollection<int>? ids = null;
-            if (string.Equals(request.Scope, "epic", StringComparison.OrdinalIgnoreCase))
+            epic = await epicCards.GetBoardInfoAsync(request.Epic.Value, ct)
+                   ?? throw DevOpsDeskException.NotFoundDesk($"Épico #{request.Epic} não encontrado.");
+            if (string.IsNullOrWhiteSpace(request.Team) && !string.IsNullOrWhiteSpace(epic.Team))
+                request.Team = epic.Team;
+            // Board do épico só vale com o time do épico.
+            if (string.IsNullOrWhiteSpace(request.Board) && !string.IsNullOrWhiteSpace(epic.Board)
+                && string.Equals(request.Team?.Trim(), epic.Team?.Trim(), StringComparison.OrdinalIgnoreCase))
+                request.Board = epic.Board;
+        }
+
+        IReadOnlyCollection<int>? ids = null;
+        if (string.Equals(request.Scope, "epic", StringComparison.OrdinalIgnoreCase))
+        {
+            IReadOnlyList<string>? cards = request.Ids;
+            if (cards is null)
             {
-                IReadOnlyList<string>? cards = request.Ids;
-                if (cards is null)
-                {
-                    if (request.Epic is not > 0)
-                        throw DevOpsDeskException.Invalid("Escopo epic: informe o épico (epic) ou os cards (ids).");
-                    cards = await epicCards.GetCardsAsync(request.Epic.Value, ct)
-                            ?? throw DevOpsDeskException.NotFoundDesk($"Épico #{request.Epic} não encontrado.");
-                }
-                ids = ParseIds(cards);
+                if (request.Epic is not > 0)
+                    throw DevOpsDeskException.Invalid("Escopo epic: informe o épico (epic) ou os cards (ids).");
+                cards = await epicCards.GetCardsAsync(request.Epic.Value, ct)
+                        ?? throw DevOpsDeskException.NotFoundDesk($"Épico #{request.Epic} não encontrado.");
             }
-            return await devops.GetBoardItemsAsync(request, ids, ct);
-        });
+            ids = ParseIds(cards);
+        }
+        var filters = request.UseEpicFilters == true ? epic?.Filters : null;
+        return await devops.GetBoardItemsAsync(request, ids, filters, ct);
+    }
 
     /// <summary>Consulta por WIQL ou filtros (viram WIQL), com os campos escolhidos (padrão: os principais).</summary>
     [HttpPost("query")]
@@ -106,7 +133,7 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
 
     // ---------------------------------------------------------------- utilidades
 
-    private static List<int> ParseIds(IEnumerable<string> cards) =>
+    public static List<int> ParseIds(IEnumerable<string> cards) =>
         cards.Select(c => int.TryParse(c?.Trim().TrimStart('#'), NumberStyles.None, CultureInfo.InvariantCulture, out var id) ? id : 0)
             .Where(id => id > 0)
             .Distinct()

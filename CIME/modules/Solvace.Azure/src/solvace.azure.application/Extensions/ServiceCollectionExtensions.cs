@@ -37,12 +37,16 @@ public static class ServiceCollectionExtensions
     }
 }
 
-/// <summary>0099: troca <c>https://dev.azure.com</c> pelo host de <c>AzureDevOps:HostOverride</c> (só e2e local).</summary>
+/// <summary>
+/// 0099: troca <c>https://dev.azure.com</c> (e <c>vssps.dev.azure.com</c> — usuários/identidades, ajustes 1) pelo host de
+/// <c>AzureDevOps:HostOverride</c> (só e2e local).
+/// </summary>
 internal sealed class DevOpsHostOverrideHandler(Uri host) : DelegatingHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request.RequestUri is { } uri && uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase))
+        if (request.RequestUri is { } uri && (uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase)
+                                              || uri.Host.Equals("vssps.dev.azure.com", StringComparison.OrdinalIgnoreCase)))
             request.RequestUri = new UriBuilder(uri) { Scheme = host.Scheme, Host = host.Host, Port = host.Port }.Uri;
         return base.SendAsync(request, cancellationToken);
     }

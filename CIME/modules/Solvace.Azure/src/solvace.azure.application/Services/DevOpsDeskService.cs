@@ -5,6 +5,7 @@ using System.Text.Json;
 using solvace.azure.application.Contract;
 using solvace.azure.domain.Exceptions;
 using solvace.azure.domain.Models;
+using Microsoft.Extensions.Logging;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Extensions;
@@ -14,20 +15,32 @@ namespace solvace.azure.application.Services;
 /// <summary>
 /// 0099 (Mesa de gestão): o DevOps pela integração de quem age. Mesma conexão do <see cref="AzureService"/> (plugin
 /// "AzureDevOps Configurations" resolvido por requisição, PAT no header); o mapeamento do JSON fica em
-/// <see cref="DevOpsDeskMapping"/>. Caches estáticos por organização/projeto: board 60 s, metadados 5–10 min, tags 60 s.
+/// <see cref="DevOpsDeskMapping"/>. Caches estáticos por organização/projeto: board 60 s, metadados 5–10 min, tags 60 s; pessoas
+/// (ajustes 1): membros dos times 10 min, usuários da organização 1 h, pessoas de cards recentes 30 min.
 /// </summary>
-public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConfigurationResolver configurationResolver) : IDevOpsDeskService
+public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConfigurationResolver configurationResolver,
+    ILogger<DevOpsDeskService> logger) : IDevOpsDeskService
 {
     private const string PluginName = "AzureDevOps Configurations";
     private const string Api = "7.1";
     private const string TagsApi = "7.1-preview.1";
     private const string CommentsApi = "7.1-preview.4";
+    private const string GraphApi = "7.1-preview.1";
     private const int BatchSize = 200;
 
     private static readonly TimeSpan BoardCacheFor = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan MetaCacheFor = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PeopleCacheFor = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan TagsCacheFor = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan OrgUsersCacheFor = TimeSpan.FromHours(1);
+    private static readonly TimeSpan RecentPeopleCacheFor = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan IdentitySearchCacheFor = TimeSpan.FromMinutes(5);
+    /// <summary>Fonte de pessoas que falhou (PAT sem escopo, API fora): fica de fora por este tempo, sem tentar a cada tecla.</summary>
+    private static readonly TimeSpan FailedSourceCacheFor = TimeSpan.FromMinutes(10);
+    private const int MaxGraphPages = 40;
+    private const int RecentPeopleCards = 2000;
+    /// <summary>Fontes de pessoas que já logaram a falha (uma vez por organização/fonte).</summary>
+    private static readonly ConcurrentDictionary<string, byte> LoggedPeopleFailures = new();
     private static readonly ConcurrentDictionary<string, (DateTime At, object Value)> Cache = new();
 
     private static readonly JsonSerializerOptions BodyJson = new(JsonSerializerDefaults.Web)
@@ -52,10 +65,14 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
     private string Organization => Config.GetConfigurationValue("Organization")!.Trim();
     private string Project => Config.GetConfigurationValue("Project")!.Trim();
     private string OrganizationUrl => $"https://dev.azure.com/{Organization}";
+    /// <summary>Serviço de identidades/usuários da organização (Graph, identities) — mesma autenticação (Basic com o PAT).</summary>
+    private string VsspsUrl => $"https://vssps.dev.azure.com/{Organization}";
     private string ProjectApi => $"{OrganizationUrl}/{Uri.EscapeDataString(Project)}/_apis";
     private string TeamApi(string team) => $"{OrganizationUrl}/{Uri.EscapeDataString(Project)}/{Uri.EscapeDataString(team)}/_apis";
     private string BrowserUrl(int id) => $"{OrganizationUrl}/{Uri.EscapeDataString(Project)}/_workitems/edit/{id}";
     private string CacheKey(string what) => $"{Organization}|{Project}|{what}".ToLowerInvariant();
+    /// <summary>Cache da organização inteira (usuários, identidades) — vale para todos os projetos dela.</summary>
+    private string OrgCacheKey(string what) => $"{Organization}|*|{what}".ToLowerInvariant();
 
     private HttpClient CreateClient()
     {
@@ -69,7 +86,12 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
 
     /// <summary>Chamada ao DevOps: erro vira <see cref="DevOpsDeskException"/> com a mensagem dele (<paramref name="what"/> na frente).</summary>
     private async Task<JsonDocument> SendAsync(HttpMethod method, string url, object? body, string what, CancellationToken ct,
-        string contentType = "application/json")
+        string contentType = "application/json") =>
+        (await SendFullAsync(method, url, body, what, ct, contentType)).Doc;
+
+    /// <summary>Como <see cref="SendAsync"/>, com o <c>x-ms-continuationtoken</c> da resposta (listas paginadas do Graph).</summary>
+    private async Task<(JsonDocument Doc, string? Continuation)> SendFullAsync(HttpMethod method, string url, object? body, string what,
+        CancellationToken ct, string contentType = "application/json")
     {
         var (response, text) = await SendOnceAsync(method, url, body, contentType, ct);
         // Organização que ainda não tem a 7.1 GA de alguma API: tenta a preview (como os estados do tipo no AzureService).
@@ -87,7 +109,8 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                 "O DevOps não aceitou o token (PAT) da sua integração — confira em \"Minhas integrações\" (AzureDevOps Configurations).");
         if (!response.IsSuccessStatusCode)
             throw DevOpsDeskException.FromDevOps((int)response.StatusCode, $"{what}: {ExtractDevOpsError(text)}");
-        return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+        var continuation = response.Headers.TryGetValues("x-ms-continuationtoken", out var tokens) ? tokens.FirstOrDefault() : null;
+        return (JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text), string.IsNullOrWhiteSpace(continuation) ? null : continuation);
     }
 
     private async Task<(HttpResponseMessage Response, string Text)> SendOnceAsync(HttpMethod method, string url, object? body, string contentType,
@@ -195,10 +218,26 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         });
     }
 
-    public async Task<IReadOnlyList<DevOpsPersonInfo>> GetPeopleAsync(string? q, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<DevOpsPersonInfo>> GetPeopleAsync(string? q, int? top = null, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);
-        var people = await CachedAsync<IReadOnlyList<DevOpsPersonInfo>>(CacheKey("people"), PeopleCacheFor, async () =>
+        var term = q?.Trim() ?? string.Empty;
+        // Ajustes 1 da 0099: os times são a base (erro aqui é erro); as outras fontes são melhor esforço (PAT sem escopo → fora).
+        var teams = TeamMembersAsync(cancellationToken);
+        var org = BestEffortPeopleAsync("graph", OrgCacheKey("people|graph"), OrgUsersCacheFor, OrgUsersAsync, cancellationToken);
+        var recent = BestEffortPeopleAsync("recent", CacheKey("people|recent"), RecentPeopleCacheFor, RecentCardPeopleAsync, cancellationToken);
+        var search = DevOpsDeskMapping.Fold(term).Length >= 2
+            ? BestEffortPeopleAsync("identities", OrgCacheKey($"people|identities|{DevOpsDeskMapping.Fold(term)}"), IdentitySearchCacheFor,
+                ct => SearchIdentitiesAsync(term, ct), cancellationToken)
+            : Task.FromResult<IReadOnlyList<DevOpsPersonInfo>>([]);
+        await Task.WhenAll(teams, org, recent, search);
+        var people = DevOpsDeskMapping.MergePeople(await teams, await org, await search, await recent);
+        return DevOpsDeskMapping.FilterPeople(people, term, top);
+    }
+
+    /// <summary>Membros de todos os times do projeto (cache de 10 min) — a fonte que sempre existiu.</summary>
+    private Task<IReadOnlyList<DevOpsPersonInfo>> TeamMembersAsync(CancellationToken cancellationToken) =>
+        CachedAsync<IReadOnlyList<DevOpsPersonInfo>>(CacheKey("people"), PeopleCacheFor, async () =>
         {
             var teams = await GetTeamsAsync(cancellationToken);
             var found = new ConcurrentBag<DevOpsPersonInfo>();
@@ -223,17 +262,68 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                     gate.Release();
                 }
             }));
-            return found
-                .GroupBy(p => p.UniqueName.Length > 0 ? p.UniqueName.ToLowerInvariant() : p.Id)
-                .Select(g => g.First())
-                .OrderBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return DevOpsDeskMapping.MergePeople(found);
         });
-        var term = q?.Trim();
-        return (string.IsNullOrEmpty(term)
-                ? people
-                : people.Where(p => p.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) || p.UniqueName.Contains(term, StringComparison.OrdinalIgnoreCase)))
-            .Take(500).ToList();
+
+    /// <summary>
+    /// Fonte de pessoas que não pode derrubar a lista: falha (PAT sem o escopo, API fora, tempo) vira lista vazia, guardada por
+    /// <see cref="FailedSourceCacheFor"/> e logada uma vez por organização/fonte.
+    /// </summary>
+    private async Task<IReadOnlyList<DevOpsPersonInfo>> BestEffortPeopleAsync(string source, string key, TimeSpan ttl,
+        Func<CancellationToken, Task<IReadOnlyList<DevOpsPersonInfo>>> load, CancellationToken ct)
+    {
+        if (Cache.TryGetValue(key, out var hit) && hit.Value is IReadOnlyList<DevOpsPersonInfo> cached
+            && DateTime.UtcNow - hit.At < (cached.Count == 0 ? FailedSourceCacheFor : ttl))
+            return cached;
+        try
+        {
+            var fresh = await load(ct);
+            Cache[key] = (DateTime.UtcNow, fresh);
+            return fresh;
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested && e is DevOpsActionException or HttpRequestException or JsonException or OperationCanceledException)
+        {
+            if (LoggedPeopleFailures.TryAdd($"{Organization}|{source}".ToLowerInvariant(), 0))
+                logger.LogWarning("Mesa de gestão: pessoas de \"{Source}\" indisponíveis na organização {Organization} (segue sem elas): {Error}",
+                    source, Organization, e.Message);
+            Cache[key] = (DateTime.UtcNow, (IReadOnlyList<DevOpsPersonInfo>)[]);
+            return [];
+        }
+    }
+
+    /// <summary>Usuários da organização pelo Graph (<c>subjectTypes=aad,msa</c>), paginados pelo <c>x-ms-continuationtoken</c>.</summary>
+    private async Task<IReadOnlyList<DevOpsPersonInfo>> OrgUsersAsync(CancellationToken ct)
+    {
+        var people = new List<DevOpsPersonInfo>();
+        string? continuation = null;
+        for (var page = 0; page < MaxGraphPages; page++)
+        {
+            var url = $"{VsspsUrl}/_apis/graph/users?subjectTypes=aad,msa&api-version={GraphApi}"
+                      + (continuation is null ? string.Empty : $"&continuationToken={Uri.EscapeDataString(continuation)}");
+            var (doc, next) = await SendFullAsync(HttpMethod.Get, url, null, "O DevOps não listou os usuários da organização", ct);
+            using (doc)
+                people.AddRange(DevOpsDeskMapping.ParseGraphUsers(doc.RootElement));
+            if (next is null || next == continuation) break;
+            continuation = next;
+        }
+        return DevOpsDeskMapping.MergePeople(people);
+    }
+
+    /// <summary>Busca de identidades da organização pelo termo (nome, e-mail ou login).</summary>
+    private async Task<IReadOnlyList<DevOpsPersonInfo>> SearchIdentitiesAsync(string term, CancellationToken ct)
+    {
+        using var doc = await GetAsync(
+            $"{VsspsUrl}/_apis/identities?searchFilter=General&filterValue={Uri.EscapeDataString(term)}&queryMembership=None&api-version={Api}",
+            "O DevOps não buscou as identidades", ct);
+        return DevOpsDeskMapping.ParseIdentities(doc.RootElement, OrganizationUrl);
+    }
+
+    /// <summary>Quem aparece nos cards alterados nos últimos 180 dias (até 2000 cards): responsável, quem criou e quem alterou.</summary>
+    private async Task<IReadOnlyList<DevOpsPersonInfo>> RecentCardPeopleAsync(CancellationToken ct)
+    {
+        var ids = await WiqlAsync(DevOpsDeskMapping.RecentPeopleWiql, RecentPeopleCards, ct);
+        var items = await BatchAsync(ids, DevOpsDeskMapping.RecentPeopleFields, ct);
+        return DevOpsDeskMapping.MergePeople(DevOpsDeskMapping.PeopleFromWorkItems(items));
     }
 
     /// <summary>Time padrão do projeto (<c>defaultTeam</c>).</summary>
@@ -321,16 +411,20 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
     // ---------------------------------------------------------------- board e consultas
 
     public async Task<DevOpsBoardItemsResponse> GetBoardItemsAsync(DevOpsBoardItemsRequest request, IReadOnlyCollection<int>? onlyIds,
-        CancellationToken cancellationToken = default)
+        DevOpsBoardFilters? epicFilters = null, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);
         var config = await GetBoardAsync(request.Team, request.Board, null, cancellationToken);
         var top = Math.Clamp(request.Top ?? 300, 1, 1000);
+        var saved = DevOpsDeskMapping.NormalizeBoardFilters(epicFilters);
+        // Filtros salvos do épico: tipos/estados também na WIQL (o top não corta antes do filtro); o resto (lane, responsável,
+        // tags, texto sem acento) no fim, igual à tela.
+        var wiqlFilters = saved.IsEmpty ? request : WithSavedFilters(request, saved);
         var ids = new List<int>();
 
         if (onlyIds is not null)
         {
-            var wiql = DevOpsDeskMapping.BuildBoardWiql(config, null, [], onlyIds.Take(1000).ToList(), null, request);
+            var wiql = DevOpsDeskMapping.BuildBoardWiql(config, null, [], onlyIds.Take(1000).ToList(), null, wiqlFilters);
             if (wiql is not null)
                 ids.AddRange(await WiqlAsync(wiql, top, cancellationToken));
         }
@@ -338,15 +432,27 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         {
             var (field, values) = await TeamFieldValuesAsync(config.Team, cancellationToken);
             // Colunas de trabalho inteiras (na ordem do backlog); a coluna final só com os mais recentes, como no DevOps.
-            if (DevOpsDeskMapping.BuildBoardWiql(config, field, values, null, false, request) is { } open)
+            if (DevOpsDeskMapping.BuildBoardWiql(config, field, values, null, false, wiqlFilters) is { } open)
                 ids.AddRange(await WiqlAsync(open, top, cancellationToken));
-            if (DevOpsDeskMapping.BuildBoardWiql(config, field, values, null, true, request) is { } closed)
+            if (DevOpsDeskMapping.BuildBoardWiql(config, field, values, null, true, wiqlFilters) is { } closed)
                 ids.AddRange(await WiqlAsync(closed, Math.Min(top, 50), cancellationToken));
         }
 
         var items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
-        return new DevOpsBoardItemsResponse(config.ConfigHash, items.Select(i => DevOpsDeskMapping.ParseBoardItem(i, config)).ToList());
+        var cards = items.Select(i => DevOpsDeskMapping.ParseBoardItem(i, config)).ToList();
+        if (saved.IsEmpty)
+            return new DevOpsBoardItemsResponse(config.ConfigHash, cards);
+        return new DevOpsBoardItemsResponse(config.ConfigHash, DevOpsDeskMapping.ApplyBoardFilters(cards, saved, config), saved);
     }
+
+    /// <summary>Pedido com os tipos/estados salvos no épico quando a tela não mandou os seus (os dela continuam valendo).</summary>
+    private static DevOpsBoardItemsRequest WithSavedFilters(DevOpsBoardItemsRequest request, DevOpsBoardFilters saved) => new()
+    {
+        Team = request.Team, Board = request.Board, Epic = request.Epic, Scope = request.Scope, Ids = request.Ids, Text = request.Text,
+        AssignedTo = request.AssignedTo, Tags = request.Tags, Top = request.Top, UseEpicFilters = request.UseEpicFilters,
+        Types = request.Types is { Count: > 0 } || saved.Types.Count == 0 ? request.Types : saved.Types,
+        States = request.States is { Count: > 0 } || saved.States.Count == 0 ? request.States : saved.States
+    };
 
     /// <summary>
     /// Card criado sem área num time: recebe a área padrão do time (como o "+ New" do board do DevOps) — sem isso ele cai na

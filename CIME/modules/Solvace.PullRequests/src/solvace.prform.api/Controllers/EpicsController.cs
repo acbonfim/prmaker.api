@@ -36,6 +36,11 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
             return Ok(list);
         });
 
+    /// <summary>Ajustes 1: tags usadas nos épicos (todas as situações), mais usadas primeiro, depois pelo nome; <c>q</c> filtra (contém).</summary>
+    [HttpGet("tags")]
+    public Task<ActionResult<IReadOnlyList<string>>> Tags([FromQuery] string? q, CancellationToken ct) =>
+        Run<IReadOnlyList<string>>(async () => Ok(await epics.TagsAsync(q, ct)));
+
     [HttpGet("{number:long}")]
     public Task<ActionResult<EpicResponse>> Get([FromRoute] long number, CancellationToken ct) =>
         Run<EpicResponse>(async () =>
@@ -65,6 +70,18 @@ public class EpicsController(IEpicApplication epics, solvace.timeline.applicatio
         {
             EnsureSpecialistEpic(number);
             return Ok(await epics.SetStatusAsync(number, request?.Status, await GetActorAsync(ct), ct));
+        });
+
+    /// <summary>
+    /// Ajustes 1: grava os filtros do board do épico (corpo = <c>{lanes, types, states, assignedTo, tags, text}</c>; lane padrão =
+    /// <c>""</c>) — a tela grava com debounce e o especialista usa no board do time. <c>epicsUpdated</c> action <c>filters</c>.
+    /// </summary>
+    [HttpPut("{number:long}/board-filters")]
+    public Task<ActionResult<EpicResponse>> SetBoardFilters([FromRoute] long number, [FromBody] EpicBoardFilters? request, CancellationToken ct) =>
+        Run<EpicResponse>(async () =>
+        {
+            EnsureSpecialistEpic(number);
+            return Ok(await epics.SetBoardFiltersAsync(number, request, await GetActorAsync(ct), ct));
         });
 
     /// <summary>Põe um card do DevOps no épico (<c>role</c> padrão <c>linked</c>; papel só sobe).</summary>

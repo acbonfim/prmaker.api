@@ -665,6 +665,259 @@ public static class DevOpsDeskMapping
         return v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } text ? new DevOpsIdentityRef(text, null, null) : null;
     }
 
+    // ---------------------------------------------------------------- pessoas (ajustes 1)
+
+    /// <summary>
+    /// WIQL das pessoas de cards recentes: cards do projeto alterados nos últimos 180 dias (o responsável, quem criou e quem
+    /// alterou vêm pelo <c>workitemsbatch</c>) — funciona só com o escopo de work items do PAT.
+    /// </summary>
+    public const string RecentPeopleWiql =
+        "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.ChangedDate] >= @today - 180 ORDER BY [System.ChangedDate] DESC";
+
+    /// <summary>Campos de identidade lidos dos cards recentes.</summary>
+    public static readonly IReadOnlyList<string> RecentPeopleFields = [FieldAssignedTo, "System.CreatedBy", "System.ChangedBy"];
+
+    /// <summary>
+    /// Usuários da organização (<c>vssps …/_apis/graph/users</c>): <c>principalName</c> (ou o e-mail) vira o <c>uniqueName</c>, o
+    /// descriptor vira o id; só usuários (sem grupos nem contas de serviço).
+    /// </summary>
+    public static List<DevOpsPersonInfo> ParseGraphUsers(JsonElement root) =>
+        Values(root)
+            .Where(u => Str(u, "subjectKind") is null or "user")
+            .Select(u => new DevOpsPersonInfo(
+                Str(u, "displayName")?.Trim() ?? string.Empty,
+                (Str(u, "principalName") ?? Str(u, "mailAddress") ?? string.Empty).Trim(),
+                Str(u, "descriptor") ?? Str(u, "originId") ?? string.Empty,
+                u.TryGetProperty("_links", out var l) && l.ValueKind == JsonValueKind.Object && l.TryGetProperty("avatar", out var a) ? Str(a, "href") : null))
+            .Where(p => p.DisplayName.Length > 0 && !IsServiceIdentity(p))
+            .ToList();
+
+    /// <summary>
+    /// Busca de identidades (<c>vssps …/_apis/identities?searchFilter=General</c>): nome (<c>customDisplayName</c> ou o do
+    /// provedor), login (<c>properties.Account</c> ou o e-mail); grupos e inativos ficam de fora. A foto é a do DevOps pelo id.
+    /// </summary>
+    public static List<DevOpsPersonInfo> ParseIdentities(JsonElement root, string organizationUrl) =>
+        Values(root)
+            .Where(i => !Bool(i, "isContainer")
+                        && !(i.TryGetProperty("isActive", out var act) && act.ValueKind == JsonValueKind.False)
+                        && !string.Equals(Property(i, "SchemaClassName"), "Group", StringComparison.OrdinalIgnoreCase))
+            .Select(i =>
+            {
+                var id = Str(i, "id") ?? string.Empty;
+                var name = (Str(i, "customDisplayName") is { Length: > 0 } custom ? custom : Str(i, "providerDisplayName"))?.Trim() ?? string.Empty;
+                var login = (Property(i, "Account") ?? Property(i, "Mail") ?? string.Empty).Trim();
+                return new DevOpsPersonInfo(name, login, id, id.Length > 0 ? $"{organizationUrl}/_api/_common/identityImage?id={id}" : null);
+            })
+            .Where(p => p.DisplayName.Length > 0 && !IsServiceIdentity(p))
+            .ToList();
+
+    /// <summary>Pessoas dos campos de identidade dos cards (<c>workitemsbatch</c>): responsável, quem criou, quem alterou.</summary>
+    public static List<DevOpsPersonInfo> PeopleFromWorkItems(IEnumerable<JsonElement> workItems)
+    {
+        var people = new List<DevOpsPersonInfo>();
+        foreach (var item in workItems)
+        {
+            if (!item.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Object) continue;
+            foreach (var field in RecentPeopleFields)
+                if (fields.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.Object
+                    && Str(v, "displayName") is { Length: > 0 } name)
+                {
+                    var p = new DevOpsPersonInfo(name.Trim(), (Str(v, "uniqueName") ?? string.Empty).Trim(), Str(v, "id") ?? string.Empty,
+                        Str(v, "imageUrl") ?? (v.TryGetProperty("_links", out var l) && l.ValueKind == JsonValueKind.Object
+                                               && l.TryGetProperty("avatar", out var a) ? Str(a, "href") : null));
+                    if (!IsServiceIdentity(p)) people.Add(p);
+                }
+        }
+        return people;
+    }
+
+    /// <summary>
+    /// Junta as fontes na ordem (a primeira vence; foto/id que faltam vêm das outras), sem repetir pelo <c>uniqueName</c> sem
+    /// caixa (sem login: pelo id, depois pelo nome), em ordem de nome (sem caixa/acento).
+    /// </summary>
+    public static List<DevOpsPersonInfo> MergePeople(params IEnumerable<DevOpsPersonInfo>?[] sources)
+    {
+        var byKey = new Dictionary<string, DevOpsPersonInfo>(StringComparer.Ordinal);
+        foreach (var source in sources)
+            foreach (var p in source ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(p.DisplayName)) continue;
+                var key = PersonKey(p);
+                if (byKey.TryGetValue(key, out var known))
+                {
+                    if (string.IsNullOrEmpty(known.ImageUrl) && !string.IsNullOrEmpty(p.ImageUrl)) known = known with { ImageUrl = p.ImageUrl };
+                    if (string.IsNullOrEmpty(known.Id) && !string.IsNullOrEmpty(p.Id)) known = known with { Id = p.Id };
+                    byKey[key] = known;
+                }
+                else
+                    byKey[key] = p with { DisplayName = p.DisplayName.Trim(), UniqueName = p.UniqueName.Trim() };
+            }
+        return byKey.Values
+            .OrderBy(p => Fold(p.DisplayName), StringComparer.Ordinal)
+            .ThenBy(p => p.UniqueName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string PersonKey(DevOpsPersonInfo p) =>
+        p.UniqueName.Trim().Length > 0 ? "u:" + p.UniqueName.Trim().ToLowerInvariant()
+        : p.Id.Length > 0 ? "i:" + p.Id.ToLowerInvariant()
+        : "n:" + Fold(p.DisplayName);
+
+    /// <summary>
+    /// Filtro <c>q</c>: todas as palavras no nome ou no login, sem caixa nem acento ("joao" acha "João"). Com <c>q</c> devolve até
+    /// <paramref name="top"/> (padrão 50); sem <c>q</c>, todos (ou <paramref name="top"/>, quando vier).
+    /// </summary>
+    public static List<DevOpsPersonInfo> FilterPeople(IEnumerable<DevOpsPersonInfo> people, string? q, int? top)
+    {
+        var words = Fold(q).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var list = words.Length == 0
+            ? people
+            : people.Where(p =>
+            {
+                var hay = Fold(p.DisplayName + " " + p.UniqueName);
+                return words.All(w => hay.Contains(w, StringComparison.Ordinal));
+            });
+        var limit = top is > 0 ? Math.Min(top.Value, 5000) : words.Length > 0 ? 50 : int.MaxValue;
+        return list.Take(limit).ToList();
+    }
+
+    /// <summary>Conta de serviço/sistema do DevOps (build, serviços da Microsoft, bots <c>guid@guid</c>) — não é pessoa para atribuir.</summary>
+    public static bool IsServiceIdentity(DevOpsPersonInfo p)
+    {
+        var login = p.UniqueName.Trim();
+        var name = p.DisplayName.Trim();
+        if (login.StartsWith("build\\", StringComparison.OrdinalIgnoreCase) || login.StartsWith("vstfs:", StringComparison.OrdinalIgnoreCase))
+            return true;
+        var at = login.IndexOf('@');
+        if (at > 0 && Guid.TryParse(login[..at], out _)) return true;
+        return name.StartsWith("Microsoft.", StringComparison.Ordinal)
+               || name.StartsWith("Project Collection ", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("Build Service", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Valor de <c>properties.{name}.$value</c> de uma identidade.</summary>
+    private static string? Property(JsonElement identity, string name) =>
+        identity.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object
+        && props.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Object ? Str(p, "$value") : null;
+
+    // ---------------------------------------------------------------- filtros salvos do épico (ajustes 1)
+
+    /// <summary>Valor do filtro de responsável para "sem responsável" (o mesmo do front).</summary>
+    public const string Unassigned = "__unassigned__";
+
+    /// <summary>Nomes aceitos para a lane padrão (que no DevOps não tem nome): vazio, "(padrão)", "padrão", "default"...</summary>
+    public static bool IsDefaultLaneAlias(string? lane)
+    {
+        var l = Fold(lane).Trim('(', ')', ' ');
+        return l.Length == 0 || l is "padrao" or "default" or "default lane" or "lane padrao";
+    }
+
+    /// <summary>
+    /// Filtros limpos: listas sem nulos/vazios/repetidos (sem caixa); lane padrão = <c>""</c>; "sem responsável" =
+    /// <see cref="Unassigned"/>; texto aparado. Null = vazio.
+    /// </summary>
+    public static DevOpsBoardFilters NormalizeBoardFilters(DevOpsBoardFilters? filters)
+    {
+        static List<string> CleanList(IEnumerable<string?>? values) =>
+            (values ?? []).Select(v => v?.Trim() ?? string.Empty).Where(v => v.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var lanes = new List<string>();
+        foreach (var raw in filters?.Lanes ?? [])
+        {
+            var lane = IsDefaultLaneAlias(raw) ? string.Empty : raw!.Trim();
+            if (!lanes.Contains(lane, StringComparer.OrdinalIgnoreCase)) lanes.Add(lane);
+        }
+        var people = CleanList(filters?.AssignedTo)
+            .Select(p => p.Equals(Unassigned, StringComparison.OrdinalIgnoreCase) || p == "-"
+                         || Fold(p).Trim('(', ')') is "unassigned" or "sem responsavel" or "ninguem" ? Unassigned : p)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return new DevOpsBoardFilters
+        {
+            Lanes = lanes,
+            HiddenColumns = CleanList(filters?.HiddenColumns),
+            Types = CleanList(filters?.Types),
+            States = CleanList(filters?.States),
+            AssignedTo = people,
+            Tags = CleanList(filters?.Tags),
+            Text = filters?.Text?.Trim() ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Lane do cartão como a tela agrupa: a do campo de lane quando é uma lane do board (com nome); vazia ou desconhecida = a
+    /// padrão (<c>""</c>). Chave sem caixa.
+    /// </summary>
+    public static string LaneKeyOf(DevOpsBoardItem item, DevOpsBoardConfig config)
+    {
+        var lane = item.Lane?.Trim() ?? string.Empty;
+        if (lane.Length == 0) return string.Empty;
+        var known = config.Lanes.FirstOrDefault(l => !l.IsDefault && string.Equals(l.Name.Trim(), lane, StringComparison.OrdinalIgnoreCase));
+        return known is null ? string.Empty : known.Name.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>Chave de uma lane do filtro: padrão = <c>""</c>; pelo id da lane do board ou pelo nome (sem caixa).</summary>
+    private static string FilterLaneKey(string lane, DevOpsBoardConfig config)
+    {
+        if (IsDefaultLaneAlias(lane)) return string.Empty;
+        var byId = config.Lanes.FirstOrDefault(l => l.Id.Equals(lane.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (byId is not null) return byId.IsDefault ? string.Empty : byId.Name.Trim().ToLowerInvariant();
+        var byName = config.Lanes.FirstOrDefault(l => l.Name.Trim().Equals(lane.Trim(), StringComparison.OrdinalIgnoreCase));
+        return byName is { IsDefault: true } ? string.Empty : lane.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>Chave do responsável no filtro (como o front): <c>uniqueName</c> (ou o nome) sem caixa; sem responsável = <see cref="Unassigned"/>.</summary>
+    public static string AssigneeKey(DevOpsBoardItem item)
+    {
+        var key = (item.AssignedTo?.UniqueName is { Length: > 0 } u ? u : item.AssignedTo?.DisplayName ?? string.Empty).Trim().ToLowerInvariant();
+        return key.Length > 0 ? key : Unassigned;
+    }
+
+    /// <summary>
+    /// Aplica os filtros salvos do épico aos cartões — mesma semântica da tela (<c>board.logic.ts</c>): colunas ocultas fora; lanes, tipos, estados e
+    /// responsáveis em OU dentro do filtro; tags exigem todas as escolhidas; texto = todas as palavras (sem caixa/acento, <c>#</c> na
+    /// frente ignorado) em id, título, tags, responsável, estado e tipo; filtros diferentes em E.
+    /// </summary>
+    public static List<DevOpsBoardItem> ApplyBoardFilters(IEnumerable<DevOpsBoardItem> items, DevOpsBoardFilters? filters, DevOpsBoardConfig config)
+    {
+        var f = NormalizeBoardFilters(filters);
+        if (f.IsEmpty) return items.ToList();
+        var lanes = f.Lanes.Select(l => FilterLaneKey(l, config)).ToHashSet(StringComparer.Ordinal);
+        // Coluna oculta pelo nome (ou pelo id da coluna do board); card sem coluna conhecida não some.
+        var hidden = f.HiddenColumns.Select(c => FindColumn(config, c)?.Name ?? c.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var types = f.Types.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var states = f.States.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var people = f.AssignedTo.Select(p => p.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
+        var words = Fold(f.Text).TrimStart('#').Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return items.Where(i =>
+        {
+            if (hidden.Count > 0 && !string.IsNullOrWhiteSpace(i.Column) && hidden.Contains(i.Column.Trim())) return false;
+            if (lanes.Count > 0 && !lanes.Contains(LaneKeyOf(i, config))) return false;
+            if (types.Count > 0 && !types.Contains(i.Type.Trim())) return false;
+            if (states.Count > 0 && !states.Contains(i.State.Trim())) return false;
+            if (people.Count > 0 && !people.Contains(AssigneeKey(i))) return false;
+            if (f.Tags.Count > 0 && !f.Tags.All(t => i.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))) return false;
+            if (words.Length > 0)
+            {
+                var hay = Fold(string.Join(' ', new[] { i.Id.ToString(CultureInfo.InvariantCulture), i.Title }
+                    .Concat(i.Tags).Append(i.AssignedTo?.DisplayName ?? string.Empty).Append(i.State).Append(i.Type)));
+                if (!words.All(w => hay.Contains(w, StringComparison.Ordinal))) return false;
+            }
+            return true;
+        }).ToList();
+    }
+
+    /// <summary>Texto sem acento, em minúsculas, espaços simples nas pontas aparados — para buscas ("João" ≈ "joao").</summary>
+    public static string Fold(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var decomposed = text.Trim().Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var ch in decomposed)
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+                sb.Append(char.IsWhiteSpace(ch) ? ' ' : char.ToLowerInvariant(ch));
+        return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
+
     // ---------------------------------------------------------------- utilidades
 
     public static string? FieldText(IReadOnlyDictionary<string, JsonElement> fields, string field) =>
