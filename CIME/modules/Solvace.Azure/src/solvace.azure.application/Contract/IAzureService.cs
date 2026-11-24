@@ -55,6 +55,12 @@ public interface IAzureService
     Task<AzureAttachmentDownload> DownloadAttachmentAsync(string url, long maxBytes, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 0101: lê uma página de wiki do DevOps e as subpáginas (markdown), pela URL de navegador
+    /// (<c>https://dev.azure.com/{org}/{projeto}/_wiki/wikis/{wiki}/{id}/...</c>). Só da organização configurada.
+    /// </summary>
+    Task<IReadOnlyList<AzureWikiPage>> GetWikiPagesAsync(string url, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Ids dos work items que casam com a consulta WIQL (0039: regra automática da fila), do projeto configurado, no
     /// máximo <paramref name="top"/>. Erro do DevOps vira exceção com a mensagem dele.
     /// </summary>

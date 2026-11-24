@@ -68,5 +68,5 @@ interface StandardFinding { key: string; code: string; title: string; effect: st
 | F1 | Aba "Padrões" na Governança: lista por área/assunto/estado, filtros, detalhe EN/PT com exemplos, editar efeito/estado/aplica-se/conferência, testar conferência num texto | front | contrato |
 | F2 | Importar wiki / ER: rascunho com diferença por item (novo/mudou/saiu), aceitar em lote, histórico | front | F1 |
 | F3 | Aderência: achados por padrão/repositório/card (a partir da trilha), atalho da Auditoria | front | F1 |
-| Q1 | Testes: parser com a cópia da wiki (103 itens, 28 NEW), conferidor (exemplos certo/errado da própria wiki viram casos de teste), escopo `dbo`, efeitos/modo, for-card; skills; specs do front | | B*, S*, F* |
+| Q1 | Testes: parser com a cópia da wiki (104 itens, 28 NEW, 1 CHANGED), conferidor (exemplos certo/errado da própria wiki viram casos de teste), escopo `dbo`, efeitos/modo, for-card; skills; specs do front | | B*, S*, F* |
 | Q2 | e2e local + A/B da Bancada (como na 0098) | | Q1 |

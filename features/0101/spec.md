@@ -16,7 +16,7 @@ no que foi produzido.
 
 - Página 236 + 9 subpáginas (Check, Default, FK, Índice, PK, Procedure, Tabela, Índice Único, View), v2.0 "Rascunho para
   revisão do DBA" (responsável: Claudio Arruda), SQL Server (bancos Global e Local), bilíngue EN/PT.
-- **103 regras com ID** (G1–G8, N1–N14, C1–C2, S1–S5, R1–R7, CK, DF, FK1–FK10, IX1–IX11, PK1–PK10, P1–P7, T1–T7,
+- **104 regras com ID** (G1–G8, N1–N14, C1–C2, S1–S5, R1–R7, CK, DF, FK1–FK10, IX1–IX11, PK1–PK10, P1–P7, T1–T7,
   IXU1–IXU6, V1–V7); **28 marcadas (NEW)** = propostas que o DBA ainda precisa validar; padrões de nome por objeto
   (`PK_[schema]_[Table]`, `FK_[schema]_[Table]_[Column]`, `IX_…_NN`, `IXU_…_NN`, `DF_…`, `CK_…`, `vw`, `pr`), exemplos
   certo/errado, checklist de code review e **scripts SQL de validação** contra o catálogo (`sys.*`).

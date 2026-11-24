@@ -40,6 +40,21 @@ public class GovernanceRepository(GovernanceContext db) : IGovernanceRepository
         return settings;
     }
 
+    public Task<List<GovernanceStandard>> GetStandardsAsync(CancellationToken ct = default) =>
+        db.Standards.OrderBy(x => x.Area).ThenBy(x => x.Order).ThenBy(x => x.Key).ToListAsync(ct);
+
+    public Task<GovernanceStandard?> GetStandardAsync(Guid id, CancellationToken ct = default) =>
+        db.Standards.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public void AddStandard(GovernanceStandard standard) => db.Standards.Add(standard);
+
+    public void RemoveStandard(GovernanceStandard standard) => db.Standards.Remove(standard);
+
+    public Task<GovernanceStandardDraft?> GetDraftAsync(Guid id, CancellationToken ct = default) =>
+        db.StandardDrafts.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public void AddDraft(GovernanceStandardDraft draft) => db.StandardDrafts.Add(draft);
+
     public void AddEvents(IEnumerable<GovernanceEvent> events) => db.Events.AddRange(events);
 
     public async Task<(int Total, List<GovernanceEvent> Items)> QueryEventsAsync(GovernanceEventFilter f, CancellationToken ct = default)
