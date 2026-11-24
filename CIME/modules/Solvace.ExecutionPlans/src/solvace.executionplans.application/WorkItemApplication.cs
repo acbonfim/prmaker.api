@@ -757,7 +757,7 @@ public class WorkItemApplication : IWorkItemApplication
             ? await trigger.PlanChangedAsync(plan, ExecutionRequestSource.Button, actor, explicitRequest: true, ct)
             : null;
         if (request is null && QueueRepository is { } queue && await queue.GetActiveRequestForCardAsync(plan.CardNumber, ct) is null)
-            throw new DomainException("Não deu para retomar o plano: o dono do plano não tem executor ligado (ou o plano acabou de rodar). Tente de novo em instantes.");
+            throw new DomainException("Não deu para retomar o plano: você não tem executor do PRMake ligado (o item roda na sua máquina, com as suas credenciais) — instale em \"Meus executores\" — ou o plano acabou de rodar. Tente de novo em instantes.");
     }
 
     /// <summary>

@@ -470,7 +470,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
             return null;
         if (plan.Status == ExecutionStatus.Failed && !explicitRequest)
             return null;
-        if (plan.CreatedByUserId is not { } owner)
+        // Card 78723 (segurança): a retomada roda na máquina de QUEM AGIU na tela — o executor usa o token, o gh e as
+        // integrações do dono da máquina. Nunca na máquina de quem criou o plano: a ação sairia com o nome de outra pessoa.
+        if (actor.UserId is not { } owner || owner == Guid.Empty)
             return null;
 
         var workers = (await _queue.GetWorkersByOwnerAsync(owner, cancellationToken)).Where(w => !w.IsRevoked).ToList();
@@ -487,13 +489,15 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         if (alive)
             return null;
 
+        // A sessão só é retomada na máquina dela se a máquina for de quem agiu; noutra máquina o executor abre uma sessão
+        // nova que retoma pelo plano.
         var session = plan.CurrentSession;
         var target = session?.Host is { } host
             ? workers.FirstOrDefault(w => string.Equals(w.Host, host, StringComparison.OrdinalIgnoreCase))?.Id
             : null;
         // 0080: sem espera depois de comentário — a conversa é do Especialista do caso; o que chega ao plano é decisão
         // explícita (proposta aceita, "Levar para o plano") e começa na hora.
-        var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, plan.CreatedBy,
+        var request = new ExecutionRequest(plan.CardNumber, ExecutionRequestKind.Resume, source, owner, actor.Name,
             actor.UserId, actor.Name, plan.Id, session, target, null, false, now);
         var saved = await AddRequestAsync(request, cancellationToken);
         if (saved is not null && saved.Id == request.Id)
