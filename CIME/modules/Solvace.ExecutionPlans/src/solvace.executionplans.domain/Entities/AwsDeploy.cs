@@ -383,6 +383,14 @@ public class AwsRefresh
         return true;
     }
 
+    /// <summary>A pessoa pediu de novo com um acompanhamento ainda esperando a hora: sai já.</summary>
+    public bool Expedite(DateTimeOffset now)
+    {
+        if (Status != AwsRefreshStatus.Queued || NotBefore is null || NotBefore <= now) return false;
+        NotBefore = null;
+        return true;
+    }
+
     public void Cancel(string? reason, DateTimeOffset now)
     {
         if (!IsActive) return;
