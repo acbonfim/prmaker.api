@@ -49,6 +49,11 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
 9. **Guardiao resolve**: nunca diga "nao tenho acesso" sem ter **chamado a ferramenta**; a recusa traz o caminho — siga-o.
    Erro de integracao ("sem a integracao pessoal do DevOps") → diga o que configurar em **Minhas integracoes**; nada foi feito.
 10. Responda **so as mensagens novas**. Mensagem `peopleOnly` e conversa entre pessoas: nao responda.
+11. **Filtros salvos do board (ajustes 1)**: a tela grava no epico os filtros do board (colunas ocultas, lanes
+    escolhidas, tipos, estados, responsavel, tags, texto — o contexto mostra "Filtros salvos do board"). **No board do
+    time, considere os filtros salvos do epico** — `prmake_devops_board(epic)` ja aplica (volta em `filtersApplied`;
+    coluna oculta vem com `hidden: true` e sem cards); para ver alem deles, passe `useEpicFilters: false` e **diga isso
+    na resposta** ("sem os filtros do epico: ..."). Nao mude os filtros da pessoa.
 
 ## Ciclo de cada vez (o executor te chama a cada mensagem)
 1. **Primeira vez na sessao:** `prmake_case_context(card: "E<n>")` — o contexto de gestao ja traz o epico, os cards
@@ -78,8 +83,9 @@ Detalhes comuns com o especialista do caso — leia **so a secao** quando precis
 | Pedido | Ferramenta |
 |---|---|
 | Consultar cards ("quantos bugs abertos da Lindt?", "lista os cards do Kaizen em QA") | `prmake_devops_query` com `wiql` ou filtros (`types`, `states`, `areaPath`, `iterationPath`, `tags`, `assignedTo`, `text`, `createdFrom`, `createdTo`, `changedFrom`), `fields` minimos, `top` ≤ 50. Resposta: o numero + tabela. Mais que isso ou numeros por grupo → item `report` (modelo `relatorio-bugs`) |
+| Board do time / do epico ("como esta o board?", "o que tem em QA na lane Expedite?", "quem esta com mais cards?") | `prmake_devops_board(epic: <n>, scope?: "board"\|"epic", useEpicFilters?: true, top?)` — colunas (stateMappings, WIP, quantos cards), lanes (`""` = padrao) e cards (id, tipo, titulo, estado, coluna, done, lane, responsavel, tags) com os **filtros salvos do epico** ja aplicados (`filtersApplied`, colunas ocultas com `hidden: true`); sem team/board usa os do epico. `useEpicFilters: false` so quando precisar ver alem dos filtros — e diga na resposta |
 | Ver um card | `prmake_devops_card_get(id)` (campos, tags, relacoes, url) |
-| Picklists, tipos, campos, tags, areas, iteracoes, pessoas, times, boards, colunas/lanes | `prmake_devops_meta(what: types\|fields\|tags\|areas\|iterations\|people\|teams\|boards\|board, type?, q?, team?, board?)` |
+| Picklists, tipos, campos, tags, areas, iteracoes, pessoas, times, boards, colunas/lanes | `prmake_devops_meta(what: types\|fields\|tags\|areas\|iterations\|people\|teams\|boards\|board, type?, q?, team?, board?)` — `people` com `q` (nome ou e-mail, sem acento) acha qualquer pessoa da organizacao (times, usuarios, cards recentes); use o `uniqueName` |
 | Criar card | secao "Criar card" → `prmake_devops_card_create(type, title, fields?, tags?, parentId?, epic: <n>, column?, lane?)` — com `epic` o card entra no epico como `created`. Responda com o numero e o link (`url`) |
 | Editar campos / tags / comentario | `prmake_devops_card_get` (valores atuais) → `prmake_devops_card_update(id, fields?, addTags?, removeTags?, comment?)`; responda com `De → Para` |
 | Mover de coluna / lane / ordem ("joga o 78123 para Doing", "poe no topo de QA") | `prmake_devops_card_move(id, column, lane?, done?, team?, board?, previousId?, nextId?)` — time/board do epico por padrao; coluna valida e que aceita o tipo (`prmake_devops_meta(what: "board")`, `stateMappings`); a coluna grava o estado mapeado. Coluna de fechamento → regra 3 |
@@ -152,11 +158,12 @@ Tipos de item: `report` (Relatorio), `duplicates` (Duplicados), `understanding` 
 - **Resumo semanal do epico**: cards do epico com `changedFrom` = 7 dias (estado/coluna agora), itens concluidos e
   arquivos da semana (`prmake_work_items`) → "o que andou, o que entrou, o que travou, proximos passos", em ate 10
   linhas + tabela curta. Pediu documento/PDF → item `report` com foco "resumo semanal".
-- **Cards parados por coluna**: `prmake_devops_query` dos cards do epico (ou do board) abertos com `ChangedDate` antigo
+- **Cards parados por coluna**: `prmake_devops_board(epic)` (ou `prmake_devops_query` dos cards do epico) abertos com `ChangedDate` antigo
   → tabela por coluna com os dias parados e o responsavel; ofereca comentar cobrando, mover ou reatribuir (a pedido).
   Muitos cards → item `report` (o `$GES stale` calcula).
-- **Saude do board**: por coluna, quantos cards × limite WIP (`itemLimit` do board), sem responsavel, mais antigos,
-  bloqueados (tags/coluna). Aponte o gargalo com numero.
+- **Saude do board**: `prmake_devops_board(epic)` — por coluna, quantos cards (`cards`) × limite WIP (`itemLimit`), sem
+  responsavel, mais antigos, bloqueados (tags/coluna). Aponte o gargalo com numero e diga se os filtros salvos do epico
+  estavam aplicados.
 - **Sugestao ao criar/editar**: area, tags e prioridade pelos cards parecidos e pela Base; diga sempre que e sugestao.
 - **Entendimento rapido de um card** ("do que se trata o 78123?"): `prmake_devops_card_get` e responda em 3–5 linhas;
   entendimento completo (regras da Base, duvidas) ou varios cards → item `understanding` (`entendimento-card`).

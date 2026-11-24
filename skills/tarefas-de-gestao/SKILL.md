@@ -87,6 +87,10 @@ para duplicados/entendimento).
    resultado com `prmake_work_item_file(..., name: "consulta-<slug>.json", kind: "data")`.
 3. `result`: manchete (`**142 bugs abertos nos ultimos 90 dias.**`), a consulta em ```sql```, a contagem por estado e a
    tabela das primeiras ~20 linhas (card, tipo, estado, titulo); diga o total e se o `top` cortou.
+- Fonte "board do time" (params `source: board`, ou a descricao fala do board/colunas/lanes) num item de epico: use
+  `prmake_devops_board(epic: <n>)` — ja aplica os **filtros salvos do epico** (colunas ocultas, lanes, tipos, estados,
+  responsavel, tags, texto; `filtersApplied`) e traz coluna/lane de cada card; grave com `prmake_work_item_file(..., kind: "data")`. Sem os
+  filtros (`useEpicFilters: false`) so quando a sub-tarefa pedir — e diga no `result`.
 - `output {file, count, query}` · `undo none {reason:"so leitura"}`
 
 ### `devops-create` — criar card(s)
