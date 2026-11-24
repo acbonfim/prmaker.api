@@ -19,6 +19,8 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\solvace.executionplans.domain\solvace.executionplans.domain.csproj" />
         <ProjectReference Include="..\..\src\solvace.executionplans.application\solvace.executionplans.application.csproj" />
+        <!-- 0099: renderizador de PDF (markdown → PDF) mora no infra. -->
+        <ProjectReference Include="..\..\src\solvace.executionplans.infra\solvace.executionplans.infra.csproj" />
     </ItemGroup>
 
 </Project>
