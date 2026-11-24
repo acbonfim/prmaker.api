@@ -1,0 +1,26 @@
+import { open, shot, sleep } from './lib.mjs';
+const epic = process.argv[2];
+let { browser, page, logs } = await open({ width: 1600, height: 960, who: 'maria' });
+const menu = async () => page.$$eval('app-side-menu a, app-side-menu button', els => els.map(e => (e.getAttribute('aria-label') || e.getAttribute('mattooltip') || e.textContent).trim()).filter(Boolean));
+await page.goto('http://localhost:4399/auth/workbench?card=90001', { waitUntil: 'networkidle2' }); await sleep(2000);
+console.log('maria /workbench ->', page.url());
+console.log('maria menu', JSON.stringify(await menu()));
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}`, { waitUntil: 'networkidle2' }); await sleep(3000);
+await shot(page, 'r2-01-board-mgmt');
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}&tab=stories`, { waitUntil: 'networkidle2' }); await sleep(2500);
+await shot(page, 'r2-02-historias');
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}&tab=cards`, { waitUntil: 'networkidle2' }); await sleep(2500);
+await shot(page, 'r2-03-acompanhamento');
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}&card=90004`, { waitUntil: 'networkidle2' }); await sleep(2500);
+const hasWb = await page.evaluate(() => document.body.innerText.includes('Abrir na Bancada'));
+console.log('maria painel tem "Abrir na Bancada"?', hasWb);
+// combo de pessoas
+const inputs = await page.$$('app-devops-card-panel input');
+await shot(page, 'r2-04-painel');
+console.log('LOGS maria', logs.filter(l => !l.includes('NG0303') && !l.includes('ERR_CONNECTION_REFUSED') && !l.includes('Failed to load resource')).join('\n'));
+await browser.close();
+({ browser, page, logs } = await open({ width: 1600, height: 960, who: 'bruno' }));
+await page.goto(`http://localhost:4399/auth/desk?epic=${epic}`, { waitUntil: 'networkidle2' }); await sleep(2000);
+console.log('dev /desk ->', page.url());
+console.log('dev menu', JSON.stringify(await menu()));
+await browser.close();
