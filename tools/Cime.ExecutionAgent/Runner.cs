@@ -100,7 +100,7 @@ public sealed class Runner(AgentConfig config)
                 failures = 0;
                 if (claim is null)
                 {
-                    await WaitWakeAsync(IdleWait(_relay.Connected, _state), stopping);
+                    await IdleAsync(client, stopping);
                     continue;
                 }
                 StartJob(client, claim, stopping);
@@ -343,6 +343,37 @@ public sealed class Runner(AgentConfig config)
     public static TimeSpan IdleWait(bool relayConnected, WorkerState state) =>
         relayConnected && state.ReportEverySeconds is not > 0 ? IdleWithRelay : NextPollEvery;
 
+    /// <summary>1.9.2: com o relay falhando, pergunta "tem pedido?" (1 consulta) a cada <see cref="ReadyPollEvery"/>.</summary>
+    public static readonly TimeSpan ReadyPollEvery = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Fila vazia. Relay em ordem: espera o aviso (ou a reserva). Relay falhando: a cada <see cref="ReadyPollEvery"/> pergunta
+    /// ao PRMake se há pedido (o next completo custa ~11 consultas e passava a cada 10 s — 15 s de fila numa pergunta da Base).
+    /// </summary>
+    private async Task IdleAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var wait = IdleWait(_relay?.Connected == true, _state);
+        if (_state.ReportEverySeconds is not > 0)
+        {
+            await WaitWakeAsync(wait, stopping);
+            return;
+        }
+        var until = DateTimeOffset.UtcNow + wait;
+        while (!stopping.IsCancellationRequested && DateTimeOffset.UtcNow < until)
+        {
+            if (await WaitWakeAsync(ReadyPollEvery, stopping)) return;
+            try
+            {
+                if (await client.ReadyAsync(stopping)) return;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                return; // o next mostra o erro (e espera do jeito de sempre)
+            }
+            if (_state.ReportEverySeconds is not > 0) return; // o relay voltou
+        }
+    }
+
     /// <summary>Intervalo entre consultas da fila quando está vazia e o relay de tempo real não está conectado.</summary>
     private static readonly TimeSpan NextPollEvery = TimeSpan.FromSeconds(10);
     /// <summary>Conectado ao relay: reserva (o aviso do relay e o queueReady do sinal de vida, a cada minuto, vêm antes).</summary>
@@ -465,14 +496,16 @@ public sealed class Runner(AgentConfig config)
         }
     }
 
-    private async Task WaitWakeAsync(TimeSpan timeout, CancellationToken ct)
+    /// <summary>true = acordado (aviso do relay ou queueReady do sinal de vida); false = venceu o tempo.</summary>
+    private async Task<bool> WaitWakeAsync(TimeSpan timeout, CancellationToken ct)
     {
         try
         {
-            await _wake.WaitAsync(timeout, ct);
+            return await _wake.WaitAsync(timeout, ct);
         }
         catch (OperationCanceledException)
         {
+            return false;
         }
     }
 

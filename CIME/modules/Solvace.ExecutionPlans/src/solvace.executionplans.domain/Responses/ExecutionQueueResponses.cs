@@ -366,6 +366,12 @@ public static class ExecutionQueueResponseExtensions
     }
 }
 
+/// <summary>Resposta do GET ExecutionQueue/ready (o executor com o relay fora).</summary>
+public class ExecutionQueueReadyResponse
+{
+    public bool Ready { get; set; }
+}
+
 /// <summary>0102: pergunta à Base Solvace respondida pelo executor — andamento (do pedido) e a resposta.</summary>
 public class BaseQuestionResponse
 {

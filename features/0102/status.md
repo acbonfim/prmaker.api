@@ -17,6 +17,13 @@
 
 ## Log
 
+- 2026-11-25 — **Pergunte rápido 2 (fix/pergunte-rapida-2, executor 1.9.2)**: pergunta real logo após o deploy da 1.9.1 levou ~65 s —
+  POST 5,5 s (busca adiantada estourou 1,5 s com o índice frio + sonda do relay 3 s), 15 s de fila (poll de 10 s + next de 4,3 s
+  com o relay), busca do Claude de 25 s (o índice da ER — ~60 mil itens em memória — carregando na instância nova). Correções:
+  `ReverseIndexWarmup` (carrega ao subir, a cada 5 min e ao abrir a tela da Base; a busca adiantada espera por ele em vez de
+  cancelar a carga); relay fora → nenhuma requisição espera (sonda em segundo plano a cada 15 s, o resto descartado);
+  `GET ExecutionQueue/ready` (2 SQL) que o executor consulta a cada 3 s com o relay fora, em vez do next a cada 10 s.
+
 - 2026-11-25 — **Pergunte mais rápido (fix/pergunte-rapida, executor 1.9.1)**, depois do HAR do usuário (pergunta simples em ~20 s;
   outras de 1 min 42 s e ~85 s). Medido em produção: relay de tempo real fora de novo (28 falhas na hora 13 UTC) — cada aviso
   segurava a requisição 3 s (POST 11 s, `next` 13 s, `start` 6 s) e o aviso de fila se perdia (71 s na fila); 1ª busca depois do

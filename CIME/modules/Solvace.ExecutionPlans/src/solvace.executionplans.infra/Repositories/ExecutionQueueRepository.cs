@@ -119,6 +119,10 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .ToListAsync(cancellationToken))
         .ToDictionary(x => x.Key, x => x.Count);
 
+    public Task<bool> HasQueuedReadyAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        _context.Requests.AsNoTracking().AnyAsync(r => r.OwnerUserId == ownerUserId && r.Status == ExecutionRequestStatus.Queued
+                                                       && (r.NotBefore == null || r.NotBefore <= now), cancellationToken);
+
     public async Task<Dictionary<Guid, int>> CountActiveBaseAsksByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         (await _context.Requests.AsNoTracking()
             .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && r.Kind == ExecutionRequestKind.BaseAsk && Busy.Contains(r.Status))

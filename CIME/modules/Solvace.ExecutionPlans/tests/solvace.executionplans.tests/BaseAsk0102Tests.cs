@@ -197,6 +197,20 @@ public class BaseAsk0102Tests
         Assert.Equal(0, queue.Calls(nameof(IExecutionQueueRepository.GetQueuedForOwnerAsync)));
     }
 
+    [Fact]
+    public async Task Executor_asks_cheaply_if_there_is_something_to_do()
+    {
+        var alex = Machine(Alex);
+        var (app, _) = Create(alex);
+        Assert.False(await app.IsQueueReadyAsync(alex.Id, CancellationToken.None));
+
+        await app.AskBaseAsync(AlexOnScreen, "Como transfiro um usuário?", false, [], CancellationToken.None);
+
+        Assert.True(await app.IsQueueReadyAsync(alex.Id, CancellationToken.None));
+        alex.Pause(DateTimeOffset.UtcNow);
+        Assert.False(await app.IsQueueReadyAsync(alex.Id, CancellationToken.None));
+    }
+
     private class FakeQueue : DispatchProxy
     {
         public List<ExecutionWorker> Workers { get; private set; } = [];
@@ -250,6 +264,9 @@ public class BaseAsk0102Tests
                     var main = CountBusy((Guid)args![0]!, r => ExecutionLane.Of(r.Kind) == ExecutionLane.Main);
                     foreach (var (k, v) in Busy) main[k] = Math.Max(main.GetValueOrDefault(k), v);
                     return Task.FromResult(main);
+                case nameof(IExecutionQueueRepository.HasQueuedReadyAsync):
+                    return Task.FromResult(Requests.Any(r => r.OwnerUserId == (Guid)args![0]! && r.Status == ExecutionRequestStatus.Queued
+                                                             && (r.NotBefore is null || r.NotBefore <= (DateTimeOffset)args[1]!)));
                 case nameof(IExecutionQueueRepository.CountActiveBaseAsksByWorkerAsync):
                     return Task.FromResult(CountBusy((Guid)args![0]!, r => r.Kind == ExecutionRequestKind.BaseAsk));
             }

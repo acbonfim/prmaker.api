@@ -213,6 +213,13 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         return await TryClaimAsync(worker, DateTimeOffset.UtcNow, cancellationToken);
     }
 
+    public async Task<bool> IsQueueReadyAsync(Guid workerId, CancellationToken cancellationToken)
+    {
+        var worker = await RequireWorkerAsync(workerId, cancellationToken);
+        return worker.Status == ExecutionWorkerStatus.Active
+               && await _queue.HasQueuedReadyAsync(worker.OwnerUserId, DateTimeOffset.UtcNow, cancellationToken);
+    }
+
     public async Task<ExecutionRequestResponse> StartAsync(Guid requestId, Guid workerId, StartExecutionRequestRequest request, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;

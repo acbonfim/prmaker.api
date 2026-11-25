@@ -214,6 +214,11 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
 
     private const string DeepSpecialistPhase = "specialist-deep";
 
+    /// <summary>Com o relay fora: o executor pergunta aqui (1 SQL) a cada poucos segundos e só chama o next quando há pedido.</summary>
+    [HttpGet("ready")]
+    public Task<ActionResult<ExecutionQueueReadyResponse>> Ready(CancellationToken ct) =>
+        Run<ExecutionQueueReadyResponse>(async () => Ok(new ExecutionQueueReadyResponse { Ready = await queue.IsQueueReadyAsync(RequireWorkerId(), ct) }));
+
     [HttpPost("{id:guid}/start")]
     public Task<ActionResult<ExecutionRequestResponse>> Start([FromRoute] Guid id, [FromBody] StartExecutionRequestRequest request, CancellationToken ct) =>
         Run<ExecutionRequestResponse>(async () => Ok(await queue.StartAsync(id, RequireWorkerId(), request, ct)));

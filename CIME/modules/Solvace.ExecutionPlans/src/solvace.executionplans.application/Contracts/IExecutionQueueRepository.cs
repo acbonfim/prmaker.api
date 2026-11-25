@@ -34,6 +34,8 @@ public interface IExecutionQueueRepository
     Task<Dictionary<Guid, int>> CountActiveSpecialistsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>0085: quantos pedidos de itens de trabalho (pegos/rodando) cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>Há pedido do dono na fila que já pode começar (sem espera marcada)? Uma consulta — o executor pergunta a cada poucos segundos com o relay fora.</summary>
+    Task<bool> HasQueuedReadyAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken);
     /// <summary>0102: quantas perguntas da Base Solvace (pegas/rodando) cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveBaseAsksByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     void AddBaseQuestion(BaseQuestion question);
