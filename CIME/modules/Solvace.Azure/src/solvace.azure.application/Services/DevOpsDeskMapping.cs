@@ -15,7 +15,7 @@ public sealed record DevOpsPatchOp(string Op, string Path, object? Value = null)
 /// hash estável), JSON Patch de criar/editar/mover, tags, WIQL dos filtros, árvore de áreas/iterações. Sem I/O: os testes
 /// conferem tudo isso sem o DevOps.
 /// </summary>
-public static class DevOpsDeskMapping
+public static partial class DevOpsDeskMapping
 {
     public const string FieldId = "System.Id";
     public const string FieldTitle = "System.Title";

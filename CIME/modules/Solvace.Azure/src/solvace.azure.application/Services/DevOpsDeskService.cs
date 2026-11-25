@@ -664,13 +664,108 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         return new DevOpsCardWriteResult(card, summary.ToString(), plan.Ops.Count == 0 ? "reordered" : "moved");
     }
 
-    public async Task<int> CommentAsync(int id, string markdown, CancellationToken cancellationToken = default)
+    public Task<int> CommentAsync(int id, string markdown, CancellationToken cancellationToken = default) =>
+        CommentAsync(id, markdown, null, cancellationToken);
+
+    public async Task<int> CommentAsync(int id, string markdown, IReadOnlyList<DevOpsMention>? mentions, CancellationToken cancellationToken = default)
     {
         if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
         if (string.IsNullOrWhiteSpace(markdown)) throw DevOpsDeskException.Invalid("Escreva o comentário.");
         await EnsureConfigAsync(cancellationToken);
+        var people = await MentionTargetsAsync(mentions, cancellationToken);
+        var html = DevOpsDeskMapping.LinkMentions(UserStorySpec.ToHtml(markdown), BrowserUrl, people);
         using var doc = await SendAsync(HttpMethod.Post, $"{ProjectApi}/wit/workItems/{id}/comments?api-version={CommentsApi}",
-            new { text = UserStorySpec.ToHtml(markdown) }, $"O DevOps recusou o comentário no card {id}", cancellationToken);
+            new { text = html }, $"O DevOps recusou o comentário no card {id}", cancellationToken);
         return doc.RootElement.TryGetProperty("id", out var c) && c.TryGetInt32(out var v) ? v : 0;
+    }
+
+    /// <summary>GUID de cada pessoa mencionada: o <c>Id</c> quando já é GUID; senão a busca de identidades pelo login (melhor esforço).</summary>
+    private async Task<List<DevOpsDeskMapping.MentionTarget>> MentionTargetsAsync(IReadOnlyList<DevOpsMention>? mentions, CancellationToken ct)
+    {
+        var result = new List<DevOpsDeskMapping.MentionTarget>();
+        foreach (var m in mentions ?? [])
+        {
+            var name = m.DisplayName?.Trim() ?? string.Empty;
+            if (name.Length == 0) continue;
+            if (Guid.TryParse(m.Id, out var guid))
+            {
+                result.Add(new(name, guid.ToString()));
+                continue;
+            }
+            var login = m.UniqueName?.Trim() ?? string.Empty;
+            try
+            {
+                var found = await SearchIdentitiesAsync(login.Length > 0 ? login : name, ct);
+                var match = login.Length > 0
+                    ? found.FirstOrDefault(p => string.Equals(p.UniqueName, login, StringComparison.OrdinalIgnoreCase))
+                    : found.FirstOrDefault(p => DevOpsDeskMapping.Fold(p.DisplayName) == DevOpsDeskMapping.Fold(name));
+                if (match is not null && Guid.TryParse(match.Id, out var id))
+                    result.Add(new(name, id.ToString()));
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested && e is DevOpsActionException or HttpRequestException or JsonException)
+            {
+                logger.LogInformation("Mesa de gestão: menção de {Name} sem identidade no DevOps (fica texto): {Error}", name, e.Message);
+            }
+        }
+        return result;
+    }
+
+    public async Task<DevOpsCommentsResponse> GetCommentsAsync(int id, int top = 200, CancellationToken cancellationToken = default)
+    {
+        if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
+        await EnsureConfigAsync(cancellationToken);
+        using var doc = await GetAsync($"{ProjectApi}/wit/workItems/{id}/comments?$top={Math.Clamp(top, 1, 200)}&order=desc&$expand=renderedText&api-version={CommentsApi}",
+            $"O DevOps não devolveu a discussion do card {id}", cancellationToken);
+        return DevOpsDeskMapping.ParseComments(doc.RootElement);
+    }
+
+    public async Task<IReadOnlyList<DevOpsAttachmentInfo>> GetAttachmentsAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
+        await EnsureConfigAsync(cancellationToken);
+        using var doc = await GetAsync($"{ProjectApi}/wit/workitems/{id}?$expand=all&api-version={Api}", $"O DevOps não devolveu o card {id}", cancellationToken);
+        DevOpsCommentsResponse comments;
+        try
+        {
+            comments = await GetCommentsAsync(id, 200, cancellationToken);
+        }
+        catch (DevOpsActionException)
+        {
+            // Sem a discussion: seguem os anexos do card e os dos campos.
+            comments = new DevOpsCommentsResponse(0, []);
+        }
+        return DevOpsDeskMapping.ParseAttachments(doc.RootElement, DevOpsDeskMapping.EvidenceComments(comments.Comments));
+    }
+
+    public async Task<DevOpsAttachmentContent> DownloadAttachmentAsync(Guid attachmentId, string? name, long maxBytes, CancellationToken cancellationToken = default)
+    {
+        if (attachmentId == Guid.Empty) throw DevOpsDeskException.Invalid("Informe o anexo.");
+        await EnsureConfigAsync(cancellationToken);
+        var fileName = string.IsNullOrWhiteSpace(name) ? $"anexo-{attachmentId.ToString()[..8]}" : AzureCardEvidenceParser.SafeName(name.Trim());
+        var url = $"{OrganizationUrl}/_apis/wit/attachments/{attachmentId}?fileName={Uri.EscapeDataString(fileName)}&download=true&api-version={Api}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var response = await CreateClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NonAuthoritativeInformation)
+            throw new DevOpsDeskException(403, "devops_forbidden",
+                "O DevOps não aceitou o token (PAT) da sua integração — confira em \"Minhas integrações\" (AzureDevOps Configurations).");
+        if (!response.IsSuccessStatusCode)
+            throw DevOpsDeskException.FromDevOps((int)response.StatusCode,
+                $"O DevOps não devolveu o anexo {fileName}: {ExtractDevOpsError(await response.Content.ReadAsStringAsync(cancellationToken))}");
+        var media = response.Content.Headers.ContentType?.MediaType;
+        var contentType = string.IsNullOrWhiteSpace(media) || media.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+            ? DevOpsDeskMapping.ContentTypeFromName(fileName)
+            : media;
+        var declared = response.Content.Headers.ContentLength;
+        if (declared > maxBytes) return new DevOpsAttachmentContent([], contentType, fileName, true, declared);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > maxBytes) return new DevOpsAttachmentContent([], contentType, fileName, true, null);
+        }
+        return new DevOpsAttachmentContent(buffer.ToArray(), contentType, fileName, false, buffer.Length);
     }
 }

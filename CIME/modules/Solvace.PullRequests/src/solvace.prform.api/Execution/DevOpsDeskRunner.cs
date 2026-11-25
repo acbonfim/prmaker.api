@@ -98,9 +98,10 @@ public class DevOpsDeskRunner(IDevOpsDeskService devops, ITimelineApplication ti
         return result;
     }
 
-    public async Task<int> CommentAsync(int id, string markdown, ClaimsPrincipal user, CancellationToken ct, string? via = null)
+    public async Task<int> CommentAsync(int id, string markdown, ClaimsPrincipal user, CancellationToken ct, string? via = null,
+        IReadOnlyList<DevOpsMention>? mentions = null)
     {
-        var commentId = await devops.CommentAsync(id, markdown, ct);
+        var commentId = await devops.CommentAsync(id, markdown, mentions, ct);
         await TimelineAsync(id.ToString(), $"Comentário publicado na discussion do card #{id}", user, via, ct);
         await NotifyAsync([id.ToString()], DevOpsRealTimeEvents.Actions.Updated, ct);
         return commentId;

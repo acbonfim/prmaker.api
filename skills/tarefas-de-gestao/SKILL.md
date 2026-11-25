@@ -180,7 +180,9 @@ palavras genericas), **termos-chave** em comum, **passos de reproducao/descricao
 Params usuais: `card` (ou `cards`), `focus`.
 1. Card inteiro (so leitura): `OUTDIR=~/.prmake/cards/<card>/dados bash $AB/bug-fetch.sh <card>` e leia **inteiros**
    `card-resumo.txt`, `description.txt`, `criterios-aceite.txt` (US) e `discussion.txt`. Ja tratado na Bancada?
-   `prmake_case_context(<card>)` e `prmake_work_items(<card>)` (analise, decisoes, itens) — use, nao refaca.
+   `prmake_case_context(<card>)` e `prmake_work_items(<card>)` (analise, decisoes, itens) — use, nao refaca. Anexos e prints
+   (descricao, Repro Steps, discussion): `prmake_devops_card_attachments(<card>)` → `prmake_devops_card_attachment(<card>, "#n")`
+   dos que mostram o problema — diga no entendimento o que cada print mostra.
 2. Base Solvace antes de codigo (perfil `management`: so a Base — regra 10): `prmake_base_search(card: <card>, ...)` com os termos do pedido → `prmake_base_get` das
    regras/casos de uso que importam → `prmake_base_impact` se a mudanca afeta outros modulos.
 3. Escreva `entendimento-<card>.md` (pt-BR, para quem nao e desenvolvedor):
