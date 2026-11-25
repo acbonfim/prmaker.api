@@ -25,6 +25,8 @@ public static class RealTimeServiceExtensions
         // chamada; TryAdd respeita o que já estiver registrado.
         services.TryAddSingleton<IRealTimeOptionsProvider, DefaultRealTimeOptionsProvider>();
         services.AddSingleton<IRealTimeConnectionService, RealTimeConnectionService>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<RealTimeDeliveryHealth>();
 
         if (section.Get<RealTimeOptions>()?.IsRelay == true)
         {

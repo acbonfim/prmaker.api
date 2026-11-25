@@ -221,6 +221,11 @@ public class ExecutionWorkerStateResponse
     public bool QueueReady { get; set; }
     /// <summary>0085: itens de trabalho rodando ao mesmo tempo nesta máquina (fora do <see cref="MaxConcurrency"/>).</summary>
     public int WorkItemSlots { get; set; } = 2;
+    /// <summary>
+    /// Intervalo do próximo sinal de vida. Preenchido só com o relay falhando (o aviso de fila pode não chegar): o
+    /// executor volta a perguntar mais cedo; nulo = o padrão dele (60 s).
+    /// </summary>
+    public int? ReportEverySeconds { get; set; }
 }
 
 /// <summary>0068: conexão do executor ao relay de tempo real.</summary>

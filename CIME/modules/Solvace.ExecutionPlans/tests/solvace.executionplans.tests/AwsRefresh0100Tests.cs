@@ -161,6 +161,15 @@ public class AwsRefresh0100Tests
     }
 
     [Fact]
+    public void Cancelled_request_tells_the_executor_to_stop()
+    {
+        var r = New(Alex);
+        r.Claim(Alex, AlexMac, Now);
+        r.Cancel("pessoa cancelou", Now.AddSeconds(30));
+        Assert.False(r.Heartbeat(AlexMac, Now.AddSeconds(60)));
+    }
+
+    [Fact]
     public void Deploying_snapshot_schedules_a_follow_for_the_same_requester()
     {
         var finished = New(Alex, follow: 2);
