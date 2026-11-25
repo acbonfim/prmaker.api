@@ -17,6 +17,18 @@
 
 ## Log
 
+- 2026-11-25 — **Pergunte mais rápido (fix/pergunte-rapida, executor 1.9.1)**, depois do HAR do usuário (pergunta simples em ~20 s;
+  outras de 1 min 42 s e ~85 s). Medido em produção: relay de tempo real fora de novo (28 falhas na hora 13 UTC) — cada aviso
+  segurava a requisição 3 s (POST 11 s, `next` 13 s, `start` 6 s) e o aviso de fila se perdia (71 s na fila); 1ª busca depois do
+  deploy ~28 s (índice frio); Claude com 6 turnos e ~25 mil tokens por turno (ToolSearch + prompt padrão + skills).
+  Correções: (1) relay em modo degradado — a última publicação falhou há < 1 min → tempo curto de 750 ms, uma sonda a cada 15 s
+  com o tempo inteiro; avisos da criação em paralelo; (2) executor consulta a fila a cada 10 s quando o PRMake avisa que o relay
+  falha (`reportEverySeconds`); (3) Claude enxuto: `--setting-sources project`, `--tools Read` (a fundo: Read,Grep,Glob),
+  `--disable-slash-commands`, `--system-prompt` curto, `ENABLE_TOOL_SEARCH=false`, perfil sem hooks, sem repositórios na rápida;
+  (4) busca adiantada (`prmake_base_search` com o texto da pergunta, até 1,5 s, `BaseQuestions.Hints`) no prompt; (5) criação sem
+  o diagnóstico de espera duplicado; (6) tela consulta a cada 2 s com o Claude rodando. A/B local com o Claude real: 12,3 s / 6
+  turnos / US$ 0,13 → 8,8 s / 3 turnos / US$ 0,08; POST local 0,5 s.
+
 - 2026-11-25 — e2e local (`.t0102`, banco `cime0102` copiado do 0098): flag em Minhas integrações → `ask/status` runner executor;
   claim com `sonnet`/`low` e token restrito (tools/list = 5 ferramentas; `prmake_plan` e REST → 403; depois do finish → 401);
   Claude Code real respondeu em 15 s (11 s de modelo, US$ 0,13 na assinatura) com 2 buscas + 1 leitura; 409 `NO_EXECUTOR`

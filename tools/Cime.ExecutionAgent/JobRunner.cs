@@ -52,6 +52,26 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     private static readonly TimeSpan BaseAskTimeout = TimeSpan.FromMinutes(10);
     /// <summary>0102: efforts que o Claude Code aceita (o PRMake já confere; aqui só não passa lixo para a linha de comando).</summary>
     private static readonly HashSet<string> Efforts = new(StringComparer.Ordinal) { "low", "medium", "high", "xhigh", "max" };
+    /// <summary>0102: "a fundo" pode confirmar no código da máquina (Grep/Glob/Read nos repositórios do mapa).</summary>
+    private bool IsBaseAskDeep => IsBaseAsk && claim.Phase == "base-ask-deep";
+
+    /// <summary>
+    /// 1.9.1: o prompt de sistema padrão do Claude Code, as skills e as ferramentas que a pergunta não usa custavam ~25 mil
+    /// tokens por turno e um turno a mais (ToolSearch) — a pergunta vem toda no prompt do PRMake.
+    /// </summary>
+    public const string BaseAskSystemPrompt =
+        "Voce e o assistente da Base Solvace no executor do PRMake: responde perguntas sobre os sistemas da Solvace consultando a " +
+        "Base pelas ferramentas MCP do PRMake (prmake_base_*), segue as instrucoes do pedido e grava a resposta com " +
+        "prmake_base_answer. Sem terminal: nao faca perguntas, responda e encerre. Escreva em portugues do Brasil.";
+
+    /// <summary>0102/1.9.1: argumentos da pergunta da Base (antes do prompt e do MCP, que são comuns).</summary>
+    public static List<string> BaseAskArgs(bool deep, string settings) =>
+    [
+        "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+        // só as configurações deste perfil: os hooks e plugins do ~/.claude da pessoa (SessionStart, governança) ficam de fora
+        "--setting-sources", "project", "--settings", settings,
+        "--tools", deep ? "Read,Grep,Glob" : "Read", "--disable-slash-commands", "--system-prompt", BaseAskSystemPrompt
+    ];
     private string? _filesDir;
     public string Card => claim.Request.CardNumber;
     public int? Pid { get; private set; }
@@ -102,8 +122,11 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
-        args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            "--settings", ClaudeSettings.Ensure(IsSpecialist || IsBaseAsk), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
+        if (IsBaseAsk)
+            args.AddRange(BaseAskArgs(IsBaseAskDeep, ClaudeSettings.EnsureBaseAsk()));
+        else
+            args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+                "--settings", ClaudeSettings.Ensure(IsSpecialist), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
         string? caseMcp = null;
         if (IsSpecialist || IsBaseAsk)
         {
@@ -114,12 +137,14 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         }
         // 0099 (ajustes 2): no épico o workspace só entra se for de verdade (sem código na máquina ele cai na home, que
         // não é liberada); os repositórios do mapa entram como sempre (máquina de PO/gestor não tem mapa).
-        var addWorkspace = !desk || !SamePath(workspace, Paths.Home);
+        // 1.9.1: a pergunta rápida da Base não lê código — sem workspace nem repositórios.
+        var addWorkspace = (!desk || !SamePath(workspace, Paths.Home)) && (!IsBaseAsk || IsBaseAskDeep);
         if (addWorkspace && !SamePath(cwd, workspace))
             args.AddRange(["--add-dir", workspace]);
         // 0048: repositórios do mapa fora do workspace (em dontAsk o Claude não lê fora das pastas liberadas).
-        foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))
-            args.AddRange(["--add-dir", dir]);
+        if (!IsBaseAsk || IsBaseAskDeep)
+            foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))
+                args.AddRange(["--add-dir", dir]);
         // 0047: o PRMake escolhe o modelo pela fase do card (Opus na análise, Sonnet na correção); retomar a mesma sessão
         // com outro modelo é suportado pelo Claude Code.
         if (!string.IsNullOrWhiteSpace(claim.Model))
@@ -159,6 +184,9 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         }
         if (_filesDir is not null)
             psi.Environment["PRMAKE_FILES_DIR"] = _filesDir;
+        // 1.9.1: as 5 ferramentas da Base já vêm carregadas (sem o turno do ToolSearch).
+        if (IsBaseAsk)
+            psi.Environment["ENABLE_TOOL_SEARCH"] = "false";
 
         Log.Info($"card {r.CardNumber}: {(resume ? $"retomando a sessão {sessionId}" : $"sessão nova {sessionId}")} em {cwd} (pedido {r.Id}, tentativa {r.Attempts}/{r.MaxAttempts})");
 

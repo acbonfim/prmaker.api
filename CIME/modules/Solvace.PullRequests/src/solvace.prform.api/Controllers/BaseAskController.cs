@@ -25,10 +25,13 @@ public class BaseAskExecutorRequest
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/Architecture/ask/executor")]
 [Authorize]
-public class BaseAskController(IExecutionQueueApplication queue, solvace.timeline.application.Contracts.IUserRepository users)
+public class BaseAskController(IExecutionQueueApplication queue, solvace.timeline.application.Contracts.IUserRepository users,
+    ILogger<BaseAskController> logger)
     : ExecutionControllerBase(users)
 {
     private const string DefaultAttachmentQuestion = "O que é isso e como resolvo?";
+    /// <summary>Quanto a busca adiantada pode segurar a pergunta — passou disso, o Claude busca sozinho.</summary>
+    public static readonly TimeSpan HintsBudget = TimeSpan.FromMilliseconds(1500);
 
     [HttpPost]
     [RequestSizeLimit(24_000_000)] // 0072: até 12 MB de anexos em base64
@@ -48,9 +51,12 @@ public class BaseAskController(IExecutionQueueApplication queue, solvace.timelin
             if (q.Length < 3 && attached.Attachments.Count > 0) q = DefaultAttachmentQuestion;
             if (q.Length < 3) return BadRequest(new { error = "Escreva a pergunta." });
             if (q.Length > solvace.prform.Knowledge.ArchitectureAskService.MaxQuestionChars) q = q[..solvace.prform.Knowledge.ArchitectureAskService.MaxQuestionChars];
+            // A busca adiantada vai no prompt (o Claude pula a primeira busca); roda junto com a leitura de quem perguntou.
+            var hints = HintsAsync(q, ct);
+            var actor = await GetActorAsync(ct);
             try
             {
-                return Ok(await queue.AskBaseAsync(await GetActorAsync(ct), q, request.Deep, Files(attached.Attachments), ct));
+                return Ok(await queue.AskBaseAsync(actor, q, request.Deep, Files(attached.Attachments), ct, await hints));
             }
             catch (BaseAskUnavailableException e)
             {
@@ -65,6 +71,23 @@ public class BaseAskController(IExecutionQueueApplication queue, solvace.timelin
     [HttpPost("{id:guid}/cancel")]
     public Task<ActionResult<BaseQuestionResponse>> Cancel([FromRoute] Guid id, CancellationToken ct) =>
         Run<BaseQuestionResponse>(async () => Ok(await queue.CancelBaseQuestionAsync(id, await GetActorAsync(ct), ct)));
+
+    /// <summary>O mesmo resultado do <c>prmake_base_search</c> com o texto da pergunta, em até <see cref="HintsBudget"/>.</summary>
+    private async Task<string?> HintsAsync(string question, CancellationToken ct)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(HintsBudget);
+        try
+        {
+            var tools = ActivatorUtilities.CreateInstance<solvace.prform.Execution.PrmakeBaseMcpTools>(HttpContext.RequestServices);
+            return await tools.Search(question, null, null, null, 8, limit.Token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogInformation("Pergunte pelo executor sem a busca adiantada ({Reason})", e is OperationCanceledException ? "passou do tempo" : e.Message);
+            return null;
+        }
+    }
 
     /// <summary>Anexos validados com nome seguro e único (o executor grava cada um com este nome na pasta do pedido).</summary>
     public static List<BaseQuestionFile> Files(IReadOnlyList<AskAttachment> attachments)

@@ -380,6 +380,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.OwnerName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Question).IsRequired().HasMaxLength(BaseQuestion.MaxQuestionLength);
             entity.Property(e => e.Files).HasColumnType("text");
+            entity.Property(e => e.Hints).HasColumnType("text");
             entity.Property(e => e.Answer).HasColumnType("text");
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.IsAnswered);

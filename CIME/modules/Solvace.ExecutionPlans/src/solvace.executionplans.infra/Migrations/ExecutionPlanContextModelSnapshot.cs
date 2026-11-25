@@ -226,6 +226,9 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<string>("Files")
                         .HasColumnType("text");
 
+                    b.Property<string>("Hints")
+                        .HasColumnType("text");
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(20)

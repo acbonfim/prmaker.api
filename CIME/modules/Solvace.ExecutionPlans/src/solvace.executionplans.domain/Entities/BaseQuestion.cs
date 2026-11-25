@@ -15,6 +15,7 @@ public class BaseQuestion
 {
     public const int MaxQuestionLength = 2_000;
     public const int MaxErrorLength = 1_000;
+    public const int MaxHintsLength = 6_000;
     public const string KeyPrefix = "BQ-";
 
     public Guid Id { get; private set; }
@@ -28,6 +29,11 @@ public class BaseQuestion
     /// <summary>JSON de <see cref="BaseQuestionFile"/>; null depois que o pedido termina.</summary>
     public string? Files { get; private set; }
     public Guid RequestId { get; private set; }
+    /// <summary>
+    /// Busca na Base já feita pelo PRMake com o texto da pergunta (o mesmo texto do <c>prmake_base_search</c>) — vai no prompt
+    /// e o Claude pula a primeira busca. null = não deu tempo (ele busca).
+    /// </summary>
+    public string? Hints { get; private set; }
     /// <summary>JSON do <c>ArchitectureAskResponse</c> (camelCase), como a tela recebe.</summary>
     public string? Answer { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
@@ -36,7 +42,8 @@ public class BaseQuestion
 
     protected BaseQuestion() { }
 
-    public BaseQuestion(Guid ownerUserId, string ownerName, string question, bool deep, IReadOnlyList<BaseQuestionFile>? files, DateTimeOffset now)
+    public BaseQuestion(Guid ownerUserId, string ownerName, string question, bool deep, IReadOnlyList<BaseQuestionFile>? files, DateTimeOffset now,
+        string? hints = null)
     {
         var q = (question ?? string.Empty).Trim();
         if (q.Length == 0)
@@ -48,6 +55,8 @@ public class BaseQuestion
         Question = q.Length <= MaxQuestionLength ? q : q[..MaxQuestionLength];
         Deep = deep;
         Files = files is { Count: > 0 } ? JsonSerializer.Serialize(files) : null;
+        var h = hints?.Trim();
+        Hints = string.IsNullOrEmpty(h) ? null : h.Length <= MaxHintsLength ? h : h[..MaxHintsLength];
         CreatedAt = now;
     }
 
