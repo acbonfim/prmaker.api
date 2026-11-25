@@ -59,7 +59,7 @@ public sealed class Runner(AgentConfig config)
         var background = Task.WhenAll(
             _relay.RunAsync(stopping),
             new LiveView(config).RunAsync(stopping),
-            Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
+            Every(() => ReportInterval(_state), () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
             Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)),
             PromotionLoopAsync(client, stopping),
@@ -306,7 +306,14 @@ public sealed class Runner(AgentConfig config)
         }
     }
 
-    private static async Task Every(TimeSpan interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null)
+    private static Task Every(TimeSpan interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null) =>
+        Every(() => interval, action, ct, initialDelay);
+
+    /// <summary>Sinal de vida: 60 s; mais cedo quando o PRMake pede (relay falhando — o aviso de fila pode não chegar).</summary>
+    private static TimeSpan ReportInterval(WorkerState state) =>
+        state.ReportEverySeconds is int s and > 0 ? TimeSpan.FromSeconds(Math.Clamp(s, 10, 120)) : ReportEvery;
+
+    private static async Task Every(Func<TimeSpan> interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null)
     {
         await Delay(initialDelay ?? TimeSpan.Zero, ct);
         while (!ct.IsCancellationRequested)
@@ -320,7 +327,7 @@ public sealed class Runner(AgentConfig config)
                 // um laço de fundo nunca morre (sem o sinal de vida o executor não se atualiza nem se reporta)
                 Log.Warn($"tarefa de fundo falhou: {e.Message}");
             }
-            await Delay(interval, ct);
+            await Delay(interval(), ct);
         }
     }
 

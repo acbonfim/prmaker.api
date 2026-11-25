@@ -392,6 +392,14 @@ public class AwsDeployService(
         };
     }
 
+    /// <summary>Há coleta da pessoa pronta para sair (reserva do sinal de vida do executor quando o relay falha).</summary>
+    public Task<bool> HasReadyForOwnerAsync(Guid owner, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return db.AwsRefreshes.AsNoTracking().AnyAsync(r => r.RequestedByUserId == owner && r.Status == AwsRefreshStatus.Queued
+                                                            && (r.NotBefore == null || r.NotBefore <= now), ct);
+    }
+
     public async Task<bool> HeartbeatAsync(Guid id, Guid owner, Guid workerId, CancellationToken ct)
     {
         var refresh = await LoadOwnAsync(id, owner, ct);

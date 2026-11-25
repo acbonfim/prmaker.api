@@ -25,13 +25,15 @@ public class RelayRealTimeNotifier : IRealTimeNotifier
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IRealTimeOptionsProvider _optionsProvider;
     private readonly ILogger<RelayRealTimeNotifier> _logger;
+    private readonly RealTimeDeliveryHealth? _health;
 
     public RelayRealTimeNotifier(IHttpClientFactory httpClientFactory, IRealTimeOptionsProvider optionsProvider,
-        ILogger<RelayRealTimeNotifier> logger)
+        ILogger<RelayRealTimeNotifier> logger, RealTimeDeliveryHealth? health = null)
     {
         _httpClientFactory = httpClientFactory;
         _optionsProvider = optionsProvider;
         _logger = logger;
+        _health = health;
     }
 
     public Task NotifyGroupAsync(string group, string eventName, object? payload = null, CancellationToken cancellationToken = default) =>
@@ -58,11 +60,15 @@ public class RelayRealTimeNotifier : IRealTimeNotifier
 
             using var response = await _httpClientFactory.CreateClient(HttpClientName).SendAsync(request);
             if (!response.IsSuccessStatusCode)
+            {
+                _health?.ReportFailure();
                 _logger.LogWarning("RealTime relay respondeu {Status} ao publicar {Event} (grupo {Group})",
                     (int)response.StatusCode, eventName, group);
+            }
         }
         catch (Exception ex)
         {
+            _health?.ReportFailure();
             _logger.LogWarning(ex, "Falha ao publicar {Event} (grupo {Group}) no relay de tempo real", eventName, group);
         }
     }

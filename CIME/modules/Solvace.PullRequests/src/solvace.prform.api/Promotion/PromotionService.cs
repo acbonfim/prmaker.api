@@ -535,6 +535,10 @@ public class PromotionService(
 
     // ── Executor ─────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Há item da pessoa na fila (reserva do sinal de vida do executor quando o relay falha).</summary>
+    public Task<bool> HasQueuedForOwnerAsync(Guid owner, CancellationToken ct) =>
+        context.PromotionItems.AsNoTracking().AnyAsync(i => i.Batch!.OwnerUserId == owner && i.Status == PromotionItemStatus.Queued, ct);
+
     /// <summary>Entrega o próximo item do dono (um repositório por vez) ou null.</summary>
     public async Task<PromotionClaimResponse?> NextForExecutorAsync(Guid owner, Guid workerId, CancellationToken ct)
     {

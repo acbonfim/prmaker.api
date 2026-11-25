@@ -73,6 +73,8 @@ public sealed class WorkerState
     public bool QueueReady { get; set; }
     /// <summary>0085: itens de trabalho ao mesmo tempo (pista própria, fora do MaxConcurrency); o PRMake confere a mesma regra.</summary>
     public int WorkItemSlots { get; set; } = 2;
+    /// <summary>Próximo sinal de vida em N s (relay falhando no PRMake); nulo = 60 s.</summary>
+    public int? ReportEverySeconds { get; set; }
 }
 
 /// <summary>0068: conexão ao relay de tempo real (GET ExecutionWorker/realtime).</summary>

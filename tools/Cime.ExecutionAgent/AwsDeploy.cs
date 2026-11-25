@@ -50,15 +50,14 @@ public sealed class AwsDeployRunner(AgentConfig config, PrmakeClient client)
         using var job = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var heartbeat = Task.Run(() => HeartbeatLoopAsync(claim.Id, beat.Token, job), CancellationToken.None);
         var started = DateTimeOffset.UtcNow;
-        AwsRefreshReport report;
+        AwsRefreshReport? report = null;
         try
         {
             report = await CollectAsync(claim, job.Token);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (job.IsCancellationRequested)
         {
-            beat.Cancel();
-            return false; // desligando: a trava vence e o pedido volta para a fila
+            // desligando ou o pedido saiu desta máquina — tratado abaixo
         }
         catch (Exception e)
         {
@@ -69,6 +68,15 @@ public sealed class AwsDeployRunner(AgentConfig config, PrmakeClient client)
         {
             beat.Cancel();
             try { await heartbeat; } catch { /* encerrando */ }
+        }
+        if (ct.IsCancellationRequested)
+            return false; // desligando: a trava vence e o pedido volta para a fila
+        if (report is null || job.IsCancellationRequested)
+        {
+            // O PRMake disse que o pedido não é mais desta máquina (cancelado, vencido ou concluído por outro caminho):
+            // o destino dele já foi decidido lá — não reporta falha por cima.
+            Log.Info($"AWS {claim.Card}: coleta interrompida — o pedido não é mais desta máquina");
+            return true;
         }
 
         report.DurationMs = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;

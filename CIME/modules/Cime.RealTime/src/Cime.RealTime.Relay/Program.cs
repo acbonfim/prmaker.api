@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -70,7 +71,7 @@ if (requireToken)
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
 
-app.MapPost("/publish", async (HttpRequest request, RelayPublishMessage message, IHubContext<RealTimeHub> hubContext) =>
+app.MapPost("/publish", (HttpRequest request, RelayPublishMessage message, IHubContext<RealTimeHub> hubContext, ILogger<RealTimeHub> logger) =>
 {
     if (!IsRelayKeyValid(request, options.RelayKey))
         return Results.Unauthorized();
@@ -78,13 +79,31 @@ app.MapPost("/publish", async (HttpRequest request, RelayPublishMessage message,
         return Results.BadRequest(new { message = "event obrigatório" });
 
     // JsonElement é repassado como está: o front recebe o mesmo JSON que a API serializou.
-    object?[] args = message.Payload is { } payload ? [payload] : [null];
+    object?[] args = message.Payload is { } payload ? [payload.Clone()] : [null];
     var clients = string.IsNullOrWhiteSpace(message.Group) ? hubContext.Clients.All : hubContext.Clients.Group(message.Group);
-    await clients.SendCoreAsync(message.Event, args);
+    // Responde já e entrega em segundo plano: o envio espera cada conexão do grupo, e uma lenta (aba suspensa, rede
+    // ruim) segurava o POST além dos 3 s da API — o aviso se perdia e a requisição da API ficava 3 s mais lenta.
+    _ = DeliverAsync(clients, message.Group, message.Event, args, logger);
     return Results.Accepted();
 });
 
 app.Run();
+
+static async Task DeliverAsync(IClientProxy clients, string? group, string eventName, object?[] args, ILogger logger)
+{
+    var started = Stopwatch.GetTimestamp();
+    try
+    {
+        await clients.SendCoreAsync(eventName, args);
+        var elapsed = Stopwatch.GetElapsedTime(started);
+        if (elapsed >= TimeSpan.FromSeconds(1))
+            logger.LogWarning("Entrega lenta de {Event} (grupo {Group}): {Elapsed} ms", eventName, group ?? "todos", (long)elapsed.TotalMilliseconds);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Falha ao entregar {Event} (grupo {Group})", eventName, group ?? "todos");
+    }
+}
 
 static bool IsRelayKeyValid(HttpRequest request, string? expected)
 {

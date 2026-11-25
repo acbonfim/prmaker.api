@@ -147,6 +147,31 @@ public class AwsRefresh0100Tests
     }
 
     [Fact]
+    public void Snapshot_already_in_keeps_the_collection_running_and_done()
+    {
+        // 78720: o script gravou o retrato com o requestId e seguiu; o heartbeat seguinte mandava parar e o executor
+        // reportava failed ("passou de 20 min") por cima do done.
+        var r = New(Alex);
+        r.Claim(Alex, AlexMac, Now);
+        Assert.True(r.CompleteBySnapshot(null, Now.AddSeconds(50)));
+        Assert.True(r.Heartbeat(AlexMac, Now.AddSeconds(61)));   // segue até o fim
+        Assert.False(r.Heartbeat(BiaMac, Now.AddSeconds(61)));   // outro executor, não
+        r.Report(Alex, AlexMac, "failed", "A coleta passou de 20 min.", 61_000, Now.AddSeconds(64));
+        Assert.Equal(AwsRefreshStatus.Done, r.Status);
+        Assert.Null(r.Error);
+        Assert.Equal(61_000, r.DurationMs);
+    }
+
+    [Fact]
+    public void Cancelled_request_tells_the_executor_to_stop()
+    {
+        var r = New(Alex);
+        r.Claim(Alex, AlexMac, Now);
+        r.Cancel("pessoa cancelou", Now.AddSeconds(30));
+        Assert.False(r.Heartbeat(AlexMac, Now.AddSeconds(60)));
+    }
+
+    [Fact]
     public void Deploying_snapshot_schedules_a_follow_for_the_same_requester()
     {
         var finished = New(Alex, follow: 2);

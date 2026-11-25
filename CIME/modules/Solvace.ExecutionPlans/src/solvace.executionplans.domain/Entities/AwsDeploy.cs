@@ -331,7 +331,10 @@ public class AwsRefresh
     /// <summary>O executor ainda está coletando: estende a trava.</summary>
     public bool Heartbeat(Guid workerId, DateTimeOffset now)
     {
-        if (Status != AwsRefreshStatus.Claimed || WorkerId != workerId) return false;
+        if (WorkerId != workerId) return false;
+        // O retrato com o requestId já chegou (o script grava antes de terminar): segue até o fim, sem matar a coleta.
+        if (Status == AwsRefreshStatus.Done) return true;
+        if (Status != AwsRefreshStatus.Claimed) return false;
         LeaseUntil = now + Lease;
         return true;
     }
@@ -369,9 +372,10 @@ public class AwsRefresh
         var mine = WorkerId == workerId;
         if (!(Status == AwsRefreshStatus.Claimed && mine) && !(Status == AwsRefreshStatus.Expired && mine) && !(Status == AwsRefreshStatus.Done && mine))
             throw new DomainException("Este pedido de coleta não está com este executor.");
-        if (Status == AwsRefreshStatus.Done && s == AwsRefreshStatus.Done)
+        if (Status == AwsRefreshStatus.Done)
         {
-            DurationMs = durationMs ?? DurationMs; // o PUT do retrato já concluiu
+            // O PUT do retrato já concluiu: falha depois dele (o resto do script, a coleta interrompida) não desfaz o retrato.
+            DurationMs = durationMs ?? DurationMs;
             return;
         }
         Close(s, s == AwsRefreshStatus.Failed ? error ?? "A coleta falhou no executor." : null, durationMs, now);

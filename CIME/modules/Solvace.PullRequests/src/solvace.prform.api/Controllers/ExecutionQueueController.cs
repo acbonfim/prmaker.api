@@ -250,8 +250,28 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
 
     /// <summary>Sinal de vida do executor com versões e capacidades; devolve o estado e os pedidos que o PRMake acha que estão com ele.</summary>
     [HttpPost("report")]
-    public Task<ActionResult<ExecutionWorkerStateResponse>> Report([FromBody] ExecutionWorkerReportRequest request, CancellationToken ct) =>
-        Run<ExecutionWorkerStateResponse>(async () => Ok(await queue.ReportWorkerAsync(RequireWorkerId(), request, ct)));
+    public Task<ActionResult<ExecutionWorkerStateResponse>> Report([FromBody] ExecutionWorkerReportRequest request,
+        [FromServices] RealTimeDeliveryHealth relay, [FromServices] IServiceProvider services, CancellationToken ct) =>
+        Run<ExecutionWorkerStateResponse>(async () =>
+        {
+            var state = await queue.ReportWorkerAsync(RequireWorkerId(), request, ct);
+            // Relay falhando: o executor não recebe o executionQueueReady e só acharia o pedido no próximo sinal de vida
+            // (60 s; coleta AWS e promoção, só na reserva de 10 min). Volta mais cedo e o queueReady cobre as outras filas.
+            if (relay.FailedWithin(RelayDegradedWindow))
+            {
+                state.ReportEverySeconds = DegradedReportSeconds;
+                if (!state.QueueReady && state.Status == ExecutionWorkerStatus.Active)
+                {
+                    var owner = RequireUserId();
+                    state.QueueReady = await services.GetRequiredService<solvace.prform.AwsDeploy.AwsDeployService>().HasReadyForOwnerAsync(owner, ct)
+                                       || await services.GetRequiredService<solvace.prform.Promotion.PromotionService>().HasQueuedForOwnerAsync(owner, ct);
+                }
+            }
+            return Ok(state);
+        });
+
+    private static readonly TimeSpan RelayDegradedWindow = TimeSpan.FromMinutes(10);
+    private const int DegradedReportSeconds = 15;
 
     /// <summary>
     /// 0068: conexão do executor ao relay de tempo real (token curto, o grupo dos executores do dono e o evento que manda
