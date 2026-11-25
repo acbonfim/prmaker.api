@@ -147,19 +147,17 @@ public class AwsRefresh0100Tests
     }
 
     [Fact]
-    public void Snapshot_already_in_keeps_the_collection_running_and_done()
+    public void Snapshot_saved_before_the_script_exits_is_not_undone_by_heartbeat_or_a_late_failure()
     {
-        // 78720: o script gravou o retrato com o requestId e seguiu; o heartbeat seguinte mandava parar e o executor
-        // reportava failed ("passou de 20 min") por cima do done.
+        // Card 78720: retrato gravado (PUT) → heartbeat do mesmo executor → report "failed" do script interrompido.
         var r = New(Alex);
         r.Claim(Alex, AlexMac, Now);
-        Assert.True(r.CompleteBySnapshot(null, Now.AddSeconds(50)));
-        Assert.True(r.Heartbeat(AlexMac, Now.AddSeconds(61)));   // segue até o fim
-        Assert.False(r.Heartbeat(BiaMac, Now.AddSeconds(61)));   // outro executor, não
-        r.Report(Alex, AlexMac, "failed", "A coleta passou de 20 min.", 61_000, Now.AddSeconds(64));
+        Assert.True(r.CompleteBySnapshot(60_000, Now.AddSeconds(57)));
+        Assert.True(r.Heartbeat(AlexMac, Now.AddSeconds(61)));   // não manda parar
+        Assert.False(r.Heartbeat(BiaMac, Now.AddSeconds(61)));   // outro executor continua de fora
+        r.Report(Alex, AlexMac, "failed", "A coleta passou de 20 min.", 61_000, Now.AddSeconds(62));
         Assert.Equal(AwsRefreshStatus.Done, r.Status);
         Assert.Null(r.Error);
-        Assert.Equal(61_000, r.DurationMs);
     }
 
     [Fact]

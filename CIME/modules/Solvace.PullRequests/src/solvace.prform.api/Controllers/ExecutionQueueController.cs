@@ -256,16 +256,14 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
         {
             var state = await queue.ReportWorkerAsync(RequireWorkerId(), request, ct);
             // Relay falhando: o executor não recebe o executionQueueReady e só acharia o pedido no próximo sinal de vida
-            // (60 s; coleta AWS e promoção, só na reserva de 10 min). Volta mais cedo e o queueReady cobre as outras filas.
+            // (60 s; promoção, só na reserva de 10 min — a coleta da AWS já entra no queueReady). Volta mais cedo e o
+            // queueReady cobre também a promoção.
             if (relay.FailedWithin(RelayDegradedWindow))
             {
                 state.ReportEverySeconds = DegradedReportSeconds;
                 if (!state.QueueReady && state.Status == ExecutionWorkerStatus.Active)
-                {
-                    var owner = RequireUserId();
-                    state.QueueReady = await services.GetRequiredService<solvace.prform.AwsDeploy.AwsDeployService>().HasReadyForOwnerAsync(owner, ct)
-                                       || await services.GetRequiredService<solvace.prform.Promotion.PromotionService>().HasQueuedForOwnerAsync(owner, ct);
-                }
+                    state.QueueReady = await services.GetRequiredService<solvace.prform.Promotion.PromotionService>()
+                        .HasQueuedForOwnerAsync(RequireUserId(), ct);
             }
             return Ok(state);
         });
