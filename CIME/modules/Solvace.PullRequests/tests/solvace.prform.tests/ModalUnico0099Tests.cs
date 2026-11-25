@@ -87,6 +87,17 @@ public class ModalUnico0099Tests
     """;
 
     [Fact]
+    public void History_page_count_includes_noise_only_revisions()
+    {
+        // A paginação ($top=200, limite do DevOps) para quando a página vem menor — conta tudo o que veio, não só o que aparece.
+        using var doc = JsonDocument.Parse(Updates);
+        Assert.Equal(4, DevOpsDeskMapping.HistoryPageCount(doc.RootElement));
+        Assert.Equal(3, DevOpsDeskMapping.ParseHistory(doc.RootElement).Count);
+        using var empty = JsonDocument.Parse("{}");
+        Assert.Equal(0, DevOpsDeskMapping.HistoryPageCount(empty.RootElement));
+    }
+
+    [Fact]
     public void History_is_newest_first_with_readable_changes()
     {
         using var doc = JsonDocument.Parse(Updates);

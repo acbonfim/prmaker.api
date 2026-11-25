@@ -23,6 +23,11 @@ public static partial class DevOpsDeskMapping
         || field.StartsWith("System.AreaLevel", StringComparison.OrdinalIgnoreCase)
         || field.StartsWith("System.IterationLevel", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Quantas revisões vieram numa página de <c>…/updates</c> (antes do filtro de ruído).</summary>
+    public static int HistoryPageCount(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array
+            ? arr.GetArrayLength() : 0;
+
     public static IReadOnlyList<DevOpsHistoryEntry> ParseHistory(JsonElement root)
     {
         var list = new List<DevOpsHistoryEntry>();
