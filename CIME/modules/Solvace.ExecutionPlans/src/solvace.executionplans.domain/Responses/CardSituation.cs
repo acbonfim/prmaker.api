@@ -111,6 +111,13 @@ public class CardSituationResponse
     public List<CardSituationTicket> Tickets { get; set; } = [];
     public List<string> Questions { get; set; } = [];
     public List<string> UserSteps { get; set; } = [];
+    /// <summary>
+    /// As mesmas etapas para o resumo publicado: o título e, só quando cabe na discussion (<see cref="PublicVoice"/>), o motivo
+    /// da espera — o motivo costuma ser instrução da tela do PRMake ("clique em Já resolvi").
+    /// </summary>
+    public List<string> UserStepsPublic { get; set; } = [];
+    /// <summary>Motivo da espera da etapa principal quando cabe na discussion (<see cref="PublicVoice"/>); senão null.</summary>
+    public string? StepNote { get; set; }
     /// <summary>Correção esperando uma etapa prevista no plano para quem trata o card (não uma trava da skill).</summary>
     public bool PlannedTask { get; set; }
 
@@ -233,6 +240,8 @@ public static class CardSituation
 
         var userSteps = pending.Where(s => s != qaStep && !ticketSteps.Contains(s) && !toOpen.Contains(s)).ToList();
         r.UserSteps = userSteps.Select(s => s.Status == ExecutionStatus.Waiting && s.StatusReason is not null ? $"{s.Title}: {s.StatusReason}" : s.Title).ToList();
+        r.UserStepsPublic = userSteps.Select(s => s.Status == ExecutionStatus.Waiting && s.StatusReason is not null && PublicVoice.IsClean(s.StatusReason)
+            ? $"{s.Title}: {s.StatusReason}" : s.Title).ToList();
         if (userSteps.Count > 0)
         {
             // Etapa do usuário prevista no plano de correção (configurar, validar...) primeiro; trava da skill depois.
@@ -250,6 +259,8 @@ public static class CardSituation
             r.Since = main.Since;
             r.StepKey = main.Step?.Key;
             r.StepTitle = main.Step?.Title;
+            if (main.Step is { Status: ExecutionStatus.Waiting, StatusReason: { } reason } && PublicVoice.IsClean(reason))
+                r.StepNote = reason.Trim();
             if (main.Kind == CardSituationKind.TicketToOpen && main.Step is { } step)
                 r.StepFiles = artifacts.Where(a => a.NoteId is null && a.StepKey == step.Key).Select(a => a.Name).OrderBy(n => n).ToList();
             r.AlsoWaiting = waits.Skip(1).Select(w => CardSituationKind.Title(w.Kind)).Distinct().ToList();
@@ -291,8 +302,8 @@ public static class CardSituation
             ? $"Movo o card para Dev Test in QA e valido a {r.Delivery} em QA. Em seguida o card vai para Ready for QA."
             : $"Valido a {r.Delivery} em QA. Em seguida o card vai para Ready for QA.",
         CardSituationKind.Answer => "Respondo as perguntas para a análise seguir.",
-        CardSituationKind.User when r.PlannedTask => "Faço o que a etapa pede; em seguida vem o fechamento do card.",
-        CardSituationKind.User => "Faço o que a etapa pede.",
+        CardSituationKind.User when r.PlannedTask => "Assim que eu concluir isso, sigo para o fechamento do card.",
+        CardSituationKind.User => $"Assim que isso estiver resolvido, sigo com a {r.Delivery}.",
         _ => null
     };
 
@@ -312,7 +323,7 @@ public static class CardSituation
         CardSituationKind.PullRequestReview => "Aguardando revisão e merge dos PRs",
         CardSituationKind.QaValidation => "Aguardando validação em QA",
         CardSituationKind.Answer => "Aguardando resposta",
-        CardSituationKind.User => "Aguardando uma ação",
+        CardSituationKind.User => "Pendências",
         _ => "Sem pendências no momento"
     };
 
@@ -323,8 +334,10 @@ public static class CardSituation
     public static string Markdown(CardSituationResponse r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine(r.Kind == CardSituationKind.User && r.PlannedTask && r.StepTitle is not null
-            ? $"**Aguardando: {r.StepTitle}**" : $"**{Headline(r.Kind)}**").AppendLine();
+        // Uma pendência só: o título dela é a manchete ("Aguardando: Conferir a geração do dia seguinte").
+        var single = r.Kind == CardSituationKind.User && r.StepTitle is not null && (r.PlannedTask || r.UserStepsPublic.Count <= 1);
+        sb.AppendLine(single ? $"**Aguardando: {r.StepTitle}**" : $"**{Headline(r.Kind)}**").AppendLine();
+        var handoff = !string.IsNullOrWhiteSpace(r.Handoff);
         var manyRepos = r.PullRequests.Select(p => p.Repository).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
 
         switch (r.Kind)
@@ -367,7 +380,7 @@ public static class CardSituation
                 break;
             case CardSituationKind.TicketToOpen:
             {
-                var files = r.StepFiles.Count == 0 ? "" : $" Arquivos do chamado no plano: {Join(r.StepFiles.Select(f => $"`{f}`"))}.";
+                var files = r.StepFiles.Count == 0 ? "" : $" Arquivos do chamado: {Join(r.StepFiles.Select(f => $"`{f}`"))}.";
                 sb.AppendLine($"{r.StepTitle}.{files}");
                 break;
             }
@@ -376,29 +389,39 @@ public static class CardSituation
                 foreach (var q in r.Questions) sb.AppendLine($"- {q}");
                 break;
             case CardSituationKind.User when r.PlannedTask:
-                sb.AppendLine($"A {r.Delivery} depende desta etapa, que eu faço fora do código, antes do fechamento.");
-                if (r.UserSteps.Count > 1)
-                {
-                    sb.AppendLine().AppendLine("Também pendente:");
-                    foreach (var u in r.UserSteps.Skip(1)) sb.AppendLine($"- {u}");
-                }
+                sb.AppendLine($"A {r.Delivery} depende disto, que eu faço fora do código, antes do fechamento.");
+                if (!handoff && r.StepNote is not null)
+                    sb.AppendLine().AppendLine(r.StepNote);
+                AppendAlsoPending(sb, r.UserStepsPublic.Skip(1).ToList());
+                break;
+            case CardSituationKind.User when single:
+                // O contexto (primeira pessoa) explica a espera; sem ele, o motivo só entra se cabe na discussion.
+                if (!handoff && r.StepNote is not null)
+                    sb.AppendLine(r.StepNote);
                 break;
             case CardSituationKind.User:
-                sb.AppendLine("Pendente:");
-                foreach (var u in r.UserSteps) sb.AppendLine($"- {u}");
+                foreach (var u in r.UserStepsPublic) sb.AppendLine($"- {u}");
                 break;
             default:
-                sb.AppendLine("Nada aguardando; o plano segue normalmente.");
+                sb.AppendLine($"Nada aguardando; sigo com a {r.Delivery}.");
                 break;
         }
 
         if (r.AlsoWaiting.Count > 0)
             sb.AppendLine().AppendLine($"Também em andamento: {Join(r.AlsoWaiting.Select(Lower))}.");
-        if (!string.IsNullOrWhiteSpace(r.Handoff))
-            sb.AppendLine().AppendLine("**Contexto**").AppendLine(r.Handoff.Trim());
-        if (r.Next is not null)
+        if (handoff)
+            sb.AppendLine().AppendLine("**Contexto**").AppendLine(r.Handoff!.Trim());
+        // Na espera de uma pendência minha, o contexto já diz o que faço e quando: o próximo passo genérico só repetiria.
+        if (r.Next is not null && !(handoff && r.Kind == CardSituationKind.User))
             sb.AppendLine().AppendLine($"**Próximo passo:** {r.Next}");
         return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendAlsoPending(StringBuilder sb, IReadOnlyList<string> items)
+    {
+        if (items.Count == 0) return;
+        sb.AppendLine().AppendLine("Também pendente:");
+        foreach (var u in items) sb.AppendLine($"- {u}");
     }
 
     private static string PrRef(CardSituationPullRequest p, bool withRepository)

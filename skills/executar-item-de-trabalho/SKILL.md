@@ -107,7 +107,9 @@ Nao rode o `contexto` da analise nem releia planos/analises inteiras — so o ar
 **2. Para cada sub-tarefa, na ordem atual** (uma por vez — regra 5b):
 1. Checagem do item (regras 5 e 5b).
 2. `executor: user` → `prmake_work_task(action: wait, result: "<o que a pessoa faz, com os arquivos/links>")` e
-   **pare** (encerre a vez). A pessoa conclui pela tela; o executor retoma o item.
+   **pare** (encerre a vez). A pessoa conclui pela tela; o executor retoma o item. O `result` do wait e texto da tela;
+   o que vai para a discussion do card e o `prmake_handoff` — grave-o junto, em primeira pessoa (o que fiz, o que falta e
+   de quem, quando confiro), sem citar o PRMake (`bash ~/.claude/skills/analisar-bug/scripts/ref.sh correcao 8`).
 3. `prmake_work_task(action: start)`.
 4. Faca, pelo guia do `kind` abaixo.
 5. `prmake_work_task(action: complete, result, output, undo)`:

@@ -713,7 +713,10 @@ public partial class PrmakeMcpTools(
                  "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card, na discussion do DevOps e no handover. " +
                  "0096: escreva em PRIMEIRA PESSOA, como quem trata o card (o comentario sai no nome dele): 'Abri o chamado...', 'Vou validar em QA...', " +
                  "com a espera como status ('Aguardando o merge do PR #489') — nunca 'voce'/'quem trata o card' nem o PRMake ('no PRMake', 'conclua a etapa'): " +
-                 "o comentario parece escrito pela pessoa. Texto vazio limpa.")]
+                 "o comentario parece escrito pela pessoa — texto com o PRMake ou funcoes dele (Ja resolvi, nesta etapa, no plano, Bancada, clique, voce) e recusado. " +
+                 "78794: grave tambem nas esperas do seu lado (conferir amanha, validar depois do deploy, esperar outra area) — o motivo da espera da etapa e da tela " +
+                 "e nao vai para a discussion: diga o que ja fez, o que esta pendente e de quem, e QUANDO vai conferir ('Depois das 04:30 de Brasilia de 26/11 vou conferir...'); " +
+                 "reescreva a cada conferencia para o card ficar atualizado. Texto vazio limpa.")]
     public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
@@ -737,6 +740,7 @@ public partial class PrmakeMcpTools(
     public Task<string> SituationPublish(string card, [Description("Texto (markdown) ajustado; vazio = o montado pelo PRMake")] string? markdown = null,
         CancellationToken ct = default) => Safe(async () =>
     {
+        PublicVoice.Ensure(markdown, "O texto da situação");
         var commentId = await plans.PublishSituationAsync(card.Trim(), null, await ActorAsync(ct), ct, markdown);
         return Serialize(new { commentId, updated = true });
     });
