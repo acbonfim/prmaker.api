@@ -246,6 +246,9 @@ public static class PluginSettingsCatalog
             Label = "Test in Production: área de destino", Help = "Área para onde o card vai. Área ou estado vazios = a ação fica indisponível." },
         new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugTestInProductionState, Type = SettingTypes.Text, ReadBy = Api,
             Label = "Test in Production: estado de destino", Help = "Estado para onde o card vai." },
+        new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugTestInProductionColumn, Type = SettingTypes.Text, ReadBy = Api,
+            Label = "Test in Production: coluna do board",
+            Help = "Coluna do board junto com o estado (ex.: estado Test QA na coluna QA Done). Vazio = só muda o estado." },
         new() { Section = "devops", Group = "estados", Plugin = Ai, Key = AIConfigurationKeys.BugTestInProductionComment, Type = SettingTypes.Textarea, ReadBy = Api,
             Label = "Test in Production: comentário", Help = "Comentário postado no card ao mover. Vazio = sem comentário." },
 

@@ -27,18 +27,23 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
     // ---------------------------------------------------------------- metadados
 
     [HttpGet("meta/types")]
+    [CardAccess]
     public Task<IActionResult> Types(CancellationToken ct) => Run(() => devops.GetTypesAsync(ct));
 
     [HttpGet("meta/fields")]
+    [CardAccess]
     public Task<IActionResult> Fields([FromQuery] string? type, CancellationToken ct) => Run(() => devops.GetFieldsAsync(type ?? string.Empty, ct));
 
     [HttpGet("meta/tags")]
+    [CardAccess]
     public Task<IActionResult> Tags([FromQuery] string? q, CancellationToken ct) => Run(() => devops.GetTagsAsync(q, ct));
 
     [HttpGet("meta/areas")]
+    [CardAccess]
     public Task<IActionResult> Areas(CancellationToken ct) => Run(() => devops.GetAreasAsync(ct));
 
     [HttpGet("meta/iterations")]
+    [CardAccess]
     public Task<IActionResult> Iterations(CancellationToken ct) => Run(() => devops.GetIterationsAsync(ct));
 
     /// <summary>
@@ -46,6 +51,7 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
     /// aparece nos cards recentes, sem repetir. <c>q</c> sem caixa/acento; <c>top</c> padrão 50 com <c>q</c>, sem <c>q</c> todos.
     /// </summary>
     [HttpGet("meta/people")]
+    [CardAccess]
     public Task<IActionResult> People([FromQuery] string? q, [FromQuery] int? top, CancellationToken ct) => Run(() => devops.GetPeopleAsync(q, top, ct));
 
     [HttpGet("teams")]
@@ -56,6 +62,7 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
 
     /// <summary>Configuração do board (cache de 60 s): colunas, lanes, mapeamento coluna→estado, campos, tipos, campo de ordem.</summary>
     [HttpGet("board")]
+    [CardAccess]
     public Task<IActionResult> Board([FromQuery] string? team, [FromQuery] string? board, CancellationToken ct) =>
         Run(() => devops.GetBoardAsync(team, board, null, ct));
 
@@ -107,11 +114,13 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
 
     /// <summary>Consulta por WIQL ou filtros (viram WIQL), com os campos escolhidos (padrão: os principais).</summary>
     [HttpPost("query")]
+    [CardAccess]
     public Task<IActionResult> Query([FromBody] DevOpsQueryRequest request, CancellationToken ct) => Run(() => devops.QueryAsync(request, ct));
 
     // ---------------------------------------------------------------- cards
 
     [HttpGet("workitems/{id:int}")]
+    [CardAccess]
     public Task<IActionResult> Card(int id, CancellationToken ct) => Run(() => devops.GetCardAsync(id, ct));
 
     /// <summary>Cria o card (com épico: entra no épico como <c>created</c>).</summary>
@@ -121,33 +130,49 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
 
     /// <summary>Edita campos (null limpa), soma/tira tags e, com <c>comment</c>, comenta na discussion.</summary>
     [HttpPatch("workitems/{id:int}")]
+    [CardAccess]
     public Task<IActionResult> Update(int id, [FromBody] DevOpsUpdateCardRequest request, CancellationToken ct) =>
         Run(async () => (await runner.UpdateAsync(id, request, User, ct)).Card);
 
     /// <summary>Move de coluna (estado mapeado do tipo), done, lane e ordem (vizinhos).</summary>
     [HttpPost("workitems/{id:int}/move")]
+    [CardAccess]
     public Task<IActionResult> Move(int id, [FromBody] DevOpsMoveCardRequest request, CancellationToken ct) =>
         Run(async () => (await runner.MoveAsync(id, request, User, ct)).Card);
 
     /// <summary>Comentário na discussion (markdown → HTML; <c>#123</c> e <c>@Nome</c> das <c>mentions</c> viram menções do DevOps).</summary>
     [HttpPost("workitems/{id:int}/comment")]
+    [CardAccess]
     public Task<IActionResult> Comment(int id, [FromBody] DevOpsCommentRequest request, CancellationToken ct) =>
         Run(async () => new { id, commentId = await runner.CommentAsync(id, request.Text, User, ct, mentions: request.Mentions) });
 
     /// <summary>Ajustes 3: discussion do card, mais novos primeiro (até 200).</summary>
     [HttpGet("workitems/{id:int}/comments")]
+    [CardAccess]
     public Task<IActionResult> Comments(int id, [FromQuery] int? top, CancellationToken ct) =>
         Run(() => devops.GetCommentsAsync(id, top ?? 200, ct));
 
     /// <summary>Ajustes 3: anexos do card e imagens/arquivos colados nos campos e na discussion.</summary>
     [HttpGet("workitems/{id:int}/attachments")]
+    [CardAccess]
     public Task<IActionResult> Attachments(int id, CancellationToken ct) => Run(() => devops.GetAttachmentsAsync(id, ct));
+
+    /// <summary>Modal único: histórico do card (revisões com campos antes → depois, links e comentários), mais novas primeiro.</summary>
+    [HttpGet("workitems/{id:int}/history")]
+    [CardAccess]
+    public Task<IActionResult> History(int id, CancellationToken ct) => Run(() => devops.GetHistoryAsync(id, ct));
+
+    /// <summary>Modal único: time/board em que o card aparece (a Bancada não tem épico para dizer) — <c>{team, board}</c>, nulos sem board.</summary>
+    [HttpGet("workitems/{id:int}/board")]
+    [CardAccess]
+    public Task<IActionResult> CardBoard(int id, CancellationToken ct) => Run(() => devops.GetCardBoardAsync(id, ct));
 
     /// <summary>Limite do anexo servido pela Mesa (o resto, abrir no DevOps).</summary>
     public const long MaxAttachmentBytes = 25L * 1024 * 1024;
 
     /// <summary>Ajustes 3: conteúdo de um anexo pelo GUID (inline; <c>download=true</c> baixa com o nome). Passou de 25 MB → 413.</summary>
     [HttpGet("workitems/{id:int}/attachments/{attachmentId:guid}")]
+    [CardAccess]
     public async Task<IActionResult> AttachmentContent(int id, Guid attachmentId, [FromQuery] string? name, [FromQuery] bool download = false,
         CancellationToken ct = default)
     {

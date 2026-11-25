@@ -91,9 +91,20 @@ public sealed class DeskAccessAttribute : Attribute, IAuthorizationFilter
         var http = context.HttpContext;
         if (http.User.Identity?.IsAuthenticated != true || DeskRoles.CanUseDesk(http))
             return;
+        // Modal único do card: a Bancada abre o mesmo modal — quem trata o card (dev) usa os endpoints do card.
+        if (context.ActionDescriptor.EndpointMetadata.OfType<CardAccessAttribute>().Any() && DeskRoles.IsDeveloper(DeskRoles.Of(http.User)))
+            return;
         context.Result = new ObjectResult(new { code = "forbidden", message = Message, error = Message })
         {
             StatusCode = StatusCodes.Status403Forbidden
         };
     }
 }
+
+/// <summary>
+/// 0099 (modal único do card): endpoint do CARD (ler, editar, comentar, anexos, histórico, mover no board e os metadados dos
+/// editores) — vale também para o perfil de desenvolvedor (<c>user</c>/<c>support</c>), que abre o mesmo modal pela Bancada.
+/// Criar card, board do épico e o resto da Mesa continuam só admin/management. Gravações seguem com a integração de quem age.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class CardAccessAttribute : Attribute;

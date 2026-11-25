@@ -737,6 +737,50 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         return DevOpsDeskMapping.ParseAttachments(doc.RootElement, DevOpsDeskMapping.EvidenceComments(comments.Comments));
     }
 
+    public async Task<IReadOnlyList<DevOpsHistoryEntry>> GetHistoryAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
+        await EnsureConfigAsync(cancellationToken);
+        using var doc = await GetAsync($"{ProjectApi}/wit/workItems/{id}/updates?$top=500&api-version={Api}",
+            $"O DevOps não devolveu o histórico do card {id}", cancellationToken);
+        return DevOpsDeskMapping.ParseHistory(doc.RootElement);
+    }
+
+    /// <summary>Times varridos no máximo para achar o board de um card (o da área vem primeiro).</summary>
+    private const int MaxTeamsForCardBoard = 60;
+
+    public async Task<DevOpsCardBoardRef> GetCardBoardAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var card = await GetCardAsync(id, cancellationToken);
+        var field = DevOpsDeskMapping.ActiveBoardColumnField(card.Fields);
+        if (field is null) return new DevOpsCardBoardRef(null, null);
+
+        // O mesmo campo WEF_ vale para todos os cards do board: guarda por mais tempo.
+        return await CachedAsync<DevOpsCardBoardRef>(CacheKey($"cardboard|{field}"), OrgUsersCacheFor, async () =>
+        {
+            var area = card.Fields.TryGetValue("System.AreaPath", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() ?? string.Empty : string.Empty;
+            string? defaultTeam = null;
+            try { defaultTeam = await DefaultTeamAsync(cancellationToken); }
+            catch (DevOpsActionException) { /* sem time padrão: segue pela área */ }
+            var teams = DevOpsDeskMapping.TeamsByArea(await GetTeamsAsync(cancellationToken), area, defaultTeam).Take(MaxTeamsForCardBoard);
+            foreach (var team in teams)
+            {
+                IReadOnlyList<DevOpsNamedRef> boards;
+                try { boards = await GetBoardsAsync(team.Name, cancellationToken); }
+                catch (DevOpsActionException) { continue; }
+                foreach (var b in boards)
+                {
+                    DevOpsBoardConfig config;
+                    try { config = await LoadBoardAsync(team.Name, b.Id.Length > 0 ? b.Id : b.Name, cancellationToken); }
+                    catch (DevOpsActionException) { continue; }
+                    if (string.Equals(config.Fields.Column, field, StringComparison.OrdinalIgnoreCase))
+                        return new DevOpsCardBoardRef(team.Name, config.Board);
+                }
+            }
+            return new DevOpsCardBoardRef(null, null);
+        });
+    }
+
     public async Task<DevOpsAttachmentContent> DownloadAttachmentAsync(Guid attachmentId, string? name, long maxBytes, CancellationToken cancellationToken = default)
     {
         if (attachmentId == Guid.Empty) throw DevOpsDeskException.Invalid("Informe o anexo.");

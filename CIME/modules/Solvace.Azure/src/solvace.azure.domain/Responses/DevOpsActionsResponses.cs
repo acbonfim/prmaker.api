@@ -34,6 +34,8 @@ public class DevOpsTestInProductionConfig
     public string? RequiredArea { get; set; }
     public string? Area { get; set; }
     public string? State { get; set; }
+    /// <summary>Coluna do board junto com o estado (vazio = só o estado).</summary>
+    public string? Column { get; set; }
     public string? Comment { get; set; }
 }
 

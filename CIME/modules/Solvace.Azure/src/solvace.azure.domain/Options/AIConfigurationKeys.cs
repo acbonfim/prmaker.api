@@ -13,6 +13,12 @@ public static class AIConfigurationKeys
     public const string BugTestInProductionArea = "BugTestInProductionArea";
     public const string BugTestInProductionState = "BugTestInProductionState";
     public const string BugTestInProductionComment = "BugTestInProductionComment";
+
+    /// <summary>
+    /// 0099: coluna do board ao mover para Test in production — o estado (ex.: Test QA) e a coluna (ex.: QA Done) são coisas
+    /// diferentes no DevOps. Vazio = só o estado (o card cai na primeira coluna do estado).
+    /// </summary>
+    public const string BugTestInProductionColumn = "BugTestInProductionColumn";
     public const string BugReadyForQaState = "BugReadyForQaState";
 
     /// <summary>

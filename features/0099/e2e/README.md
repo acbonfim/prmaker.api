@@ -18,3 +18,16 @@
 - Roteiro `modal.mjs` (fora do git, em `.t0099c/e2e`): abre `/auth/desk?card=90001`, edita o título → "Alterado: 1 campo"
   (antes × depois) → Salvar pede confirmação → PATCH; Discussion com `@br` + `#9000` → comentário com `data-vss-mention`
   da pessoa (GUID) e do card; Anexos (3, miniaturas, visualizador); Relacionados; Esc fecha.
+
+## Ajustes 4 (coluna no Test in production, Histórico, modal único, galeria, PDF) — harness `.t0099c`
+- `fakedevops.py`:
+  - `GET workItems/{id}/updates` (revisão 1 + troca de estado/link/comentário no 90001; cada PATCH vira revisão);
+  - `WEF_AAA_System.ExtensionMarker` (board do card);
+  - anexo `manual.pdf` servido como octet-stream.
+- Plugins por `POST PluginConfiguration` (admin):
+  - "AzureDevOps Configurations";
+  - "AI Configurations" com `BugTestInProduction{Area,State,Column,Comment}`.
+- Token de dev: `mktok.py … user` → `user.tok` (sem papel da Mesa: só os endpoints `[CardAccess]`).
+- Roteiro `modal2.mjs` (fora do git, em `.t0099c/e2e`):
+  - Mesa: Histórico, PDF, ← →;
+  - Bancada (dev): "Ver tudo" = modal único.

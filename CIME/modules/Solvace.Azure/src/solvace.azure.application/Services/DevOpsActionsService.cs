@@ -104,6 +104,7 @@ public class DevOpsActionsService : IDevOpsActionsService
                     RequiredArea = Value(AIConfigurationKeys.BugTestInProductionRequiredArea),
                     Area = Value(AIConfigurationKeys.BugTestInProductionArea),
                     State = Value(AIConfigurationKeys.BugTestInProductionState),
+                    Column = Value(AIConfigurationKeys.BugTestInProductionColumn),
                     Comment = Value(AIConfigurationKeys.BugTestInProductionComment)
                 },
                 ReadyForQa = new DevOpsReadyForQaConfig { State = Value(AIConfigurationKeys.BugReadyForQaState) },
@@ -142,14 +143,22 @@ public class DevOpsActionsService : IDevOpsActionsService
             throw DevOpsActionException.Conflict($"O card precisa estar na área {bug.RequiredArea} (está em {currentArea ?? "—"})");
 
         var fields = new Dictionary<string, object> { [FieldAreaPath] = bug.Area, [FieldState] = bug.State };
+        // 0099: estado e coluna são coisas diferentes no board (ex.: estado Test QA na coluna QA Done).
+        if (!string.IsNullOrEmpty(bug.Column))
+        {
+            var columnField = BoardColumnField(card)
+                ?? throw DevOpsActionException.Conflict("O card não está em nenhum board do DevOps — não dá para mudar a coluna");
+            fields[columnField] = bug.Column;
+        }
         if (!string.IsNullOrEmpty(bug.Comment))
             fields[FieldHistory] = WebUtility.HtmlEncode(bug.Comment); // vira comentário na Discussion, na mesma revisão
 
         var rev = await _azureService.PatchFieldsAsync(cardNumber, fields, cancellationToken);
+        var where = bug.State + (string.IsNullOrEmpty(bug.Column) ? "" : $" · coluna {bug.Column}");
         return new DevOpsActionResponse
         {
             Rev = rev,
-            Message = $"Card movido para {bug.State} (área {bug.Area})" + (string.IsNullOrEmpty(bug.Comment) ? "" : $" com o comentário \"{bug.Comment}\"")
+            Message = $"Card movido para {where} (área {bug.Area})" + (string.IsNullOrEmpty(bug.Comment) ? "" : $" com o comentário \"{bug.Comment}\"")
         };
     }
 
