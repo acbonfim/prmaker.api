@@ -128,6 +128,18 @@ public sealed class ClaimResponse
     public string? CaseToken { get; set; }
     /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — limpa os worktrees do item no fim.</summary>
     public long? WorkItemNumber { get; set; }
+    /// <summary>0102: esforço do Claude Code (<c>--effort</c>); null = o padrão da máquina.</summary>
+    public string? Effort { get; set; }
+    /// <summary>0102: anexos da pergunta da Base Solvace (gravados na pasta do pedido, <c>PRMAKE_FILES_DIR</c>).</summary>
+    public List<ClaimFile>? Files { get; set; }
+}
+
+/// <summary>0102: anexo do pedido (base64).</summary>
+public sealed class ClaimFile
+{
+    public string Name { get; set; } = string.Empty;
+    public string MediaType { get; set; } = string.Empty;
+    public string Data { get; set; } = string.Empty;
 }
 
 public sealed class StartRequest

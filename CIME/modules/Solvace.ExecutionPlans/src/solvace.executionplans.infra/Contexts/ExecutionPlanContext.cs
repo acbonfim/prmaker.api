@@ -51,6 +51,8 @@ public class ExecutionPlanContext : DbContext
     public DbSet<AwsPipeline> AwsPipelines { get; set; }
     public DbSet<AwsCardSnapshot> AwsCardSnapshots { get; set; }
     public DbSet<AwsRefresh> AwsRefreshes { get; set; }
+    // 0102: perguntas da Base Solvace respondidas pelo executor.
+    public DbSet<BaseQuestion> BaseQuestions { get; set; }
 
     /// <summary>0085: sequência global dos números de item e sub-tarefa (<c>#0000000</c>).</summary>
     public const string WorkItemNumberSequence = "work_item_number_seq";
@@ -366,6 +368,24 @@ public class ExecutionPlanContext : DbContext
             entity.HasIndex(e => new { e.CardNumber, e.CreatedAt });
             entity.HasIndex(e => new { e.OwnerUserId, e.Status });
             entity.HasIndex(e => new { e.WorkerId, e.Status });
+        });
+
+        // 0102: perguntas da Base Solvace respondidas pelo executor (o andamento é o do pedido).
+        modelBuilder.Entity<BaseQuestion>(entity =>
+        {
+            entity.ToTable("BaseQuestions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.OwnerName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Question).IsRequired().HasMaxLength(BaseQuestion.MaxQuestionLength);
+            entity.Property(e => e.Files).HasColumnType("text");
+            entity.Property(e => e.Answer).HasColumnType("text");
+            entity.Property(e => e.Version).IsRowVersion();
+            entity.Ignore(e => e.IsAnswered);
+            entity.HasIndex(e => e.Key).IsUnique();
+            entity.HasIndex(e => e.RequestId);
+            entity.HasIndex(e => new { e.OwnerUserId, e.CreatedAt });
         });
 
         // 0080: Especialista do caso — conversa por card, arquivos (conteúdo em tabela própria), pontos, propostas e ações.

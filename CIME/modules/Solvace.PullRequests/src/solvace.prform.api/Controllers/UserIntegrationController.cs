@@ -32,7 +32,22 @@ public class UserIntegrationController : ControllerBase
         if (_resolver.CurrentUserExternalId is not { } user)
             return Unauthorized(new { error = "Usuário não identificado" });
 
-        return Ok(await _application.ListAsync(user, cancellationToken));
+        return Ok(WithOptions(await _application.ListAsync(user, cancellationToken)));
+    }
+
+    /// <summary>0102: campos de valores fechados no catálogo (ex.: Perguntas da Base Solvace) viram lista de escolha.</summary>
+    private static IReadOnlyList<UserIntegrationResponse> WithOptions(IReadOnlyList<UserIntegrationResponse> integrations)
+    {
+        foreach (var integration in integrations)
+        foreach (var field in integration.Fields)
+        {
+            var def = solvace.prform.PluginSettings.PluginSettingsCatalog.Fields.FirstOrDefault(f =>
+                f.Plugin.Id is null && string.Equals(f.Plugin.Name, integration.Description, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(f.Key, field.Key, StringComparison.OrdinalIgnoreCase));
+            if (def is { Type: solvace.prform.PluginSettings.SettingTypes.Enum, AllowCustom: false, Options.Count: > 0 } && !field.Sensitive)
+                field.Options = def.Options.Select(o => new UserIntegrationFieldOption { Value = o.Value, Label = o.Label }).ToList();
+        }
+        return integrations;
     }
 
     [HttpGet("status")]
@@ -56,7 +71,7 @@ public class UserIntegrationController : ControllerBase
 
         try
         {
-            return Ok(await _application.SaveAsync(user, pluginId, request, cancellationToken));
+            return Ok(WithOptions([await _application.SaveAsync(user, pluginId, request, cancellationToken)])[0]);
         }
         catch (DomainException e)
         {

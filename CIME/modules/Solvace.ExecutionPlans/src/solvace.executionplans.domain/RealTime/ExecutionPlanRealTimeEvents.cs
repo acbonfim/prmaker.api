@@ -125,6 +125,8 @@ public static class ExecutionPlanRealTimeEvents
         /// a linha "agora" sem refazer o GET do plano.
         /// </summary>
         public const string Activity = "activity";
+        /// <summary>0102: a pergunta da Base Solvace (grupo <c>execplan:BQ-…</c>) recebeu a resposta do executor.</summary>
+        public const string Answer = "answer";
         /// <summary>0075: fotografias de código do card mudaram (a tela refaz <c>GET card/{card}/code-refs</c>).</summary>
         public const string CodeRef = "codeRef";
         /// <summary>0075: a situação do card (o que está sendo aguardado) ou o contexto da passagem mudou.</summary>

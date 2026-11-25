@@ -47,6 +47,7 @@ builder.Services.AddScoped<solvace.prform.Execution.WorkDeliverableHooks>();
 // Fila de execução e executores (0039): credencial do executor, binários publicados e a regra automática (WIQL).
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
 builder.Services.AddSingleton<solvace.prform.Execution.CaseTokenIssuer>();  // 0080: token do Especialista do caso
+builder.Services.AddSingleton<solvace.prform.Execution.BaseAskTokenIssuer>();  // 0102: token da pergunta da Base pelo executor
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
 builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
@@ -98,6 +99,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.PrmakeMcpTools>()
     // 0052: Base Solvace (engenharia reversa por item, seções, KC) pelo MCP — a análise consulta antes do código.
     .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>()
+    // 0102: resposta da pergunta da Base Solvace pelo executor.
+    .WithTools<solvace.prform.Execution.BaseAskMcpTools>()
     // 0080: Especialista do caso (conversa do card).
     .WithTools<solvace.prform.Execution.CaseChatMcpTools>()
     // 0085: regras do card e itens de trabalho.
@@ -122,6 +125,8 @@ builder.Services.AddMcpServer(o =>
         // 0098: governança primeiro (barra antes do especialista pausar o tratamento) e registra toda chamada.
         f.AddCallToolFilter(solvace.prform.Governance.GovernanceMcpFilter.Filter);
         f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter);
+        // 0102: a pergunta da Base só vê as ferramentas dela.
+        f.AddListToolsFilter(solvace.prform.Execution.BaseAskMiddleware.ListFilter);
     });
 // 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
 builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
@@ -251,6 +256,8 @@ app.UseHttpsRedirection()
     .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>()
     // 0080: o que o token do Especialista do caso pode fazer (0096: inclusive ajustar o plano atual a pedido).
     .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>()
+    // 0102: o token da pergunta da Base só usa o MCP da Base (e a resposta).
+    .UseMiddleware<solvace.prform.Execution.BaseAskMiddleware>()
     // 0098: regras da governança e trilha de toda gravação HTTP (depois de saber quem é o especialista/executor).
     .UseMiddleware<solvace.prform.Governance.GovernanceMiddleware>();
 

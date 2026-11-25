@@ -88,6 +88,12 @@ public static class SkillsConfigurationKeys
     public const string SpecialistModel = "SpecialistModel";
     /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>
     public const string SpecialistDeepModel = "SpecialistDeepModel";
+    /// <summary>0102: modelo do Claude Code nas perguntas da Base Solvace pelo executor (padrão sonnet).</summary>
+    public const string BaseAskExecutorModel = "BaseAskExecutorModel";
+    /// <summary>0102: esforço (<c>--effort</c>) nas perguntas da Base Solvace pelo executor (padrão low).</summary>
+    public const string BaseAskExecutorEffort = "BaseAskExecutorEffort";
+    /// <summary>0102: esforço no "Analisar a fundo" pelo executor (padrão medium).</summary>
+    public const string BaseAskExecutorDeepEffort = "BaseAskExecutorDeepEffort";
     /// <summary>0085: etapas padrão do plano de análise de User Story (analisar-us; mesmo formato de AnalysisDefaultSteps).</summary>
     public const string UsAnalysisDefaultSteps = "UsAnalysisDefaultSteps";
     /// <summary>0085: sufixo da branch de trabalho por destino (JSON: {"release-version": "-rv", ...}) — hotfix/77434-rv.</summary>

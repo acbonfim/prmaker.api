@@ -34,6 +34,13 @@ public interface IExecutionQueueRepository
     Task<Dictionary<Guid, int>> CountActiveSpecialistsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>0085: quantos pedidos de itens de trabalho (pegos/rodando) cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0102: quantas perguntas da Base Solvace (pegas/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveBaseAsksByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    void AddBaseQuestion(BaseQuestion question);
+    /// <summary>0102: pergunta da Base Solvace, rastreada.</summary>
+    Task<BaseQuestion?> GetBaseQuestionAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>0102: pergunta do pedido, rastreada.</summary>
+    Task<BaseQuestion?> GetBaseQuestionByRequestAsync(Guid requestId, CancellationToken cancellationToken);
     /// <summary>0085: pedido ativo (executar ou desfazer) do item de trabalho, rastreado.</summary>
     Task<ExecutionRequest?> GetActiveForWorkItemAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken);

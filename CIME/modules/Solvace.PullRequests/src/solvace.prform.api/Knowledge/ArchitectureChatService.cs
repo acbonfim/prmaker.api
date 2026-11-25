@@ -59,6 +59,13 @@ public class ArchitectureChatStatus
     /// <summary>0072: o provedor lê imagem, PDF e arquivo de texto anexados à pergunta (hoje só o Claude).</summary>
     public bool SupportsAttachments { get; set; }
     public ArchitectureAttachmentLimits Limits { get; set; } = new();
+    /// <summary>0102: quem responde o Pergunte desta pessoa — provider (IA do servidor) | executor (Claude Code da máquina).</summary>
+    public string Runner { get; set; } = BaseSolvaceRunner.Provider;
+    /// <summary>0102: com <see cref="Runner"/> = executor, há uma máquina online e ativa para responder agora?</summary>
+    public bool ExecutorOnline { get; set; }
+    /// <summary>0102: nome da máquina que vai responder (ou por que não há).</summary>
+    public string? ExecutorName { get; set; }
+    public string? ExecutorReason { get; set; }
 }
 
 /// <summary>0072: limites dos anexos do Pergunte — a tela usa estes valores (não os repete).</summary>

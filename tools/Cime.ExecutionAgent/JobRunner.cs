@@ -41,8 +41,18 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     public bool IsSpecialist => claim.Request.Kind == "specialist";
     /// <summary>0085: item de trabalho (executar/desfazer) — job comum (MCP normal do executor, sem o guard do especialista), em vagas próprias.</summary>
     public bool IsWorkItem => claim.Request.Kind is "work-item" or "work-item-undo";
+    /// <summary>
+    /// 0102: pergunta da Base Solvace (Pergunte pelo executor) — token só das ferramentas da Base, MCP só do PRMake, perfil sem
+    /// commit/push, pasta neutra, modelo básico com pouco esforço; vagas próprias.
+    /// </summary>
+    public bool IsBaseAsk => claim.Request.Kind == "base-ask";
     /// <summary>0080: uma resposta do especialista não deveria passar disso.</summary>
     private static readonly TimeSpan SpecialistTimeout = TimeSpan.FromMinutes(20);
+    /// <summary>0102: alguém está esperando a resposta na tela.</summary>
+    private static readonly TimeSpan BaseAskTimeout = TimeSpan.FromMinutes(10);
+    /// <summary>0102: efforts que o Claude Code aceita (o PRMake já confere; aqui só não passa lixo para a linha de comando).</summary>
+    private static readonly HashSet<string> Efforts = new(StringComparer.Ordinal) { "low", "medium", "high", "xhigh", "max" };
+    private string? _filesDir;
     public string Card => claim.Request.CardNumber;
     public int? Pid { get; private set; }
 
@@ -75,10 +85,12 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         _workspace = workspace;
         _repos = RepoMap.Load()?.Repos ?? [];
         // 0099 (ajustes 2): pedido de épico (E…) roda na pasta neutra da Mesa, sem workspace/repositórios.
-        var desk = Paths.IsEpicKey(r.CardNumber);
-        if (IsSpecialist && string.IsNullOrEmpty(claim.CaseToken))
+        // 0102: a pergunta da Base também roda na pasta neutra (não é card; lê a Base pelo MCP e, a fundo, os repositórios do mapa).
+        var desk = Paths.IsEpicKey(r.CardNumber) || IsBaseAsk;
+        if ((IsSpecialist || IsBaseAsk) && string.IsNullOrEmpty(claim.CaseToken))
         {
-            await FinishAsync(new FinishRequest { Outcome = "failed", Retryable = false, Error = "O PRMake não mandou o token do caso para o especialista" });
+            await FinishAsync(new FinishRequest { Outcome = "failed", Retryable = false,
+                Error = IsBaseAsk ? "O PRMake não mandou o token da pergunta" : "O PRMake não mandou o token do caso para o especialista" });
             return;
         }
         // 0080: o especialista retoma a sessão do caso (a conversa continua de onde parou).
@@ -91,9 +103,9 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
         args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            "--settings", ClaudeSettings.Ensure(IsSpecialist), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
+            "--settings", ClaudeSettings.Ensure(IsSpecialist || IsBaseAsk), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
         string? caseMcp = null;
-        if (IsSpecialist)
+        if (IsSpecialist || IsBaseAsk)
         {
             // 0080: só o MCP do PRMake com o token do caso (o do usuário, com o token pessoal, fica de fora).
             caseMcp = CaseMcpConfig(ConfigStore.ResolveApiBase(config), claim.CaseToken!, r.Id);
@@ -112,6 +124,15 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         // com outro modelo é suportado pelo Claude Code.
         if (!string.IsNullOrWhiteSpace(claim.Model))
             args.AddRange(["--model", claim.Model.Trim()]);
+        // 0102: esforço do pedido (perguntas da Base: low; a fundo: medium).
+        if (claim.Effort?.Trim().ToLowerInvariant() is { } effort && Efforts.Contains(effort))
+            args.AddRange(["--effort", effort]);
+        // 0102: anexos da pergunta numa pasta do pedido (o Claude lê com Read).
+        if (claim.Files is { Count: > 0 } files)
+        {
+            _filesDir = WriteFiles(r.Id, files);
+            args.AddRange(["--add-dir", _filesDir]);
+        }
         if (claim.RemainingBudgetUsd is { } budget && budget > 0)
             args.AddRange(["--max-budget-usd", budget.ToString("0.00", CultureInfo.InvariantCulture)]);
 
@@ -136,6 +157,8 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             psi.Environment["PRMAKE_SPECIALIST"] = "1";
             psi.Environment["PRMAKE_TOKEN"] = claim.CaseToken;
         }
+        if (_filesDir is not null)
+            psi.Environment["PRMAKE_FILES_DIR"] = _filesDir;
 
         Log.Info($"card {r.CardNumber}: {(resume ? $"retomando a sessão {sessionId}" : $"sessão nova {sessionId}")} em {cwd} (pedido {r.Id}, tentativa {r.Attempts}/{r.MaxAttempts})");
 
@@ -483,6 +506,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         get
         {
             var configured = TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes));
+            if (IsBaseAsk && configured > BaseAskTimeout) return BaseAskTimeout;
             return IsSpecialist && configured > SpecialistTimeout ? SpecialistTimeout : configured;
         }
     }
@@ -532,9 +556,35 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private void DeleteCaseMcp()
     {
+        if (_filesDir is not null)
+        {
+            try { Directory.Delete(_filesDir, recursive: true); } catch { /* a faxina do executor apaga depois */ }
+            _filesDir = null;
+        }
         if (_caseMcp is null) return;
         try { File.Delete(_caseMcp); } catch { /* fica na pasta do executor (0600) */ }
         _caseMcp = null;
+    }
+
+    /// <summary>0102: grava os anexos (nome já saneado pelo PRMake; aqui de novo, sem pasta) em <c>~/.prmake-agent/files/&lt;pedido&gt;</c>.</summary>
+    public static string WriteFiles(Guid requestId, IReadOnlyList<ClaimFile> files)
+    {
+        var dir = Path.Combine(Paths.Root, "files", requestId.ToString("N"));
+        Directory.CreateDirectory(dir);
+        foreach (var f in files)
+        {
+            var name = Path.GetFileName(f.Name.Replace('\\', '/'));
+            if (string.IsNullOrWhiteSpace(name) || name is "." or "..") continue;
+            try
+            {
+                File.WriteAllBytes(Path.Combine(dir, name), Convert.FromBase64String(f.Data));
+            }
+            catch (FormatException)
+            {
+                Log.Warn($"anexo {name} com base64 inválido — ignorado");
+            }
+        }
+        return dir;
     }
 
     private static int? SafeExitCode(Process p)
