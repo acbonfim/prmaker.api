@@ -749,7 +749,11 @@ public partial class WorkItem
         var live = Tasks.Where(t => t.Status is not (WorkTaskStatus.Cancelled or WorkTaskStatus.Reverted)).ToList();
         string next;
         if (live.Count > 0 && live.All(t => WorkTaskStatus.IsDone(t.Status))) next = WorkItemStatus.Completed;
-        else if (live.Any(t => t.Status == WorkTaskStatus.Running)) next = WorkItemStatus.Running;
+        else if (live.Any(t => t.Status == WorkTaskStatus.Running && t.Executor != ExecutionExecutor.User)) next = WorkItemStatus.Running;
+        // Card 78794 (#1077): a etapa da pessoa (abrir o chamado, validar...) começa "running" pelo advance do plano — é a
+        // vez dela, não do Claude. Sem nada pronto para o Claude, o item aguarda você (não "Em andamento/Pensando").
+        else if (live.Any(t => t.Status == WorkTaskStatus.Running))
+            next = ClaudeHasReadyTask ? WorkItemStatus.Running : WorkItemStatus.Waiting;
         else if (live.Any(t => t.Status == WorkTaskStatus.Waiting)) next = WorkItemStatus.Waiting;
         else if (live.Any(t => t.Status == WorkTaskStatus.Failed)) next = WorkItemStatus.Failed;
         // Card 78720: item do plano já começado em que só sobrou a vez da pessoa (validar em QA, aprovar...) — o resto

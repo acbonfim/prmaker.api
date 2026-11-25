@@ -58,6 +58,11 @@ public partial class WorkItem
         }
     }
 
+    /// <summary>Card 78794: alguma sub-tarefa do Claude já pode começar (pendente, sem pausa, com as dependências terminadas).</summary>
+    private bool ClaudeHasReadyTask =>
+        Tasks.Any(t => t.Status == WorkTaskStatus.Pending && t.Executor != ExecutionExecutor.User && HeldBlocker(t) is null
+                       && DependenciesOf(t).All(IsSettled));
+
     private WorkItemTask FindTask(long number) =>
         Tasks.FirstOrDefault(t => t.Number == number) ?? throw new DomainException($"Sub-tarefa #{number} não é do item #{Number}.");
 

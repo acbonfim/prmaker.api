@@ -74,6 +74,31 @@ public class PersonTurnStatusTests
     }
 
     [Fact]
+    public void Person_step_started_by_the_plan_waits_for_the_person()
+    {
+        // Card 78794, item #1077: o advance do plano põe a etapa do chamado (da pessoa) em running — o item ia para
+        // "Em andamento/Pensando" sem nada para o Claude fazer.
+        var item = Mirror();
+        Done(item, "corrigir", "pr", "gerar-prmake");
+        item.SyncStep("validar-qa", ExecutionStatus.Running, null, "Plano", Now);
+
+        Assert.Equal(WorkItemStatus.Waiting, item.Status);
+
+        item.SyncStep("validar-qa", ExecutionStatus.Completed, null, "Plano", Now);
+        Assert.Equal(WorkItemStatus.Running, item.Status);
+    }
+
+    [Fact]
+    public void Person_step_running_with_a_ready_claude_step_keeps_the_item_running()
+    {
+        var item = Mirror();
+        Done(item, "corrigir", "pr");
+        item.SyncStep("validar-qa", ExecutionStatus.Running, null, "Plano", Now); // gerar-prmake segue pronta para o Claude
+
+        Assert.Equal(WorkItemStatus.Running, item.Status);
+    }
+
+    [Fact]
     public void Paused_person_step_is_not_the_person_turn()
     {
         var item = Mirror();
