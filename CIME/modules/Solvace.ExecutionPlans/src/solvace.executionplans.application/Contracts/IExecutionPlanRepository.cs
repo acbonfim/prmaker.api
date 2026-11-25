@@ -55,6 +55,8 @@ public interface IExecutionPlanRepository
     void AddLink(ExecutionLink link);
     void RemoveLink(ExecutionLink link);
     Task<List<ExecutionLink>> GetLinksAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>Chamado na Bancada: chamados e PRs dos planos (só leitura, sem rastrear) para as sub-tarefas espelho.</summary>
+    Task<List<ExecutionLink>> GetStepLinksAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
     Task<ExecutionLink?> GetLinkAsync(Guid planId, Guid linkId, CancellationToken cancellationToken);
 
     // Comentários e numeração por card (0031)
@@ -73,7 +75,72 @@ public interface IExecutionPlanRepository
     /// <summary>Maior número e última mudança dos comentários do usuário no card (para o vigia da skill).</summary>
     Task<(int LastNumber, DateTimeOffset? ChangedAt)> GetUserNotesStateAsync(string cardNumber, CancellationToken cancellationToken);
 
-    /// <summary>Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/>.</summary>
+    /// <summary>0075: arquivos de todos os planos do card (da skill e anexos de comentário), sem o conteúdo.</summary>
+    Task<List<ExecutionArtifact>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 0075: troca o tipo de situação registrado se ainda for <paramref name="expected"/> (direto no banco). True = esta
+    /// chamada fez a troca (só ela escreve na Timeline).
+    /// </summary>
+    /// <summary>
+    /// 0075: comentário da situação na discussion (id) — lido e gravado direto no banco. 0096: um comentário por CARD — plano
+    /// sem comentário (versão nova, correção depois da análise) usa o último publicado por outro plano do card.
+    /// </summary>
+    Task<int?> GetSituationCommentIdAsync(Guid planId, CancellationToken cancellationToken);
+    /// <summary>
+    /// 0096: plano da "Situação atual" do card — o mais recente que não foi cancelado (versão substituída ou cancelada não
+    /// fala pelo card); sem nenhum, o mais recente.
+    /// </summary>
+    Task<Guid?> GetSituationPlanIdAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0076: comentário publicado + o texto, quando e por quem (direto no banco).</summary>
+    Task SetSituationPostedAsync(Guid planId, int commentId, string markdown, string by, DateTimeOffset at, CancellationToken cancellationToken);
+    /// <summary>0076: preferência do usuário para publicar a situação (null = sem preferência).</summary>
+    Task<bool?> GetSituationAutoPostAsync(Guid userId, CancellationToken cancellationToken);
+    Task SetSituationAutoPostAsync(Guid userId, bool? value, CancellationToken cancellationToken);
+
+    /// <summary>0075: tipo de situação gravado, lido do banco (o agregado rastreado não vê o ExecuteUpdate).</summary>
+    Task<string?> GetSituationKindAsync(Guid planId, CancellationToken cancellationToken);
+    Task<bool> SetSituationKindAsync(Guid planId, string? expected, string kind, DateTimeOffset at, CancellationToken cancellationToken);
+
+    /// <summary>0076: marca a evidência como aberta pela skill (só a primeira vez).</summary>
+    Task MarkArtifactReadAsync(Guid artifactId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>0078: arquivo do plano com o conteúdo, rastreado (editar o texto).</summary>
+    Task<ExecutionArtifact?> FindArtifactWithContentAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
+
+    // Assistente do card (0078)
+    void AddSuggestion(ExecutionSuggestion suggestion);
+    Task<bool> SuggestionExistsAsync(string cardNumber, string dedupKey, CancellationToken cancellationToken);
+    Task<ExecutionSuggestion?> FindSuggestionAsync(Guid id, CancellationToken cancellationToken);
+    Task<List<ExecutionSuggestion>> GetSuggestionsAsync(string cardNumber, CancellationToken cancellationToken);
+
+    // Fotografias do código citado (0075)
+    /// <summary>Ref do plano, rastreada (upsert).</summary>
+    Task<ExecutionCodeRef?> FindCodeRefAsync(Guid planId, string reference, CancellationToken cancellationToken);
+    Task<int> CountCodeRefsAsync(Guid planId, CancellationToken cancellationToken);
+    void AddCodeRef(ExecutionCodeRef codeRef);
+    void RemoveCodeRef(ExecutionCodeRef codeRef);
+    /// <summary>Cabeças das refs (sem o código) de todos os planos do card — ou só de um plano.</summary>
+    Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(string cardNumber, Guid? planId, CancellationToken cancellationToken);
+    /// <summary>Ref completa, sem rastrear.</summary>
+    Task<ExecutionCodeRef?> GetCodeRefAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>Planos do card (id + status), do mais novo para o mais antigo — escolher o dono de uma fotografia pelo card.</summary>
+    Task<List<(Guid Id, string Status)>> GetCardPlanStatusesAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Fotografia do card sem plano (<c>PlanId</c> nulo), rastreada (upsert).</summary>
+    Task<ExecutionCodeRef?> FindCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken);
+    Task<int> CountCardCodeRefsAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Imagem <c>anexo:&lt;nome&gt;</c> sem arquivo de plano: arquivos dos itens de trabalho do card com esse nome (sem
+    /// diferenciar maiúsculas), sem o conteúdo.
+    /// </summary>
+    Task<List<WorkItemFile>> GetCardWorkItemFilesByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
+    Task<byte[]?> GetWorkItemFileContentAsync(Guid fileId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Salva; conflito de concorrência vira <see cref="ExecutionPlanConcurrencyException"/> — também a mesma fotografia do
+    /// card sem plano gravada ao mesmo tempo (índice único parcial), para quem chama tentar de novo.
+    /// </summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 
     /// <summary>Descarta o que está rastreado (antes de tentar de novo após um conflito).</summary>

@@ -14,6 +14,11 @@ public interface IExecutionQueueApplication
     Task<ExecutionRequestResponse> RetryAsync(Guid requestId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionRequestResponse> AllowOverBudgetAsync(Guid requestId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<List<ExecutionRequestResponse>> GetHistoryAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Card 77988: itens de trabalho a partir da análise já respondida (sem plano de entrega) — pede à fila a fase de
+    /// implementação/correção; <paramref name="start"/> = false monta o plano e o deixa pausado até o Executar do item.
+    /// </summary>
+    Task<ExecutionRequestResponse> RequestDeliveryAsync(string cardNumber, bool start, string? note, ExecutionActor actor, CancellationToken cancellationToken);
 
     // Executor
     /// <summary>Pega um pedido para o executor, se houver — responde na hora (0068: sem long-poll).</summary>
@@ -41,9 +46,47 @@ public interface IExecutionQueueApplication
     /// <summary>A credencial do executor ainda vale (não revogado, mesmo jti)?</summary>
     Task<bool> IsCredentialValidAsync(Guid workerId, Guid credentialId, CancellationToken cancellationToken);
 
+    // 0080: Especialista do caso
+    /// <summary>
+    /// Pede uma resposta do especialista no card: na máquina do primeiro candidato que tem executor (quem escreveu, depois o
+    /// dono do plano). Já há pedido na fila → ele lê a mensagem nova; rodando → roda de novo ao terminar.
+    /// </summary>
+    Task<ExecutionRequest?> EnqueueSpecialistAsync(string cardNumber, ExecutionActor requester, IReadOnlyList<(Guid UserId, string Name)> ownerCandidates,
+        bool deep, CancellationToken cancellationToken);
+    /// <summary>Pedido do especialista no card (o ativo, senão o último), com o motivo de espera.</summary>
+    Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Consumo do especialista no card desde <paramref name="since"/> (o último /clear; null = desde sempre).</summary>
+    Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken);
+    /// <summary>O token do caso ainda vale (o pedido do especialista deste card está ativo)?</summary>
+    Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
+    /// <summary>
+    /// r5: o pedido do especialista deste card está ativo → quem pediu (a pessoa que escreveu na conversa) e o dono da máquina;
+    /// null = o token do caso venceu. As ações que o especialista executa usam a identidade/integrações de quem pediu.
+    /// </summary>
+    Task<SpecialistRequester?> GetActiveSpecialistRequesterAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Pergunta leve do executor (1 SQL): há pedido do dono dele na fila pronto para começar? Com o relay fora o aviso de fila
+    /// não chega — o executor pergunta aqui a cada poucos segundos e só chama o next (pesado) quando há.
+    /// </summary>
+    Task<bool> IsQueueReadyAsync(Guid workerId, CancellationToken cancellationToken);
+
+    // 0102: perguntas da Base Solvace pelo executor.
+    /// <summary>Enfileira a pergunta na máquina de quem perguntou; sem executor online/ativo → <see cref="BaseAskUnavailableException"/>.</summary>
+    Task<BaseQuestionResponse> AskBaseAsync(ExecutionActor requester, string question, bool deep, IReadOnlyList<BaseQuestionFile> files,
+        CancellationToken cancellationToken, string? hints = null);
+    Task<BaseQuestionResponse> GetBaseQuestionAsync(Guid questionId, Guid? userId, CancellationToken cancellationToken);
+    Task<BaseQuestionResponse> CancelBaseQuestionAsync(Guid questionId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<BaseQuestion> SaveBaseAnswerAsync(Guid requestId, Guid questionId, string answerJson, CancellationToken cancellationToken);
+    Task<BaseQuestion?> GetBaseQuestionForRequestAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<bool> IsBaseAskActiveAsync(Guid requestId, CancellationToken cancellationToken);
+
     // Configurações do usuário
     Task<ExecutionUserSettingsResponse> GetSettingsAsync(Guid userId, CancellationToken cancellationToken);
     Task<ExecutionUserSettingsResponse> UpdateSettingsAsync(Guid userId, UpdateExecutionUserSettingsRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Card 78344: plano do pedido ativo da pista principal do card (o que o executor foi chamado a retomar).</summary>
+    Task<Guid?> ActivePlanIdAsync(string cardNumber, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -68,10 +111,12 @@ public interface IExecutionQueueSettings
 }
 
 /// <param name="CorrectionInNewSession">A correção abre uma sessão nova do Claude em vez de retomar a da análise.</param>
-/// <param name="NoteDelay">Espera depois de um comentário antes de retomar (comentários em sequência = uma retomada).</param>
-public record ExecutionQueueOptions(bool CorrectionInNewSession, TimeSpan NoteDelay)
+/// <param name="WorkItemSlots">0085: itens de trabalho rodando ao mesmo tempo por máquina (fora do limite da pista principal).</param>
+/// <remarks>0080: a espera depois de comentário (0049, <c>ExecutorNoteDelaySeconds</c>) saiu — o plano retoma na hora.</remarks>
+public record ExecutionQueueOptions(bool CorrectionInNewSession, int WorkItemSlots = ExecutionQueueOptions.DefaultWorkItemSlots)
 {
-    public static readonly ExecutionQueueOptions Default = new(true, TimeSpan.FromSeconds(120));
+    public const int DefaultWorkItemSlots = 2;
+    public static readonly ExecutionQueueOptions Default = new(true);
 }
 
 /// <summary>Itens do Azure DevOps que casam com a regra automática do usuário (0039) — implementado no host (WIQL).</summary>
@@ -88,3 +133,6 @@ public interface IExecutionAgentInfo
 
 /// <summary>Ação de quem não é dono (ex.: pausar o executor de outra pessoa).</summary>
 public class ExecutionForbiddenException(string message) : Exception(message);
+
+/// <summary>r5: quem pediu a resposta do especialista (null = sem pessoa: vale o dono) e o dono da máquina que responde.</summary>
+public record SpecialistRequester(Guid? UserId, string Name, Guid OwnerUserId, string OwnerName);

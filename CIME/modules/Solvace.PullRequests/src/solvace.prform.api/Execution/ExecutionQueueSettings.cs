@@ -6,8 +6,9 @@ using solvace.prform.Skills;
 namespace solvace.prform.Execution;
 
 /// <summary>
-/// 0049: configurações da fila no "Skills Configurations" — a correção numa sessão nova do Claude e a espera depois
-/// de um comentário (comentários em sequência = uma retomada). Sem a configuração, o padrão.
+/// 0049: configurações da fila no "Skills Configurations" — a correção numa sessão nova do Claude (0085: e as vagas dos
+/// itens de trabalho por máquina). Sem a configuração,
+/// o padrão. (0080: a espera depois de comentário saiu; a chave ExecutorNoteDelaySeconds não é mais lida.)
 /// </summary>
 public class ExecutionQueueSettings(IPluginConfigurationResolver settings, ILogger<ExecutionQueueSettings> logger) : IExecutionQueueSettings
 {
@@ -18,10 +19,10 @@ public class ExecutionQueueSettings(IPluginConfigurationResolver settings, ILogg
         {
             var config = await settings.GetEffectiveConfigurationAsync(SkillsConfigurationKeys.PluginName, cancellationToken);
             var newSession = config.GetConfigurationValueOrDefault(SkillsConfigurationKeys.ExecutorCorrectionNewSession, string.Empty).Trim();
-            var delay = config.GetConfigurationValueOrDefault(SkillsConfigurationKeys.ExecutorNoteDelaySeconds, string.Empty).Trim();
-            return new ExecutionQueueOptions(
-                bool.TryParse(newSession, out var b) ? b : fallback.CorrectionInNewSession,
-                int.TryParse(delay, out var seconds) ? TimeSpan.FromSeconds(Math.Clamp(seconds, 0, 900)) : fallback.NoteDelay);
+            // 0085: vagas dos itens de trabalho por máquina (1–10; inválido → padrão).
+            var slots = config.GetConfigurationValueOrDefault(SkillsConfigurationKeys.WorkItemSlots, string.Empty).Trim();
+            return new ExecutionQueueOptions(bool.TryParse(newSession, out var b) ? b : fallback.CorrectionInNewSession,
+                int.TryParse(slots, out var n) && n is >= 1 and <= 10 ? n : fallback.WorkItemSlots);
         }
         catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
         {

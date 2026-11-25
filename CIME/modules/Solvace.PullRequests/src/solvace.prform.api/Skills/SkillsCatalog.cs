@@ -21,7 +21,7 @@ public partial class SkillsCatalog
 
     private record SkillEntry(SkillInfo Info, byte[] Package);
     private record Loaded(IReadOnlyDictionary<string, SkillEntry> Skills, string ToolTemplate, string InstallTemplate,
-        string InstallPowerShellTemplate, string ToolVersion);
+        string InstallPowerShellTemplate, string ToolVersion, string GovernanceTemplate = "");
 
     public SkillsCatalog(IConfiguration configuration, IWebHostEnvironment environment)
     {
@@ -37,6 +37,13 @@ public partial class SkillsCatalog
     /// <summary>Ferramenta prmake-skills.sh com a URL da API e a versão já preenchidas.</summary>
     public string Tool(string apiBase) =>
         _loaded.Value.ToolTemplate.Replace("__PRMAKE_API_BASE__", apiBase).Replace("__PRMAKE_TOOL_VERSION__", _loaded.Value.ToolVersion);
+
+    /// <summary>
+    /// 0098: hook de governança do Claude Code (prmake-governance.py), baixado pelo prmake-skills.sh junto com a
+    /// ferramenta (mesma versão: muda quando qualquer um dos dois muda).
+    /// </summary>
+    public string GovernanceScript(string apiBase) =>
+        _loaded.Value.GovernanceTemplate.Replace("__PRMAKE_API_BASE__", apiBase).Replace("__PRMAKE_TOOL_VERSION__", _loaded.Value.ToolVersion);
 
     public string Installer(string apiBase) => _loaded.Value.InstallTemplate.Replace("__PRMAKE_API_BASE__", apiBase);
 
@@ -106,8 +113,10 @@ public partial class SkillsCatalog
         var tool = ReadOrEmpty(Path.Combine(tooling, "prmake-skills.sh"));
         var install = ReadOrEmpty(Path.Combine(tooling, "install.sh"));
         var installPowerShell = ReadOrEmpty(Path.Combine(tooling, "install.ps1"));
-        var toolVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(tool)))[..12];
-        return new Loaded(skills, tool, install, installPowerShell, toolVersion);
+        var governance = ReadOrEmpty(Path.Combine(tooling, "prmake-governance.py"));
+        // 0098: a versão da ferramenta cobre o hook de governança (o update baixa os dois quando um muda).
+        var toolVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(governance.Length == 0 ? tool : tool + "\0" + governance)))[..12];
+        return new Loaded(skills, tool, install, installPowerShell, toolVersion, governance);
     }
 
     private static bool IsIgnored(string rel)

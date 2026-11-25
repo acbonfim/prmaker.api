@@ -60,6 +60,110 @@ public class ExecutionPlan
 
     public const int MaxSessions = 50;
 
+    /// <summary>
+    /// 0075: contexto da passagem (handoff) — o que a skill deixa escrito ao entrar em espera (o que foi feito, o que se
+    /// espera, riscos, como retomar). Vai no resumo "Situação atual" do card junto com os fatos do PRMake.
+    /// </summary>
+    public string? Handoff { get; private set; }
+    public DateTimeOffset? HandoffAt { get; private set; }
+    public string? HandoffBy { get; private set; }
+    public const int MaxHandoffLength = 8_000;
+
+    /// <summary>0080: divergência entre a análise e a base real (log <c>divergence</c>), pendente até alguém confirmar.</summary>
+    public string? DivergenceText { get; private set; }
+    public string? DivergenceStepKey { get; private set; }
+    public DateTimeOffset? DivergenceAt { get; private set; }
+    public string? DivergenceConfirmedBy { get; private set; }
+    public DateTimeOffset? DivergenceConfirmedAt { get; private set; }
+    public const int MaxDivergenceLength = 4_000;
+
+    public bool DivergencePending => DivergenceAt is not null && DivergenceConfirmedAt is null;
+
+    public void RaiseDivergence(string text, string? stepKey, DateTimeOffset now)
+    {
+        var t = (text ?? string.Empty).Trim();
+        if (t.Length == 0) return;
+        DivergenceText = t.Length <= MaxDivergenceLength ? t : t[..MaxDivergenceLength];
+        DivergenceStepKey = string.IsNullOrWhiteSpace(stepKey) ? null : ExecutionStep.NormalizeKey(stepKey);
+        DivergenceAt = now;
+        DivergenceConfirmedBy = null;
+        DivergenceConfirmedAt = null;
+        UpdatedAt = now;
+    }
+
+    public void ConfirmDivergence(string by, DateTimeOffset now)
+    {
+        if (!DivergencePending)
+            throw new DomainException("Não há divergência pendente neste plano.");
+        DivergenceConfirmedBy = Clean(by, 200);
+        DivergenceConfirmedAt = now;
+        UpdatedAt = now;
+    }
+
+    /// <summary>0075: último tipo de situação registrado (a Timeline ganha uma entrada quando muda). Gravado direto no banco.</summary>
+    public string? SituationKind { get; private set; }
+    public DateTimeOffset? SituationAt { get; private set; }
+
+    /// <summary>0075: o PRMake moveu o card para Dev Test in QA (PR da branch de QA mesclado) — uma vez só.</summary>
+    public DateTimeOffset? DevTestInQaAt { get; private set; }
+    /// <summary>0075: última tentativa e o erro dela (sem integração, 409...) — nova tentativa no máximo a cada 10 min.</summary>
+    public DateTimeOffset? DevTestInQaTriedAt { get; private set; }
+    public string? DevTestInQaError { get; private set; }
+    public const int MaxDevTestInQaErrorLength = 500;
+
+    /// <summary>
+    /// 0076: última importação das evidências do card no DevOps (anexos, imagens da descrição e da discussion) e o erro
+    /// dela; ou o motivo, dado pelo usuário, para seguir a análise sem elas.
+    /// </summary>
+    public DateTimeOffset? EvidenceCheckedAt { get; private set; }
+    public string? EvidenceError { get; private set; }
+    public string? EvidenceSkipReason { get; private set; }
+    public const int MaxEvidenceTextLength = 500;
+
+    public void RecordEvidenceCheck(string? error, DateTimeOffset now)
+    {
+        if (error is null)
+        {
+            EvidenceCheckedAt = now;
+            EvidenceError = null;
+        }
+        else
+        {
+            EvidenceError = Clean(error, MaxEvidenceTextLength);
+        }
+        UpdatedAt = now;
+    }
+
+    public void SkipEvidence(string reason, string by, DateTimeOffset now)
+    {
+        var r = Clean(reason, MaxEvidenceTextLength) ?? throw new DomainException("Diga por que a análise segue sem as evidências (o que o usuário respondeu).");
+        EvidenceSkipReason = Clean($"{r} — {by}", MaxEvidenceTextLength);
+        UpdatedAt = now;
+    }
+
+    /// <summary>0075: comentário da situação publicado na discussion do DevOps (republicar atualiza o mesmo).</summary>
+    public int? SituationCommentId { get; private set; }
+
+    /// <summary>0076: o que foi publicado na discussion (markdown), quando e por quem — a tela mostra e compara com o atual.</summary>
+    public string? SituationPostedText { get; private set; }
+    public DateTimeOffset? SituationPostedAt { get; private set; }
+    public string? SituationPostedBy { get; private set; }
+
+    /// <summary>0078: só este card — publicar sozinho os resumos de espera? null = preferência do dono / padrão global.</summary>
+    public bool? SituationAutoPost { get; private set; }
+
+    public void SetSituationAutoPost(bool? value, DateTimeOffset now)
+    {
+        SituationAutoPost = value;
+        UpdatedAt = now;
+    }
+
+    public void SetSituationComment(int commentId, DateTimeOffset now)
+    {
+        SituationCommentId = commentId;
+        UpdatedAt = now;
+    }
+
     public ExecutionSession? CurrentSession => Sessions.OrderByDescending(s => s.LastSeenAt).FirstOrDefault();
 
     public bool ResumePending => ResumeRequestedAt is { } requested && (ResumeHandledAt is null || ResumeHandledAt < requested);
@@ -240,6 +344,36 @@ public class ExecutionPlan
     /// <summary>Completed/cancelled: o plano terminou. Só "completed" pode ser reaberto (pela skill).</summary>
     public bool IsFinished => Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled;
 
+    /// <summary>0075: grava o contexto da passagem (texto vazio limpa).</summary>
+    public void SetHandoff(string? text, string by, DateTimeOffset now)
+    {
+        var t = text?.Trim();
+        if (t is { Length: > MaxHandoffLength })
+            throw new DomainException($"O resumo da passagem pode ter no máximo {MaxHandoffLength} caracteres.");
+        Handoff = string.IsNullOrEmpty(t) ? null : t;
+        HandoffAt = Handoff is null ? null : now;
+        HandoffBy = Handoff is null ? null : Clean(by, 200);
+        UpdatedAt = now;
+    }
+
+    /// <summary>0075: resultado da tentativa de mover para Dev Test in QA (erro null = movido).</summary>
+    public void RecordDevTestInQa(string? error, DateTimeOffset now)
+    {
+        DevTestInQaTriedAt = now;
+        DevTestInQaError = Clean(error, MaxDevTestInQaErrorLength);
+        if (error is null)
+            DevTestInQaAt = now;
+    }
+
+    /// <summary>0075: pode tentar mover para Dev Test in QA agora? (nunca movido e sem tentativa nos últimos 10 min).</summary>
+    public bool DevTestInQaDue(DateTimeOffset now) =>
+        DevTestInQaAt is null && (DevTestInQaTriedAt is null || now - DevTestInQaTriedAt >= TimeSpan.FromMinutes(10));
+
+    /// <summary>0075: etapa de validação em QA (key validar-qa ou validar-qa-*), se o plano tiver.</summary>
+    public ExecutionStep? QaValidationStep =>
+        Steps.Where(s => s.Key == "validar-qa" || s.Key.StartsWith("validar-qa-", StringComparison.Ordinal))
+            .OrderBy(s => ExecutionStatus.IsStepFinished(s.Status) ? 1 : 0).ThenBy(s => s.Order).FirstOrDefault();
+
     public void SetTitle(string? title)
     {
         var trimmed = (title ?? string.Empty).Trim();
@@ -267,12 +401,24 @@ public class ExecutionPlan
 
     /// <summary>
     /// Define/refina as etapas (upsert pela chave), na ordem enviada. Etapas que sumiram da lista:
-    /// se ainda pendentes, saem do plano; se já começaram, ficam (histórico) depois das enviadas.
+    /// se ainda pendentes, saem do plano; se já começaram, ficam (histórico) depois das enviadas. Etapa pedida por uma
+    /// pessoa (<see cref="ExecutionStep.RequestedKeyPrefix"/>, <see cref="AddStep"/>) não sai por omissão: fica antes da
+    /// etapa que vinha depois dela.
+    /// Card 78728: <paramref name="replace"/> = false e a lista não traz todas as etapas → é um ajuste parcial (ex.: trocar
+    /// o <c>dependsOn</c> de uma etapa): as enviadas mudam no lugar, as novas entram depois da enviada anterior e nenhuma sai
+    /// — antes o ajuste de uma etapa apagava <c>validar-qa</c>/<c>fechar-card</c> e o plano concluía sem a validação.
     /// </summary>
-    public void UpsertSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now)
+    public void UpsertSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now, bool replace = true)
     {
         EnsureNotCancelled();
 
+        if (!replace && Steps.Any(s => definitions.All(d => ExecutionStep.NormalizeKey(d.Key) != s.Key)))
+        {
+            PatchSteps(definitions, now);
+            return;
+        }
+
+        var previous = Steps.OrderBy(s => s.Order).Select(s => s.Key).ToList();
         var seen = new HashSet<string>();
         var order = 0;
         foreach (var def in definitions)
@@ -291,17 +437,25 @@ public class ExecutionPlan
             else
             {
                 step.Order = order;
-                step.SetTitle(def.Title);
+                if (!string.IsNullOrWhiteSpace(def.Title))
+                    step.SetTitle(def.Title);
                 if (def.Description is not null)
                     step.SetDescription(def.Description);
                 step.Touch(now);
             }
-            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn);
+            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn, def.TaskKind);
         }
 
+        // Card 78680: etapa que a pessoa pôs no lugar (ainda não feita) fica onde ela pôs, mesmo a skill mandando outra ordem.
+        var requested = Steps.Where(s => seen.Contains(s.Key) && s.OrderPinned && !ExecutionStatus.IsStepFinished(s.Status))
+            .OrderBy(s => previous.IndexOf(s.Key)).ToList();
         foreach (var orphan in Steps.Where(s => !seen.Contains(s.Key)).OrderBy(s => s.Order).ToList())
         {
-            if (orphan.Status == ExecutionStatus.Pending)
+            if (orphan.Status == ExecutionStatus.Pending && (orphan.IsRequested || orphan.OrderPinned))
+            {
+                requested.Add(orphan);
+            }
+            else if (orphan.Status == ExecutionStatus.Pending)
             {
                 Steps.Remove(orphan);
             }
@@ -311,8 +465,107 @@ public class ExecutionPlan
                 orphan.Order = order;
             }
         }
+        if (requested.Count > 0)
+            KeepRequestedInPlace(requested, previous);
 
         Touch(now, fromExecutor: true);
+    }
+
+    /// <summary>Ajuste parcial (card 78728): muda só as etapas enviadas, sem tirar nem reordenar as outras.</summary>
+    private void PatchSteps(IReadOnlyList<ExecutionStepDefinition> definitions, DateTimeOffset now)
+    {
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        var seen = new HashSet<string>();
+        ExecutionStep? last = null;
+        foreach (var def in definitions)
+        {
+            var key = ExecutionStep.NormalizeKey(def.Key);
+            if (!seen.Add(key))
+                throw new DomainException($"Etapa repetida no plano: '{key}'.");
+
+            var step = FindStep(key);
+            if (step is null)
+            {
+                step = new ExecutionStep(Id, key, 0, def.Title, def.Description, now);
+                Steps.Add(step);
+                ordered.Insert(last is null ? ordered.Count : ordered.IndexOf(last) + 1, step);
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(def.Title))
+                    step.SetTitle(def.Title);
+                if (def.Description is not null)
+                    step.SetDescription(def.Description);
+                step.Touch(now);
+            }
+            step.SetShape(def.Executor, def.Kind, def.Repository, def.DependsOn, def.TaskKind);
+            last = step;
+        }
+
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+        Touch(now, fromExecutor: true);
+    }
+
+    /// <summary>Etapas pedidas que a skill omitiu voltam para antes da etapa que vinha depois delas (ou para o fim).</summary>
+    private void KeepRequestedInPlace(List<ExecutionStep> requested, List<string> previous)
+    {
+        var ordered = Steps.Except(requested).OrderBy(s => s.Order).ToList();
+        foreach (var step in requested.OrderBy(s => previous.IndexOf(s.Key)))
+        {
+            var next = previous.Skip(previous.IndexOf(step.Key) + 1)
+                .Select(k => ordered.FirstOrDefault(s => s.Key == k)).FirstOrDefault(s => s is not null);
+            ordered.Insert(next is null ? ordered.Count : ordered.IndexOf(next), step);
+        }
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+    }
+
+    /// <summary>
+    /// Acrescenta uma etapa nova, pendente, a pedido de uma pessoa (Especialista do caso: "antes de continuar, verifique
+    /// X") — sem mudar nem remover as que existem. Entra antes de <paramref name="beforeKey"/> (etapa ainda não terminada)
+    /// ou, sem ele, antes da primeira etapa não terminada (a que está em andamento/espera); com tudo terminado, no fim.
+    /// </summary>
+    public ExecutionStep AddStep(ExecutionStepDefinition definition, string? beforeKey, DateTimeOffset now, string? position = null)
+    {
+        EnsureNotCancelled();
+        if (IsFinished)
+            throw new DomainException("O plano já terminou — não dá para acrescentar etapa. Crie um item de trabalho avulso.");
+        var key = ExecutionStep.NormalizeKey(definition.Key);
+        if (FindStep(key) is not null)
+            throw new DomainException($"Já existe a etapa '{key}' no plano — escolha outra chave.");
+
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        ExecutionStep? anchor;
+        var last = string.Equals(position?.Trim(), TaskPosition.Last, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(beforeKey))
+        {
+            // Card 78680: "no fim" = depois de todas; o padrão (e "first") é antes da primeira ainda não terminada.
+            anchor = last ? null : ordered.FirstOrDefault(s => !ExecutionStatus.IsStepFinished(s.Status));
+        }
+        else
+        {
+            anchor = FindStep(ExecutionStep.NormalizeKey(beforeKey))
+                     ?? throw new DomainException($"Etapa '{beforeKey}' não encontrada no plano.");
+            if (ExecutionStatus.IsStepFinished(anchor.Status))
+                throw new DomainException($"A etapa '{anchor.Key}' já terminou — a etapa nova entra antes de uma etapa ainda não terminada.");
+        }
+
+        var step = new ExecutionStep(Id, key, 0, definition.Title, definition.Description, now);
+        step.SetShape(definition.Executor, definition.Kind, definition.Repository, definition.DependsOn, definition.TaskKind);
+        step.OrderPinned = true;
+        ordered.Insert(anchor is null ? ordered.Count : ordered.IndexOf(anchor), step);
+        if (TaskOrdering.Violation(ordered, s => ExecutionStatus.IsStepFinished(s.Status), Dependencies) is { } v)
+            throw new DomainException($"A etapa '{v.Task.Key}' depende de '{v.Dependency.Key}' — a etapa nova não pode ficar nessa posição.");
+        Steps.Add(step);
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+
+        Touch(now, fromExecutor: false);
+        return step;
     }
 
     /// <summary>
@@ -320,7 +573,7 @@ public class ExecutionPlan
     /// um envio por ter esquecido de declarar a etapa antes).
     /// </summary>
     public ExecutionStep UpdateStep(string key, string? status, string? reason, string? activity, string? checkpoint,
-        string? title, string? description, string actor, DateTimeOffset now, string? waitingOn = null)
+        string? title, string? description, string actor, DateTimeOffset now, string? waitingOn = null, bool fromExecutor = true)
     {
         EnsureNotCancelled();
 
@@ -343,6 +596,16 @@ public class ExecutionPlan
         if (!string.IsNullOrWhiteSpace(status))
         {
             var normalizedStatus = status.Trim().ToLowerInvariant();
+            // Card 78680: etapa pausada pela pessoa não começa (nem pelo tratamento) até alguém continuar.
+            if (normalizedStatus == ExecutionStatus.Running && step.Status != ExecutionStatus.Running && HeldBlocker(step) is { } held)
+                throw new DomainException(held == step
+                    ? $"A etapa '{step.Key}' está pausada por {held.HeldBy ?? "uma pessoa"} — não a comece; siga para a próxima etapa pronta (prmake_plan) ou encerre a vez se não houver."
+                    : $"A etapa '{step.Key}' depende de '{held.Key}', pausada por {held.HeldBy ?? "uma pessoa"} — siga para a próxima etapa pronta (prmake_plan) ou encerre a vez.");
+            // 0080: base diferente da análise (branch, repositório, código que mudou) — o PR espera alguém confirmar.
+            if (DivergencePending && step.Kind == ExecutionStepKind.PullRequest
+                && normalizedStatus is ExecutionStatus.Running or ExecutionStatus.Completed && step.Status != normalizedStatus)
+                throw new DomainException("Há uma divergência pendente entre a análise e a base real: a etapa de PR só começa depois que " +
+                                          "a pessoa confirmar na tela (\"Confirmar\" no alerta de divergência). Registre e aguarde (prmake_block).");
             step.ChangeStatus(normalizedStatus, reason, actor, now, waitingOn);
 
             // A skill voltou a trabalhar: o plano (pendente, com falha ou já concluído) volta a
@@ -358,7 +621,9 @@ public class ExecutionPlan
             step.Touch(now);
         }
 
-        Touch(now, fromExecutor: true);
+        // Card 78505 (#874): só o executor conta como "Claude trabalhando" — a pessoa/o especialista mexendo na etapa não
+        // pode fazer o plano parecer vivo (a fila deixaria de pedir o executor por 150 s).
+        Touch(now, fromExecutor);
         return step;
     }
 
@@ -452,9 +717,9 @@ public class ExecutionPlan
         if (IsFinished || Status == ExecutionStatus.Failed)
             return [];
         var ready = ReadySteps().Select(s => s.Key).ToHashSet();
-        return Steps.Where(s =>
+        return Steps.Where(s => !s.Held && (
                 (s.Status == ExecutionStatus.Waiting && s.WaitingOn == ExecutionWaitingOn.User)
-                || (s.Executor == ExecutionExecutor.User && (s.Status == ExecutionStatus.Running || ready.Contains(s.Key))))
+                || (s.Executor == ExecutionExecutor.User && (s.Status == ExecutionStatus.Running || ready.Contains(s.Key)))))
             .OrderBy(s => s.Order);
     }
 
@@ -489,6 +754,25 @@ public class ExecutionPlan
             ExecutionWaitingOn.User, actor, now, fromExecutor);
     }
 
+    /// <summary>
+    /// Etapa de PR ainda pendente com PR aberto (aberto pela tela ou por uma sessão que não marcou a etapa) passa a aguardar
+    /// o merge — senão fica "pronta" e o Claude tenta abrir de novo. Etapa em andamento só quando o PR acabou de ser
+    /// anexado (<paramref name="includeRunning"/>); na sincronização ela fica com quem a está tocando.
+    /// </summary>
+    public ExecutionStep? WaitForPullRequests(string key, IReadOnlyCollection<ExecutionLink> stepLinks, string actor, DateTimeOffset now,
+        bool fromExecutor, bool includeRunning = false)
+    {
+        var step = FindStep(ExecutionStep.NormalizeKey(key));
+        if (step is null || Status == ExecutionStatus.Cancelled || step.Kind != ExecutionStepKind.PullRequest
+            || !(step.Status == ExecutionStatus.Pending || (includeRunning && step.Status == ExecutionStatus.Running)))
+            return null;
+        var open = stepLinks.Where(l => l.Kind == ExecutionLinkKind.PullRequest && l.Status == ExecutionLinkStatus.Open).ToList();
+        if (open.Count == 0)
+            return null;
+        var reason = open.Count == 1 ? $"Aguardando o merge do PR {open[0].DisplayName}" : $"Aguardando o merge de {open.Count} PRs";
+        return SetStepWaiting(step.Key, reason, ExecutionWaitingOn.External, actor, now, fromExecutor);
+    }
+
     /// <summary>Conclui uma etapa por uma regra automática (ex.: PRs mesclados) — 0024.</summary>
     public ExecutionStep? CompleteStep(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
     {
@@ -517,11 +801,86 @@ public class ExecutionPlan
 
     /// <summary>Etapas prontas para começar: pendentes com todas as dependências terminadas.</summary>
     public IEnumerable<ExecutionStep> ReadySteps() =>
-        Steps.Where(s => s.Status == ExecutionStatus.Pending && s.DependsOn.All(d =>
+        Steps.Where(s => s.Status == ExecutionStatus.Pending && !s.Held && s.DependsOn.All(d =>
         {
             var dep = FindStep(d);
             return dep is null || dep.Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled;
         })).OrderBy(s => s.Order);
+
+    // ---------------------------------------------------------------- card 78680: ordem, pausa, dependências
+
+    private static bool StepSettled(ExecutionStep s) => ExecutionStatus.IsStepFinished(s.Status);
+
+    private static string StepName(ExecutionStep s) => $"A etapa '{s.Key}'";
+
+    /// <summary>Etapas do plano de que esta depende (as chaves que não existem mais não contam).</summary>
+    public IEnumerable<ExecutionStep> Dependencies(ExecutionStep step) =>
+        step.DependsOn.Select(FindStep).Where(d => d is not null && d != step).Select(d => d!);
+
+    /// <summary>Ainda não terminadas que dependem (direta ou indiretamente) da etapa, na ordem.</summary>
+    public IReadOnlyList<ExecutionStep> DependentsOf(string key) =>
+        TaskOrdering.Dependents(Steps.OrderBy(s => s.Order).ToList(), RequireStep(key), StepSettled, Dependencies);
+
+    /// <summary>A etapa pausada que segura esta (ela mesma ou uma dependência ainda não terminada), ou null.</summary>
+    public ExecutionStep? HeldBlocker(ExecutionStep step) =>
+        step.Held ? step : TaskOrdering.Upstream(step, StepSettled, Dependencies).FirstOrDefault(d => d.Held);
+
+    /// <summary>
+    /// Muda a ordem de uma etapa ainda não terminada (início = antes da primeira não terminada; fim; acima; abaixo; antes de
+    /// outra) sem quebrar dependência. A etapa em andamento que for movida, ou que ganhar outra na frente, volta a pendente
+    /// (o tratamento recomeça na ordem nova — quem chama pausa e retoma o plano). Devolve as etapas interrompidas.
+    /// </summary>
+    public IReadOnlyList<ExecutionStep> MoveStep(string key, string position, string? beforeKey, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        if (IsFinished)
+            throw new DomainException("O plano já terminou — a ordem das etapas não muda mais.");
+        var step = RequireStep(key);
+        if (StepSettled(step))
+            throw new DomainException($"{StepName(step)} já terminou ({step.Status}) — a ordem só muda entre as ainda não terminadas.");
+        var before = string.IsNullOrWhiteSpace(beforeKey) ? null : RequireStep(beforeKey);
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        var sequence = TaskOrdering.Move(ordered, step, position, before, StepSettled, StepName);
+        if (TaskOrdering.Violation(sequence, StepSettled, Dependencies) is { } v)
+            throw new DomainException(v.Task == step
+                ? $"{StepName(step)} depende de '{v.Dependency.Key}' ({v.Dependency.Title}) — não pode vir antes dela."
+                : $"A etapa '{v.Task.Key}' ({v.Task.Title}) depende de '{v.Dependency.Key}' — '{v.Dependency.Key}' não pode ir para depois dela.");
+
+        var interrupted = Steps.Where(s => s.Status == ExecutionStatus.Running
+                                           && (s == step || sequence.IndexOf(step) < sequence.IndexOf(s) && ordered.IndexOf(step) > ordered.IndexOf(s)))
+            .ToList();
+        foreach (var s in interrupted)
+            s.ChangeStatus(ExecutionStatus.Pending, s == step ? $"Interrompida: mudou de ordem ({actor})" : $"Interrompida: '{step.Key}' passou na frente ({actor})", actor, now);
+        var order = 0;
+        foreach (var s in sequence)
+            s.Order = order += 10;
+        step.OrderPinned = true;
+        step.Touch(now);
+        Touch(now, fromExecutor: false);
+        return interrupted;
+    }
+
+    /// <summary>
+    /// Pausa (não fica pronta, nem as que dependem dela) ou continua uma etapa ainda não terminada. Em andamento/espera, ao
+    /// pausar volta a pendente (quem chama pausa e retoma o plano se o tratamento estava nela).
+    /// </summary>
+    public ExecutionStep HoldStep(string key, bool hold, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (hold)
+        {
+            if (StepSettled(step))
+                throw new DomainException($"{StepName(step)} já terminou ({step.Status}) — não há o que pausar.");
+            if (step.Status is ExecutionStatus.Running or ExecutionStatus.Waiting)
+                step.ChangeStatus(ExecutionStatus.Pending, $"Pausada por {actor}", actor, now);
+        }
+        else if (!step.Held)
+            throw new DomainException($"{StepName(step)} não está pausada.");
+        step.SetHeld(hold, actor, now);
+        Touch(now, fromExecutor: false);
+        return step;
+    }
 
     private ExecutionStep RequireStep(string key) =>
         FindStep(ExecutionStep.NormalizeKey(key)) ?? throw new DomainException("Etapa não encontrada.");
@@ -537,6 +896,7 @@ public class ExecutionPlan
             throw new DomainException("Esta etapa já terminou e não pode ser cancelada.");
 
         step.ChangeStatus(ExecutionStatus.Cancelled, reason, actor, now);
+        step.SetHeld(false, null, now);
         Touch(now, fromExecutor: false);
         return step;
     }

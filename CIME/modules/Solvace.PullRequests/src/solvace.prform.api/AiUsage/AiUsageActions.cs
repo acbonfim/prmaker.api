@@ -11,6 +11,8 @@ public static class AiUsageActions
         ("Architecture/learn-from-card", "base-solvace:learn"),
         ("Architecture/projects/{key}/sections/{section}/chat", "base-solvace:chat"),
         ("AI/generate", "ai:generate"),
+        ("api/v{version:apiVersion}/Promotion/parse", "promotion:parse"),
+        ("Promotion/parse", "promotion:parse"),
     ];
 
     private static readonly Dictionary<string, string> Labels = new(StringComparer.OrdinalIgnoreCase)
@@ -21,6 +23,7 @@ public static class AiUsageActions
         ["base-solvace:learn"] = "Aprender com um card",
         ["base-solvace:chat"] = "Sugerir melhoria de seção (Base Solvace)",
         ["ai:generate"] = "Gerar com IA",
+        ["promotion:parse"] = "Interpretar mensagem do Release Manager",
         ["pr:generate"] = "Gerar descrição/RCA do PR",
         ["handover:generate"] = "Gerar passagem de conhecimento",
         ["devops:summary"] = "Resumo não técnico (Ações DevOps)",

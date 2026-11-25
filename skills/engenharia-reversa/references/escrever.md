@@ -12,7 +12,8 @@ O sistema valida alguns campos obrigatorios e o prazo.
 Bom:
 ```
 ### RN-004 — Ideia so avanca da etapa "Analise" com o aprovador da etapa preenchido
-- **Onde:** `KaizenWorkflowService.cs:212-238` (back) · `kaizen-steps.component.ts:141` (front, so desabilita o botao)
+- **Onde:** `Solvace.Kaizen/src/Solvace.Kaizen.Application/KaizenWorkflowService.cs:212-238` (back) ·
+  `projects/kaizen/src/app/steps/kaizen-steps.component.ts:141` (front, so desabilita o botao)
 - **Quando:** clique em "Avancar etapa" (TELA-007) → `POST Kaizen/{id}/advance` (API-012)
 - **Regra:** se `TB_MLH_LEVEL_WORKFLOW.ApproverId` da etapa atual for nulo → 400 "Informe o aprovador da etapa." e a
   ideia fica na etapa; com aprovador, status `2 (EmAnalise)` → `3 (EmAprovacao)` e NTF-002 vai ao aprovador.
@@ -22,6 +23,9 @@ Bom:
 - **Tags:** avancar etapa, aprovador, workflow, nao consigo passar a etapa, step
 - **KC:** ART-34
 ```
+
+**Caminho do `Onde:`** (0097): sempre a partir da RAIZ do repositorio (como no cabecalho de cada trecho do pacote) — e o
+que a reancoragem e o leitor seguem; so o nome do arquivo e ambiguo no legado (dezenas de modulos na mesma pasta).
 
 ## Ordem de leitura do codigo (back)
 1. Pontos de entrada: controllers/endpoints (inventario `endpoint`), telas `.asp` (legado), consumers/jobs.
@@ -45,7 +49,7 @@ traduzidas (`GetLanguageByName`) = validacoes literais; `_inc_*.asp` = trechos c
 - **Modulos:** legado-actionplan
 - **Mecanismo:** pacote/biblioteca `helpers` (ActionPlanHelper) lendo o banco local
 - **Contrato:** sincrono, na abertura da aba Planos; `ListPlansByApplicationId(systemId, checklistId)` → VW_ACP_PLAN
-- **Onde:** `Controllers/ChecklistController.cs:650` → `helpers/Helpers/ActionPlanHelper.cs:200`
+- **Onde:** `solvace-core/checklist/Controllers/ChecklistController.cs:650` → `solvace-core/helpers/Helpers/ActionPlanHelper.cs:200`
 - **Se falhar:** 500 e a aba Planos fica vazia
 - **Confirmar:** filtro de status no revamp
 ```

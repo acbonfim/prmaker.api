@@ -68,12 +68,33 @@ FLOW="${FLOW:-perguntar}"
 # description = ReproSteps (Bug) ou System.Description (US), sem HTML
 if [[ "$WIT" == "Bug" ]]; then
   jq -r '.fields["Microsoft.VSTS.TCM.ReproSteps"] // ""' "$OUTDIR/card.json" \
-    | sed -e 's/<[^>]*>/ /g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/  */ /g' > "$OUTDIR/description.txt"
+    | sed -e 's/<img[^>]*>/ [imagem colada aqui: ver as evidencias do card] /g' -e 's/<[^>]*>/ /g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/  */ /g' > "$OUTDIR/description.txt"
   IS_BUG=1
 else
   jq -r '.fields["System.Description"] // ""' "$OUTDIR/card.json" \
-    | sed -e 's/<[^>]*>/ /g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/  */ /g' > "$OUTDIR/description.txt"
+    | sed -e 's/<img[^>]*>/ [imagem colada aqui: ver as evidencias do card] /g' -e 's/<[^>]*>/ /g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/  */ /g' > "$OUTDIR/description.txt"
   IS_BUG=0
+  # 0085: User Story — criterios de aceite em arquivo proprio (a analisar-us numera CA-1, CA-2...).
+  jq -r '(.fields["Microsoft.VSTS.Common.AcceptanceCriteria"] // "")
+    | gsub("<img[^>]*>"; " [imagem colada aqui: ver as evidencias do card] ") | gsub("<li[^>]*>"; "- ")
+    | gsub("<br ?/?>|</p>|</li>|</div>"; "\n") | gsub("<[^>]*>"; "") | gsub("&nbsp;"; " ") | gsub("&amp;"; "&")
+    | gsub("&lt;"; "<") | gsub("&gt;"; ">") | gsub("[ \t]+"; " ") | gsub("\n\\s*\n+"; "\n")' "$OUTDIR/card.json" > "$OUTDIR/criterios-aceite.txt" 2>/dev/null \
+    || : > "$OUTDIR/criterios-aceite.txt"
+fi
+
+# 0076: discussion do card (autor, data, texto sem HTML; onde havia imagem, a marca) — entrada da analise, como os
+# repro steps. Best-effort: sem ela a analise segue, mas diz que nao leu.
+DISC_COUNT=0
+RESP="$(get "$BASE/Azure/card/$CARD/full" "${AUTH[@]}")"; CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
+if [[ "$CODE" == "200" ]]; then
+  printf '%s' "$BODY" | jq -r '(.comments // []) | sort_by(.createdDate // "") | .[]
+    | "--- \(.createdByName // "?") em \((.createdDate // "")[0:16] | sub("T"; " "))\n"
+      + ((.text // "") | gsub("<img[^>]*>"; " [imagem: ver as evidencias do card] ") | gsub("<br ?/?>|</p>|</div>"; "\n")
+         | gsub("<[^>]*>"; "") | gsub("&nbsp;"; " ") | gsub("&amp;"; "&") | gsub("&lt;"; "<") | gsub("&gt;"; ">")
+         | gsub("[ \t]+"; " ") | gsub("\n\\s*\n+"; "\n"))' > "$OUTDIR/discussion.txt" 2>/dev/null || : > "$OUTDIR/discussion.txt"
+  DISC_COUNT="$(printf '%s' "$BODY" | jq '(.comments // []) | length' 2>/dev/null || echo 0)"
+else
+  : > "$OUTDIR/discussion.txt"
 fi
 
 # Campos uteis numa linha cada: o card.json bruto tem ~10 KB de URLs/identidades que so gastam contexto.
@@ -94,10 +115,12 @@ isBug=$IS_BUG
 state=$STATE
 area=$AREA
 fluxo=$FLOW
+discussion=$DISC_COUNT
 title=$TITLE
 outdir=$OUTDIR
 arquivos:
   card.json       ($(wc -c < "$OUTDIR/card.json") bytes)
   description.txt ($(wc -c < "$OUTDIR/description.txt") bytes)
+$( [[ -s "$OUTDIR/criterios-aceite.txt" && "$IS_BUG" == 0 ]] && echo "  criterios-aceite.txt ($(wc -c < "$OUTDIR/criterios-aceite.txt") bytes)")
   card-resumo.txt ($(wc -c < "$OUTDIR/card-resumo.txt") bytes)
 EOF

@@ -1,3 +1,4 @@
+using solvace.prform.Execution;
 using Microsoft.AspNetCore.Mvc;
 using solvace.azure.application.Contract;
 using solvace.azure.domain.Exceptions;
@@ -108,12 +109,15 @@ public class PullRequestController : ControllerBase
     [HttpPost("{cardNumber}/github")]
     public async Task<ActionResult<PullRequestGithubResponse>> OpenGithubPullRequest(string cardNumber, OpenPullRequestGithubRequest request,
         [FromServices] IPullRequestGithubApplication githubApplication, [FromServices] ITimelineApplication timelineApplication,
-        CancellationToken cancellationToken)
+        [FromServices] WorkDeliverableHooks hooks, CancellationToken cancellationToken)
     {
         try
         {
             var created = await githubApplication.Open(cardNumber, request, cancellationToken);
             await RegisterOnTimelineAsync(timelineApplication, created, request.UserId, cancellationToken);
+            // 0091: o PR vira entrega da sub-tarefa (?workItemTask= da skill, ou a de PR em andamento no card).
+            await hooks.PullRequestAsync(cardNumber, created, WorkDeliverableHooks.TaskOf(HttpContext),
+                WorkDeliverableHooks.IsClaude(HttpContext), WorkDeliverableHooks.ActorOf(HttpContext), cancellationToken);
             return Ok(created);
         }
         catch (DomainException e)

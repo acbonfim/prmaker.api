@@ -37,8 +37,48 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
     public DateTimeOffset? ThrottledUntil { get; private set; }
 
     public Guid RequestId => claim.Request.Id;
+    /// <summary>0080: resposta do Especialista do caso (pista própria, token do caso, MCP só do caso).</summary>
+    public bool IsSpecialist => claim.Request.Kind == "specialist";
+    /// <summary>0085: item de trabalho (executar/desfazer) — job comum (MCP normal do executor, sem o guard do especialista), em vagas próprias.</summary>
+    public bool IsWorkItem => claim.Request.Kind is "work-item" or "work-item-undo";
+    /// <summary>
+    /// 0102: pergunta da Base Solvace (Pergunte pelo executor) — token só das ferramentas da Base, MCP só do PRMake, perfil sem
+    /// commit/push, pasta neutra, modelo básico com pouco esforço; vagas próprias.
+    /// </summary>
+    public bool IsBaseAsk => claim.Request.Kind == "base-ask";
+    /// <summary>0080: uma resposta do especialista não deveria passar disso.</summary>
+    private static readonly TimeSpan SpecialistTimeout = TimeSpan.FromMinutes(20);
+    /// <summary>0102: alguém está esperando a resposta na tela.</summary>
+    private static readonly TimeSpan BaseAskTimeout = TimeSpan.FromMinutes(10);
+    /// <summary>0102: efforts que o Claude Code aceita (o PRMake já confere; aqui só não passa lixo para a linha de comando).</summary>
+    private static readonly HashSet<string> Efforts = new(StringComparer.Ordinal) { "low", "medium", "high", "xhigh", "max" };
+    /// <summary>0102: "a fundo" pode confirmar no código da máquina (Grep/Glob/Read nos repositórios do mapa).</summary>
+    private bool IsBaseAskDeep => IsBaseAsk && claim.Phase == "base-ask-deep";
+
+    /// <summary>
+    /// 1.9.1: o prompt de sistema padrão do Claude Code, as skills e as ferramentas que a pergunta não usa custavam ~25 mil
+    /// tokens por turno e um turno a mais (ToolSearch) — a pergunta vem toda no prompt do PRMake.
+    /// </summary>
+    public const string BaseAskSystemPrompt =
+        "Voce e o assistente da Base Solvace no executor do PRMake: responde perguntas sobre os sistemas da Solvace consultando a " +
+        "Base pelas ferramentas MCP do PRMake (prmake_base_*), segue as instrucoes do pedido e grava a resposta com " +
+        "prmake_base_answer. Sem terminal: nao faca perguntas, responda e encerre. Escreva em portugues do Brasil.";
+
+    /// <summary>0102/1.9.1: argumentos da pergunta da Base (antes do prompt e do MCP, que são comuns).</summary>
+    public static List<string> BaseAskArgs(bool deep, string settings) =>
+    [
+        "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+        // só as configurações deste perfil: os hooks e plugins do ~/.claude da pessoa (SessionStart, governança) ficam de fora
+        "--setting-sources", "project", "--settings", settings,
+        "--tools", deep ? "Read,Grep,Glob" : "Read", "--disable-slash-commands", "--system-prompt", BaseAskSystemPrompt
+    ];
+    private string? _filesDir;
     public string Card => claim.Request.CardNumber;
     public int? Pid { get; private set; }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+            Paths.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>Encerra o processo (cancelamento local, desligando o executor).</summary>
     public void Kill(string reason)
@@ -64,24 +104,60 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         var workspace = ConfigStore.ResolveWorkspace(config);
         _workspace = workspace;
         _repos = RepoMap.Load()?.Repos ?? [];
-        var resume = r.Kind == "resume" && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
+        // 0099 (ajustes 2): pedido de épico (E…) roda na pasta neutra da Mesa, sem workspace/repositórios.
+        // 0102: a pergunta da Base também roda na pasta neutra (não é card; lê a Base pelo MCP e, a fundo, os repositórios do mapa).
+        var desk = Paths.IsEpicKey(r.CardNumber) || IsBaseAsk;
+        if ((IsSpecialist || IsBaseAsk) && string.IsNullOrEmpty(claim.CaseToken))
+        {
+            await FinishAsync(new FinishRequest { Outcome = "failed", Retryable = false,
+                Error = IsBaseAsk ? "O PRMake não mandou o token da pergunta" : "O PRMake não mandou o token do caso para o especialista" });
+            return;
+        }
+        // 0080: o especialista retoma a sessão do caso (a conversa continua de onde parou).
+        var resume = (r.Kind == "resume" || IsSpecialist) && !string.IsNullOrEmpty(r.SessionId) && ClaudeLocator.TranscriptExists(r.SessionId);
         var sessionId = resume ? r.SessionId! : Guid.NewGuid().ToString();
         _sessionId = sessionId;
-        var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : workspace;
+        var home = desk ? Paths.EnsureDeskRoot() : workspace;
+        var cwd = resume && r.SessionCwd is { Length: > 0 } sc && Directory.Exists(sc) ? sc : home;
 
         var args = new List<string> { "-p", resume ? claim.ResumePrompt : claim.FreshPrompt };
         args.AddRange(resume ? ["--resume", sessionId] : ["--session-id", sessionId]);
-        args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            "--settings", ClaudeSettings.Ensure(), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
-        if (!string.Equals(Path.GetFullPath(cwd), Path.GetFullPath(workspace), StringComparison.Ordinal))
+        if (IsBaseAsk)
+            args.AddRange(BaseAskArgs(IsBaseAskDeep, ClaudeSettings.EnsureBaseAsk()));
+        else
+            args.AddRange(["--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+                "--settings", ClaudeSettings.Ensure(IsSpecialist), "--add-dir", Paths.ClaudeHome, "--add-dir", Paths.EnsureCardsRoot()]);
+        string? caseMcp = null;
+        if (IsSpecialist || IsBaseAsk)
+        {
+            // 0080: só o MCP do PRMake com o token do caso (o do usuário, com o token pessoal, fica de fora).
+            caseMcp = CaseMcpConfig(ConfigStore.ResolveApiBase(config), claim.CaseToken!, r.Id);
+            _caseMcp = caseMcp;
+            args.AddRange(["--mcp-config", caseMcp, "--strict-mcp-config"]);
+        }
+        // 0099 (ajustes 2): no épico o workspace só entra se for de verdade (sem código na máquina ele cai na home, que
+        // não é liberada); os repositórios do mapa entram como sempre (máquina de PO/gestor não tem mapa).
+        // 1.9.1: a pergunta rápida da Base não lê código — sem workspace nem repositórios.
+        var addWorkspace = (!desk || !SamePath(workspace, Paths.Home)) && (!IsBaseAsk || IsBaseAskDeep);
+        if (addWorkspace && !SamePath(cwd, workspace))
             args.AddRange(["--add-dir", workspace]);
         // 0048: repositórios do mapa fora do workspace (em dontAsk o Claude não lê fora das pastas liberadas).
-        foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))
-            args.AddRange(["--add-dir", dir]);
+        if (!IsBaseAsk || IsBaseAskDeep)
+            foreach (var dir in RepoMap.ExtraDirs(workspace, RepoMap.Folders(RepoMap.Load())))
+                args.AddRange(["--add-dir", dir]);
         // 0047: o PRMake escolhe o modelo pela fase do card (Opus na análise, Sonnet na correção); retomar a mesma sessão
         // com outro modelo é suportado pelo Claude Code.
         if (!string.IsNullOrWhiteSpace(claim.Model))
             args.AddRange(["--model", claim.Model.Trim()]);
+        // 0102: esforço do pedido (perguntas da Base: low; a fundo: medium).
+        if (claim.Effort?.Trim().ToLowerInvariant() is { } effort && Efforts.Contains(effort))
+            args.AddRange(["--effort", effort]);
+        // 0102: anexos da pergunta numa pasta do pedido (o Claude lê com Read).
+        if (claim.Files is { Count: > 0 } files)
+        {
+            _filesDir = WriteFiles(r.Id, files);
+            args.AddRange(["--add-dir", _filesDir]);
+        }
         if (claim.RemainingBudgetUsd is { } budget && budget > 0)
             args.AddRange(["--max-budget-usd", budget.ToString("0.00", CultureInfo.InvariantCulture)]);
 
@@ -98,6 +174,19 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         psi.Environment["PRMAKE_WORKSPACE"] = workspace;
         if (Environment.GetEnvironmentVariable("PRMAKE_API_BASE") is null)
             psi.Environment["PRMAKE_API_BASE"] = ConfigStore.ResolveApiBase(config);
+        // 0098: o hook de governança do settings do executor faz o trabalho; o do ~/.claude/settings.json da pessoa não repete.
+        if (GovernanceHook.Command() is not null)
+            psi.Environment[GovernanceHook.EnvName] = "executor";
+        if (IsSpecialist)
+        {
+            psi.Environment["PRMAKE_SPECIALIST"] = "1";
+            psi.Environment["PRMAKE_TOKEN"] = claim.CaseToken;
+        }
+        if (_filesDir is not null)
+            psi.Environment["PRMAKE_FILES_DIR"] = _filesDir;
+        // 1.9.1: as 5 ferramentas da Base já vêm carregadas (sem o turno do ToolSearch).
+        if (IsBaseAsk)
+            psi.Environment["ENABLE_TOOL_SEARCH"] = "false";
 
         Log.Info($"card {r.CardNumber}: {(resume ? $"retomando a sessão {sessionId}" : $"sessão nova {sessionId}")} em {cwd} (pedido {r.Id}, tentativa {r.Attempts}/{r.MaxAttempts})");
 
@@ -150,7 +239,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
             }
             if (!tick.IsCompleted) continue; // atividade nova: recalcula quando mandar
 
-            if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes)))
+            if (DateTimeOffset.UtcNow - started > MaxRuntime)
             {
                 _killedByTimeout = true;
                 KillTree(process);
@@ -204,8 +293,12 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
         await exit;
         await Task.WhenAll(stdout, stderr);
-        await FinishAsync(Outcome(process));
+        var outcome = Outcome(process);
+        await FinishAsync(outcome);
         Log.Info($"card {r.CardNumber}: terminou (código {SafeExitCode(process)})");
+        // 0085: item de trabalho que terminou bem — os worktrees dele (.prmake-wt/<card>/item-<n>/) saem na hora.
+        if (IsWorkItem && outcome.Outcome == "done" && claim.WorkItemNumber is { } itemNumber)
+            await Worktrees.CleanItemAsync(config, r.CardNumber, itemNumber, CancellationToken.None);
         await NotifyIfNeededAsync();
     }
 
@@ -247,7 +340,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         if (_killedByPause)
             return With(finish, "done", "Plano pausado pela tela — a sessão continua no próximo 'Continuar'", null, false);
         if (_killedByTimeout)
-            return With(finish, "failed", null, $"Passou do tempo máximo de {config.TimeoutMinutes} min", false);
+            return With(finish, "failed", null, $"Passou do tempo máximo de {MaxRuntime.TotalMinutes:0} min", false);
         if (_killReason is not null)
             return With(finish, "failed", null, $"Executor encerrado ({_killReason})", true);
 
@@ -297,6 +390,7 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
 
     private async Task FinishAsync(FinishRequest finish)
     {
+        DeleteCaseMcp();
         for (var attempt = 1; attempt <= 5; attempt++)
         {
             try
@@ -434,6 +528,92 @@ public sealed class JobRunner(AgentConfig config, PrmakeClient client, ClaimResp
         System.Text.RegularExpressions.Regex.Replace(line,
             @"(eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+|sk-ant-[A-Za-z0-9_\-]+|ghp_[A-Za-z0-9]+|(password|senha|token|secret)\s*[=:]\s*\S+)",
             "[oculto]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private TimeSpan MaxRuntime
+    {
+        get
+        {
+            var configured = TimeSpan.FromMinutes(Math.Max(5, config.TimeoutMinutes));
+            if (IsBaseAsk && configured > BaseAskTimeout) return BaseAskTimeout;
+            return IsSpecialist && configured > SpecialistTimeout ? SpecialistTimeout : configured;
+        }
+    }
+
+    private string? _caseMcp;
+
+    /// <summary>
+    /// 0080: config de MCP só com o PRMake e o token do caso (arquivo 0600, apagado no fim). O endereço segue o
+    /// instalador das skills: a base da API sem o /api/vN, mais /mcp.
+    /// </summary>
+    private static string CaseMcpConfig(string apiBase, string token, Guid requestId)
+    {
+        var trimmed = apiBase.TrimEnd('/');
+        var cut = System.Text.RegularExpressions.Regex.Match(trimmed, "/api/v[^/]*$");
+        var mcp = (cut.Success ? trimmed[..cut.Index] : trimmed) + "/mcp";
+        var path = Path.Combine(Paths.Root, $"case-mcp-{requestId:N}.json");
+        File.WriteAllText(path, CaseMcpJson(mcp, token));
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        return path;
+    }
+
+    /// <summary>
+    /// JSON do <c>--mcp-config</c> escrito à mão: o executor publicado é trimmed e sem serialização por reflexão
+    /// (<c>JsonSerializerIsReflectionEnabledByDefault=false</c>), então objeto anônimo quebra com
+    /// JsonSerializerIsReflectionDisabled.
+    /// </summary>
+    public static string CaseMcpJson(string mcpUrl, string token)
+    {
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer))
+        {
+            w.WriteStartObject();
+            w.WriteStartObject("mcpServers");
+            w.WriteStartObject("prmake");
+            w.WriteString("type", "http");
+            w.WriteString("url", mcpUrl);
+            w.WriteStartObject("headers");
+            w.WriteString("x-api-key", token);
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    private void DeleteCaseMcp()
+    {
+        if (_filesDir is not null)
+        {
+            try { Directory.Delete(_filesDir, recursive: true); } catch { /* a faxina do executor apaga depois */ }
+            _filesDir = null;
+        }
+        if (_caseMcp is null) return;
+        try { File.Delete(_caseMcp); } catch { /* fica na pasta do executor (0600) */ }
+        _caseMcp = null;
+    }
+
+    /// <summary>0102: grava os anexos (nome já saneado pelo PRMake; aqui de novo, sem pasta) em <c>~/.prmake-agent/files/&lt;pedido&gt;</c>.</summary>
+    public static string WriteFiles(Guid requestId, IReadOnlyList<ClaimFile> files)
+    {
+        var dir = Path.Combine(Paths.Root, "files", requestId.ToString("N"));
+        Directory.CreateDirectory(dir);
+        foreach (var f in files)
+        {
+            var name = Path.GetFileName(f.Name.Replace('\\', '/'));
+            if (string.IsNullOrWhiteSpace(name) || name is "." or "..") continue;
+            try
+            {
+                File.WriteAllBytes(Path.Combine(dir, name), Convert.FromBase64String(f.Data));
+            }
+            catch (FormatException)
+            {
+                Log.Warn($"anexo {name} com base64 inválido — ignorado");
+            }
+        }
+        return dir;
+    }
 
     private static int? SafeExitCode(Process p)
     {

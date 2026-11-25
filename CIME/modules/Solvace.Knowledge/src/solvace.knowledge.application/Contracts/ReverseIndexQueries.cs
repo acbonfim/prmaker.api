@@ -24,6 +24,8 @@ public sealed class ReverseIndexQuery
     public string? DocType { get; init; }
     public string? NotDocType { get; init; }
     public bool IncludeRemoved { get; init; } = true;
+    /// <summary>0097: só os itens cujo código citado mudou desde a geração.</summary>
+    public bool StaleOnly { get; init; }
     public ReverseBodyMode Body { get; init; } = ReverseBodyMode.None;
     public int? Limit { get; init; }
 }

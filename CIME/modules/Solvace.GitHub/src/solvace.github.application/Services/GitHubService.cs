@@ -448,6 +448,8 @@ public class GitHubService : IGitHubService
                     f.Preexisting = baseline.Contains(f.Name);
             }
 
+            await ReadReviewsAsync(prOwner, prRepo, number, result, cancellationToken);
+
             var pending = runs.CheckRuns.Any(r => r.Status.Value != CheckStatus.Completed)
                           || statuses.Statuses.Any(s => s.State.Value == CommitState.Pending);
             var any = runs.CheckRuns.Count > 0 || statuses.Statuses.Count > 0;
@@ -471,6 +473,33 @@ public class GitHubService : IGitHubService
             result.Error = e is TimeoutException ? "Tempo esgotado ao consultar o GitHub" : "Falha ao consultar o GitHub";
         }
         return result;
+    }
+
+    /// <summary>
+    /// 0075: revisões do PR para o resumo da situação do card — vale a última revisão de cada pessoa (aprovou, pediu
+    /// alteração ou foi dispensada) e os revisores ainda pedidos. Best-effort: sem permissão, fica sem revisões.
+    /// </summary>
+    private async Task ReadReviewsAsync(string owner, string repo, int number, PullRequestChecksResponse result, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reviews = await Client.PullRequest.Review.GetAll(owner, repo, number).WaitAsync(StatusRequestTimeout, cancellationToken);
+            var latest = reviews
+                .Where(r => r.User is not null && r.State.Value is PullRequestReviewState.Approved or PullRequestReviewState.ChangesRequested or PullRequestReviewState.Dismissed)
+                .GroupBy(r => r.User.Login, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderBy(r => r.SubmittedAt).Last().State.Value)
+                .ToList();
+            result.Approvals = latest.Count(s => s == PullRequestReviewState.Approved);
+            result.ChangesRequested = latest.Count(s => s == PullRequestReviewState.ChangesRequested);
+            var requested = await Client.PullRequest.ReviewRequest.Get(owner, repo, number).WaitAsync(StatusRequestTimeout, cancellationToken);
+            result.ReviewersPending = requested.Users.Select(u => u.Login)
+                .Concat(requested.Teams.Select(t => t.Slug is null ? t.Name : $"@{t.Slug}"))
+                .Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogInformation("Revisões do PR {Owner}/{Repo}#{Number} indisponíveis: {Error}", owner, repo, number, e.Message);
+        }
     }
 
     /// <summary>
@@ -788,12 +817,123 @@ public class GitHubService : IGitHubService
         }).ToList();
     }
 
-    public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default)
+    private const int BranchesCacheMinutes = 5;
+
+    public async Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default, bool bypassCache = false)
+    {
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        var key = $"github:branches:{_tokenScope}:{owner}/{repo}".ToLowerInvariant();
+        if (!bypassCache && _cacheService.TryGetValue<List<string>>(key, out var cached) && cached is not null)
+            return cached;
+
+        var branches = await Client.Repository.Branch.GetAll(owner, repo, new ApiOptions { PageSize = 100 });
+        var names = branches.Select(b => b.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _cacheService.Set(key, names, BranchesCacheMinutes);
+        LogRateLimit();
+        return names;
+    }
+
+    private const int BranchInfosCacheMinutes = 1;
+
+    public async Task<IReadOnlyList<BranchInfoResponse>> ListBranchInfosAsync(string repository, CancellationToken cancellationToken = default)
+    {
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        var key = $"github:branch-infos:{_tokenScope}:{owner}/{repo}".ToLowerInvariant();
+        if (_cacheService.TryGetValue<List<BranchInfoResponse>>(key, out var cached) && cached is not null)
+            return cached;
+
+        var repositoryTask = Client.Repository.Get(owner, repo);
+        var branchesTask = Client.Repository.Branch.GetAll(owner, repo, new ApiOptions { PageSize = 100 });
+        await Task.WhenAll(repositoryTask, branchesTask);
+        var defaultBranch = repositoryTask.Result.DefaultBranch;
+        var infos = branchesTask.Result
+            .Select(b => new BranchInfoResponse
+            {
+                Name = b.Name,
+                Protected = b.Protected,
+                IsDefault = string.Equals(b.Name, defaultBranch, StringComparison.Ordinal)
+            })
+            .OrderBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _cacheService.Set(key, infos, BranchInfosCacheMinutes);
+        LogRateLimit();
+        return infos;
+    }
+
+    public async Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(branch))
+            return false;
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+        try
+        {
+            await Client.Git.Reference.Get(owner, repo, $"heads/{branch.Trim()}");
+            return true;
+        }
+        catch (NotFoundException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<BranchDeltaResponse?> GetBranchDeltaAsync(string repository, string @base, string head, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))
+            return null;
+        await EnsureClientAsync(cancellationToken);
+        var (owner, repo) = ResolveRepository(string.IsNullOrWhiteSpace(repository) ? Config.GetConfigurationValue("Repo") : repository);
+
+        CompareResult compare;
+        try
+        {
+            compare = await Client.Repository.Commit.Compare(owner, repo, @base.Trim(), head.Trim());
+        }
+        catch (NotFoundException)
+        {
+            return null;
+        }
+
+        var commits = (compare.Commits ?? [])
+            .Where(c => c.Parents is null || c.Parents.Count <= 1) // merge não entra no cherry-pick
+            .Select(c =>
+            {
+                var message = c.Commit.Message ?? string.Empty;
+                return new BranchDeltaCommit
+                {
+                    Sha = c.Sha,
+                    Title = message.Split('\n', 2)[0].Trim(),
+                    Author = c.Commit.Author?.Name ?? c.Author?.Login ?? string.Empty,
+                    Date = c.Commit.Author?.Date.ToString("o") ?? string.Empty,
+                    Url = c.HtmlUrl
+                };
+            })
+            .ToList();
+
+        return new BranchDeltaResponse
+        {
+            Base = @base.Trim(),
+            Head = head.Trim(),
+            MergeBaseSha = compare.MergeBaseCommit?.Sha,
+            AheadBy = compare.AheadBy,
+            BehindBy = compare.BehindBy,
+            Commits = commits,
+            Truncated = compare.AheadBy > (compare.Commits?.Count ?? 0)
+        };
+    }
+
+    public async Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default, string? repository = null)
     {
         await EnsureClientAsync(cancellationToken);
 
         var owner = Config.GetConfigurationValue("Owner");
         var repo = Config.GetConfigurationValue("Repo");
+        if (!string.IsNullOrWhiteSpace(repository))
+            (owner, repo) = ResolveRepository(repository);
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             return new CompareDiffResponse { Error = "Configurações do GitHub (owner/repo) não encontradas" };
         if (string.IsNullOrWhiteSpace(@base) || string.IsNullOrWhiteSpace(head))

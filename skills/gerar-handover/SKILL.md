@@ -1,6 +1,6 @@
 ---
 name: gerar-handover
-description: Gera e salva a Passagem de Conhecimento (handover) de um card no PRMake, preenchendo o formulário cadastrado nas configurações (plugin AI Configurations, TemplatePassagemConhecimento) com os dados do card no Azure DevOps (campos, comentários, histórico), o PR salvo e a linha do tempo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um número informado. Use quando o usuário pedir para "gerar handover", "passagem de conhecimento", "passar o card para o próximo turno" ou similar.
+description: Gera e salva a Passagem de Conhecimento (handover) de um card no PRMake, preenchendo o formulário cadastrado nas configurações (plugin AI Configurations, TemplatePassagemConhecimento) com os dados do card no Azure DevOps (campos, comentários, histórico), o PR salvo e a linha do tempo. Descobre o card pela branch atual (hotfix/<card>, bugfix/<card> ou feature/<card> da User Story) ou por um número informado. Use quando o usuário pedir para "gerar handover", "passagem de conhecimento", "passar o card para o próximo turno" ou similar.
 ---
 
 # gerar-handover
@@ -30,13 +30,22 @@ lê o layout do formulário configurado, cruza os dados do card e salva o formul
 | PR salvo | `GET /PullRequest/GetByCardNumber?cardNumber={card}` |
 | Linha do tempo | `GET /Timeline/card/{card}` |
 | Handover atual | `GET /Handover/GetByCardNumber?cardNumber={card}` |
+| Situação atual (0075: o que o card aguarda — chamado, aprovação/merge, QA — com o contexto da passagem) | `GET /ExecutionPlan/card/{card}/situation` |
 | **Salvar** (upsert por card) | `POST /Handover` `{cardNumber, content, repositoryId?, isPublic}` |
 | Visibilidade (opcional) | `PUT /Handover/{card}/visibility` `{isPublic}` |
+
+## Governança (0098)
+
+As regras de governança vêm do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — não repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governança do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): não contorne, nem por outro comando, script ou
+  ferramenta equivalente. Diga ao usuário o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governança do PRMake: ..."): siga e cite o aviso (com a regra) no resumo final.
 
 ## Fluxo
 
 ### 1. Identificar o card
-`git rev-parse --abbrev-ref HEAD` → `hotfix/<numero>` ou `bugfix/<numero>` (ignore sufixos como `-qa`).
+`git rev-parse --abbrev-ref HEAD` → `hotfix/<numero>` ou `bugfix/<numero>` (Bug) ou `feature/<numero>` (User Story) — ignore sufixos como `-dev`, `-qa`, `-rv`.
 Se o usuário informou um número, use-o. Se não der para descobrir, **pergunte**.
 
 ### 2. Buscar os dados (somente leitura)
@@ -78,6 +87,8 @@ Siga `prompt.txt`, que tem as mesmas regras da tela:
 - Seja objetivo e técnico. Priorize o que o próximo turno precisa: o que já foi investigado, onde está o
   problema, o que foi descartado, a causa provável e o próximo passo.
 - Respeite as regras que vierem dentro do próprio layout.
+- **Situação atual (0075)**: com `situacaoAtual` no contexto (`jq '.situacaoAtual'`), o card está esperando algo —
+  use o resumo dela no status/próximo passo do layout; sem campo para isso, acrescente `## Situação atual` no fim.
 - **Nunca invente.** Use só o que está nos arquivos. Datas no formato `dd/mm/aaaa`. "De:" = quem vem
   tratando o card (timeline, histórico ou autor do PR). "Para:" = `—`, a menos que o usuário informe.
 - Se estiver em um repositório com o código do card, pode complementar "Onde está o problema" com

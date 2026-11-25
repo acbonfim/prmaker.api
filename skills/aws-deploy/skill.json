@@ -1,0 +1,10 @@
+{
+  "requires": [
+    "git",
+    "python3",
+    "aws"
+  ],
+  "depends": [
+    "analisar-bug"
+  ]
+}

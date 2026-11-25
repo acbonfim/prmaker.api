@@ -76,6 +76,28 @@ Mesmo banco (60 mil itens) para a master (`fix/api-2gi`, porta 5174) e a feature
 - **Flaky já existente:** `SectionBlocksTests.Excerpt_de_secao_grande…` falha às vezes (master: 4 de 25 rodadas; feature: 2 de 25) —
   corrida do cache estático de `ArchitectureSearch` entre testes em paralelo; não é da 0073.
 
+## Retomada (2026-11-25)
+
+Motivo: com a Pergunte pelo executor (0102) a busca fria virou o gargalo — em produção o índice em memória levou 25 s numa busca e
+**238 s** para carregar numa instância nova (cpu_idle + banco em outra região; o `startup_cpu_boost` não ajudou). CPU sempre ligada
+foi descartada pelo usuário (custo).
+
+- Merge da master (411 commits): conflitos no `ReverseEngineeringApplication` — levados para a versão no banco os recursos da 0097
+  (`staleOnly` → `ReverseIndexQuery.StaleOnly` + `WHERE "StaleSince" IS NOT NULL`; `Stale` no item; colunas `StaleSince/Reason/Commit`
+  no SQL e no `ReverseIndexEntry.Light`; índice técnico fora do Pergunte; histórico de cards no `for-card`).
+- `ReverseIndexWarmup` (0102) continua: agora só carrega o glossário.
+- Harness novo `.t0073/` (banco `cime0073` no container `cime-pg-0098`, `seed_index.py` reescrito: **72.391 itens** do espelho, 171 MB
+  com as colunas geradas; migração 34 s). Feature (5173) × master (5174) no mesmo banco, `DOTNET_PROCESSOR_COUNT=1`:
+
+| | master | feature |
+|---|---|---|
+| 40 casos (busca com/sem filtros, listagem, itens, impacto, for-card) | — | **0 diferenças** |
+| 1ª busca na instância fria (local) | 3,6 s (produção: 25–238 s) | **0,72 s** |
+| busca quente | ~0,11 s | ~0,35 s |
+| RSS depois de buscar | 659 MB | **191 MB** |
+
+- Testes: knowledge 250, prform 653, executionplans 424, governance 77.
+
 ## Log
 
 - 2026-10-27 — feature aberta (spec/plan/status).

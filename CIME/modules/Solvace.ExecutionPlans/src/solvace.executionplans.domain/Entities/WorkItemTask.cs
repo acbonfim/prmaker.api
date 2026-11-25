@@ -1,0 +1,373 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using solvace.executionplans.domain.Requests;
+
+namespace solvace.executionplans.domain.Entities;
+
+/// <summary>
+/// 0085: sub-tarefa do item de trabalho — roda na ordem dentro do item. O <see cref="Number"/> vem da mesma sequência
+/// global do item. Parâmetros, saídas e "como desfazer" ficam em JSON (jsonb).
+/// </summary>
+public partial class WorkItemTask
+{
+    public const int MaxTitleLength = 300;
+    public const int MaxTextLength = 20_000;
+    public const int MaxResultLength = 50_000;
+    public const int MaxKindLength = 40;
+    public const int MaxParams = 30;
+    public const int MaxParamValueLength = 2_000;
+    public const int MaxOutputLength = 20_000;
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonElement EmptyObject = JsonDocument.Parse("{}").RootElement.Clone();
+
+    public Guid Id { get; private set; }
+    public long Number { get; private set; }
+    public Guid WorkItemId { get; private set; }
+    public int Order { get; internal set; }
+    public string Title { get; private set; } = string.Empty;
+    public string? Description { get; private set; }
+    public string Kind { get; private set; } = WorkTaskKind.Manual;
+    public string Executor { get; private set; } = ExecutionExecutor.Claude;
+    /// <summary>JSON (jsonb) <c>Record&lt;string,string&gt;</c>.</summary>
+    public string ParamsJson { get; private set; } = "{}";
+    public string Status { get; private set; } = WorkTaskStatus.Pending;
+    public string? StepKey { get; private set; }
+    public string? Result { get; private set; }
+    /// <summary>JSON (jsonb) livre com as saídas (PR, branch, commit...).</summary>
+    public string OutputJson { get; private set; } = "{}";
+    /// <summary>JSON (jsonb) <see cref="WorkTaskUndo"/> (null = nada a desfazer).</summary>
+    public string? UndoJson { get; private set; }
+    public DateTimeOffset? StartedAt { get; private set; }
+    public DateTimeOffset? CompletedAt { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+    /// <summary>
+    /// Card 78680: pausada pela pessoa — o executor não a começa (nem as que dependem dela) até alguém continuar. Fica
+    /// pendente enquanto isso.
+    /// </summary>
+    public bool Held { get; private set; }
+    public string? HeldBy { get; private set; }
+    private List<long>? _dependsOn = [];
+    /// <summary>
+    /// Card 78680: números das sub-tarefas do item que precisam terminar antes desta (jsonb). Item espelho: as dependências
+    /// da etapa do plano; item avulso: as informadas (sem elas, as do tipo — <see cref="WorkTaskDependencies"/>).
+    /// </summary>
+    public List<long> DependsOn { get => _dependsOn ??= []; private set => _dependsOn = value; }
+
+    protected WorkItemTask() { }
+
+    internal WorkItemTask(Guid workItemId, int order, WorkTaskInput input, DateTimeOffset now)
+    {
+        Id = Guid.NewGuid();
+        WorkItemId = workItemId;
+        Order = order;
+        StepKey = string.IsNullOrWhiteSpace(input.StepKey) ? null : ExecutionStep.NormalizeKey(input.StepKey);
+        UpdatedAt = now;
+        Reshape(order, input);
+    }
+
+    public Dictionary<string, string> Params
+    {
+        get
+        {
+            try { return JsonSerializer.Deserialize<Dictionary<string, string>>(ParamsJson, JsonOptions) ?? []; }
+            catch (JsonException) { return []; }
+        }
+    }
+
+    public JsonElement OutputElement
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(OutputJson)) return EmptyObject;
+            try { return JsonDocument.Parse(OutputJson).RootElement.Clone(); }
+            catch (JsonException) { return EmptyObject; }
+        }
+    }
+
+    public WorkTaskUndo? Undo
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(UndoJson)) return null;
+            try { return JsonSerializer.Deserialize<WorkTaskUndo>(UndoJson, JsonOptions); }
+            catch (JsonException) { return null; }
+        }
+    }
+
+    /// <summary>Título, descrição, tipo, executor e parâmetros (criação/edição do item pendente).</summary>
+    internal void Reshape(int order, WorkTaskInput input)
+    {
+        Order = order;
+        var title = (input.Title ?? string.Empty).Trim();
+        if (title.Length == 0)
+            throw new DomainException("O título da sub-tarefa é obrigatório.");
+        Title = title.Length <= MaxTitleLength ? title : title[..MaxTitleLength];
+
+        var description = input.Description?.Trim();
+        if (description is { Length: > MaxTextLength })
+            throw new DomainException($"A descrição da sub-tarefa pode ter no máximo {MaxTextLength} caracteres.");
+        Description = string.IsNullOrEmpty(description) ? null : description;
+
+        Kind = NormalizeKind(input.Kind);
+
+        var executor = string.IsNullOrWhiteSpace(input.Executor) ? ExecutionExecutor.Claude : input.Executor.Trim().ToLowerInvariant();
+        if (!ExecutionExecutor.All.Contains(executor))
+            throw new DomainException($"Executor inválido: '{input.Executor}' (use claude ou user).");
+        Executor = executor;
+
+        ParamsJson = SerializeParams(input.Params);
+        if (input.DependsOn is not null)
+            SetDependsOn(input.DependsOn);
+    }
+
+    /// <summary>Dependências (números de sub-tarefa); devolve se mudou.</summary>
+    internal bool SetDependsOn(IEnumerable<long> numbers)
+    {
+        var list = numbers.Where(n => n > 0 && n != Number).Distinct().OrderBy(n => n).ToList();
+        if (list.SequenceEqual(DependsOn)) return false;
+        DependsOn = list;
+        return true;
+    }
+
+    /// <summary>Card 78680: pausa/continua (sem mudar o status — quem chama devolve a pendente antes de pausar).</summary>
+    internal bool SetHeld(bool held, string? by, DateTimeOffset now)
+    {
+        if (Held == held) return false;
+        Held = held;
+        HeldBy = held ? WorkItem.Clean(by, 200) : null;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// Card 78680: a pessoa mexeu (moveu, pausou, passou outra na frente) numa sub-tarefa em andamento/espera/com falha —
+    /// ela volta a pendente com o motivo no fim do resultado (o executor refaz dali).
+    /// </summary>
+    internal void BackToPending(string actor, string why, DateTimeOffset now)
+    {
+        AppendResult($"**{why}** ({actor}).");
+        Set(WorkTaskStatus.Pending, now);
+        CompletedAt = null;
+    }
+
+    /// <summary>0096: título/descrição da sub-tarefa pendente ou em espera acompanhando a etapa (o plano foi ajustado no lugar).</summary>
+    internal bool FollowStepText(string title, string? description, DateTimeOffset now)
+    {
+        var t = title.Trim();
+        var d = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (Status is not (WorkTaskStatus.Pending or WorkTaskStatus.Waiting) || t.Length == 0 || (Title == t && Description == d)) return false;
+        Title = t.Length <= MaxTitleLength ? t : t[..MaxTitleLength];
+        Description = d is { Length: > MaxTextLength } ? d[..MaxTextLength] : d;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>Tipo da sub-tarefa do plano acompanhando a etapa (só pendente; quem chama confere que não foi a pessoa que escolheu).</summary>
+    internal bool FollowStepKind(string kind, DateTimeOffset now)
+    {
+        var k = NormalizeKind(kind);
+        if (Status != WorkTaskStatus.Pending || Kind == k) return false;
+        Kind = k;
+        UpdatedAt = now;
+        return true;
+    }
+
+    public static string NormalizeKind(string? kind)
+    {
+        var k = (kind ?? string.Empty).Trim().ToLowerInvariant();
+        if (k.Length == 0) return WorkTaskKind.Manual;
+        if (k.Length > MaxKindLength || !KindPattern().IsMatch(k))
+            throw new DomainException($"Tipo de sub-tarefa inválido: '{kind}'. Use letras minúsculas, números e '-' (até {MaxKindLength}).");
+        return k;
+    }
+
+    private static string SerializeParams(Dictionary<string, string>? values)
+    {
+        if (values is null || values.Count == 0) return "{}";
+        if (values.Count > MaxParams)
+            throw new DomainException($"Uma sub-tarefa pode ter no máximo {MaxParams} parâmetros.");
+        var clean = new Dictionary<string, string>();
+        foreach (var (key, value) in values)
+        {
+            var k = key?.Trim();
+            if (string.IsNullOrEmpty(k) || k.Length > 80) continue;
+            var v = (value ?? string.Empty).Trim();
+            if (v.Length > MaxParamValueLength)
+                throw new DomainException($"O parâmetro '{k}' passa de {MaxParamValueLength} caracteres.");
+            clean[k] = v;
+        }
+        return JsonSerializer.Serialize(clean, JsonOptions);
+    }
+
+    /// <summary>Transição pedida por ação (valida a origem).</summary>
+    internal void Apply(string action, string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
+    {
+        if (Held && action is WorkTaskAction.Start)
+            throw new DomainException($"A sub-tarefa #{Number} está pausada por {HeldBy ?? "uma pessoa"} — siga com a próxima (as que dependem dela também esperam).");
+        switch (action)
+        {
+            case WorkTaskAction.Start:
+                Require(action, WorkTaskStatus.Pending, WorkTaskStatus.Waiting, WorkTaskStatus.Failed, WorkTaskStatus.Running);
+                Set(WorkTaskStatus.Running, now);
+                break;
+            case WorkTaskAction.Wait:
+                Require(action, WorkTaskStatus.Running, WorkTaskStatus.Pending, WorkTaskStatus.Waiting);
+                Set(WorkTaskStatus.Waiting, now);
+                break;
+            case WorkTaskAction.Complete:
+                Require(action, WorkTaskStatus.Pending, WorkTaskStatus.Running, WorkTaskStatus.Waiting, WorkTaskStatus.Failed);
+                Set(WorkTaskStatus.Completed, now);
+                break;
+            case WorkTaskAction.Fail:
+                Require(action, WorkTaskStatus.Pending, WorkTaskStatus.Running, WorkTaskStatus.Waiting);
+                Set(WorkTaskStatus.Failed, now);
+                break;
+            case WorkTaskAction.Skip:
+                Require(action, WorkTaskStatus.Pending, WorkTaskStatus.Waiting, WorkTaskStatus.Failed, WorkTaskStatus.Running);
+                Set(WorkTaskStatus.Skipped, now);
+                break;
+            case WorkTaskAction.Cancel:
+                Require(action, WorkTaskStatus.Pending, WorkTaskStatus.Running, WorkTaskStatus.Waiting);
+                Set(WorkTaskStatus.Cancelled, now);
+                break;
+            case WorkTaskAction.Revert:
+                Require(action, WorkTaskStatus.Completed);
+                Set(WorkTaskStatus.Reverted, now);
+                break;
+            default:
+                throw new DomainException($"Ação inválida: '{action}'.");
+        }
+        SetResult(result);
+        if (outputJson is not null) SetOutput(outputJson);
+        if (undo is not null) SetUndo(undo);
+    }
+
+    /// <summary>
+    /// "Já resolvi": a pessoa fez o que a sub-tarefa em espera pedia (acesso, credencial, decisão...). Ela volta a pendente
+    /// — o executor retoma dali — e o que a pessoa disse fica no fim do resultado, junto do motivo da espera.
+    /// </summary>
+    internal void ResolveWait(string actor, string? note, DateTimeOffset now)
+    {
+        if (Status != WorkTaskStatus.Waiting)
+            throw new DomainException($"A sub-tarefa #{Number} não está aguardando (está {Status}).");
+        var n = note?.Trim();
+        AppendResult(string.IsNullOrEmpty(n) ? $"**Resolvido por {actor}.**" : $"**Resolvido por {actor}:** {n}");
+        Set(WorkTaskStatus.Pending, now);
+    }
+
+    /// <summary>
+    /// Item reaberto: a sub-tarefa volta a pendente para ser refeita. O resultado anterior fica, com o motivo no fim
+    /// (o Claude lê ao refazer); saídas e "como desfazer" anteriores também ficam.
+    /// </summary>
+    internal void Reopen(string actor, string? reason, DateTimeOffset now)
+    {
+        var r = reason?.Trim();
+        AppendResult(string.IsNullOrEmpty(r) ? $"**Reaberta por {actor}** — refazer." : $"**Reaberta por {actor} — refazer:** {r}");
+        Set(WorkTaskStatus.Pending, now);
+        CompletedAt = null;
+    }
+
+    internal void Touch(DateTimeOffset now) => UpdatedAt = now;
+
+    private void AppendResult(string line)
+    {
+        var previous = Result ?? string.Empty;
+        var room = MaxResultLength - line.Length - 2;
+        if (previous.Length > room) previous = room > 0 ? previous[..room] : string.Empty;
+        SetResult(previous.Length == 0 ? line : $"{previous}\n\n{line}");
+    }
+
+    internal void Annotate(string? result, string? outputJson, WorkTaskUndo? undo, DateTimeOffset now)
+    {
+        SetResult(result);
+        if (outputJson is not null) SetOutput(outputJson);
+        if (undo is not null) SetUndo(undo);
+        UpdatedAt = now;
+    }
+
+    /// <summary>Espelha o status da etapa do plano (sem validar a transição).</summary>
+    internal void Force(string status, string? reason, DateTimeOffset now)
+    {
+        Set(status, now);
+        if (!string.IsNullOrWhiteSpace(reason) && status is WorkTaskStatus.Cancelled or WorkTaskStatus.Skipped or WorkTaskStatus.Failed)
+            SetResult(reason);
+    }
+
+    /// <summary>O desfazer desta sub-tarefa falhou: ela continua concluída; o motivo vai para o resultado.</summary>
+    internal void NoteUndoFailure(string? reason, DateTimeOffset now)
+    {
+        var r = string.IsNullOrWhiteSpace(reason) ? "Não foi possível desfazer." : reason.Trim();
+        SetResult(string.IsNullOrEmpty(Result) ? $"Desfazer falhou: {r}" : $"{Result}\n\nDesfazer falhou: {r}");
+        UpdatedAt = now;
+    }
+
+    private void Set(string status, DateTimeOffset now)
+    {
+        if (status is WorkTaskStatus.Running or WorkTaskStatus.Waiting)
+        {
+            StartedAt ??= now;
+            CompletedAt = null;
+        }
+        else if (status != WorkTaskStatus.Pending)
+        {
+            CompletedAt = now;
+        }
+        Status = status;
+        UpdatedAt = now;
+    }
+
+    private void Require(string action, params string[] from)
+    {
+        if (!from.Contains(Status))
+            throw new DomainException($"A sub-tarefa #{Number} está {Status} — não dá para {action}.");
+    }
+
+    private void SetResult(string? result)
+    {
+        var r = result?.Trim();
+        if (string.IsNullOrEmpty(r)) return;
+        Result = r.Length <= MaxResultLength ? r : r[..MaxResultLength];
+    }
+
+    private void SetOutput(string json)
+    {
+        if (json.Length > MaxOutputLength)
+            throw new DomainException($"As saídas da sub-tarefa passam de {MaxOutputLength} caracteres.");
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                throw new DomainException("As saídas da sub-tarefa precisam ser um objeto JSON.");
+            // Mescla com as saídas que já existem (start pode mandar a branch, complete o PR).
+            var merged = new Dictionary<string, JsonElement>();
+            try
+            {
+                using var current = JsonDocument.Parse(OutputJson);
+                if (current.RootElement.ValueKind == JsonValueKind.Object)
+                    foreach (var p in current.RootElement.EnumerateObject()) merged[p.Name] = p.Value.Clone();
+            }
+            catch (JsonException) { }
+            foreach (var p in doc.RootElement.EnumerateObject()) merged[p.Name] = p.Value.Clone();
+            OutputJson = JsonSerializer.Serialize(merged, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            throw new DomainException("As saídas da sub-tarefa não são um JSON válido.");
+        }
+    }
+
+    private void SetUndo(WorkTaskUndo undo)
+    {
+        var action = undo.Action?.Trim();
+        if (string.IsNullOrEmpty(action)) return;
+        UndoJson = JsonSerializer.Serialize(new WorkTaskUndo
+        {
+            Action = action.Length <= 80 ? action : action[..80],
+            Params = undo.Params ?? [],
+        }, JsonOptions);
+    }
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9-]*$")]
+    private static partial Regex KindPattern();
+}

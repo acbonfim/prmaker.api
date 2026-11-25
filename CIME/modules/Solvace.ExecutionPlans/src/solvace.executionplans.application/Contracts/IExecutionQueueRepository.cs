@@ -1,3 +1,4 @@
+using solvace.executionplans.domain.Responses;
 using solvace.executionplans.domain.Entities;
 
 namespace solvace.executionplans.application.Contracts;
@@ -7,8 +8,14 @@ public interface IExecutionQueueRepository
 {
     void AddRequest(ExecutionRequest request);
     Task<ExecutionRequest?> GetRequestAsync(Guid id, CancellationToken cancellationToken);
-    /// <summary>Pedido ativo (na fila, pego ou rodando) do card, rastreado.</summary>
+    /// <summary>Pedido ativo (na fila, pego ou rodando) do card na pista principal (sem especialista e itens de trabalho), rastreado.</summary>
     Task<ExecutionRequest?> GetActiveRequestForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0080: pedido ativo do Especialista do caso no card, rastreado.</summary>
+    Task<ExecutionRequest?> GetActiveSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>0080: último pedido do especialista no card (qualquer status), sem rastrear.</summary>
+    Task<ExecutionRequest?> GetLastSpecialistForCardAsync(string cardNumber, CancellationToken cancellationToken);
+    /// <summary>Consumo somado dos pedidos do especialista no card criados depois de <paramref name="since"/> (null = todos).</summary>
+    Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken);
     /// <summary>Pedidos ativos dos cards informados, sem rastrear.</summary>
     Task<List<ExecutionRequest>> GetActiveRequestsForCardsAsync(IReadOnlyCollection<string> cardNumbers, CancellationToken cancellationToken);
     Task<List<ExecutionRequest>> GetRecentRequestsForCardAsync(string cardNumber, int limit, CancellationToken cancellationToken);
@@ -18,8 +25,26 @@ public interface IExecutionQueueRepository
     Task<List<ExecutionRequest>> GetStaleForOwnerAsync(Guid ownerUserId, DateTimeOffset now, DateTimeOffset queuedBefore, CancellationToken cancellationToken);
     /// <summary>Pedidos pegos/rodando do executor (rastreados).</summary>
     Task<List<ExecutionRequest>> GetActiveForWorkerAsync(Guid workerId, CancellationToken cancellationToken);
+
+    /// <summary>0100: há coleta da AWS na fila (pronta) pedida por este dono? Entra no <c>queueReady</c> do sinal de vida.</summary>
+    Task<bool> HasReadyAwsRefreshAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken);
     /// <summary>Quantos pedidos pegos/rodando cada executor do dono tem.</summary>
     Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0080: quantos pedidos do especialista (pegos/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveSpecialistsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>0085: quantos pedidos de itens de trabalho (pegos/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    /// <summary>Há pedido do dono na fila que já pode começar (sem espera marcada)? Uma consulta — o executor pergunta a cada poucos segundos com o relay fora.</summary>
+    Task<bool> HasQueuedReadyAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken);
+    /// <summary>0102: quantas perguntas da Base Solvace (pegas/rodando) cada executor do dono tem.</summary>
+    Task<Dictionary<Guid, int>> CountActiveBaseAsksByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    void AddBaseQuestion(BaseQuestion question);
+    /// <summary>0102: pergunta da Base Solvace, rastreada.</summary>
+    Task<BaseQuestion?> GetBaseQuestionAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>0102: pergunta do pedido, rastreada.</summary>
+    Task<BaseQuestion?> GetBaseQuestionByRequestAsync(Guid requestId, CancellationToken cancellationToken);
+    /// <summary>0085: pedido ativo (executar ou desfazer) do item de trabalho, rastreado.</summary>
+    Task<ExecutionRequest?> GetActiveForWorkItemAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<decimal> GetCostSinceAsync(Guid ownerUserId, DateTimeOffset since, CancellationToken cancellationToken);
     /// <summary>0044: maior acumulado da sessão informado por OUTRO pedido já terminado (base do custo deste).</summary>
     Task<decimal?> GetLastSessionCostAsync(string sessionId, Guid exceptRequestId, CancellationToken cancellationToken);
@@ -48,6 +73,10 @@ public interface IExecutionQueueRepository
     /// <summary>Salva. Conflito de concorrência → <see cref="ExecutionPlanConcurrencyException"/>; pedido ativo duplicado no card → <see cref="ExecutionRequestDuplicateException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
     void ClearTracking();
+    /// <summary>0085: relê só este pedido (conflito de concorrência sem soltar o resto do contexto — o item de trabalho é do mesmo contexto).</summary>
+    Task ReloadAsync(ExecutionRequest request, CancellationToken cancellationToken);
+    /// <summary>0085: solta só este pedido do rastreamento.</summary>
+    void Detach(ExecutionRequest request);
 }
 
 /// <summary>Já existe um pedido ativo para o card (índice único parcial).</summary>

@@ -50,6 +50,13 @@ public class AzureService : IAzureService
         return FieldNames;
     }
 
+    public async Task<IReadOnlyList<(string Section, string Field)>> GetUserStorySpecFieldsAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        return UserStorySpec.ParseMap(Config.GetConfigurationValueOrDefault(AzureDevOpsFieldKeys.UserStorySpecFields, string.Empty),
+            AzureDevOpsFieldKeys.DefaultUserStorySpecFieldsJson);
+    }
+
     private AzureDevOpsFieldNames FieldNames
     {
         get
@@ -67,7 +74,8 @@ public class AzureService : IAzureService
                 Field(AzureDevOpsFieldKeys.RemainingWork),
                 Field(AzureDevOpsFieldKeys.OriginalEstimate),
                 Field(AzureDevOpsFieldKeys.CompletedWork),
-                Field(AzureDevOpsFieldKeys.RootCauseFieldPath).Replace("/fields/", string.Empty).Trim('/'));
+                Field(AzureDevOpsFieldKeys.RootCauseFieldPath).Replace("/fields/", string.Empty).Trim('/'),
+                Field(AzureDevOpsFieldKeys.BugType));
         }
     }
 
@@ -249,6 +257,89 @@ public class AzureService : IAzureService
         return doc.RootElement.TryGetProperty("rev", out var rev) && rev.TryGetInt64(out var value) ? value : 0;
     }
 
+    public async Task<IReadOnlyList<string>> GetWorkItemTypeStatesAsync(string workItemType, CancellationToken cancellationToken = default) =>
+        (await GetWorkItemTypeStateInfosAsync(workItemType, cancellationToken)).Select(s => s.Name).ToList();
+
+    /// <summary>Estados por organização/projeto/tipo — mudam raramente (processo do DevOps); a tela pede a cada abertura.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, IReadOnlyList<WorkItemTypeState> States)> StatesCache = new();
+    private static readonly TimeSpan StatesCacheFor = TimeSpan.FromMinutes(5);
+
+    public async Task<IReadOnlyList<WorkItemTypeState>> GetWorkItemTypeStateInfosAsync(string workItemType, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var baseUrl = GetAzureBaseUrl();
+        var key = $"{baseUrl}|{workItemType}".ToLowerInvariant();
+        if (StatesCache.TryGetValue(key, out var hit) && DateTime.UtcNow - hit.At < StatesCacheFor)
+            return hit.States;
+
+        var configured = Config.GetConfigurationValue("ApiVersion");
+        var client = CreateClient();
+        // A API de estados saiu do preview na 7.1: tenta a versão configurada e, recusada, a 7.1-preview.1.
+        foreach (var version in new[] { string.IsNullOrWhiteSpace(configured) ? "7.1" : configured, "7.1-preview.1" }.Distinct())
+        {
+            var url = $"{baseUrl}/wit/workitemtypes/{Uri.EscapeDataString(workItemType)}/states?api-version={version}";
+            var response = await client.GetAsync(url, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest) continue;
+            if (!response.IsSuccessStatusCode)
+                throw DevOpsActionException.Upstream($"O DevOps não listou os estados de {workItemType}: {ExtractDevOpsError(body)}");
+            using var doc = JsonDocument.Parse(body);
+            IReadOnlyList<WorkItemTypeState> states = doc.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray()
+                    .Select(v => new WorkItemTypeState
+                    {
+                        Name = StringProp(v, "name") ?? string.Empty,
+                        Category = StringProp(v, "category"),
+                        Color = StringProp(v, "color")
+                    })
+                    .Where(s => s.Name.Length > 0)
+                    .ToList()
+                : [];
+            StatesCache[key] = (DateTime.UtcNow, states);
+            return states;
+        }
+        throw DevOpsActionException.Upstream($"O DevOps não listou os estados de {workItemType}.");
+    }
+
+    /// <summary>Picklists por organização/projeto/tipo/campo — mudam raramente (processo do DevOps).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, IReadOnlyList<string>? Values)> AllowedValuesCache = new();
+
+    public async Task<IReadOnlyList<string>?> GetFieldAllowedValuesAsync(string workItemType, string field, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var baseUrl = GetAzureBaseUrl();
+        var key = $"{baseUrl}|{workItemType}|{field}".ToLowerInvariant();
+        if (AllowedValuesCache.TryGetValue(key, out var hit) && DateTime.UtcNow - hit.At < StatesCacheFor)
+            return hit.Values;
+
+        var configured = Config.GetConfigurationValue("ApiVersion");
+        var version = string.IsNullOrWhiteSpace(configured) ? "7.1" : configured;
+        var url = $"{baseUrl}/wit/workitemtypes/{Uri.EscapeDataString(workItemType)}/fields/{Uri.EscapeDataString(field)}?$expand=allowedValues&api-version={version}";
+        var response = await CreateClient().GetAsync(url, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        IReadOnlyList<string>? values;
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            values = null; // o tipo não tem o campo neste processo
+        else if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"O DevOps não listou os valores de {field} em {workItemType}: {ExtractDevOpsError(body)}");
+        else
+        {
+            using var doc = JsonDocument.Parse(body);
+            values = doc.RootElement.TryGetProperty("allowedValues", out var allowed) && allowed.ValueKind == JsonValueKind.Array
+                ? allowed.EnumerateArray()
+                    .Where(v => v.ValueKind == JsonValueKind.String)
+                    .Select(v => v.GetString()!.Trim())
+                    .Where(v => v.Length > 0)
+                    .ToList()
+                : [];
+        }
+        AllowedValuesCache[key] = (DateTime.UtcNow, values);
+        return values;
+    }
+
+    private static string? StringProp(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
     public async Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);
@@ -276,6 +367,24 @@ public class AzureService : IAzureService
         return doc.RootElement.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var value)
             ? value
             : throw DevOpsActionException.Upstream("O DevOps não devolveu o id do comentário");
+    }
+
+    public async Task<string> UploadAttachmentAsync(string fileName, byte[] content, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+
+        var url = $"{GetAzureBaseUrl()}/wit/attachments?fileName={Uri.EscapeDataString(fileName)}&uploadType=Simple&api-version=7.0";
+        using var body = new ByteArrayContent(content);
+        body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        var response = await CreateClient().PostAsync(url, body, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw DevOpsActionException.Upstream($"Não foi possível anexar {fileName} no DevOps: {ExtractDevOpsError(text)}");
+
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String && u.GetString() is { Length: > 0 } link
+            ? link
+            : throw DevOpsActionException.Upstream("O DevOps não devolveu a URL do anexo");
     }
 
     private static StringContent CommentBody(string html) =>
@@ -433,9 +542,15 @@ public class AzureService : IAzureService
             MissingResolutionType = IsEmpty(fields, names.ResolutionType),
             MissingGeneralClassification = IsEmpty(fields, names.GeneralClassification),
             MissingClassification = IsEmpty(fields, names.Classification),
+            // Bug Type só existe no Bug (User Story não tem o campo).
+            MissingBugType = IsBug(fields) && IsEmpty(fields, names.BugType),
             RemainingNotZero = RemainingNotZero(fields, names.RemainingWork)
         };
     }
+
+    private static bool IsBug(Dictionary<string, JsonElement> fields) =>
+        fields.TryGetValue("System.WorkItemType", out var el) && el.ValueKind == JsonValueKind.String
+        && string.Equals(el.GetString(), "Bug", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsEmpty(Dictionary<string, JsonElement> fields, string key)
     {
@@ -516,6 +631,124 @@ public class AzureService : IAzureService
             f.TryGetProperty("System.ChangedBy", out var cb) && cb.TryGetProperty("newValue", out var nv))
             return ValueToString(nv);
         return null;
+    }
+
+    public async Task<IReadOnlyList<AzureCardEvidence>> GetCardEvidenceAsync(string id, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var baseUrl = GetAzureBaseUrl();
+        var apiVersion = Config.GetConfigurationValue("ApiVersion");
+        if (string.IsNullOrWhiteSpace(apiVersion))
+            apiVersion = "7.0";
+        var client = CreateClient();
+
+        var response = await client.GetAsync($"{baseUrl}/wit/workitems/{Uri.EscapeDataString(id)}?$expand=all&api-version={apiVersion}", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new DevOpsActionException(502, $"O DevOps recusou a leitura do card {id} (HTTP {(int)response.StatusCode}).");
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+
+        var comments = new List<AzureCardComment>();
+        var cResp = await client.GetAsync($"{baseUrl}/wit/workItems/{Uri.EscapeDataString(id)}/comments?api-version=7.1-preview.4", cancellationToken);
+        if (cResp.IsSuccessStatusCode)
+        {
+            using var cDoc = JsonDocument.Parse(await cResp.Content.ReadAsStringAsync(cancellationToken));
+            if (cDoc.RootElement.TryGetProperty("comments", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                foreach (var c in arr.EnumerateArray())
+                    comments.Add(new AzureCardComment
+                    {
+                        Id = c.TryGetProperty("id", out var ci) && ci.TryGetInt64(out var civ) ? civ : 0,
+                        Text = c.TryGetProperty("text", out var ct) ? ct.GetString() : null,
+                        CreatedByName = GetIdentityName(c, "createdBy"),
+                        CreatedDate = GetDate(c, "createdDate"),
+                    });
+        }
+        return AzureCardEvidenceParser.Parse(doc.RootElement, comments);
+    }
+
+    public async Task<AzureAttachmentDownload> DownloadAttachmentAsync(string url, long maxBytes, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var organization = Config.GetConfigurationValue("Organization") ?? string.Empty;
+        if (!AzureCardEvidenceParser.IsAllowedDownload(url, organization))
+            throw new DevOpsActionException(400, "Anexo fora do DevOps da organização configurada — não baixado.");
+        var target = url.Contains("api-version=", StringComparison.OrdinalIgnoreCase) ? url : url + (url.Contains('?') ? "&" : "?") + "api-version=7.0";
+        if (!target.Contains("download=", StringComparison.OrdinalIgnoreCase)) target += "&download=true";
+
+        var client = CreateClient();
+        using var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new DevOpsActionException(502, $"O DevOps recusou o anexo (HTTP {(int)response.StatusCode}).");
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var declared = response.Content.Headers.ContentLength;
+        if (declared > maxBytes)
+            return new AzureAttachmentDownload([], contentType, true, declared);
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > maxBytes)
+                return new AzureAttachmentDownload([], contentType, true, null);
+        }
+        return new AzureAttachmentDownload(buffer.ToArray(), contentType, false, buffer.Length);
+    }
+
+    public async Task<IReadOnlyList<AzureWikiPage>> GetWikiPagesAsync(string url, CancellationToken cancellationToken = default)
+    {
+        await EnsureConfigAsync(cancellationToken);
+        var organization = Config.GetConfigurationValue("Organization") ?? string.Empty;
+        var (org, project, wiki, pageId) = ParseWikiUrl(url);
+        if (!org.Equals(organization, StringComparison.OrdinalIgnoreCase))
+            throw new DevOpsActionException(400, "Wiki fora da organização do DevOps configurada — não lida.");
+
+        var api = $"https://dev.azure.com/{Uri.EscapeDataString(org)}/{Uri.EscapeDataString(project)}/_apis/wiki/wikis/{Uri.EscapeDataString(wiki)}/pages";
+        var client = CreateClient();
+        async Task<System.Text.Json.JsonElement> GetAsync(string target)
+        {
+            using var response = await client.GetAsync(target, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new DevOpsActionException(502, $"O DevOps recusou a leitura da wiki (HTTP {(int)response.StatusCode}).");
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return doc.RootElement.Clone();
+        }
+
+        var root = await GetAsync($"{api}/{pageId}?includeContent=true&recursionLevel=full&api-version=7.1");
+        var pages = new List<AzureWikiPage> { WikiPage(root) };
+        // As subpáginas vêm sem o conteúdo na árvore: uma leitura por página (limite de 60).
+        var paths = new List<string>();
+        void Collect(System.Text.Json.JsonElement node)
+        {
+            if (!node.TryGetProperty("subPages", out var subs) || subs.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+            foreach (var sub in subs.EnumerateArray())
+            {
+                if (sub.TryGetProperty("path", out var p) && p.GetString() is { Length: > 0 } path) paths.Add(path);
+                Collect(sub);
+            }
+        }
+        Collect(root);
+        foreach (var path in paths.Take(60))
+            pages.Add(WikiPage(await GetAsync($"{api}?path={Uri.EscapeDataString(path)}&includeContent=true&api-version=7.1")));
+        return pages;
+    }
+
+    private static AzureWikiPage WikiPage(System.Text.Json.JsonElement e) => new(
+        e.TryGetProperty("path", out var p) ? p.GetString() ?? "/" : "/",
+        e.TryGetProperty("content", out var c) ? c.GetString() ?? string.Empty : string.Empty,
+        e.TryGetProperty("remoteUrl", out var u) ? u.GetString() : null);
+
+    /// <summary>URL de navegador da wiki → organização, projeto, wiki e id da página.</summary>
+    public static (string Org, string Project, string Wiki, int PageId) ParseWikiUrl(string url)
+    {
+        if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || !uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase))
+            throw new DevOpsActionException(400, "Informe a URL da página da wiki no dev.azure.com.");
+        var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToArray();
+        var i = Array.FindIndex(parts, x => x.Equals("_wiki", StringComparison.OrdinalIgnoreCase));
+        if (i != 2 || parts.Length < 6 || !parts[3].Equals("wikis", StringComparison.OrdinalIgnoreCase) || !int.TryParse(parts[5], out var id))
+            throw new DevOpsActionException(400, "URL de wiki não reconhecida (esperado …/_wiki/wikis/<wiki>/<id>/<página>).");
+        return (parts[0], parts[1], parts[4], id);
     }
 
     private static string? StripHtml(string? s)

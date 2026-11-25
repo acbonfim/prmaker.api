@@ -18,7 +18,7 @@ namespace cime.auth.api.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("auth")
-                .HasAnnotation("ProductVersion", "8.0.2")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -255,6 +255,53 @@ namespace cime.auth.api.Migrations
                     b.ToTable("AspNetUserRoles", "auth");
                 });
 
+            modelBuilder.Entity("cliqx.auth.api.Models.LoginEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Ip")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid?>("UserExternalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("UserExternalId", "At");
+
+                    b.ToTable("LoginEvents", "auth");
+                });
+
             modelBuilder.Entity("cliqx.auth.api.Models.MyService", b =>
                 {
                     b.Property<long>("Id")
@@ -273,7 +320,7 @@ namespace cime.auth.api.Migrations
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasAnnotation("Relational:JsonPropertyName", "id");
+                        .HasJsonPropertyName("id");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");

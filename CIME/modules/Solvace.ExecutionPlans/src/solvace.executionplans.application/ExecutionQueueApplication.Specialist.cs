@@ -1,0 +1,296 @@
+using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
+using solvace.executionplans.domain.RealTime;
+using solvace.executionplans.domain.Requests;
+using solvace.executionplans.domain.Responses;
+
+namespace solvace.executionplans.application;
+
+/// <summary>
+/// 0080: pista do Especialista do caso na fila — pedido <see cref="ExecutionRequestKind.Specialist"/>, um ativo por card,
+/// fora do limite de execuções da máquina (até <see cref="SpecialistSlots"/>), só para executor que conhece a pista. A
+/// sessão do Claude do especialista é do card (fica no <see cref="CaseChat"/>), não do plano.
+/// </summary>
+public partial class ExecutionQueueApplication
+{
+    /// <summary>"Fase" gravada no pedido do especialista (o modelo vem de SpecialistModel/SpecialistDeepModel).</summary>
+    public const string SpecialistPhase = "specialist";
+
+    public static bool SupportsSpecialist(ExecutionWorker worker) => !IsOlder(worker.AgentVersion, SpecialistAgentVersion);
+
+    public async Task<ExecutionRequest?> EnqueueSpecialistAsync(string cardNumber, ExecutionActor requester,
+        IReadOnlyList<(Guid UserId, string Name)> ownerCandidates, bool deep, CancellationToken cancellationToken)
+    {
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var now = DateTimeOffset.UtcNow;
+
+        if (await _queue.GetActiveSpecialistForCardAsync(card, cancellationToken) is { } active)
+        {
+            if (active.Status == ExecutionRequestStatus.Queued)
+            {
+                // Ainda não começou: lê a mensagem nova junto (e passa a investigar a fundo, se pedido).
+                if (deep) active.MarkDeep(now);
+                active.RunNow(now);
+                await SaveQuietlyAsync(cancellationToken);
+                await WakeWorkersAsync(active.OwnerUserId, cancellationToken);
+                return active;
+            }
+            await SetPendingRunAsync(card, true, now, cancellationToken);
+            return active;
+        }
+
+        var candidates = ownerCandidates.Where(c => c.UserId != Guid.Empty).DistinctBy(c => c.UserId).ToList();
+        if (candidates.Count == 0)
+            throw new DomainException("Ninguém com executor do PRMake neste card — instale o executor em \"Meus executores\".");
+        var withWorkers = await _queue.GetOwnersWithWorkersAsync(candidates.Select(c => c.UserId).ToList(), cancellationToken);
+        var owner = candidates.FirstOrDefault(c => withWorkers.Contains(c.UserId));
+        if (owner == default) owner = candidates[0];
+
+        // A sessão do especialista vive numa máquina: retoma nela se estiver online; senão começa outra (com o contexto do caso).
+        var chat = _cases is null ? null : await _cases.GetChatAsync(card, cancellationToken);
+        ExecutionSession? session = null;
+        Guid? target = null;
+        if (chat?.SessionId is { Length: > 0 } sid && !await SpecialistSessionTooLongAsync(card, sid, cancellationToken))
+        {
+            var workers = (await _queue.GetWorkersByOwnerAsync(owner.UserId, cancellationToken)).Where(w => !w.IsRevoked).ToList();
+            var home = chat.SessionHost is { } host
+                ? workers.FirstOrDefault(w => string.Equals(w.Host, host, StringComparison.OrdinalIgnoreCase) && w.IsOnline(now))
+                : null;
+            if (home is not null)
+            {
+                session = new ExecutionSession { SessionId = sid, Host = chat.SessionHost, Cwd = chat.SessionCwd };
+                target = home.Id;
+            }
+        }
+        _queue.ClearTracking();
+
+        var request = new ExecutionRequest(card, ExecutionRequestKind.Specialist, ExecutionRequestSource.Case, owner.UserId, owner.Name,
+            requester.UserId, requester.Name, null, session, target, null, false, now);
+        if (deep) request.MarkDeep(now);
+        var saved = await AddRequestAsync(request, cancellationToken);
+        await UpdateWaitReasonsAsync(owner.UserId, now, cancellationToken);
+        return saved;
+    }
+
+    public async Task<ExecutionRequestResponse?> GetSpecialistRunAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var active = await _queue.GetActiveSpecialistForCardAsync(card, cancellationToken);
+        if (active is not null)
+            return await RespondAsync(active, cancellationToken);
+        return (await _queue.GetLastSpecialistForCardAsync(card, cancellationToken))?.ToResponse();
+    }
+
+    /// <summary>
+    /// Contexto médio por chamada (tokens) a partir do qual a próxima resposta abre sessão nova em vez de retomar: cada
+    /// chamada da sessão relê o contexto inteiro (cache lido), e a sessão longa do card 78161 chegou a 70 mil por chamada.
+    /// A sessão nova lê o contexto do caso (últimas mensagens, pontos, itens) — a conversa não se perde.
+    /// </summary>
+    public const long SpecialistSessionContextLimit = 70_000;
+
+    private async Task<bool> SpecialistSessionTooLongAsync(string card, string sessionId, CancellationToken cancellationToken)
+    {
+        var last = await _queue.GetLastSpecialistForCardAsync(card, cancellationToken);
+        if (last is null || !string.Equals(last.SessionId, sessionId, StringComparison.Ordinal) || last.Turns is not > 0) return false;
+        var context = (last.FreshInputTokens ?? 0) + (last.CacheReadTokens ?? 0) + (last.CacheWriteTokens ?? 0);
+        if (context == 0) context = last.InputTokens ?? 0;
+        return context / last.Turns.Value > SpecialistSessionContextLimit;
+    }
+
+    public Task<CaseUsageResponse> GetSpecialistUsageAsync(string cardNumber, DateTimeOffset? since, CancellationToken cancellationToken) =>
+        _queue.GetSpecialistUsageAsync(CaseChat.NormalizeCard(cardNumber), since, cancellationToken);
+
+    public async Task<bool> IsSpecialistRequestActiveAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken) =>
+        await _queue.GetRequestAsync(requestId, cancellationToken) is { Kind: ExecutionRequestKind.Specialist } r
+        && r.IsActive
+        && string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal);
+
+    public async Task<SpecialistRequester?> GetActiveSpecialistRequesterAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken) =>
+        await _queue.GetRequestAsync(requestId, cancellationToken) is { Kind: ExecutionRequestKind.Specialist } r
+        && r.IsActive
+        && string.Equals(r.CardNumber, cardNumber, StringComparison.Ordinal)
+            ? new SpecialistRequester(r.RequestedByUserId, r.RequestedBy, r.OwnerUserId, r.OwnerName)
+            : null;
+
+    private static string SpecialistPrompt(ExecutionRequest r, bool fresh)
+    {
+        var deep = r.Deep
+            ? "\n\nPediram para INVESTIGAR A FUNDO: confirme no codigo/banco/arquivos antes de responder, sem pressa."
+            : "\n\nResposta rapida: o que a pessoa precisa saber agora, com o minimo de leituras (aprofunde so se pedirem).";
+        // 0099: chave de épico (E123) = Mesa de gestão — skill especialista-de-gestao (cards seguem com especialista-do-caso).
+        if (EpicKey.IsEpic(r.CardNumber))
+            return ManagementSpecialistPrompt(r, fresh);
+        var start = fresh
+            ? $"Voce e o Especialista do caso do card {r.CardNumber} no PRMake. Leia as instrucoes com " +
+              "`cat ~/.claude/skills/especialista-do-caso/SKILL.md` (Bash) e siga-as — NAO use a ferramenta Skill. " +
+              $"Comece por prmake_case_context (card {r.CardNumber}) e responda as mensagens novas (prmake_case_messages) com prmake_case_reply."
+            : $"Mensagens novas na conversa do caso {r.CardNumber} ({r.RequestedBy} escreveu). Leia com prmake_case_messages (card {r.CardNumber}) " +
+              "e responda com prmake_case_reply, conforme a skill especialista-do-caso (se nao lembrar das regras, " +
+              "`cat ~/.claude/skills/especialista-do-caso/SKILL.md`).";
+        return start +
+               "\n\nVoce e o guardiao do card: o que a pessoa PEDE na conversa voce executa pelas ferramentas do PRMake, com a integracao " +
+               "de quem pediu — Timeline, horas e acoes do card, abrir PR, itens de trabalho e AJUSTES DO PLANO ATUAL (texto de etapa com " +
+               "prmake_step, concluir a etapa da pessoa com prmake_advance, contexto da espera com prmake_handoff, texto da situacao com " +
+               "prmake_situation_publish, respostas, arquivos). Ajuste simples nunca vira proposta nem item novo; proposta " +
+               "(prmake_case_propose) so quando a solucao muda. Acao destrutiva com pedido ambiguo: confirme em uma linha antes." + deep +
+               "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
+    }
+
+    /// <summary>0099 (ajustes 2): "investigar a fundo" na Mesa respeita o perfil de quem pediu (código/banco só no perfil dev).</summary>
+    private static string DeskDeep(bool deep) => deep
+        ? "\n\nPediram para INVESTIGAR A FUNDO: confirme nas fontes (Base Solvace, engenharia reversa, DevOps, PRMake; codigo/banco so " +
+          "se o perfil de quem pediu for dev) antes de responder, sem pressa."
+        : "\n\nResposta rapida: o que a pessoa precisa saber agora, com o minimo de leituras (aprofunde so se pedirem).";
+
+    /// <summary>0099: skills do Especialista de gestão (instala/atualiza as que faltam antes de ler o SKILL.md).</summary>
+    public const string ManagementSkillsCommand =
+        "bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet especialista-de-gestao tarefas-de-gestao";
+
+    /// <summary>
+    /// 0099: prompt do especialista num épico da Mesa de gestão — skill <c>especialista-de-gestao</c> (guardião do épico:
+    /// cards do DevOps com a integração de quem pediu, relatórios, duplicados, entendimento, RCA, PDF, itens do épico).
+    /// </summary>
+    private static string ManagementSpecialistPrompt(ExecutionRequest r, bool fresh)
+    {
+        var key = r.CardNumber;
+        var start = fresh
+            ? $"Voce e o Especialista de gestao do epico {key} (Mesa de gestao do PRMake — {key} e a chave do epico, NAO um card do DevOps). " +
+              $"Primeiro garanta as skills: `{ManagementSkillsCommand}` (Bash). Depois leia as instrucoes com " +
+              "`cat ~/.claude/skills/especialista-de-gestao/SKILL.md` (Bash) e siga-as — NAO use a ferramenta Skill. " +
+              $"Comece por prmake_case_context (card {key}) e responda as mensagens novas (prmake_case_messages) com prmake_case_reply."
+            : $"Mensagens novas na conversa do epico {key} ({r.RequestedBy} escreveu). Leia com prmake_case_messages (card {key}) " +
+              "e responda com prmake_case_reply, conforme a skill especialista-de-gestao (se nao lembrar das regras, " +
+              $"`{ManagementSkillsCommand}` e `cat ~/.claude/skills/especialista-de-gestao/SKILL.md`).";
+        return start +
+               "\n\nVoce e o guardiao do epico: o que a pessoa PEDE na conversa voce executa pelas ferramentas do PRMake, com a integracao " +
+               "de quem pediu — consultar, criar, editar e mover cards do DevOps (prmake_devops_*), gerir o epico e os cards dele " +
+               "(prmake_epic*), itens de trabalho do epico (relatorios, duplicados, entendimento, RCA, PDF). Antes de criar card, procure " +
+               "duplicado; lote com mais de 10 cards, confirme; nunca feche, remova nem mescle card sem a pessoa decidir. Acoes no card " +
+               $"(Timeline, horas, estado) usam o numero do card, nunca {key}. " +
+               "Veja \"Perfil de quem pediu\" no contexto: perfil management (PO / gestor de problemas) = sem git, gh, codigo, banco do " +
+               "cliente nem CLI da AWS — use Base Solvace, engenharia reversa, ferramentas do PRMake, prmake_epic_monitor, prmake_aws_status " +
+               "e validar-ambiente." + DeskDeep(r.Deep) +
+               "\n\n(Executor do PRMake, sem terminal: responda e encerre a vez — a proxima mensagem retoma esta sessao.)";
+    }
+
+    private async Task RegisterCaseSessionAsync(ExecutionRequest r, Guid workerId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (_cases is null || string.IsNullOrEmpty(r.SessionId)) return;
+        var host = (await _queue.GetWorkerAsync(workerId, cancellationToken))?.Host;
+        await MutateChatAsync(r.CardNumber, chat => chat.RegisterSession(r.SessionId, host, r.SessionCwd, now, r.CreatedAt), now, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fim de uma resposta do especialista: consumo na última mensagem dele e na conversa; falhou sem responder → aviso na
+    /// conversa; chegou mensagem enquanto ele rodava → roda de novo.
+    /// </summary>
+    private async Task AfterSpecialistAsync(ExecutionRequest r, FinishExecutionRequestRequest finish, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (_cases is null) return;
+        try
+        {
+            _cases.ClearTracking();
+            var written = await _cases.GetMessagesByRequestAsync(r.Id, cancellationToken);
+            // O consumo fica na resposta (texto); só sem resposta, no último cartão (proposta/ação).
+            if ((written.LastOrDefault(m => m.Kind == CaseMessageKind.Text) ?? written.LastOrDefault()) is { } last)
+            {
+                var ms = r.StartedAt is { } st && r.FinishedAt is { } ft ? (int?)Math.Max(0, (ft - st).TotalMilliseconds) : null;
+                last.SetUsage(r.InputTokens, r.OutputTokens, ms, r.Model);
+            }
+            var chat = await _cases.GetChatAsync(r.CardNumber, cancellationToken);
+            if (chat is null)
+            {
+                chat = new CaseChat(r.CardNumber, now);
+                _cases.AddChat(chat);
+            }
+            chat.AddUsage(r.InputTokens, r.OutputTokens, r.CostUsd, now);
+            var again = chat.PendingRun && r.Status != ExecutionRequestStatus.Cancelled;
+            chat.SetPendingRun(false, now);
+
+            CaseMessage? notice = null;
+            if (written.Count == 0 && r.Status is ExecutionRequestStatus.Failed or ExecutionRequestStatus.Expired)
+            {
+                var number = await _cases.GetMaxMessageNumberAsync(r.CardNumber, cancellationToken) + 1;
+                var why = r.LastError ?? r.FinishedReason ?? "o processo terminou com erro";
+                notice = new CaseMessage(r.CardNumber, number, CaseAuthorKind.System, null, "PRMake", CaseMessageKind.System,
+                    $"O especialista não conseguiu responder: {why}. Escreva de novo para tentar outra vez.", false, now);
+                _cases.AddMessage(notice);
+            }
+            await _cases.SaveChangesAsync(cancellationToken);
+            if (written.Count > 0 || notice is not null)
+                await NotifyCaseAsync(r.CardNumber, new
+                {
+                    cardNumber = r.CardNumber, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number = notice?.Number ?? written.Last().Number
+                }, cancellationToken);
+
+            if (again)
+            {
+                _queue.ClearTracking();
+                // Card 78723: a nova vez roda na máquina de quem pediu (pedidos antigos podiam ter dono diferente).
+                var home = r.RequestedByUserId is { } requester && requester != Guid.Empty
+                    ? (requester, r.RequestedBy)
+                    : (r.OwnerUserId, r.OwnerName);
+                await EnqueueSpecialistAsync(r.CardNumber, new ExecutionActor(r.RequestedByUserId, r.RequestedBy, false),
+                    [home], r.Deep, cancellationToken);
+            }
+        }
+        catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException)
+        {
+            // best-effort: o consumo fica no pedido; a conversa segue.
+            _cases.ClearTracking();
+        }
+    }
+
+    private async Task SetPendingRunAsync(string card, bool pending, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await MutateChatAsync(card, chat => chat.SetPendingRun(pending, now), now, cancellationToken);
+
+    private async Task MutateChatAsync(string card, Action<CaseChat> mutate, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (_cases is null) return;
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            _cases.ClearTracking();
+            var chat = await _cases.GetChatAsync(card, cancellationToken);
+            if (chat is null)
+            {
+                chat = new CaseChat(card, now);
+                _cases.AddChat(chat);
+            }
+            mutate(chat);
+            try
+            {
+                await _cases.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (Exception e) when (e is ExecutionPlanConcurrencyException or CaseNumberConflictException)
+            {
+                await Task.Delay(Random.Shared.Next(10, 40) * attempt, cancellationToken);
+            }
+        }
+    }
+
+    private async Task SaveQuietlyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _queue.SaveChangesAsync(cancellationToken);
+        }
+        catch (ExecutionPlanConcurrencyException)
+        {
+            // O executor pegou o pedido ao mesmo tempo — ele lê as mensagens novas de qualquer jeito.
+            _queue.ClearTracking();
+        }
+    }
+
+    private async Task NotifyCaseAsync(string card, object payload, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _realTime.NotifyGroupAsync(ExecutionPlanRealTimeEvents.Group(card), ExecutionPlanRealTimeEvents.EventCaseUpdated, payload, cancellationToken);
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+}

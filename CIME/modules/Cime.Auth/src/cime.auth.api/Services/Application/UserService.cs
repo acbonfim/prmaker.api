@@ -16,6 +16,8 @@ using ProSales.Repository.Contexts;
 using cliqx.auth.api.Services;
 using cliqx.auth.api.Models.Types;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
+using LoginEvent = cliqx.auth.api.Models.LoginEvent;
 
 namespace ProAuth.Services.Application;
 
@@ -27,14 +29,20 @@ public class UserService : IUserService
     public IMapper _mapper { get; }
     public readonly DefaultContext context;
     private readonly IPasswordService _passService;
+    private readonly IHttpContextAccessor _http;
+    private readonly ILogger<UserService> _logger;
 
     public UserService(UserManager<User> UserManager
     , SignInManager<User> signInManager
     , RoleManager<Role> roleInManager
     , IMapper mapper
     , DefaultContext context,
-IPasswordService passService)
+IPasswordService passService,
+    IHttpContextAccessor http,
+    ILogger<UserService> logger)
     {
+        _http = http;
+        _logger = logger;
         _userManager = UserManager;
         _signInManager = signInManager;
         _roleInManager = roleInManager;
@@ -179,6 +187,66 @@ IPasswordService passService)
 
     public async Task<RetornoDto> LoginUser(UserLoginDto userLogin)
     {
+        User? attempted = null;
+        var retorno = await LoginUserCore(userLogin, u => attempted = u);
+        await RecordLoginAsync(userLogin?.UserName, attempted, retorno);
+        return retorno;
+    }
+
+    /// <summary>
+    /// Grava a tentativa de login (0079) — sucesso ou motivo da falha, IP e navegador. Aguardado dentro da requisição
+    /// (Cloud Run estrangula a CPU depois da resposta); falha ao gravar só vira aviso no log.
+    /// </summary>
+    private async Task RecordLoginAsync(string? typedUserName, User? user, RetornoDto retorno)
+    {
+        try
+        {
+            var request = _http.HttpContext?.Request;
+            var reason = retorno.Success ? LoginEvent.ReasonOk : retorno.StatusCode switch
+            {
+                StatusCodes.Status404NotFound => LoginEvent.ReasonNotFound,
+                StatusCodes.Status401Unauthorized => LoginEvent.ReasonWrongPassword,
+                StatusCodes.Status403Forbidden => user is { Active: false } ? LoginEvent.ReasonInactive : LoginEvent.ReasonUnconfirmed,
+                _ => LoginEvent.ReasonError
+            };
+            context.LoginEvents.Add(new LoginEvent
+            {
+                At = DateTime.Now,
+                UserId = user?.Id,
+                UserExternalId = user?.ExternalId,
+                UserName = LoginEvent.Cut(user?.UserName ?? typedUserName, LoginEvent.MaxUserNameLength) ?? "",
+                Success = retorno.Success,
+                Reason = reason,
+                Ip = LoginEvent.Cut(ClientIp(_http.HttpContext), LoginEvent.MaxIpLength),
+                UserAgent = LoginEvent.Cut(request?.Headers.UserAgent.ToString(), LoginEvent.MaxUserAgentLength)
+            });
+            await context.SaveChangesAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Não registrei a tentativa de login de {UserName}", typedUserName);
+        }
+    }
+
+    /// <summary>
+    /// IP do cliente: o último salto do X-Forwarded-For (o que o proxy do Cloud Run acrescentou — os anteriores vêm do
+    /// próprio cliente e podem ser forjados) ou o endereço da conexão.
+    /// </summary>
+    public static string? ClientIp(HttpContext? http)
+    {
+        if (http is null) return null;
+        var forwarded = http.Request.Headers["X-Forwarded-For"].ToString();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            var last = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+            if (!string.IsNullOrEmpty(last)) return last;
+        }
+        var remote = http.Connection.RemoteIpAddress;
+        return remote is null ? null : (remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote).ToString();
+    }
+
+    private async Task<RetornoDto> LoginUserCore(UserLoginDto userLogin, Action<User?> found)
+    {
         var retorno = new RetornoDto();
 
         try
@@ -189,6 +257,7 @@ IPasswordService passService)
 
             var userFound = await _userManager.Users
                 .FirstOrDefaultAsync(u => u.NormalizedUserName == userLogin.UserName.ToUpper());
+            found(userFound);
 
             if (userFound == null)
             {
@@ -459,6 +528,7 @@ IPasswordService passService)
                 CompanyId = u.CompanyId,
                 ChannelOrigin = u.ChannelOrigin,
                 ImagemUrlUser = u.ImagemUrlUser,
+                LastLoginAt = u.DataUltimoLogin <= DateTime.MinValue.AddDays(1) ? null : u.DataUltimoLogin,
                 UserRoles = (u.UserRoles ?? new List<UserRole>())
                     .Where(ur => ur.Role != null)
                     .Select(ur => new UserRoleItemDto
@@ -528,47 +598,73 @@ IPasswordService passService)
         }
     }
 
+    /// <summary>
+    /// O Identity grava o usuário com um token de concorrência (<c>ConcurrencyStamp</c>): duas requisições que carregam o mesmo
+    /// usuário e gravam quase juntas fazem a segunda falhar com <c>ConcurrencyFailure</c> ("Optimistic concurrency failure").
+    /// É o que acontecia ao salvar o perfil e os cargos ao mesmo tempo. Quem perde a corrida relê o usuário e tenta de novo.
+    /// </summary>
+    private const int MaxConcurrencyAttempts = 4;
+
+    private static bool IsConcurrencyFailure(IdentityResult result) =>
+        result.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.ConcurrencyFailure));
+
+    /// <summary>Descarta o que o contexto rastreava (o usuário velho) e espera um pouco, com variação, antes de reler.</summary>
+    private async Task BackOffAsync(int attempt)
+    {
+        context.ChangeTracker.Clear();
+        await Task.Delay(Random.Shared.Next(30, 120) * attempt);
+    }
+
     public async Task<RetornoDto> UpdateUser(UpdateUserDto userDto)
     {
         var retorno = new RetornoDto();
         try
         {
-            var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userDto.Id);
-
-            if (userFound is null)
+            for (var attempt = 1; ; attempt++)
             {
-                retorno.Message = "Usuario não encontrado";
-                retorno.StatusCode = StatusCodes.Status404NotFound;
+                var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userDto.Id);
+
+                if (userFound is null)
+                {
+                    retorno.Message = "Usuario não encontrado";
+                    retorno.StatusCode = StatusCodes.Status404NotFound;
+                    return retorno;
+                }
+
+                if (!string.IsNullOrWhiteSpace(userDto.FullName))
+                    userFound.FullName = userDto.FullName.Trim();
+
+                if (!string.IsNullOrWhiteSpace(userDto.Departamento))
+                    userFound.Departamento = userDto.Departamento.Trim();
+
+                if (!string.IsNullOrWhiteSpace(userDto.Email))
+                {
+                    userFound.Email = userDto.Email.Trim();
+                    userFound.NormalizedEmail = userDto.Email.Trim().ToUpper();
+                }
+
+                var result = await _userManager.UpdateAsync(userFound);
+
+                if (!result.Succeeded)
+                {
+                    if (IsConcurrencyFailure(result) && attempt < MaxConcurrencyAttempts)
+                    {
+                        await BackOffAsync(attempt);
+                        continue;
+                    }
+
+                    retorno.Message = "Erro ao atualizar usuário";
+                    retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                    retorno.Object = result.Errors;
+                    return retorno;
+                }
+
+                retorno.Success = true;
+                retorno.StatusCode = StatusCodes.Status200OK;
+                retorno.Message = "Usuário atualizado com sucesso";
+                retorno.Object = _mapper.Map<UserDto>(userFound);
                 return retorno;
             }
-
-            if (!string.IsNullOrWhiteSpace(userDto.FullName))
-                userFound.FullName = userDto.FullName.Trim();
-
-            if (!string.IsNullOrWhiteSpace(userDto.Departamento))
-                userFound.Departamento = userDto.Departamento.Trim();
-
-            if (!string.IsNullOrWhiteSpace(userDto.Email))
-            {
-                userFound.Email = userDto.Email.Trim();
-                userFound.NormalizedEmail = userDto.Email.Trim().ToUpper();
-            }
-
-            var result = await _userManager.UpdateAsync(userFound);
-
-            if (!result.Succeeded)
-            {
-                retorno.Message = "Erro ao atualizar usuário";
-                retorno.StatusCode = StatusCodes.Status500InternalServerError;
-                retorno.Object = result.Errors;
-                return retorno;
-            }
-
-            retorno.Success = true;
-            retorno.StatusCode = StatusCodes.Status200OK;
-            retorno.Message = "Usuário atualizado com sucesso";
-            retorno.Object = _mapper.Map<UserDto>(userFound);
-            return retorno;
         }
         catch (System.Exception e)
         {
@@ -583,72 +679,88 @@ IPasswordService passService)
         var retorno = new RetornoDto();
         try
         {
-            var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
-
-            if (userFound is null)
-            {
-                retorno.Message = "Usuario não encontrado";
-                retorno.StatusCode = StatusCodes.Status404NotFound;
-                return retorno;
-            }
-
             var desired = (roles ?? new List<string>())
                 .Where(r => !string.IsNullOrWhiteSpace(r))
                 .Select(r => r.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            // Garante que todos os cargos solicitados existem antes de alterar nada.
-            foreach (var role in desired)
+            for (var attempt = 1; ; attempt++)
             {
-                if (!await _roleInManager.RoleExistsAsync(role))
+                var userFound = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
+
+                if (userFound is null)
                 {
-                    retorno.Message = $"Cargo '{role}' não encontrado";
+                    retorno.Message = "Usuario não encontrado";
                     retorno.StatusCode = StatusCodes.Status404NotFound;
                     return retorno;
                 }
-            }
 
-            var currentRoles = await _userManager.GetRolesAsync(userFound);
-
-            var toAdd = desired
-                .Where(r => !currentRoles.Contains(r, StringComparer.OrdinalIgnoreCase))
-                .ToList();
-            var toRemove = currentRoles
-                .Where(r => !desired.Contains(r, StringComparer.OrdinalIgnoreCase))
-                .ToList();
-
-            if (toRemove.Any())
-            {
-                var removeResult = await _userManager.RemoveFromRolesAsync(userFound, toRemove);
-                if (!removeResult.Succeeded)
+                // Garante que todos os cargos solicitados existem antes de alterar nada.
+                foreach (var role in desired)
                 {
-                    retorno.Message = "Erro ao remover cargos";
-                    retorno.StatusCode = StatusCodes.Status500InternalServerError;
-                    retorno.Object = removeResult.Errors;
-                    return retorno;
+                    if (!await _roleInManager.RoleExistsAsync(role))
+                    {
+                        retorno.Message = $"Cargo '{role}' não encontrado";
+                        retorno.StatusCode = StatusCodes.Status404NotFound;
+                        return retorno;
+                    }
                 }
-            }
 
-            if (toAdd.Any())
-            {
-                var addResult = await _userManager.AddToRolesAsync(userFound, toAdd);
-                if (!addResult.Succeeded)
+                var currentRoles = await _userManager.GetRolesAsync(userFound);
+
+                var toAdd = desired
+                    .Where(r => !currentRoles.Contains(r, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+                var toRemove = currentRoles
+                    .Where(r => !desired.Contains(r, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (toRemove.Any())
                 {
-                    retorno.Message = "Erro ao adicionar cargos";
-                    retorno.StatusCode = StatusCodes.Status500InternalServerError;
-                    retorno.Object = addResult.Errors;
-                    return retorno;
+                    var removeResult = await _userManager.RemoveFromRolesAsync(userFound, toRemove);
+                    if (!removeResult.Succeeded)
+                    {
+                        // Outra requisição gravou o mesmo usuário no meio (ex.: o perfil, salvo junto com os cargos): relê e refaz.
+                        if (IsConcurrencyFailure(removeResult) && attempt < MaxConcurrencyAttempts)
+                        {
+                            await BackOffAsync(attempt);
+                            continue;
+                        }
+
+                        retorno.Message = "Erro ao remover cargos";
+                        retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                        retorno.Object = removeResult.Errors;
+                        return retorno;
+                    }
                 }
+
+                if (toAdd.Any())
+                {
+                    var addResult = await _userManager.AddToRolesAsync(userFound, toAdd);
+                    if (!addResult.Succeeded)
+                    {
+                        if (IsConcurrencyFailure(addResult) && attempt < MaxConcurrencyAttempts)
+                        {
+                            await BackOffAsync(attempt);
+                            continue;
+                        }
+
+                        retorno.Message = "Erro ao adicionar cargos";
+                        retorno.StatusCode = StatusCodes.Status500InternalServerError;
+                        retorno.Object = addResult.Errors;
+                        return retorno;
+                    }
+                }
+
+                var updatedRoles = await _userManager.GetRolesAsync(userFound);
+
+                retorno.Success = true;
+                retorno.StatusCode = StatusCodes.Status200OK;
+                retorno.Message = "Cargos atualizados com sucesso";
+                retorno.Object = updatedRoles;
+                return retorno;
             }
-
-            var updatedRoles = await _userManager.GetRolesAsync(userFound);
-
-            retorno.Success = true;
-            retorno.StatusCode = StatusCodes.Status200OK;
-            retorno.Message = "Cargos atualizados com sucesso";
-            retorno.Object = updatedRoles;
-            return retorno;
         }
         catch (System.Exception e)
         {

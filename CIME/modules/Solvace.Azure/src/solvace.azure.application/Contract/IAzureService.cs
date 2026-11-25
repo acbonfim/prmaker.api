@@ -18,11 +18,47 @@ public interface IAzureService
     /// </summary>
     Task<long> PatchFieldsAsync(string id, IReadOnlyDictionary<string, object> fields, CancellationToken cancellationToken = default);
 
+    /// <summary>0085: estados válidos de um tipo de work item (Bug, User Story...) no projeto, na ordem do DevOps.</summary>
+    Task<IReadOnlyList<string>> GetWorkItemTypeStatesAsync(string workItemType, CancellationToken cancellationToken = default);
+
+    /// <summary>0085 r3: estados do tipo com a categoria (Proposed/InProgress/Resolved/Completed/Removed), na ordem do DevOps. Cache curto por tipo.</summary>
+    Task<IReadOnlyList<WorkItemTypeState>> GetWorkItemTypeStateInfosAsync(string workItemType, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Valores do picklist de um campo no tipo de work item (ex.: Custom.BugType do Bug), na ordem do DevOps. Null quando
+    /// o tipo não tem o campo; lista vazia quando o campo não é picklist. Cache curto por tipo/campo.
+    /// </summary>
+    Task<IReadOnlyList<string>?> GetFieldAllowedValuesAsync(string workItemType, string field, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Cria (commentId null) ou atualiza um comentário HTML na discussion do card e devolve o id.
     /// Comentário apagado no DevOps (404 ao atualizar) = cria outro.
     /// </summary>
     Task<int> UpsertCommentAsync(string id, string html, int? commentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sobe um arquivo como anexo do DevOps (sem vincular a um card) e devolve a URL — vai num &lt;img&gt; do comentário,
+    /// como faz quem cola um print na discussion. Erro do DevOps: <see cref="solvace.azure.domain.Exceptions.DevOpsActionException"/> (502).
+    /// </summary>
+    Task<string> UploadAttachmentAsync(string fileName, byte[] content, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 0076: evidências do card — arquivos anexados e imagens/arquivos colados nos campos de texto e na discussion,
+    /// sem repetir. Erro do DevOps: <see cref="solvace.azure.domain.Exceptions.DevOpsActionException"/> com a mensagem dele.
+    /// </summary>
+    Task<IReadOnlyList<AzureCardEvidence>> GetCardEvidenceAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 0076: baixa um anexo do DevOps (só da organização configurada). Maior que <paramref name="maxBytes"/> = TooLarge,
+    /// sem o conteúdo.
+    /// </summary>
+    Task<AzureAttachmentDownload> DownloadAttachmentAsync(string url, long maxBytes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 0101: lê uma página de wiki do DevOps e as subpáginas (markdown), pela URL de navegador
+    /// (<c>https://dev.azure.com/{org}/{projeto}/_wiki/wikis/{wiki}/{id}/...</c>). Só da organização configurada.
+    /// </summary>
+    Task<IReadOnlyList<AzureWikiPage>> GetWikiPagesAsync(string url, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Ids dos work items que casam com a consulta WIQL (0039: regra automática da fila), do projeto configurado, no
@@ -38,4 +74,6 @@ public interface IAzureService
 
     /// <summary>Nomes dos campos do work item conforme o "AzureDevOps Configurations" (feature 0030).</summary>
     Task<solvace.azure.domain.Options.AzureDevOpsFieldNames> GetFieldNamesAsync(CancellationToken cancellationToken = default);
+    /// <summary>Card 78525: seções da especificação da User Story → campo do work item (configuração com o padrão), na ordem.</summary>
+    Task<IReadOnlyList<(string Section, string Field)>> GetUserStorySpecFieldsAsync(CancellationToken cancellationToken = default);
 }

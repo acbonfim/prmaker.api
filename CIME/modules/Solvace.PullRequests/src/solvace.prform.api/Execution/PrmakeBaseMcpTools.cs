@@ -16,8 +16,15 @@ namespace solvace.prform.Execution;
 /// JSON). Com <c>card</c>, a consulta fica registrada (trava da etapa de investigação).
 /// </summary>
 [McpServerToolType]
-public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, IArchitectureApplication architecture, IKnowledgeApplication knowledge)
+public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, IArchitectureApplication architecture, IKnowledgeApplication knowledge,
+    solvace.knowledge.application.Contracts.IReverseAccess access)
 {
+    /// <summary>0097: a engenharia reversa é lida por todo usuário autenticado (0074: só admin); sem leitura as ferramentas seguem com seções e Knowledge Center.</summary>
+    private void RequireReverse()
+    {
+        if (!access.CanRead) throw new ReverseForbiddenException("A engenharia reversa é restrita a usuários autenticados. Use as seções da Base Solvace e o Knowledge Center (prmake_base_get com projeto/secao ou ART-n).");
+    }
+
     [McpServerTool(Name = "prmake_base_search", ReadOnly = true)]
     [Description("Base Solvace PRIMEIRO (antes de Grep/Read no codigo): busca na engenharia reversa por item (regras RN, casos de uso UC, " +
                  "telas TELA, endpoints API, tabelas DB, integracoes INT...) e, se faltar, nas secoes e no Knowledge Center. Devolve referencias " +
@@ -25,21 +32,21 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
     public Task<string> Search(
         [Description("Termos: tela, regra, entidade, mensagem de erro, tabela (TB_...), ou um ID (RN-012)")] string query,
         [Description("Modulo(s) (chave da Base Solvace, ex.: revamp-kaizen, legado-kaizen), separados por virgula (opcional)")] string? module = null,
-        [Description("Tipos de item, separados por virgula: RN, UC, FN, TELA, API, DB, INT, EVT, JOB, CFG, PRF, EST, NTF, GAP... (opcional)")] string? kinds = null,
+        [Description("Tipos de item, separados por virgula: RN, UC, FN, TELA, API, DB, INT, EVT, JOB, CFG, PRF, EST, NTF, GAP...; indice tecnico (sem IA): END, ROT, TAB, DBO, CHV, MSG (opcional)")] string? kinds = null,
         [Description("Numero do card em analise (registra a consulta)")] string? card = null,
         int limit = 10,
         CancellationToken ct = default) => Safe(async () =>
     {
         var modules = Split(module);
         // 0054: a visão prática é para pessoas — não entra nas análises
-        var hits = (await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40) + 5, false, ct))
+        var hits = !access.CanRead ? [] : (await reverse.SearchAsync(query, modules, Split(kinds)?.Select(k => k.ToUpperInvariant()).ToList(), null, Math.Clamp(limit, 1, 40) + 5, false, ct))
             .Where(h => h.DocType != solvace.knowledge.domain.Reverse.ReverseDocTypes.Practical).Take(Math.Clamp(limit, 1, 40)).ToList();
         var sb = new StringBuilder();
         if (hits.Count > 0)
         {
             sb.AppendLine($"Engenharia reversa ({hits.Count}):");
             foreach (var h in hits)
-                sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")} ({h.DocType})"
+                sb.AppendLine($"- {h.Ref} [{h.KindLabel}] {h.Title}{(h.Tables.Count > 0 ? " · " + string.Join(", ", h.Tables.Take(3)) : "")} ({h.DocType}){ReverseEngineeringApplication.StaleNote(h)}"
                               + (h.Snippet.Length > 0 ? $"\n    {Short(h.Snippet, 140)}" : ""));
         }
         if (hits.Count < Math.Max(3, limit / 2))
@@ -86,9 +93,11 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
             }
             if (ReverseItemKinds.ParseRef(raw.Replace("§", " ")) is not null)
             {
+                RequireReverse();
                 foreach (var item in await reverse.GetItemsAsync([raw], module, ct))
                 {
-                    sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}")
+                    sb.AppendLine($"--- {item.Ref} ({item.DocType}, v{item.SectionVersion}){(item.ReferencedBy.Count > 0 ? " · citado por: " + string.Join(", ", item.ReferencedBy.Take(8)) : "")}{ReverseEngineeringApplication.StaleNote(item)}"
+                                  + (item.Stale is { } stale ? $"\n  DESATUALIZADO desde {stale.Since:yyyy-MM-dd}{(stale.Commit is null ? "" : " (master " + stale.Commit + ")")}{(stale.Reason is null ? "" : ": " + stale.Reason)}" : ""))
                         .AppendLine(item.Body);
                     // 0054: o que já deu errado neste item
                     foreach (var trap in item.Traps)
@@ -111,7 +120,8 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
             sb.AppendLine($"--- {section.Groups["project"].Value}/{s.Key} — {s.Title} v{s.Version}{(heading is null ? "" : " § " + heading)}").AppendLine(Cap(content, 15000));
             consulted.Add($"{section.Groups["project"].Value}/{s.Key}");
         }
-        if (!string.IsNullOrWhiteSpace(card) && consulted.Count > 0) await reverse.RecordConsultedAsync(card, consulted, ct);
+        // 0097: o que foi lido de fato vai para o histórico do card (e conta como consulta para a trava)
+        if (!string.IsNullOrWhiteSpace(card) && consulted.Count > 0) await reverse.RecordReadAsync(card, consulted, ct);
         return sb.ToString().TrimEnd();
     });
 
@@ -124,6 +134,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         string? card = null,
         CancellationToken ct = default) => Safe(async () =>
     {
+        RequireReverse();
         var m = await reverse.GetModuleAsync(module, [], ct);
         var sb = new StringBuilder();
         sb.AppendLine($"{m.Key} — {m.DisplayName ?? m.Name} ({m.World}){(m.BusinessArea is null ? "" : " · area " + m.BusinessArea)} · engenharia reversa "
@@ -154,6 +165,7 @@ public partial class PrmakeBaseMcpTools(IReverseEngineeringApplication reverse, 
         [Description("Tabela, item, modulo ou tag")] string term,
         CancellationToken ct = default) => Safe(async () =>
     {
+        RequireReverse();
         var hits = await reverse.ImpactAsync(term, 120, ct);
         if (hits.Count == 0) return $"Nenhum item publicado cita '{term}'. (As relacoes do grafo antigo: prmake_base_module.)";
         var sb = new StringBuilder($"Itens que citam {term} ({hits.Count}):\n");

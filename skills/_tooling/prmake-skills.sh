@@ -5,16 +5,24 @@
 # Uso:
 #   prmake-skills.sh install [skill...]            instala (todas, se nenhuma for informada) + hook de atualização
 #   prmake-skills.sh update  [--quiet] [--force] [skill...]
-#                                                  atualiza o que mudou no PRMake (--quiet: só fala se atualizou)
+#                                                  atualiza o que mudou no PRMake e instala as skills publicadas que
+#                                                  faltam (fora as de ~/.claude/skills/.prmake/skip-skills); --quiet: só
+#                                                  fala se atualizou
 #   prmake-skills.sh status                        versão instalada × publicada
 #   prmake-skills.sh doctor                        diagnóstico da máquina (comandos, jq/python3, token, hook, permissões)
 #   prmake-skills.sh permissions                   (re)libera no Claude Code as regras dos comandos das skills
 #   prmake-skills.sh db-credentials [list]         cadastra (no SEU terminal) as credenciais de leitura dos bancos
+#   prmake-skills.sh env-credentials [list | set [ambiente] [usuario] | remove <ambiente> <usuario>]
+#                                                  0092: senhas dos usuarios dos ambientes Solvace (validacao com prints),
+#                                                  so nesta maquina (no SEU terminal; nunca no chat nem no PRMake)
 #   prmake-skills.sh mcp [remove]                  registra no Claude Code o MCP remoto do PRMake (0039)
 #   prmake-skills.sh agent [install|update|status|uninstall]
 #                                                  executor do PRMake (0039): roda a analise pela tela, sem terminal
 #   prmake-skills.sh repos [scan [--quiet] | set <repo> <pasta> | unset <repo> | path <repo>]
 #                                                  repositórios desta máquina (0048): mapa remote → pasta em ~/.prmake/repos.json
+#   prmake-skills.sh governance [on | off | status | test "<comando>"]
+#                                                  hooks de governança do PRMake (0098) no Claude Code: on (re)instala,
+#                                                  off remove só os nossos, test avalia um comando nas regras
 #
 # Arquivo alterado à mão numa skill instalada NÃO é sobrescrito (só avisa); --force substitui.
 # Token: env PRMAKE_TOKEN ou ~/.claude/prmake-token.txt. API: env PRMAKE_API_BASE (padrão abaixo).
@@ -238,8 +246,116 @@ ensure_hook() {
   say "   hook de atualização automática instalado em $SETTINGS (backup: settings.json.bak-prmake)"
 }
 
+# Governança do PRMake (0098): um script só (prmake-governance.py) nos hooks SessionStart, UserPromptSubmit,
+# PreToolUse, PostToolUse e Stop — consulta as regras do PRMake antes de cada ferramenta e registra a trilha. As regras e
+# os hooks ativos vêm do PRMake (GET Governance/hooks/config); aqui só o registro no settings.json. Nossos hooks são os
+# que chamam prmake-governance.py: nunca mexe nos de terceiros nem no SessionStart de atualização (prmake-skills.sh).
+# `governance off` grava $GOV_OFF e o update não reinstala; PRMAKE_SKIP_GOVERNANCE=1 não mexe em nada.
+GOV_SCRIPT="$TOOL_DIR/prmake-governance.py"
+GOV_OFF="$TOOL_DIR/.governance-off"
+GOV_EVENTS=(SessionStart UserPromptSubmit PreToolUse PostToolUse Stop)
+GOV_TIMEOUT=10  # segundos (o script corta a rede em timeoutMs e nunca segura a sessão)
+
+# Python que roda o hook: python3; no Windows o executável real (o atalho ~/bin/python3 não está no PATH dos hooks).
+gov_python() {
+  python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' >/dev/null 2>&1 || return 1
+  if [[ $WINDOWS -eq 1 ]]; then
+    local exe; exe="$(python3 -c 'import sys; print(sys.executable)' 2>/dev/null | tr -d '\r')"
+    [[ -n "$exe" ]] || return 1
+    command -v cygpath >/dev/null 2>&1 && exe="$(cygpath -m "$exe")"
+    printf '"%s"' "$exe"
+  else
+    printf 'python3'
+  fi
+}
+# Comando do hook. "|| true": se o script sumir, o python sai com 2 — que no PreToolUse barraria toda ferramenta.
+gov_command() {
+  local py script; py="$(gov_python)" || return 1
+  if [[ $WINDOWS -eq 1 ]] && command -v cygpath >/dev/null 2>&1; then script="\"$(cygpath -m "$GOV_SCRIPT")\""
+  elif [[ "$TOOL_DIR" == "$HOME/.claude/skills/.prmake" ]]; then script='"$HOME/.claude/skills/.prmake/prmake-governance.py"'
+  else script="\"$GOV_SCRIPT\""; fi
+  printf '%s %s || true' "$py" "$script"
+}
+
+# Baixa o prmake-governance.py quando falta ou é de outra versão da ferramenta (mesma versão do prmake-skills.sh).
+ensure_governance_script() {
+  [[ "${PRMAKE_SKIP_GOVERNANCE:-0}" == 1 ]] && return 0
+  local published installed code
+  published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json" 2>/dev/null)"
+  installed="$(sed -n 's/^TOOL_VERSION = "\(.*\)"$/\1/p' "$GOV_SCRIPT" 2>/dev/null | head -1)"
+  [[ -f "$GOV_SCRIPT" && ( -z "$published" || "$installed" == "$published" ) ]] && return 0
+  code="$(get "/tool/governance" "$TMP/governance.py")"
+  if [[ "$code" != 200 ]] || ! grep -q '^TOOL_VERSION = ' "$TMP/governance.py" 2>/dev/null; then
+    [[ -f "$GOV_SCRIPT" ]] || say "   hook de governança ainda não publicado no PRMake (HTTP $code) — fica para o próximo update"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1 && ! python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$TMP/governance.py" >/dev/null 2>&1; then
+    warn "prmake-governance.py baixado com erro de sintaxe — mantive o atual"
+    return 0
+  fi
+  mkdir -p "$TOOL_DIR"
+  cp "$TMP/governance.py" "$GOV_SCRIPT.new" && chmod +x "$GOV_SCRIPT.new" && mv -f "$GOV_SCRIPT.new" "$GOV_SCRIPT"
+}
+
+# Registra os 5 hooks (idempotente): exatamente um nosso por evento, com o comando atual.
+ensure_governance_hooks() { # [force=0]
+  [[ "${PRMAKE_SKIP_GOVERNANCE:-0}" == 1 ]] && return 0
+  [[ "${1:-0}" != 1 && -f "$GOV_OFF" ]] && return 0
+  [[ -f "$GOV_SCRIPT" ]] || return 0
+  local cmd; cmd="$(gov_command)" || { warn "Python 3 não encontrado — hooks de governança do PRMake não instalados"; return 0; }
+  mkdir -p "$(dirname "$SETTINGS")"
+  [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    warn "$SETTINGS não é um JSON válido — não instalei os hooks de governança"
+    return 0
+  fi
+  local events; events="$(printf '%s\n' "${GOV_EVENTS[@]}" | jq -R . | jq -s -c .)"
+  if jq -e --arg c "$cmd" --argjson ev "$events" '. as $root | all($ev[]; . as $e
+      | [($root.hooks[$e] // [])[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))]
+      | length == 1 and .[0].command == $c)' "$SETTINGS" >/dev/null 2>&1; then
+    return 0
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  jq --arg c "$cmd" --argjson ev "$events" --argjson t "$GOV_TIMEOUT" '
+    reduce $ev[] as $e (.;
+      .hooks[$e] = ([(.hooks[$e] // [])[]
+          | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-governance.py")) | not)]
+          | select((.hooks | length) > 0)]
+        + [(if ($e == "PreToolUse" or $e == "PostToolUse") then {"matcher": "*"} else {} end)
+           + {"hooks": [{"type": "command", "command": $c, "timeout": $t}]}]))' \
+    "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
+  say "   hooks de governança do PRMake instalados em $SETTINGS (${GOV_EVENTS[*]})"
+}
+
+# Remove só os nossos (de qualquer evento); grupos e eventos que ficarem vazios saem.
+remove_governance_hooks() {
+  [[ -f "$SETTINGS" ]] && jq -e . "$SETTINGS" >/dev/null 2>&1 || return 0
+  jq -e '[.hooks // {} | .[]?[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))] | length > 0' "$SETTINGS" >/dev/null 2>&1 || return 0
+  cp "$SETTINGS" "$SETTINGS.bak-prmake"
+  jq '.hooks |= ((. // {}) | with_entries(
+        .value = [(.value // [])[]
+          | .hooks = [(.hooks // [])[] | select(((.command // "") | contains("prmake-governance.py")) | not)]
+          | select((.hooks | length) > 0)]
+        | select((.value | length) > 0)))' "$SETTINGS" > "$TMP/settings.json" && mv "$TMP/settings.json" "$SETTINGS"
+}
+
+# Linha do doctor/status: em quais eventos o hook está e a última config lida do PRMake.
+governance_report() {
+  local installed cfg
+  installed="$(jq -r '[.hooks // {} | to_entries[] | select([.value[]?.hooks[]? | select((.command // "") | contains("prmake-governance.py"))] | length > 0) | .key] | join(", ")' "$SETTINGS" 2>/dev/null)"
+  if [[ -f "$GOV_OFF" ]]; then installed="desligados (prmake-skills.sh governance on religa)${installed:+ — ainda em: $installed}"
+  elif [[ -z "$installed" ]]; then installed="NÃO instalados — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh governance on"
+  fi
+  printf '  %-28s %s\n' "hooks de governança" "$installed"
+  printf '  %-28s %s\n' "script de governança" "$([[ -f "$GOV_SCRIPT" ]] && echo "$GOV_SCRIPT ($(sed -n 's/^TOOL_VERSION = "\(.*\)"$/\1/p' "$GOV_SCRIPT" | head -1))" || echo 'não baixado (rode: prmake-skills.sh update)')"
+  cfg="$(jq -r 'if .config then "versão \(.config.version // "?"), modo \(.config.mode // "?"), failOpen \(.config.failOpen), lida em \(.fetchedAt | floor | todate)" else "ainda não lida" end
+      + (if .lastError then " — último erro: \(.lastError)" else "" end)' "$PRMAKE_HOME/governance.json" 2>/dev/null)"
+  printf '  %-28s %s\n' "governança (config)" "${cfg:-ainda não lida}"
+}
+
 # Permissões do Claude Code para os comandos das skills que não podem ficar presos no prompt/auto mode:
 # - devops-v1: fechamento pelo PRMake (`prmake-plan.sh devops ...`: root cause, resumo, classificação, mover o card);
+# - awsdeploy-v1 (0100): coleta das esteiras do card na AWS (`aws.sh collect`), somente leitura — sub-tarefa aws-deploy-map;
 # - readonly-v2 (0037): consultas somente leitura da análise (`sql-query.sh`, `cognito-query.sh`) — o auto mode barrava
 #   a leitura do banco de produção e a análise ficava parada (card 74669). O próprio script só aceita SELECT/WITH e
 #   sempre faz ROLLBACK.
@@ -248,6 +364,8 @@ ensure_hook() {
 PERMISSION_GROUPS=(
   "devops-v1|analisar-bug/scripts/prmake-plan.sh devops:*|fechamento pelo PRMake (prmake-plan.sh devops)"
   "readonly-v2|analisar-bug/scripts/sql-query.sh:*;analisar-bug/scripts/cognito-query.sh:*|consultas somente leitura (sql-query.sh, cognito-query.sh)"
+  "envvalidation-v1|validar-ambiente/scripts/env.sh:*|validacao em ambiente (env.sh: navegador com prints, somente leitura na DEMO/producao)"
+  "awsdeploy-v1|aws-deploy/scripts/aws.sh:*|esteiras de deploy na AWS (aws.sh: somente leitura, CLI da AWS + git local)"
 )
 # Regras (JSON) de uma lista de scripts separados por ';' — nas formas de caminho que o Claude usa (~, $HOME, absoluto).
 permission_rules() {
@@ -397,6 +515,94 @@ db_credentials() {
   echo "Pronto. Na próxima análise o Claude já consegue ler esses bancos (somente leitura)."
 }
 
+# Senhas dos ambientes Solvace (0092) para a validação em ambiente (skill validar-ambiente: o Claude entra no ambiente e
+# grava os prints). Ficam só na máquina do usuário, com acesso restrito a ele; a senha é digitada sem eco e nunca passa
+# pelo chat do Claude nem pelo PRMake. O navegador da validação lê o arquivo direto e nunca imprime a senha.
+ENV_CREDS_FILE="${PRMAKE_ENV_CREDENTIALS:-$HOME/.claude/solvace-env-credentials.json}"
+ENV_SH="$SKILLS_DIR/validar-ambiente/scripts/env.sh"
+env_creds_report() { # linha do doctor
+  if [[ ! -s "$ENV_CREDS_FILE" ]]; then
+    printf '  %-28s %s\n' "senhas dos ambientes" "nenhuma — a validação em ambiente pede quando precisar: bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set <ambiente> <usuario>"
+    return
+  fi
+  local n mode
+  n="$(jq -r '[(.environments // [])[] | "\(.env // "?"):\(.user // "?")"] | join(", ")' "$ENV_CREDS_FILE" 2>/dev/null)" || n="arquivo inválido"
+  mode="$(file_mode "$ENV_CREDS_FILE")"
+  printf '  %-28s %s\n' "senhas dos ambientes" "${n:-nenhuma} ($ENV_CREDS_FILE$([[ $WINDOWS -eq 0 && -n "$mode" && "$mode" != "600" ]] && echo " — permissão $mode: rode chmod 600"))"
+}
+env_credentials() {
+  local sub="${1:-set}"
+  case "$sub" in
+    list)
+      [[ -s "$ENV_CREDS_FILE" ]] || { echo "Nenhuma senha de ambiente nesta máquina ($ENV_CREDS_FILE)."; return 0; }
+      echo "Ambientes com senha em $ENV_CREDS_FILE (senhas não são mostradas):"
+      jq -r '(.environments // [])[] | "  \(.env // "?")\t\(.url // "?")\tusuário: \(.user // "?")\t(gravada em \(.savedAt // "?"))"' "$ENV_CREDS_FILE"
+      return 0 ;;
+    remove)
+      local e="${2:-}" u="${3:-}"
+      [[ -n "$e" && -n "$u" ]] || die "uso: prmake-skills.sh env-credentials remove <ambiente> <usuario>"
+      [[ -s "$ENV_CREDS_FILE" ]] || { echo "Nada a remover."; return 0; }
+      ( umask 077; jq --arg e "$e" --arg u "$(printf '%s' "$u" | tr 'A-Z' 'a-z')" \
+          '.environments = [(.environments // [])[] | select(((.env // "") == $e and ((.user // "") | ascii_downcase) == $u) | not)]' \
+          "$ENV_CREDS_FILE" > "$ENV_CREDS_FILE.tmp" ) && mv "$ENV_CREDS_FILE.tmp" "$ENV_CREDS_FILE" || die "não consegui gravar $ENV_CREDS_FILE"
+      chmod 600 "$ENV_CREDS_FILE" 2>/dev/null
+      echo "✔ removida a senha de $u em $e"
+      return 0 ;;
+    set) shift ;;
+    *) ;;
+  esac
+  # A senha não pode passar pela conversa: sem terminal interativo (ex.: rodado pelo Claude) recusa.
+  [[ -t 0 && -t 1 ]] || die "rode no SEU terminal, fora do chat do Claude: bash ~/.claude/skills/.prmake/prmake-skills.sh env-credentials set ${1:-<ambiente>} ${2:-<usuario>}"
+  command -v jq >/dev/null || die "precisa do jq"
+  echo "Senhas dos ambientes Solvace para a validação com prints — gravadas só nesta máquina em $ENV_CREDS_FILE (acesso só seu)."
+  echo "Use o usuário de teste/admin que você recebeu pelo canal oficial. Nunca cole a senha no chat do Claude, no PRMake ou no Teams."
+  echo "Ctrl+C cancela sem gravar."
+  local envkey="${1:-}" user="${2:-}" url pass more test info
+  mkdir -p "$(dirname "$ENV_CREDS_FILE")"
+  if [[ ! -s "$ENV_CREDS_FILE" ]]; then
+    ( umask 077; echo '{"environments":[]}' > "$ENV_CREDS_FILE" )
+  elif ! jq -e . "$ENV_CREDS_FILE" >/dev/null 2>&1; then
+    die "$ENV_CREDS_FILE não é um JSON válido — corrija ou renomeie o arquivo (não vou sobrescrever)"
+  fi
+  while :; do
+    echo
+    [[ -n "$envkey" ]] || read -rp "Ambiente (dev, qa, sandboxefeso, demo, mondelez... ou a URL): " envkey
+    [[ -n "$envkey" ]] || { echo "ambiente obrigatório"; continue; }
+    url=""
+    if [[ -f "$ENV_SH" ]]; then
+      info="$(bash "$ENV_SH" resolve "$envkey" </dev/null 2>/dev/null)" && url="$(sed -n 's/^url: //p' <<<"$info" | head -1)" \
+        && envkey="$(sed -n 's/^ambiente: \([^ ]*\).*/\1/p' <<<"$info" | head -1)"
+    fi
+    if [[ -z "$url" ]]; then
+      if [[ "$envkey" =~ ^https?:// ]]; then url="$envkey"; envkey="$(sed -E 's#^[a-z]+://##; s#\..*$##' <<<"$envkey")"
+      else read -rp "URL do ambiente (ex.: https://qa.solvacelabs.com/): " url; fi
+    fi
+    echo "Ambiente: $envkey ($url)"
+    [[ -n "$user" ]] || read -rp "Usuário (e-mail, ex.: admin@ewcm.com.br ou admin<planta>@solvacelabs.com): " user
+    read -rsp "Senha de $user (não aparece): " pass; echo
+    [[ -n "$url" && -n "$user" && -n "$pass" ]] || { echo "URL, usuário e senha são obrigatórios — nada gravado"; envkey=""; user=""; continue; }
+    ( umask 077
+      # A senha vai por variável de ambiente (não aparece na lista de processos).
+      EC_ENV="$envkey" EC_URL="$url" EC_USER="$(printf '%s' "$user" | tr 'A-Z' 'a-z')" EC_PASS="$pass" EC_AT="$(date '+%Y-%m-%d %H:%M')" jq '
+        .environments = ([(.environments // [])[] | select(((.env // "") == env.EC_ENV and ((.user // "") | ascii_downcase) == env.EC_USER) | not)]
+          + [{env: env.EC_ENV, url: env.EC_URL, user: env.EC_USER, password: env.EC_PASS, savedAt: env.EC_AT}])' "$ENV_CREDS_FILE" > "$ENV_CREDS_FILE.tmp" ) \
+      && mv "$ENV_CREDS_FILE.tmp" "$ENV_CREDS_FILE" || { rm -f "$ENV_CREDS_FILE.tmp"; die "não consegui gravar $ENV_CREDS_FILE"; }
+    pass=""
+    chmod 600 "$ENV_CREDS_FILE" 2>/dev/null
+    echo "✔ senha de $user em $envkey gravada em $ENV_CREDS_FILE"
+    if [[ -f "$ENV_SH" ]]; then
+      read -rp "Testar o login agora (abre o navegador sem janela, ~20 s)? [S/n] " test
+      if [[ ! "$test" =~ ^[nN] ]]; then
+        bash "$ENV_SH" browser start "$envkey" --user "$user" && bash "$ENV_SH" browser stop "$(printf '%s-%s' "$envkey" "$user" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-80)" >/dev/null
+      fi
+    fi
+    read -rp "Cadastrar outra senha? [s/N] " more
+    [[ "$more" =~ ^[sS] ]] || break
+    envkey=""; user=""
+  done
+  echo "Pronto. Clique em *Já resolvi* na sub-tarefa de validação (ou avise o Claude) para ele continuar."
+}
+
 # A própria ferramenta também se atualiza (vale a partir da próxima execução).
 self_update() {
   local published; published="$(jq -r '.toolVersion // empty' "$TMP/catalog.json")"
@@ -419,6 +625,9 @@ lock() {
   LOCKED=1
   return 0
 }
+
+SKIP_FILE="$TOOL_DIR/skip-skills"
+skipped_skill() { [[ -f "$SKIP_FILE" ]] && grep -qxF "$1" "$SKIP_FILE"; }
 
 selected() { # imprime os nomes do catálogo filtrados pelos argumentos
   if [[ $# -eq 0 ]]; then jq -r '.skills[].name' "$TMP/catalog.json"; return; fi
@@ -804,6 +1013,8 @@ case "$cmd" in
       install_one "$name" "$v" install && say "✔ $name ($v)"
     done
     ensure_hook
+    ensure_governance_script
+    ensure_governance_hooks
     ensure_permissions
     ensure_mcp force
     sync_kb
@@ -831,8 +1042,10 @@ case "$cmd" in
       v="$(jq -r --arg n "$name" '.skills[] | select(.name == $n) | .version' "$TMP/catalog.json")"
       cur="$(local_version "$name")"
       [[ -d "$SKILLS_DIR/$name" && "$cur" == "$v" ]] && continue
-      # Só atualiza o que já está instalado (update não instala skill nova, a menos que seja pedida pelo nome).
-      [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && continue
+      # Skill publicada depois da instalação também entra (0092: executar-item-de-trabalho/validar-ambiente faltavam em
+      # máquinas antigas e o executor mandava ler um SKILL.md inexistente). Quem não quer uma skill põe o nome em
+      # $SKIP_FILE (uma por linha); pedida pelo nome, instala mesmo assim.
+      [[ ! -d "$SKILLS_DIR/$name" && ${#ARGS[@]} -eq 0 ]] && skipped_skill "$name" && continue
       install_one "$name" "$v" update && [[ "$(local_version "$name")" == "$v" ]] && updated+=("$name ${cur:-novo} → $v")
     done
     # Skill já instalada e em dia pode ter ganhado dependência nova.
@@ -840,6 +1053,9 @@ case "$cmd" in
       [[ -d "$SKILLS_DIR/$name" ]] && install_depends "$name"
     done
     ensure_hook
+    # 0098: quem já tinha as skills ganha os hooks de governança no update (menos quem desligou: governance off).
+    ensure_governance_script
+    ensure_governance_hooks
     ensure_permissions
     # MCP do PRMake: uma vez por máquina (quem removeu de propósito não ganha de volta).
     [[ -f "$TOOL_DIR/.mcp-registered" ]] || { ensure_mcp && touch "$TOOL_DIR/.mcp-registered"; }
@@ -868,6 +1084,7 @@ case "$cmd" in
     done
     echo "ferramenta: $TOOL_VERSION (publicada: $(jq -r '.toolVersion' "$TMP/catalog.json"))"
     echo "repositórios: $(repos_summary)"
+    governance_report
     ;;
 
   doctor)
@@ -883,8 +1100,10 @@ case "$cmd" in
     ok "API ($BASE)" "HTTP $(get "" "$TMP/catalog.json")"
     ok "hook SessionStart" "$(jq -r '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | contains("prmake-skills.sh")) | .command + (if .shell then " [shell=" + .shell + "]" else "" end)] | if length == 0 then "NÃO instalado" else join(" | ") end' "$SETTINGS" 2>/dev/null || echo "settings.json inválido")"
     ok "hook esperado" "$HOOK_CMD"
+    governance_report
     permissions_report
     creds_report
+    env_creds_report
  ok "MCP do PRMake" "$([[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" mcp get prmake >/dev/null 2>&1 && echo "ok ($MCP_URL)" || echo 'NÃO — rode: prmake-skills.sh mcp')"
     ok "executor" "$([[ -x "$(agent_bin)" ]] && "$(agent_bin)" status 2>/dev/null | head -1 || echo 'não instalado (opcional: prmake-skills.sh agent install)')"
     ok "repositórios" "$(repos_summary) ($REPOS_FILE)"
@@ -899,6 +1118,10 @@ case "$cmd" in
 
   db-credentials)
     db_credentials ${ARGS[@]+"${ARGS[@]}"}
+    ;;
+
+  env-credentials)
+    env_credentials ${ARGS[@]+"${ARGS[@]}"}
     ;;
 
   mcp)
@@ -944,5 +1167,36 @@ case "$cmd" in
     esac
     ;;
 
-  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|mcp|agent|repos [--quiet] [--force] [skill...]" ;;
+  governance)
+    command -v jq >/dev/null || die "precisa do jq"
+    case "${ARGS[0]:-status}" in
+      on)
+        rm -f "$GOV_OFF"
+        if [[ ! -f "$GOV_SCRIPT" ]] || [[ "${ARGS[1]:-}" == --download ]]; then
+          catalog && ensure_governance_script || warn "não consegui ler o catálogo do PRMake (token? internet?)"
+        fi
+        [[ -f "$GOV_SCRIPT" ]] || die "prmake-governance.py não encontrado em $TOOL_DIR (rode: prmake-skills.sh update)"
+        gov_command >/dev/null || die "Python 3 não encontrado — os hooks de governança precisam dele"
+        ensure_governance_hooks 1
+        governance_report
+        ;;
+      off)
+        mkdir -p "$TOOL_DIR"; : > "$GOV_OFF"
+        remove_governance_hooks
+        say "hooks de governança do PRMake removidos de $SETTINGS (os demais hooks ficaram). Religar: prmake-skills.sh governance on"
+        ;;
+      status)
+        governance_report
+        [[ -f "$GOV_SCRIPT" ]] && python3 "$GOV_SCRIPT" status
+        ;;
+      test)
+        [[ -n "${ARGS[1]:-}" ]] || die 'uso: prmake-skills.sh governance test "<comando>"'
+        [[ -f "$GOV_SCRIPT" ]] || die "prmake-governance.py não encontrado (rode: prmake-skills.sh update)"
+        python3 "$GOV_SCRIPT" test "${ARGS[@]:1}"
+        ;;
+      *) die 'uso: prmake-skills.sh governance [on | off | status | test "<comando>"]' ;;
+    esac
+    ;;
+
+  *) die "uso: prmake-skills.sh install|update|status|doctor|permissions|db-credentials|env-credentials|mcp|agent|repos|governance [--quiet] [--force] [skill...]" ;;
 esac

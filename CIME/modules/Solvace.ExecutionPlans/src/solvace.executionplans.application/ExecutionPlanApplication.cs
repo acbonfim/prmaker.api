@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using Cime.BuildingBlocks.RealTime;
 using solvace.executionplans.application.Contracts;
@@ -23,11 +23,19 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private readonly IExecutionTimelineWriter _timeline;
     private readonly IExecutionCardRegistrar? _cards;
     private readonly IExecutionResumeTrigger? _resumeTrigger;
+    private readonly IExecutionCardDevOps? _devOps;
+    private readonly IExecutionCardEvidenceSource? _evidence;
+    /// <summary>0085: itens de trabalho (o plano de correção gera o item; as etapas sincronizam as sub-tarefas).</summary>
+    private readonly IWorkItemApplication? _workItems;
 
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
-        IExecutionResumeTrigger? resumeTrigger = null)
+        IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null,
+        IWorkItemApplication? workItems = null)
     {
+        _workItems = workItems;
+        _devOps = devOps;
+        _evidence = evidence;
         _cards = cards;
         _resumeTrigger = resumeTrigger;
         _repository = repository;
@@ -38,8 +46,14 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionPlanResponse> CreateAsync(CreateExecutionPlanRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78344: o plano de entrega não tem versões — com um aberto no card, o pedido de plano novo ajusta esse mesmo.
+        if (request.Phase == ExecutionPhase.Correction && await OpenDeliveryPlanAsync(request.CardNumber, cancellationToken) is { } open)
+            return await AdjustDeliveryInPlaceAsync(open, request, actor, cancellationToken);
+
         var now = DateTimeOffset.UtcNow;
         ExecutionSession? parentSession = null;
+        var parentPlanId = request.ParentPlanId;
+        ExecutionPlanSummaryResponse? emptyAnalysis = null;
         if (request.ParentPlanId is { } parentId)
         {
             // Plano de correção: nasce de um plano de análise do mesmo card.
@@ -50,10 +64,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             if (parent.Phase != ExecutionPhase.Analysis)
                 throw new DomainException("O plano de origem precisa ser um plano de análise.");
             parentSession = parent.CurrentSession;
+            (parentPlanId, emptyAnalysis) = await ResolveCorrectionParentAsync(parent, cancellationToken);
             _repository.ClearTracking();
         }
-        var plan = new ExecutionPlan(request.CardNumber!, request.Kind, request.Title, request.Summary, actor.UserId, actor.Name, now,
-            request.Phase, request.ParentPlanId);
+        // r5 (1.5): o plano de entrega da User Story é "Implementação <card>: ..." (nunca "correção").
+        var title = request.Phase == ExecutionPhase.Correction
+            ? PlanTerms.CorrectionTitle(request.Kind, request.CardNumber ?? string.Empty, request.Title)
+            : request.Title;
+        var plan = new ExecutionPlan(request.CardNumber!, request.Kind, title, request.Summary, actor.UserId, actor.Name, now,
+            request.Phase, parentPlanId);
         // 0041: a correção é a mesma conversa do Claude que fez a análise — herda a sessão (o executor retoma por ela;
         // a skill pelo script registraria a mesma, o MCP não sabe o id da sessão). 0049: no executor a correção roda numa
         // sessão nova — o plano fica com a sessão que está rodando agora, não com a da análise.
@@ -64,16 +83,154 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             plan.RegisterSession(session.SessionId, session.Host, running is null ? parentSession.Cwd : null, now);
         }
         if (request.Steps.Count > 0)
+        {
             plan.UpsertSteps(request.Steps, now);
+            // 0100: correção que muda código ganha a etapa do mapa do deploy na AWS (o item espelho ganha a sub-tarefa).
+            WorkItemAwsDeployRule.EnsurePlanStep(plan, now);
+        }
 
         _repository.AddPlan(plan);
         await _repository.SaveChangesAsync(cancellationToken);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Created, null, cancellationToken);
         await EnsureCardRegisteredAsync(plan, actor, cancellationToken);
+        // 0085: o plano vira um item de trabalho (uma sub-tarefa por etapa), salvo se a skill já criou itens dele — a correção
+        // (a entrega) e, nos ajustes, a análise ("Análise inicial do bug/da US #card"; cada versão da análise = item novo).
+        // 0096: versão nova da entrega — o item da versão anterior segue a nova (sem item igual) e a anterior se encerra.
+        var superseded = plan.Phase == ExecutionPhase.Correction ? await AdoptPreviousDeliveryAsync(plan, actor, cancellationToken) : [];
+        await CreateWorkItemFromPlanAsync(plan, actor, cancellationToken);
+        // 0078: o assistente pergunta (sem travar) a estimativa inicial e a publicação dos resumos de espera.
+        await SuggestOnCreateAsync(plan, cancellationToken);
         if (plan.Phase == ExecutionPhase.Correction)
             await WriteTimelineAsync(plan, CorrectionPlanCreatedText(plan), actor, cancellationToken);
+        if (emptyAnalysis is not null && request.ParentPlanId is { } shellId)
+            await ChangeStatusAsync(shellId, new ChangeExecutionPlanStatusRequest
+            {
+                Status = ExecutionStatus.Cancelled,
+                Reason = $"Versão sem análise: a correção partiu da análise v{emptyAnalysis.VersionNumber}"
+            }, actor, cancellationToken);
+        foreach (var previous in superseded)
+            await ChangeStatusAsync(previous.Id, new ChangeExecutionPlanStatusRequest
+            {
+                Status = ExecutionStatus.Cancelled,
+                Reason = $"{PlanTerms.SupersededReason} do {PlanTerms.DeliveryPlan(plan.Kind)} (v{superseded.Max(p => p.VersionNumber) + 1})"
+            }, actor, cancellationToken);
+        if (plan.ParentPlanId is { } analysisId)
+            await CloseAnalysisAsync(analysisId, plan.Kind, actor, cancellationToken);
         return plan.ToResponse([], 0, now);
+    }
+
+    /// <summary>Plano de entrega (correção/implementação) ainda aberto do card — o único que vale (sem versões).</summary>
+    private async Task<ExecutionPlanSummaryResponse?> OpenDeliveryPlanAsync(string? cardNumber, CancellationToken cancellationToken)
+    {
+        var card = cardNumber?.Trim();
+        if (string.IsNullOrEmpty(card)) return null;
+        return (await _repository.GetSummariesByCardAsync(card, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Correction && s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled))
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Card 78344: proposta aceita ou prmake_correction de novo com o plano de entrega aberto — as etapas entram no mesmo
+    /// plano (upsert pela chave: as já feitas ficam, as pendentes omitidas saem) e o item espelho segue junto, sem versão
+    /// nova, item igual nem outro comentário na discussion.
+    /// </summary>
+    private async Task<ExecutionPlanResponse> AdjustDeliveryInPlaceAsync(ExecutionPlanSummaryResponse open, CreateExecutionPlanRequest request,
+        ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (request.Steps.Count > 0)
+            await UpsertStepsAsync(open.Id, new UpsertExecutionStepsRequest { Steps = request.Steps, Replace = true }, actor, cancellationToken);
+        await AppendLogsAsync(open.Id, new AppendExecutionLogsRequest
+        {
+            Logs = [new ExecutionLogItem
+            {
+                Kind = "info",
+                Message = $"Plano ajustado no lugar (sem versão nova): {request.Title?.Trim()}".TrimEnd(' ', ':')
+            }]
+        }, cancellationToken);
+        _repository.ClearTracking();
+        var plan = await _repository.GetPlanWithStepsAsync(open.Id, cancellationToken)
+                   ?? throw new ExecutionPlanNotFoundException("Plano de entrega não encontrado.");
+        return await BuildResponseAsync(plan, cancellationToken);
+    }
+
+    /// <summary>
+    /// 0096 (card 78344): a proposta aceita virava uma versão nova do plano de entrega ao lado da anterior — item igual
+    /// (#803 ao lado do #800) e as duas versões abertas. Agora os itens abertos da versão anterior passam a espelhar a nova
+    /// e quem chama encerra a anterior (cancelada como substituída, depois de criar o item da nova). Best-effort.
+    /// </summary>
+    private async Task<IReadOnlyList<ExecutionPlanSummaryResponse>> AdoptPreviousDeliveryAsync(ExecutionPlan plan, ExecutionActor actor,
+        CancellationToken cancellationToken)
+    {
+        var previous = (await _repository.GetSummariesByCardAsync(plan.CardNumber, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Correction && s.Id != plan.Id && s.CreatedAt <= plan.CreatedAt
+                        && s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled or ExecutionStatus.Failed))
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+        if (previous.Count == 0 || _workItems is null) return previous;
+        var version = $"v{previous.Max(p => p.VersionNumber) + 1}";
+        foreach (var p in previous)
+        {
+            try
+            {
+                await _workItems.AdoptPlanItemsAsync(p.Id, plan.Id, version, actor, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Sem adotar, o item da versão nova nasce do jeito antigo (FromPlanAsync).
+            }
+        }
+        return previous;
+    }
+
+    /// <summary>
+    /// Card 78262: com o plano de entrega criado a solução está decidida — a análise de origem fecha ("propor-solucoes"
+    /// concluída e plano concluído). A skill deveria concluir antes de criar a correção, mas quando não conclui o item da
+    /// análise ficava "em andamento" para sempre na Bancada. Best-effort: nunca quebra a criação do plano.
+    /// </summary>
+    private async Task CloseAnalysisAsync(Guid analysisId, string? kind, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reason = $"Solução decidida: {PlanTerms.DeliveryPlan(kind)} criado";
+            var analysis = await MutateAsync(analysisId, p =>
+            {
+                if (p.Phase == ExecutionPhase.Analysis && !p.IsFinished)
+                    p.CompleteStep(AnalysisDelivery.ProposeSolutionsStep, reason, actor.Name, DateTimeOffset.UtcNow, actor.IsExecutor);
+            }, cancellationToken, actor);
+            if (analysis.Phase != ExecutionPhase.Analysis || analysis.IsFinished)
+                return;
+            await ChangeStatusAsync(analysisId, new ChangeExecutionPlanStatusRequest { Status = ExecutionStatus.Completed, Reason = reason },
+                actor, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _repository.ClearTracking();
+        }
+    }
+
+    /// <summary>A análise já tem plano de entrega (não cancelado) nascido dela.</summary>
+    private async Task<bool> HasDeliveryPlanAsync(ExecutionPlan analysis, CancellationToken cancellationToken) =>
+        analysis.Phase == ExecutionPhase.Analysis
+        && (await _repository.GetSummariesByCardAsync(analysis.CardNumber, cancellationToken))
+            .Any(s => s.Phase == ExecutionPhase.Correction && s.ParentPlanId == analysis.Id && s.Status != ExecutionStatus.Cancelled);
+
+    /// <summary>
+    /// 0082: correção pedida sobre uma análise sem etapa concluída nem arquivo (a proposta aceita era de correção e a análise anterior
+    /// estava cancelada — o início da skill abriu uma versão nova vazia; card 77900). A correção parte da última análise
+    /// feita e a vazia é cancelada; o retorno traz essa análise feita (null = a análise pedida vale).
+    /// </summary>
+    private async Task<(Guid ParentId, ExecutionPlanSummaryResponse? Done)> ResolveCorrectionParentAsync(ExecutionPlan parent,
+        CancellationToken cancellationToken)
+    {
+        if (parent.IsFinished || parent.Steps.Any(s => s.Status == ExecutionStatus.Completed)
+            || (await _repository.GetArtifactsAsync(parent.Id, cancellationToken)).Count > 0)
+            return (parent.Id, null);
+        var done = (await _repository.GetSummariesByCardAsync(parent.CardNumber, cancellationToken))
+            .Where(s => s.Phase == ExecutionPhase.Analysis && s.Id != parent.Id && s.StepsCompleted > 0 && s.CreatedAt < parent.CreatedAt)
+            .MaxBy(s => s.CreatedAt);
+        return done is null ? (parent.Id, null) : (done.Id, done);
     }
 
     /// <summary>0037: o card já fica salvo no PRMake (registro + "últimos cards") ao nascer o plano. Best-effort.</summary>
@@ -102,6 +259,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionPlanResponse> GetAsync(Guid planId, CancellationToken cancellationToken)
     {
         await SyncPullRequestsAsync(planId, cancellationToken);
+        await EnsureDevTestInQaAsync(planId, cancellationToken);
         var plan = await LoadAsync(planId, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
@@ -111,13 +269,45 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (request.Steps.Count == 0)
             throw new DomainException("Informe ao menos uma etapa.");
 
-        var plan = await MutateAsync(planId, p => p.UpsertSteps(request.Steps, DateTimeOffset.UtcNow), cancellationToken, actor);
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            p.UpsertSteps(request.Steps, now, request.Replace);
+            // 0100: etapa de código/PR nova → a etapa do mapa do deploy na AWS entra depois dela (uma vez; fica fixa no lugar).
+            WorkItemAwsDeployRule.EnsurePlanStep(p, now);
+        }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, null, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
     }
 
+    public async Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken,
+        string? position = null)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ExecutionStep? step = null;
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            step = p.AddStep(definition, beforeKey, now, position);
+            // 0100: etapa de código/PR pedida por alguém também leva o mapa do deploy na AWS (se o plano ainda não tem).
+            WorkItemAwsDeployRule.EnsurePlanStep(p, now);
+        }, cancellationToken, actor);
+        // Steps: o item espelho ganha a sub-tarefa na sincronização (SyncWorkItemsAsync).
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, step!.Key, cancellationToken);
+        return step.ToResponse();
+    }
+
     public async Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78505: só o resultado — completa o de uma etapa (já concluída ou não) sem mexer no plano.
+        if (request.OnlyResult)
+        {
+            var current = await _repository.GetPlanWithStepsAsync(planId, cancellationToken) ?? throw new ExecutionPlanNotFoundException("Plano não encontrado.");
+            var target = current.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(stepKey))
+                         ?? throw new ExecutionPlanNotFoundException($"Etapa '{stepKey}' não encontrada.");
+            await SetStepResultAsync(planId, target.Key, request.Result, cancellationToken);
+            return target.ToResponse();
+        }
         ExecutionStep? step = null;
         // 0050: o Claude não deixa uma etapa de chamado nas mãos do usuário sem o script e o texto do chamado anexados.
         var artifacts = actor.IsExecutor ? await _repository.GetArtifactsAsync(planId, cancellationToken) : null;
@@ -125,16 +315,40 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         {
             var missingBefore = artifacts is null ? [] : TicketStepsMissingFiles(p, artifacts).ToHashSet();
             step = p.UpdateStep(stepKey, request.Status, request.Reason, request.Activity, request.Checkpoint,
-                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn);
+                request.Title, request.Description, actor.Name, DateTimeOffset.UtcNow, request.WaitingOn, actor.IsExecutor);
             if (artifacts is not null && TicketStepsMissingFiles(p, artifacts).FirstOrDefault(k => !missingBefore.Contains(k)) is { } missing)
                 throw new DomainException(
                     $"A etapa de chamado '{missing}' ficaria com o usuário sem os arquivos: anexe antes o script (.sql com rollback) e o texto do chamado " +
-                    $"com prmake_file(card, \"01_<nome>.sql\", conteudo, \"script\", \"{missing}\", phase: \"correction\") e " +
-                    $"prmake_file(card, \"chamado-<nome>.md\", texto, \"ticket\", \"{missing}\", phase: \"correction\").");
+                    $"com prmake_file(card, \"01_<card>_<nome>.sql\", conteudo, \"script\", \"{missing}\", phase: \"correction\") e " +
+                    $"prmake_file(card, \"chamado-<card>-<nome>.md\", texto, \"ticket\", \"{missing}\", phase: \"correction\").");
         }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
+        // Card 78505: terminou a etapa, a sub-tarefa já mostra o resultado (o rico da skill; senão o resumo do advance).
+        if (step.Status == ExecutionStatus.Completed)
+            await SetStepResultAsync(planId, step.Key, string.IsNullOrWhiteSpace(request.Result) ? request.Message : request.Result, cancellationToken);
+        else if (!string.IsNullOrWhiteSpace(request.Result))
+            await SetStepResultAsync(planId, step.Key, request.Result, cancellationToken);
+        // Card 78505 (#874): quem não é o executor (especialista a pedido da pessoa) concluiu/mudou a etapa — se sobrou
+        // trabalho para o Claude, pede o executor (como o "Concluir" da tela). Antes a etapa seguinte ficava "em andamento"
+        // sem ninguém trabalhando.
+        if (!actor.IsExecutor && !string.IsNullOrWhiteSpace(request.Status))
+            await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step.ToResponse();
+    }
+
+    /// <summary>Resultado da etapa na sub-tarefa espelho (best-effort: o plano já foi salvo).</summary>
+    private async Task SetStepResultAsync(Guid planId, string stepKey, string? result, CancellationToken cancellationToken)
+    {
+        if (_workItems is null || string.IsNullOrWhiteSpace(result)) return;
+        try
+        {
+            await _workItems.SetStepResultAsync(planId, stepKey, result, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not DomainException)
+        {
+            // O resultado pode ser reenviado (PATCH só com result).
+        }
     }
 
     public async Task<ExecutionStepResponse> CancelStepAsync(Guid planId, string stepKey, string reason, ExecutionActor actor, CancellationToken cancellationToken)
@@ -153,11 +367,25 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     public async Task<ExecutionPlanResponse> ChangeStatusAsync(Guid planId, ChangeExecutionPlanStatusRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
-        var plan = await MutateAsync(planId, p =>
-            p.ChangeStatus(request.Status, request.Reason, request.Summary, actor.Name, actor.IsExecutor, DateTimeOffset.UtcNow),
-            cancellationToken, actor);
+        List<ExecutionQuestion> cancelled = [];
+        var plan = await MutateAsync(planId, async p =>
+        {
+            p.ChangeStatus(request.Status, request.Reason, request.Summary, actor.Name, actor.IsExecutor, DateTimeOffset.UtcNow);
+            // Plano cancelado/concluído: as perguntas abertas não decidem mais nada — saem da espera do usuário (card 77900).
+            cancelled = [];
+            if (p.IsFinished)
+            {
+                var reason = p.Status == ExecutionStatus.Cancelled ? "Plano cancelado" : "Plano concluído";
+                cancelled = (await _repository.GetQuestionsAsync(p.Id, cancellationToken))
+                    .Where(q => q.Status == ExecutionQuestionStatus.Open).ToList();
+                foreach (var q in cancelled)
+                    q.Cancel(reason);
+            }
+        }, cancellationToken, actor);
 
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, null, cancellationToken);
+        if (cancelled.Count > 0)
+            await WriteTimelineAsync(plan, QuestionsCancelledText(cancelled, actor), actor, cancellationToken);
         if (plan.Status == ExecutionStatus.Running)
             await TriggerResumeAsync(plan, actor, ExecutionRequestSource.Resume, cancellationToken);
         return await BuildResponseAsync(plan, cancellationToken);
@@ -166,6 +394,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public async Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken)
     {
         await SyncPullRequestsAsync(planId, cancellationToken);
+        await EnsureDevTestInQaAsync(planId, cancellationToken);
         var plan = await MutateAsync(planId, p => p.Touch(DateTimeOffset.UtcNow, fromExecutor: true), cancellationToken);
 
         var action = plan.Status switch
@@ -232,6 +461,15 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     /// <summary>"Já resolvi" (0037): o usuário fez o que a etapa travada esperava; a skill tenta de novo.</summary>
     public async Task<ExecutionStepResponse> ResolveStepAsync(Guid planId, string stepKey, string? note, ExecutionActor actor, CancellationToken cancellationToken)
     {
+        // Card 78262: análise que já virou plano de entrega não tem mais o que esperar — "Já resolvi" fecha a análise.
+        var current = await LoadAsync(planId, cancellationToken);
+        if (!current.IsFinished && await HasDeliveryPlanAsync(current, cancellationToken))
+        {
+            await CloseAnalysisAsync(planId, current.Kind, actor, cancellationToken);
+            var closed = await LoadAsync(planId, cancellationToken);
+            return (closed.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(stepKey))
+                    ?? throw new DomainException("Etapa não encontrada.")).ToResponse();
+        }
         ExecutionStep? step = null;
         var plan = await MutateAsync(planId, p => { step = p.ResolveStepByUser(stepKey, note, actor.Name, DateTimeOffset.UtcNow); }, cancellationToken, actor);
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Step, step!.Key, cancellationToken);
@@ -440,6 +678,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                     .Where(l => l.StepKey == key && l.BlocksStep).Append(link).ToList();
                 p.ApplyTicketState(key, blocking, actor.Name, now, actor.IsExecutor);
             }
+            else if (link.Kind == ExecutionLinkKind.PullRequest)
+            {
+                var prs = (await _repository.GetLinksAsync(p.Id, cancellationToken))
+                    .Where(l => l.StepKey == key && l.Kind == ExecutionLinkKind.PullRequest && l.Id != link.Id).Append(link).ToList();
+                p.WaitForPullRequests(key, prs, actor.Name, now, actor.IsExecutor, includeRunning: true);
+            }
             p.Touch(now, actor.IsExecutor);
         }, cancellationToken, actor, () => link!.Kind == ExecutionLinkKind.Ticket
             ? $"🎫 **Chamado anexado** à etapa *{link.StepKey}*: [{link.DisplayName}]({link.Url})"
@@ -509,7 +753,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             throw new DomainException("O plano foi cancelado.");
     }
 
-    public async Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken)
+    public async Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken,
+        ExecutionActor? actor = null)
     {
         if (request.Logs.Count == 0)
             return 0;
@@ -532,9 +777,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
             foreach (var log in fresh.Where(l => l.StepKey is not null && l.Kind is ExecutionLogKind.Info or ExecutionLogKind.Progress))
                 p.TrackActivity(log.StepKey!, log.Message, now);
+            // 0080: divergência entre a análise e a base real fica pendente no plano (alerta + portão do PR).
+            foreach (var log in fresh.Where(l => l.Kind == ExecutionLogKind.Divergence))
+                p.RaiseDivergence(log.Message, log.StepKey, now);
 
             _repository.AddLogs(fresh);
-            p.Touch(now, fromExecutor: true);
+            p.Touch(now, fromExecutor: actor?.IsExecutor ?? true);
             appended = fresh.Count;
             lastStepKey = fresh.LastOrDefault(l => l.StepKey is not null)?.StepKey;
         }, cancellationToken);
@@ -542,6 +790,21 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         if (appended > 0)
             await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Log, lastStepKey, cancellationToken);
         return appended;
+    }
+
+    /// <summary>0080: a pessoa confirmou a divergência — a etapa de PR pode começar e o Claude segue.</summary>
+    public async Task<ExecutionPlanResponse> ConfirmDivergenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        var plan = await MutateAsync(planId, p =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            p.ConfirmDivergence(actor.Name, now);
+            p.Touch(now, fromExecutor: false);
+            return Task.CompletedTask;
+        }, cancellationToken, actor, () => "⚠️ **Divergência confirmada** por " + actor.Name);
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Status, plan.DivergenceStepKey, cancellationToken);
+        await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
+        return await GetAsync(planId, cancellationToken);
     }
 
     public async Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken)
@@ -601,10 +864,13 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return saved.ToResponse();
     }
 
-    public async Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken)
+    public async Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken, bool markRead = false)
     {
         var artifact = await _repository.GetArtifactAsync(planId, artifactId, cancellationToken)
                        ?? throw new ExecutionPlanNotFoundException("Arquivo não encontrado.");
+        // 0076: a skill abriu a evidência (a análise só conclui depois de abrir todas).
+        if (markRead && artifact.ExternalKey is not null && artifact.ReadAt is null)
+            await _repository.MarkArtifactReadAsync(artifact.Id, DateTimeOffset.UtcNow, cancellationToken);
         var data = await _repository.GetArtifactContentAsync(artifact.Id, cancellationToken) ?? [];
         return new ExecutionArtifactFile(artifact.ToResponse(), data);
     }
@@ -695,6 +961,8 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
             {
                 await _repository.SaveChangesAsync(cancellationToken);
                 await WriteMilestonesAsync(before, plan, actor ?? SystemActor, headline?.Invoke(), cancellationToken);
+                // 0078: etapa concluída pode render uma sugestão de lançar horas.
+                await SuggestAfterStepsAsync(before, plan, cancellationToken);
                 return plan;
             }
             catch (ExecutionPlanConcurrencyException) when (attempt < ConcurrencyRetries)
@@ -750,11 +1018,42 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         }
     }
 
+    /// <summary>0085: item de trabalho do plano (análise ou correção; idempotente). Best-effort: nunca quebra a criação do plano.</summary>
+    private async Task CreateWorkItemFromPlanAsync(ExecutionPlan plan, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        if (_workItems is null) return;
+        try
+        {
+            await _workItems.FromPlanAsync(plan.CardNumber, plan.Id, actor, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // O item pode ser gerado depois pela tela (POST WorkItems/card/{c}/from-plan/{planId}).
+        }
+    }
+
+    /// <summary>0085: etapas/status do plano → sub-tarefas/status dos itens ligados a ele. Best-effort.</summary>
+    private async Task SyncWorkItemsAsync(ExecutionPlan plan, string action, CancellationToken cancellationToken)
+    {
+        if (_workItems is null || action is not (ExecutionPlanRealTimeEvents.Actions.Steps or ExecutionPlanRealTimeEvents.Actions.Step
+                or ExecutionPlanRealTimeEvents.Actions.Status or ExecutionPlanRealTimeEvents.Actions.Link or ExecutionPlanRealTimeEvents.Actions.Question))
+            return;
+        try
+        {
+            await _workItems.SyncFromPlanAsync(plan.Id, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // O item volta a espelhar o plano na próxima mudança de etapa.
+        }
+    }
+
     /// <summary>
     /// Avisa quem está no card (sinal + refetch, como a timeline). Best-effort: nunca quebra a operação.
     /// </summary>
     private async Task NotifyAsync(ExecutionPlan plan, string action, string? stepKey, CancellationToken cancellationToken)
     {
+        await SyncWorkItemsAsync(plan, action, cancellationToken);
         try
         {
             await _realTimeNotifier.NotifyGroupAsync(
@@ -762,6 +1061,12 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
                 ExecutionPlanRealTimeEvents.EventPlanUpdated,
                 new { cardNumber = plan.CardNumber, planId = plan.Id, action, stepKey, status = plan.Status },
                 cancellationToken);
+            // 0075: a situação do card (o que está sendo aguardado) pode ter mudado.
+            // Só as ações que mudam o que é aguardado (andamento, arquivos, comentários e fotografias não mudam).
+            if (action is ExecutionPlanRealTimeEvents.Actions.Created or ExecutionPlanRealTimeEvents.Actions.Steps or ExecutionPlanRealTimeEvents.Actions.Step
+                or ExecutionPlanRealTimeEvents.Actions.Status or ExecutionPlanRealTimeEvents.Actions.Question or ExecutionPlanRealTimeEvents.Actions.Link
+                or ExecutionPlanRealTimeEvents.Actions.Situation)
+                await TrackSituationAsync(plan, cancellationToken);
             // 0037: pendências do usuário fora do card (recentes, título da aba). Andamento não muda pendência.
             if (action != ExecutionPlanRealTimeEvents.Actions.Log)
                 await _realTimeNotifier.NotifyGroupAsync(

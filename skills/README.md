@@ -6,9 +6,17 @@ Fonte única das skills (feature 0024). Cada deploy da API publica o conteúdo d
 | Pasta | O que é |
 |---|---|
 | `analisar-bug/`, `gerar-prmake/`, `gerar-handover/`, `prmake-timeline/` | as skills (`SKILL.md`, `scripts/`, `skill.json` com requisitos e setup) |
+| `analisar-us/` | 0085: analise de User Story no mesmo ciclo da `analisar-bug` (plano Kind `analisar-us`, sem causa raiz/RCA): criterios de aceite, Base Solvace, solucao, itens de trabalho `implementation` (plano de implementacao — nunca "correcao" na US). Usa os scripts da `analisar-bug` |
+| `executar-item-de-trabalho/` | 0085: executa um item de trabalho (pedido `work-item` do executor ou `/executar-item-de-trabalho <card> <n>`): sub-tarefas na ordem, com resultado, saidas e "como desfazer" |
+| `desfazer-item-de-trabalho/` | 0085: desfaz um item cancelado (pedido `work-item-undo`): sub-tarefas feitas em ordem reversa — fecha PR, apaga branch criada, reverte commit, volta o card — sempre pelo PRMake |
+| `especialista-do-caso/`, `base-solvace/`, `engenharia-reversa/` | especialista do caso (0080), Base Solvace e engenharia reversa |
+| `validar-ambiente/` | 0092: validacao em ambiente (sub-tarefa `env-validation`): `scripts/env.sh` acha ambiente/planta/admin (configuracao `ValidationEnvironments` + banco corporativo), abre o Chrome da maquina logado (`env_browser.py`, Playwright no venv; senha so em `~/.claude/solvace-env-credentials.json`, gravada por `prmake-skills.sh env-credentials`) e sobe os prints como evidencia da sub-tarefa; DEMO/producao com gravacoes bloqueadas |
+| `especialista-de-gestao/` | 0099: especialista da **Mesa de gestao** — guardiao de um epico (chave `E<numero>`, mesma conversa/ferramentas `prmake_case_*` do `especialista-do-caso`, escolhido pela fila quando a chave e de epico): consulta, cria (checando duplicado), edita, move e comenta cards no DevOps pelo PRMake (`prmake_devops_*`), gere o epico (`prmake_epic*`), cria/executa itens de gestao sem duplicar; quebra em historias, triagem em lote, resumo semanal, cards parados. Confirma lote > 10 cards; nunca fecha/remove card sem a pessoa decidir |
+| `tarefas-de-gestao/` | 0099: guia dos kinds de gestao que a `executar-item-de-trabalho` delega (`devops-query`, `devops-create`, `devops-update`, `devops-move`, `report`, `duplicates`, `understanding`, `rca-doc`, `pdf`); `scripts/gestao.sh` (→ `gestao.py`, so stdlib): consulta pelo PRMake gravada como arquivo do item, numeros do relatorio, grupos de duplicados, parados por coluna, `save`/`pull` de arquivos do item, PDF pelo servidor e `rca-check` (o `rca_check.py` da `gerar-prmake`) |
 | `_tooling/install.sh` | instalador de um comando para macOS/Linux/Git Bash (servido em `/Skills/install.sh`); instala jq/unzip/python3 que faltarem |
 | `_tooling/install.ps1` | instalador do Windows no PowerShell (servido em `/Skills/install.ps1`): winget para Git/jq/Python e roda o `install.sh` no Git Bash |
-| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
+| `_tooling/prmake-skills.sh` | `install` · `update [--quiet] [--force]` · `status` · `doctor` · `repos` · `db-credentials` · `env-credentials` · `governance` (servido em `/Skills/tool`, instalado em `~/.claude/skills/.prmake/`) |
+| `_tooling/prmake-governance.py` | 0098: hook único de governança do Claude Code (servido em `/Skills/tool/governance`, mesma versão da ferramenta) |
 
 **Instalar** (o comando com a api-key está na tela *Skills* do PRMake):
 
@@ -32,6 +40,25 @@ absoluto. `rsync`/`unzip` são opcionais em todos os sistemas (fallback: cp/find
 Arquivo alterado à mão numa skill instalada não é sobrescrito — `prmake-skills.sh status` mostra, `update --force <skill>` substitui.
 Quando o update pula uma skill por isso, o hook imprime um `ATENCAO: skills do PRMake NAO atualizadas — ...` no stdout (o stderr do hook
 SessionStart não chega ao Claude), e o Claude avisa o usuário na sessão em vez de seguir com a versão velha.
+
+**Itens de trabalho (0085)**: o plano de correcao da `analisar-bug` (Bug) / de implementacao da `analisar-us` (US) vira **item de trabalho** no PRMake
+(uma sub-tarefa por etapa, sincronizada pelo servidor); entregas independentes viram itens proprios
+(`prmake_work_item_create`, sempre conferindo `prmake_work_items` antes). Itens avulsos (criados na tela ou pelo
+especialista) rodam pela `executar-item-de-trabalho` e, cancelados com "desfazer", pela `desfazer-item-de-trabalho`.
+Nomes de branch/titulo/commit vem das regras do PRMake para o card (`prmake_rules` / `prmake-plan.sh rules`, com
+`BranchSuffixByTarget`: release-version → `-rv`). Subcomandos novos do `analisar-bug/scripts/prmake-plan.sh`: `rules`,
+`work-items`, `work-task`, `close-pr`, `delete-branch`, `open-pr ... --item <n>`, `worktree ... --item <n>`; o
+`branches` acrescenta `por-destino:`/`branches-por-destino:`; o `contexto` detecta User Story (plano `analisar-us`,
+criterios de aceite em `dados/criterios-aceite.txt`).
+Rodada 5: o `especialista-do-caso` **executa** as acoes que a pessoa pede (Timeline, horas, card no DevOps, `prmake_pr_open`,
+criar/cancelar/executar item) com a integracao de quem pediu — nunca o plano; item com `sql-script` ganha sozinho as
+sub-tarefas do chamado (o `executar-item-de-trabalho` grava o chamado completo com `prmake_work_item_file`, kind `ticket`).
+
+**Mesa de gestao (0099)**: itens de trabalho de um **epico** usam a chave `E<numero>` como card (mesma numeracao `#n` de
+itens e sub-tarefas). A `executar-item-de-trabalho` roda o item e, nos kinds de gestao, segue a `tarefas-de-gestao` (sem
+branch/PR/estado de card no epico); a conversa da Mesa roda a `especialista-de-gestao`. Toda gravacao no DevOps passa pelo
+PRMake (`prmake_devops_card_create/update/move`, integracao pessoal de quem age); relatorios/RCAs viram arquivos do item e
+PDF gerado no servidor (`prmake_pdf` / `gestao.sh pdf`).
 
 **Mudar uma skill** = mudar aqui e fazer o deploy da API. A versão de cada skill é o hash do conteúdo (muda sozinha).
 `skill.json`: `requires` (comandos necessários) e `setup` (`check`/`run`, ex.: o `.venv` do `python-tds` da `analisar-bug`).
@@ -64,3 +91,36 @@ bash ~/.claude/skills/.prmake/prmake-skills.sh repos path <repo>      # pasta (e
   do executor) — repositórios lá: `repos set` ou `PRMAKE_REPOS_ROOTS`.
 - Usam o mapa: `revamp-repos.sh` (`list`/`where`/`grep`), `prmake-plan.sh branches`/`worktree`, `arch.sh stale` e o
   executor (pasta onde abre o Claude, `--add-dir` dos repositórios fora dela, "Meus executores" e o doctor).
+
+**Governança (0098)**: o `install`/`update` baixa `prmake-governance.py` para `~/.claude/skills/.prmake/` e registra o
+mesmo comando nos hooks `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` e `Stop` do
+`~/.claude/settings.json` (idempotente; os hooks de terceiros e o `SessionStart` de atualização ficam como estão). As
+regras e os hooks ativos vêm do PRMake (`GET Governance/hooks/config`, cache em `~/.prmake/governance.json` por
+`cacheSeconds`): no `PreToolUse` a ferramenta que casa com as regras é avaliada (`POST Governance/evaluate`) — barrada,
+o Claude recebe "Barrado pela governança do PRMake: <motivo> (regra <key>)"; aviso, segue com o aviso no contexto. Os
+demais eventos vão em lote para `POST Governance/hooks/events` (fila `~/.prmake/governance-queue.jsonl`; nunca o texto
+do pedido, só o tamanho). Sem rede ou passou de `timeoutMs`: vale o `failOpen` (padrão: deixa passar); erros em
+`~/.prmake/governance.log`. O executor (1.7.0) põe o mesmo hook no settings dele (`--from-executor`) e mantém o
+`prmake-agent guard` como rede de segurança sem rede, que também reporta o bloqueio (`rules: ["executor-guard"]`).
+
+```bash
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance            # status: hooks instalados, versão e modo da config, fila
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance test "git push --force"   # o que as regras decidem (não executa)
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance off        # remove só os nossos hooks (o update não reinstala)
+bash ~/.claude/skills/.prmake/prmake-skills.sh governance on         # religa
+```
+
+**Padrões de banco e de aplicação (0101)**: os padrões (nomes de tabela/chave/índice/procedure/view, scripts, camadas e
+pastas — carga da wiki "Data Nomenclature and Rules" e da engenharia reversa) ficam na governança do PRMake; nada fixo
+nas skills. As skills que escrevem SQL/migração/código (`analisar-bug`, `analisar-us`, `executar-item-de-trabalho`,
+`gerar-prmake`, `especialista-do-caso`) leem os padrões do card antes (`prmake_standards` / seção do `prmake_rules` /
+`prmake-plan.sh standards <card> [--repo r]`) e conferem antes de gravar (`prmake_standards_check` /
+`prmake-plan.sh standards-check <card> <arquivo> [--target sql|migration|code] [--repo r]`, exit 3 = block); o
+`upload`/`sync` do `prmake-plan.sh` e o `upload` do `prmake-case.sh` conferem `.sql` sozinhos (block não envia; PRMake
+fora segue com aviso). O hook de governança, só com o hook `evaluate` ativo: no `PostToolUse` de Write/Edit/MultiEdit em
+`.sql` ou migração (pasta `migrations`/`Migrations`, sem `*.Designer.cs`/`*ModelSnapshot.cs`) lê o arquivo (até 200 KB),
+chama `POST Governance/standards/check` (repositório pelo remote origin, card pela branch, caminho relativo à raiz) e
+devolve até 10 achados ao Claude ("Padrões do PRMake (0101) em <arquivo>: ..."); no `PreToolUse` de Write de `.sql`
+com decisão block, nega com os achados (a conferência do Pre vale para o Post — não grava o achado duas vezes). PRMake
+fora ou sem o recurso: deixa passar sempre (404 não pergunta de novo por 10 min); `"standards": false` na config dos
+hooks desliga só esta parte.

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>0080 — Antes</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  body { width: 1440px; }
+  .wrap { display: grid; grid-template-columns: 1040px 1fr; gap: 18px; padding: 18px; position: relative; }
+  .plan { background: var(--s1); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); position: relative; }
+  .ph { display: flex; align-items: center; gap: 4px; padding: 8px 10px 8px 14px; background: var(--s2); }
+  .ph .t { font-weight: 600; font-size: 14.5px; margin-left: 6px; }
+  .ph .ib { color: #c8cad0; }
+  .prog { height: 3px; background: rgba(255,255,255,.06); } .prog i { display: block; height: 100%; width: 87%; background: var(--pri); }
+  .tabs { display: flex; gap: 6px; padding: 8px 14px 0; }
+  .tab { padding: 7px 14px; border-radius: 10px 10px 0 0; font-weight: 500; color: var(--mut); display: flex; gap: 6px; align-items: center; }
+  .tab--on { background: rgba(171,199,255,.10); color: var(--pri); box-shadow: inset 0 -2px 0 var(--pri); }
+  .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .box { border: 1px solid var(--line2); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,.02); }
+  .box h4 { margin: 0 0 4px; font-size: 12.5px; display: flex; gap: 6px; align-items: center; color: #cfd2d8; }
+  .box p { margin: 0; color: var(--mut); font-size: 12.5px; }
+  .q { display: flex; gap: 8px; font-size: 12.5px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; }
+  .q b { color: #dfe2e8; font-weight: 500; }
+  .meta .k { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--pri); font-weight: 600; }
+  .meta .tt { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .st { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+  .nd { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
+  .nd .mi { font-size: 15px; }
+  .nd--run { background: color-mix(in srgb, var(--pri) 25%, transparent); color: var(--pri); }
+  .st .ti { flex: 1; }
+  .st .du { color: var(--mut2); font-size: 12px; }
+  .notes .n { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .notes .n .who { font-weight: 600; color: #cfd2d8; }
+  .foot { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--s2); flex-wrap: wrap; }
+  .fb { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2); display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #cfd2d8; }
+  .fb .mi { font-size: 15px; }
+  .fb i { font-style: normal; background: rgba(171,199,255,.18); color: var(--pri); border-radius: 8px; padding: 0 5px; font-size: 11px; }
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .side h2 { margin: 2px 0 0; font-size: 17px; }
+  .side .lead { color: var(--mut); margin: 0; }
+  .it { display: grid; grid-template-columns: 26px 1fr; gap: 8px; background: var(--s1); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .it .pin { position: static; box-shadow: none; }
+  
+  .it span { color: var(--mut); font-size: 12.5px; }
+  .quote { font-style: italic; color: #ffb4ad; }
+  .log { font-size: 12px; color: var(--mut); background: rgba(255,255,255,.03); border-radius: 8px; padding: 6px 8px; display: flex; gap: 6px; }
+  .log .mi { font-size: 15px; color: var(--pri); }
+  .mk { position: relative; outline: 2px dashed rgba(244,112,103,.75); outline-offset: 3px; border-radius: 10px; }
+  .mk > .pin { right: -12px; top: -12px; }
+  .it .pin { color: #fff; }
+  .it > div > b { display: block; margin-bottom: 2px; }
+  .it b { display: inline; margin: 0; }
+</style></head>
+<body>
+<div class="wrap">
+  <div class="plan">
+    <div class="ph">
+      <span class="mi" style="color:var(--pri)">account_tree</span><span class="t">Plano de execução</span>
+      <span class="sp"></span>
+      <span class="chip chip--run"><span class="mi">assistant</span>1</span>
+      <span class="chip chip--run" style="margin-left:4px">● Em andamento</span>
+      <span class="mk row" style="gap:0"><span class="pin">1</span><span class="ib"><span class="mi">pause</span></span>
+      <span class="ib"><span class="mi">stop_circle</span></span>
+      <span class="ib" style="color:var(--pri)"><span class="mi">rocket_launch</span></span>
+      <span class="ib"><span class="mi">terminal</span></span>
+      <span class="ib"><span class="mi">smart_toy</span></span>
+      <span class="ib"><span class="mi">history</span></span>
+      <span class="ib"><span class="mi">more_vert</span></span>
+      <span class="ib"><span class="mi">open_in_full</span></span></span>
+    </div>
+    <div class="prog"><i></i></div>
+    <div class="tabs"><span class="mk row" style="gap:6px"><span class="pin">2</span>
+      <span class="tab tab--on"><span class="mi">troubleshoot</span>Análise</span>
+      <span class="tab"><span class="mi">build</span>Correção</span></span>
+    </div>
+    <div class="body">
+      <div class="mk" style="display:flex;flex-direction:column;gap:10px"><span class="pin">3</span>
+      <div class="box"><h4><span class="mi" style="color:var(--ok)">flag</span>Situação atual</h4>
+        <p>Sem pendências no momento — nada aguardando; o plano segue normalmente. PR #3021 (bugfix/77881-qa → qa) aberto; CI: só o check checklist falhou…</p></div>
+      <div class="box"><h4><span class="mi" style="color:var(--pri)">assistant</span>Assistente do card</h4>
+        <p>Registrar a estimativa inicial (6h Original · 6h Remaining)? <span style="color:var(--pri)">Registrar · Agora não</span></p></div>
+      <div class="box"><h4><span class="mi" style="color:var(--pri)">edit_note</span>Textos gerados · 3</h4>
+        <p>Análise inicial · Soluções · Resumo da situação na discussion</p></div>
+      <div class="box"><h4><span class="mi" style="color:var(--you)">front_hand</span>Respostas enviadas</h4>
+        <div class="q"><span class="mi" style="color:var(--mut)">person</span><span>Qual solução seguir? → <b>Validação no próprio endpoint</b></span></div>
+        <div class="q"><span class="mi" style="color:var(--mut)">person</span><span>O limite de 300 KB vale para quais imagens? → <b>As três</b></span></div>
+        <div class="q"><span class="mi" style="color:var(--mut)">person</span><span>Posso seguir com a correção agora? → <b>Não, só deixar o plano de correção pronto</b></span></div>
+        <div class="q muted" style="font-size:12px">+ 4 respostas</div>
+      </div>
+      </div>
+      <div class="meta">
+        <div class="k">Plano de análise</div>
+        <div class="tt">Analise do bug 77881: Não é possível subir nova imagem da tela de login pela página de parâmetros do cliente no módulo de administraçã</div>
+        <div class="muted" style="font-size:12px">7/8 etapas · por Bruno Ferreira · há 3 h · 75 turnos · 6,9 M tokens</div>
+      </div>
+      <ol class="steps">
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Identificar o card</span><span class="du">1 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Ler o card</span><span class="du">2 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Investigar o código</span><span class="du">1 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Consultar dados e ambiente</span><span class="du">1 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Levantar a causa raiz</span><span class="du">1 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Montar a análise e os scripts</span><span class="du">22 min</span></li>
+        <li class="st"><span class="nd"><span class="mi">check</span></span><span class="ti">Publicar na timeline</span><span class="du">1 min</span></li>
+        <li class="st"><span class="nd nd--run"><span class="mi">more_horiz</span></span><span class="ti">Propor soluções e decidir com você <span class="muted" style="font-size:12px">· Em andamento…</span></span><span class="du">2 h 31 min</span></li>
+      </ol>
+      <div class="notes box mk"><span class="pin">4</span>
+        <h4><span class="mi" style="color:var(--pri)">chat</span>Comentários para o Claude · 5</h4>
+        <div class="n"><span class="who">Bruno</span><span>voce implementou a correção? <span class="muted">· lido</span></span></div>
+        <div class="n"><span class="who">Bruno</span><span>voce colocou para a tela de login aceitar png? <span class="muted">· lido</span></span></div>
+        <div class="n"><span class="who">Bruno</span><span>a branch de QA nao aceita PNG quando tento subir png da erro <span class="muted">· lido</span></span></div>
+        <div class="row" style="margin-top:6px"><div style="flex:1;height:34px;border-radius:8px;border:1px solid var(--line2);color:var(--mut2);display:flex;align-items:center;padding:0 10px">Comentário para o Claude (vai para a análise)…</div><span class="ib"><span class="mi">attach_file</span></span><span class="ib" style="color:var(--pri)"><span class="mi">send</span></span></div>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="fb"><span class="mi">description</span>Análises <i>2</i></span>
+      <span class="fb"><span class="mi">code</span>Scripts</span>
+      <span class="fb"><span class="mi">dataset</span>Dados <i>1</i></span>
+      <span class="fb"><span class="mi">image</span>Imagens <i>2</i></span>
+      <span class="fb"><span class="mi">confirmation_number</span>Chamados</span>
+      <span class="fb"><span class="mi">attach_file</span>Anexos</span>
+      <span class="fb"><span class="mi">edit_note</span>Textos</span>
+      <span class="sp"></span>
+      <span class="mk row" style="gap:0"><span class="pin">8</span><span class="ib" style="color:var(--pri)"><span class="mi">forum</span></span><span class="chip chip--run">5</span></span>
+      <span class="ib"><span class="mi">folder_zip</span></span>
+    </div>
+
+  </div>
+
+  <div class="side">
+    <div class="chip chip--bad" style="align-self:flex-start"><span class="mi">report</span>Antes — card 77881 (Bruno Ferreira, 04/11)</div>
+    <h2>O que travou o Bruno nesta tela</h2>
+    <p class="lead">Recriação fiel do painel atual com os dados reais do card. Às 17:09 o plano de correção foi cancelado com o motivo <span class="quote">"fez tudo errado cancele tudo"</span> e o PR #3021 fechado.</p>
+
+    <div class="it"><span class="pin">1</span><div><b>9 botões só com ícone no cabeçalho</b><span>Pausar, cancelar, foguete, terminal, robô, histórico, ⋯ — sem rótulo, e a conversa nem está entre eles (fica no rodapé).</span></div></div>
+    <div class="it"><span class="pin">2</span><div><b>Não diz em que pé o card está</b><span>Análise "Em andamento" há 2 h 31 min em <i>Propor soluções</i> com tudo já respondido; a aba Correção (cancelada) não aparece como o passo seguinte.</span></div></div>
+    <div class="it"><span class="pin">3</span><div><b>4 blocos empilhados antes das etapas</b><span>Situação, assistente, textos e respostas empurram a etapa atual para baixo; a "Situação" ainda dizia "PR aberto" quando ele já tinha sido fechado.</span></div></div>
+    <div class="it"><span class="pin">4</span><div><b>O chat é o prompt do executor principal</b><span>"você implementou a correção?" virou <b>pergunta formal</b> no plano de correção. Conversar mexe no plano, e o plano trava a conversa.</span></div></div>
+    <div class="it"><span class="pin">5</span><div><b>As respostas não voltam para o chat</b>
+      <span>As respostas aos comentários #4 e #5 foram gravadas no <i>Andamento</i> da etapa <span class="mono">pr-edv-solvace-api</span>, na outra aba:</span>
+      <div class="log" style="margin-top:6px"><span class="mi">info</span><span>17:06 · "Comentário #5 (PNG dá erro na QA): no código da qa o .png já está na lista… perguntei no plano, sem alterar código."</span></div>
+      <span style="display:block;margin-top:4px">3 minutos depois o plano foi cancelado.</span></div></div>
+    <div class="it"><span class="pin">6</span><div><b>Divergência crítica escondida num log</b><span>A análise foi feita na master; a correção partiu da <span class="mono">qa</span>, que já tinha o fix do 75706 (PNG aceito). A informação apareceu numa linha do andamento, sem alerta e sem pedir confirmação.</span></div></div>
+    <div class="it"><span class="pin">7</span><div><b>Cancelar é a única saída</b><span>Só um campo de motivo livre. Não há "o que está errado?", nem oferta de ajustar o plano ou conversar antes de jogar tudo fora.</span></div></div>
+    <div class="it"><span class="pin">8</span><div><b>Rodapé com 7 botões de arquivos e a conversa escondida num ícone</b><span>O ícone <span class="mi" style="font-size:15px">forum</span> abre o modal "Conversa com o Claude" — que é o mesmo fluxo de comentários do plano.</span></div></div>
+  </div>
+</div>
+</body></html>

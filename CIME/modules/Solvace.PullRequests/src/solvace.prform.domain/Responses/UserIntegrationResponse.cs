@@ -52,6 +52,18 @@ public class UserIntegrationFieldResponse
 
     /// <summary>Texto de ajuda do campo definido pelo administrador (0032).</summary>
     public string? Help { get; set; }
+
+    /// <summary>
+    /// 0102: valores fechados da chave (catálogo 0086, tipo lista sem valor livre) — a tela mostra uma lista de escolha com os
+    /// rótulos em vez do texto com sugestões. Vazio = campo livre.
+    /// </summary>
+    public List<UserIntegrationFieldOption> Options { get; set; } = new();
+}
+
+public class UserIntegrationFieldOption
+{
+    public string Value { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
 }
 
 public class UserIntegrationStatusResponse

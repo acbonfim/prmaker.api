@@ -1,6 +1,6 @@
 ---
 name: gerar-prmake
-description: Gera e publica um Pull Request no sistema PRMake a partir da branch atual (hotfix/<card> ou bugfix/<card>), montando a descrição e o RCA via IA com base nos dados do card no Azure DevOps, nos commits/diff da branch e no prompt configurado; ao final insere o Root Cause no card do DevOps e posta um resumo não-técnico (PT/EN) na discussion do card. Use quando o usuário pedir para gerar/criar um PR no PRMake, "gerar pr", "montar pull request" ou publicar o root cause de um card.
+description: Gera e publica um Pull Request no sistema PRMake a partir da branch atual (hotfix/<card> ou bugfix/<card> no Bug; feature/<card> na User Story), montando a descrição e o RCA via IA com base nos dados do card no Azure DevOps, nos commits/diff da branch e no prompt configurado; ao final insere o Root Cause no card do DevOps e posta um resumo não-técnico (PT/EN) na discussion do card. Use quando o usuário pedir para gerar/criar um PR no PRMake, "gerar pr", "montar pull request" ou publicar o root cause de um card.
 ---
 
 # gerar-prmake
@@ -34,11 +34,29 @@ EN-US) na **discussion** do card, a partir da branch atualmente em checkout.
   Ações DevOps): o PRMake usa a integração do Azure que o usuário configurou em **Minhas integrações**, registra
   na Timeline e mantém as configurações por usuário. **Não é preciso PAT do Azure na máquina.**
 
+## Governança (0098)
+
+As regras de governança vêm do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — não repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governança do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): não contorne, nem por outro comando, script ou
+  ferramenta equivalente. Diga ao usuário o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governança do PRMake: ..."): siga e cite o aviso (com a regra) no resumo final.
+
+## Padrões (0101)
+
+Se o diff da branch tem script SQL (`.sql`), migração (`Migrations/`) ou objeto de banco: antes de publicar, confira
+cada arquivo nos padrões do card — `prmake_standards_check(card, text, target: sql|migration|code, path, repository)`
+(script: `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh standards-check <card> <arquivo> [--repo <r>]`; os
+padrões que valem: `prmake_standards(card, repository)` ou a seção "Padrões de banco e de aplicação" do `prmake_rules`).
+Efeito **block**: não publique — mostre os achados ao usuário (o código precisa mudar antes do PR); **warn**: publique e
+cite os achados (código do padrão) no resumo final; **monitor**/proposto: só cite. Legado no `dbo` mantém os nomes
+atuais. PRMake fora: siga e diga que não conferiu.
+
 ## Fluxo
 
 ### 1. Identificar o card pela branch
-Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `bugfix/<numero>`:
-- `branchPrefix` = `hotfix/` ou `bugfix/` (com a barra); `card` = número após o prefixo.
+Rode `git rev-parse --abbrev-ref HEAD`. A branch deve ser `hotfix/<numero>` ou `bugfix/<numero>` (Bug) ou `feature/<numero>` (User Story — nunca `hotfix/`):
+- `branchPrefix` = `hotfix/`, `bugfix/` ou `feature/` (com a barra); `card` = número após o prefixo.
 - Se a branch não seguir o padrão (ex.: `master`), **pare** e peça ao usuário a branch correta ou o
   número do card + prefixo. Se o usuário passar um número em ``, use-o.
 
@@ -153,6 +171,8 @@ COMMENT_FILE=/tmp/prmake/comment.md \
 #   OPEN_GITHUB_PR=1 TARGET_BRANCH=qa COMMENT_FILE=... bash .../prmake-publish.sh ...
 ```
 O script:
+0. confere o RCA (Bug) pelo "Modelo do RCA" do prompt de Bug do PRMake (`scripts/rca_check.py`: titulos do modelo,
+   texto em ingles, Ticket com o card) e **nao publica nada** se estiver fora do padrao — corrija e rode de novo;
 1. faz `POST /PullRequest` com **só os dados do card** (`cardNumber`, `userId`, `formId`, `description`,
    `rootCause`) — desde a feature 0001 há **um registro por card**; branch e repositório pertencem a cada PR
    do GitHub, não ao registro;
@@ -178,10 +198,15 @@ Ele imprime os HTTP codes, o `id` do registro do card, o número/URL do PR no Gi
 > - `Custom.ResolutionType` (**Resolution Type**) = `Code Fix`
 > - `Custom.GeneralClassification` (**General Classification**) = `Code`
 > - `Custom.Classification` (**Classification**) = `Code Required - Code Defect`
+> - `Custom.BugType` (**Bug Type**, só no Bug) = `BUG_TYPE` — **escolha você** o valor entre os do picklist do
+>   DevOps (`GET /Azure/actions/bug-types` no PRMake, mesmo token/host dos outros scripts) pela
+>   área/funcionalidade afetada pelo bug; nunca invente valor fora da lista (o PRMake recusa com 400 e mostra as
+>   opções). Card que já tem Bug Type correto: pode omitir. Bug sem Bug Type fica com pendência e não vai para
+>   Ready for QA / Test in Production.
 >
 > Sobrescreva por env (`RESOLUTION_TYPE`, `GENERAL_CLASSIFICATION`, `CLASSIFICATION`) ou use uma opção pronta
 > do PRMake com `CLASSIFICATION_PRESET` (ex.: `user-education`, `script-defect` — lista em
-> `GET /Azure/actions/classifications`); `SKIP_FIELDS=1` pula a etapa. Os valores precisam existir na picklist.
+> `GET /Azure/actions/classifications`) e passe `BUG_TYPE="<valor>"`; `SKIP_FIELDS=1` pula a etapa. Os valores precisam existir na picklist.
 
 > **Textos enviados ao DevOps vão em HTML5.** Tanto o root cause quanto o comentário da discussion
 > são convertidos de Markdown para HTML5 por `scripts/md2html.py` antes do POST (com estilos inline:
@@ -194,7 +219,7 @@ Ele imprime os HTTP codes, o `id` do registro do card, o número/URL do PR no Gi
 ### 7. Reportar
 Informe: card, tipo (Bug/US), branch, `id` do registro no PRMake, o link do PR no GitHub (se aberto), se o RCA foi gravado no DevOps, se o
 comentário PT/EN foi postado na discussion (`commentId`) e se os campos custom de classificação
-foram preenchidos (Resolution Type / General Classification / Classification). Em caso de HTTP 401 no PRMake, o token
+foram preenchidos (Resolution Type / General Classification / Classification / Bug Type). Em caso de HTTP 401 no PRMake, o token
 PRMake expirou (`~/.claude/prmake-token.txt` ou `PRMAKE_TOKEN`); HTTP 403 com `PERSONAL_INTEGRATION_REQUIRED`
 nas chamadas de GitHub/Azure = o usuário precisa salvar a própria chave em **Minhas integrações** no app;
 HTTP 500 no `POST /PullRequest` = confira se está usando o host novo (`api.softhouse.app.br`); erro do Azure nas

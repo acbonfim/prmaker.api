@@ -8,6 +8,7 @@
 #   GENERAL_CLASSIFICATION (default "Code")
 #   CLASSIFICATION         (default "Code Required - Code Defect")
 #   CLASSIFICATION_PRESET  (ex.: user-education) — usa uma opcao do PRMake (GET /Azure/actions/classifications)
+#   BUG_TYPE               valor do picklist Bug Type do DevOps (GET /Azure/actions/bug-types); vazio = nao grava
 set -euo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -38,6 +39,11 @@ else
   BODY="$(jq -n --arg rt "${RESOLUTION_TYPE-Code Fix}" --arg gc "${GENERAL_CLASSIFICATION-Code}" \
     --arg cl "${CLASSIFICATION-Code Required - Code Defect}" \
     '{resolutionType:$rt, generalClassification:$gc, classification:$cl}')"
+fi
+if [[ -n "${BUG_TYPE:-}" ]]; then
+  BODY="$(jq --arg b "$BUG_TYPE" '. + {bugType:$b}' <<<"$BODY")"
+else
+  echo "   aviso: sem BUG_TYPE — o Bug Type do card nao e preenchido (Bug sem ele fica com pendencia)" >&2
 fi
 
 echo ">> POST $BASE/Azure/card/$CARD/actions/classify"

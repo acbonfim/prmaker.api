@@ -37,9 +37,14 @@ public static class ExecutionLogKind
     public const string Decision = "decision";
     public const string Warning = "warning";
     public const string Error = "error";
+    /// <summary>
+    /// 0080: a base real difere do que a análise assumiu (branch, repositório, código que já mudou). O plano fica com a
+    /// divergência pendente e a etapa de PR não começa até alguém confirmar.
+    /// </summary>
+    public const string Divergence = "divergence";
 
     public static readonly IReadOnlySet<string> All =
-        new HashSet<string> { Info, Progress, Finding, Decision, Warning, Error };
+        new HashSet<string> { Info, Progress, Finding, Decision, Warning, Error, Divergence };
 }
 
 /// <summary>Tipos de arquivo (viram os botões do rodapé e as pastas do .zip).</summary>

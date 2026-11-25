@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>0080 — Plano (depois)</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  body { width: 1440px; }
+  .wrap { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px 18px; }
+  .card-h { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+  .card-h h1 { margin: 0; font-size: 17px; font-weight: 600; }
+  .card-h .num { color: var(--pri); font-weight: 700; }
+  .plan { background: var(--s1); border-radius: 14px; border: 1px solid var(--line); overflow: hidden; }
+  .ph { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; background: var(--s2); position: relative; }
+  .ph .t { font-weight: 600; font-size: 15px; }
+  .btn--spec { position: relative; height: 36px; padding: 0 14px 0 6px; border-radius: 18px; }
+  .btn--spec .av { width: 26px; height: 26px; }
+  .btn--spec .badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 10.5px;
+    display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid var(--s2); }
+  .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(63,185,80,.25); }
+  .journey { display: flex; align-items: center; gap: 0; padding: 14px 18px 6px; }
+  .jn { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .jn .c { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .jn .c .mi { font-size: 16px; }
+  .jn b { font-size: 13px; font-weight: 600; display: block; }
+  .jn small { color: var(--mut); font-size: 11.5px; }
+  .jl { flex: 1; height: 2px; background: var(--line2); margin: 0 8px; min-width: 12px; }
+  .c--ok { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+  .c--bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+  .c--next { border: 2px dashed var(--pri); color: var(--pri); }
+  .c--todo { border: 2px solid var(--line2); color: var(--mut2); }
+  .sec { padding: 10px 18px; }
+  .hero { margin: 8px 18px 4px; border-radius: 14px; padding: 14px 16px; background: linear-gradient(135deg, rgba(171,199,255,.10), rgba(171,199,255,.03)); border: 1px solid rgba(171,199,255,.22); }
+  .hero .k { font-size: 11px; letter-spacing: .7px; text-transform: uppercase; color: var(--pri); font-weight: 600; }
+  .hero p { margin: 6px 0 10px; font-size: 14.5px; line-height: 1.5; }
+  .hero p b { color: #fff; }
+  .alert { margin: 10px 18px 0; border-radius: 12px; padding: 11px 14px; border: 1px solid rgba(227,179,65,.35); background: rgba(227,179,65,.07); display: flex; gap: 10px; align-items: flex-start; }
+  .alert .mi { color: var(--warn); font-size: 20px; }
+  .alert b { color: #f5d78a; }
+  .alert .acts { display: flex; gap: 8px; margin-top: 8px; }
+  .h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--mut); font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }
+  .dec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .d { border: 1px solid var(--line2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.02); }
+  .d small { color: var(--mut); font-size: 11px; display: block; }
+  .d b { font-weight: 500; font-size: 13px; }
+  .steps .grp { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: rgba(255,255,255,.03); color: var(--mut); }
+  .st { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  .nd { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .nd .mi { font-size: 15px; }
+  .st .ti { flex: 1; }
+  .st .sub { display: block; color: var(--mut); font-size: 12px; }
+  .foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--s2); }
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .pv { background: var(--s1); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .pv-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: linear-gradient(135deg, rgba(142,108,240,.22), rgba(142,108,240,.05)); }
+  .pv-h b { font-size: 14px; }
+  .msg { display: flex; gap: 8px; padding: 10px 14px; }
+  .bub { background: var(--s3); border-radius: 4px 14px 14px 14px; padding: 8px 11px; font-size: 12.5px; }
+  .bub--spec { background: color-mix(in srgb, var(--spec) 12%, var(--s2)); border: 1px solid rgba(196,167,255,.18); }
+  .act { white-space: nowrap; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--spec); padding: 0 14px 10px 54px; }
+  .dots i { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--spec); margin: 0 1px; opacity: .5; }
+  .tl { background: var(--s1); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .tli { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .tli:first-of-type { border-top: 0; }
+  .tli time { color: var(--mut2); font-size: 11.5px; width: 38px; flex: none; }
+  .rel { position: relative; }
+</style></head>
+<body>
+<div class="wrap">
+  <div class="card-h">
+    <span class="num">#77881</span>
+    <h1>Não é possível subir nova imagem da tela de login pela página de parâmetros do cliente</h1>
+    <span class="chip">Bug · P1 · High</span><span class="chip">In Development</span><span class="chip">Sem pull requests</span>
+    <span class="sp"></span>
+    <span class="av av--sm av--bf" title="Bruno Ferreira">BF</span><span class="av av--sm av--ds" title="Daniel Strinta">DS</span>
+  </div>
+
+  <div class="plan">
+    <!-- cabeçalho: ações com rótulo; o Especialista é o primeiro botão -->
+    <div class="ph">
+      <span class="mi" style="color:var(--pri)">account_tree</span><span class="t">Plano de execução</span>
+      <span class="chip chip--bad"><span class="mi">block</span>Correção cancelada</span>
+      <span class="sp"></span>
+      <span class="btn btn--spec rel"><span class="av av--spec"><span class="mi">psychology</span></span>Especialista do caso <span class="live"></span><span class="badge">2</span></span>
+      <span class="btn btn--pri"><span class="mi">replay</span>Nova versão da correção</span>
+      <span class="btn"><span class="mi">folder_open</span>Arquivos e textos · 8</span>
+      <span class="ib"><span class="mi">more_vert</span></span>
+      <span class="ib"><span class="mi">open_in_full</span></span>
+      <span class="new" style="right:470px;top:-6px"><span class="mi">auto_awesome</span>novo: sai do rodapé, vira botão</span>
+    </div>
+
+    <!-- jornada no lugar das abas -->
+    <div class="journey rel">
+      <div class="jn"><span class="c c--ok"><span class="mi">check</span></span><div><b>Análise · v2</b><small>04/11 16:42</small></div></div>
+      <span class="jl"></span>
+      <div class="jn"><span class="c c--ok"><span class="mi">how_to_reg</span></span><div><b>Decisões</b><small>6 respostas</small></div></div>
+      <span class="jl"></span>
+      <div class="jn"><span class="c c--bad"><span class="mi">close</span></span><div><b>Correção · v1</b><small>cancelada 17:09</small></div></div>
+      <span class="jl"></span>
+      <div class="jn"><span class="c c--next"><span class="mi">replay</span></span><div><b>Correção · v2</b><small>a definir</small></div></div>
+      <span class="jl"></span>
+      <div class="jn"><span class="c c--todo"><span class="mi">fact_check</span></span><div><b>Validar em QA</b><small>você</small></div></div>
+      <span class="jl"></span>
+      <div class="jn"><span class="c c--todo"><span class="mi">flag</span></span><div><b>Fechamento</b><small>&nbsp;</small></div></div>
+      <span class="new" style="right:18px;top:-6px"><span class="mi">auto_awesome</span>jornada no lugar das abas Análise/Correção</span>
+    </div>
+
+    <!-- em que pé está: um bloco só -->
+    <div class="hero rel">
+      <div class="k">Em que pé está</div>
+      <p>Você <b>cancelou a correção v1</b> às 17:09 (“fez tudo errado”). A análise e as decisões continuam valendo. O ponto em aberto é <b>por que o PNG dá erro na QA</b> se a branch <span class="mono">qa</span> já aceita .png. Esclareça com o especialista e gere a correção v2.</p>
+      <div class="row">
+        <span class="btn btn--spec" style="height:32px;padding:0 12px"><span class="mi">psychology</span>Entender com o especialista</span>
+        <span class="btn"><span class="mi">replay</span>Gerar correção v2 com as decisões atuais</span>
+        <span class="sp"></span>
+        <span class="muted" style="font-size:12px">substitui Situação + Assistente + Aguardando você</span>
+      </div>
+      <span class="new" style="right:14px;top:-10px"><span class="mi">auto_awesome</span>um bloco só</span>
+    </div>
+
+    <!-- divergência vira alerta com confirmação -->
+    <div class="alert rel">
+      <span class="mi">difference</span>
+      <div style="flex:1">
+        <b>A branch base da correção difere da análise.</b> A análise foi feita na <span class="mono">master</span>. A <span class="mono">qa</span> já tem o fix do card 75706: aceita .png/.jpeg/.webp e grava sempre <span class="mono">background-image.jpg</span>. O executor só abre PR depois que você confirmar a base.
+        <div class="acts"><span class="btn" style="height:28px"><span class="mi">compare_arrows</span>Ver diferença qa × master</span><span class="btn" style="height:28px"><span class="mi">psychology</span>Revisar com o especialista</span><span class="btn btn--ghost" style="height:28px">Confirmar base qa</span></div>
+      </div>
+      <span class="new" style="right:14px;top:-10px"><span class="mi">auto_awesome</span>antes era 1 linha no andamento</span>
+    </div>
+
+    <div class="sec">
+      <div class="h3"><span class="mi" style="font-size:16px">how_to_reg</span>Decisões que valem para a próxima versão <span class="sp"></span><span style="text-transform:none;letter-spacing:0;color:var(--pri);font-weight:500">mudar uma decisão = conversar com o especialista</span></div>
+      <div class="dec">
+        <div class="d"><small>Solução</small><b>Validação no próprio endpoint</b></div>
+        <div class="d"><small>Limite de 300 KB</small><b>As três imagens</b></div>
+        <div class="d"><small>Formatos do fundo do login</small><b>Só .jpg e .png</b></div>
+        <div class="d"><small>PRs</small><b>Só qa (bugfix/77881-qa)</b></div>
+        <div class="d"><small>Classificação e mover o card</small><b>Não alterar</b></div>
+        <div class="d"><small>Executar a correção</small><b>Só quando eu pedir</b></div>
+      </div>
+    </div>
+
+    <div class="sec steps">
+      <div class="h3"><span class="mi" style="font-size:16px">checklist</span>Correção v1 <span class="chip chip--bad" style="text-transform:none;letter-spacing:0">cancelada</span></div>
+      <div class="grp"><span class="mi" style="color:var(--ok)">done_all</span>3 etapas concluídas — impacto na base, corrigir EnvironmentService, validar build <span class="sp"></span><span class="mi">expand_more</span></div>
+      <div class="st"><span class="nd c--bad"><span class="mi">close</span></span><span class="ti">PR para QA no edv-solvace-api<span class="sub">PR #3021 fechado · CI: checklist do template sem as 15 caixas</span></span><span class="chip"><span class="mi">link</span>1</span></div>
+      <div class="st"><span class="nd c--todo"><span class="mi">remove</span></span><span class="ti" style="color:var(--mut)">Preparar o fechamento · Validar em QA · Fechamento</span><span class="muted" style="font-size:12px">não executadas</span></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="pv rel">
+      <div class="pv-h"><span class="av av--spec"><span class="mi">psychology</span></span><div style="flex:1"><b>Especialista do caso</b><div class="muted" style="font-size:11.5px">2 novas · Bruno e Daniel na conversa</div></div><span class="chip chip--ok"><span class="live" style="width:6px;height:6px"></span>ativo</span></div>
+      <div class="msg"><span class="av av--sm av--bf">BF</span><div class="bub">a branch de QA não aceita PNG quando tento subir png dá erro <span class="mi" style="font-size:14px;color:var(--mut)">image</span></div></div>
+      <div class="msg"><span class="av av--sm av--spec"><span class="mi">psychology</span></span><div class="bub bub--spec">Pelo seu print, a recusa vem do <b>limite de tamanho do parâmetro 18</b>, validado antes da extensão. Seu PNG tem 1,4 MB…</div></div>
+      <div class="act"><span class="mi" style="font-size:14px">storage</span>consultando o banco da QA (só leitura)<span class="dots"><i></i><i></i><i></i></span></div>
+      <div style="padding:0 14px 14px"><span class="btn btn--spec" style="width:100%;justify-content:center">Abrir a conversa</span></div>
+      <span class="new" style="left:14px;top:-10px"><span class="mi">auto_awesome</span>prévia ao vivo · ilustrativa</span>
+    </div>
+    <div class="tl">
+      <div class="h3" style="margin-top:0"><span class="mi" style="font-size:16px">timeline</span>Linha do tempo</div>
+      <div class="tli"><time>17:09</time><span>Correção cancelada por Bruno: “fez tudo errado cancele tudo”</span></div>
+      <div class="tli"><time>16:56</time><span>PR #3021 aberto (bugfix/77881-qa → qa)</span></div>
+      <div class="tli"><time>16:54</time><span>Commit: limite de 300 KB no SaveImage</span></div>
+      <div class="tli"><time>16:42</time><span>Soluções propostas; Bruno escolheu validar no endpoint</span></div>
+      <div class="tli"><time>16:41</time><span>Análise publicada (causa raiz: extensão fixa .jpg)</span></div>
+    </div>
+  </div>
+</div>
+</body></html>

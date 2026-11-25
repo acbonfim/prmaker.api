@@ -2,10 +2,12 @@
 # Escreve uma entrada na Timeline do PRMake para um card.
 # Uso: prmake-timeline.sh <cardNumber> <description>
 #   <cardNumber>  = numero do card (ex.: 72517). Se omitido, tenta derivar da branch atual
-#                   (hotfix/<card> ou bugfix/<card>).
+#                   (hotfix/<card>, bugfix/<card> ou, em User Story, feature/<card>).
 #   <description> = texto a registrar na timeline. Se omitido, le do STDIN.
 # Env opcional:
 #   PRMAKE_TOKEN  = sobrescreve o token (senao resolve via arquivos, igual ao gerar-prmake).
+#   PRMAKE_WORK_TASK = 0091: sub-tarefa (#n) que publicou — a entrada vira entrega dela (sem ele, a sub-tarefa em
+#                   andamento no card).
 set -euo pipefail
 # Windows/Git Bash (0035): jq sem CRLF e python3 de verdade, mesmo sem os atalhos de ~/bin no PATH.
 case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
@@ -33,15 +35,15 @@ resolve_token() {
   echo "ERRO: token nao encontrado (defina PRMAKE_TOKEN ou crie ~/.claude/prmake-token.txt)" >&2; exit 1
 }
 
-# --- card: arg $1 ou derivado da branch (hotfix/<card> | bugfix/<card>)
+# --- card: arg $1 ou derivado da branch (hotfix/<card> | bugfix/<card> | feature/<card> da User Story)
 CARD="${1:-}"
 if [[ -z "$CARD" ]]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  if [[ "$BRANCH" =~ ^(hotfix|bugfix)/([0-9]+) ]]; then
+  if [[ "$BRANCH" =~ ^(hotfix|bugfix|feature|us)/([0-9]+) ]]; then
     CARD="${BASH_REMATCH[2]}"
   fi
 fi
-[[ -n "$CARD" ]] || { echo "ERRO: informe o numero do card (arg 1) ou esteja numa branch hotfix/<card>|bugfix/<card>" >&2; exit 1; }
+[[ -n "$CARD" ]] || { echo "ERRO: informe o numero do card (arg 1) ou esteja numa branch hotfix/<card>|bugfix/<card>|feature/<card>" >&2; exit 1; }
 
 # --- description: arg $2 ou STDIN
 DESC="${2:-}"
@@ -54,8 +56,10 @@ jq -n --arg card "$CARD" --arg desc "$DESC" \
   '{cardNumber:$card, description:$desc}' > /tmp/prmake_timeline_body.json
 
 echo ">> POST $BASE/Timeline (card $CARD)"
-CODE=$(curl -s --max-time 60 -o /tmp/prmake_timeline_resp.json -w "%{http_code}" -X POST "$BASE/Timeline" \
+WT="${PRMAKE_WORK_TASK:-}"; WT="${WT#\#}"
+CODE=$(curl -s --max-time 60 -o /tmp/prmake_timeline_resp.json -w "%{http_code}" -X POST "$BASE/Timeline${WT:+?workItemTask=$WT}" \
   -H 'accept: application/json, text/plain, */*' \
+  -H 'X-Execution-Client: skill' \
   -H 'content-type: application/json' \
   -H "x-api-key: $TOKEN" \
   --data @/tmp/prmake_timeline_body.json)

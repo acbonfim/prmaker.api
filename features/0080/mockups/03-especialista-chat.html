@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>0080 — Especialista do caso</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  body { width: 1440px; height: 1530px; background: #121316; }
+  .back { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .modal { position: absolute; left: 36px; right: 36px; top: 24px; bottom: 24px; border-radius: 18px; background: var(--s1); border: 1px solid var(--line2);
+    box-shadow: 0 30px 80px rgba(0,0,0,.6); display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+  .mh { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; background: linear-gradient(135deg, rgba(142,108,240,.20), rgba(142,108,240,.04) 60%), var(--s2); border-bottom: 1px solid var(--line); }
+  .mh .av--spec { width: 42px; height: 42px; } .mh .av--spec .mi { font-size: 24px; }
+  .mh .tt b { font-size: 16px; display: block; }
+  .mh .tt span { font-size: 12px; color: var(--mut); }
+  .work { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 14px; background: rgba(196,167,255,.12); color: var(--spec); font-size: 12px; }
+  .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(196,167,255,.3); border-top-color: var(--spec); }
+  .ppl { display: flex; } .ppl .av { width: 28px; height: 28px; font-size: 11px; border: 2px solid var(--s2); margin-left: -6px; }
+  .grid { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; border-right: 1px solid var(--line); }
+  .msgs { padding: 14px 26px 6px; overflow: hidden; display: flex; flex-direction: column; gap: 14px; }
+  .div { align-self: center; font-size: 11.5px; color: var(--mut2); background: rgba(255,255,255,.04); padding: 4px 12px; border-radius: 12px; }
+  .m { display: flex; gap: 10px; max-width: 860px; }
+  .m--me { align-self: flex-end; flex-direction: row-reverse; }
+  .m .who { font-size: 11.5px; color: var(--mut); margin-bottom: 3px; }
+  .m--me .who { text-align: right; }
+  .m .who b { color: #d5d8de; font-weight: 600; }
+  .b { border-radius: 4px 16px 16px 16px; padding: 9px 13px; background: var(--s3); font-size: 13.5px; }
+  .m--me .b { border-radius: 16px 4px 16px 16px; background: #2b4a78; }
+  .b--spec { background: color-mix(in srgb, var(--spec) 9%, #2f3034); border: 1px solid rgba(196,167,255,.16); }
+  .b p { margin: 0 0 6px; } .b p:last-child { margin: 0; }
+  .b code { font-family: 'Roboto Mono', monospace; font-size: 12px; background: rgba(0,0,0,.28); padding: 1px 5px; border-radius: 5px; color: #ffd8a8; }
+  .lnk { color: var(--pri); text-decoration: underline; text-decoration-color: rgba(171,199,255,.4); text-underline-offset: 2px; }
+  .shot { width: 210px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line2); margin-top: 6px; background: #f4f5f7; color: #333; }
+  .shot .bar { height: 16px; background: #dfe3ea; }
+  .shot .dlg { margin: 14px auto; width: 150px; border-radius: 6px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.2); padding: 8px; font-size: 10px; text-align: center; }
+  .shot .dlg b { color: #c62828; display: block; margin-bottom: 4px; }
+  .steps { border-left: 2px solid rgba(196,167,255,.35); padding: 2px 0 2px 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 3px; }
+  .steps div { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+  .steps .mi { font-size: 14px; color: var(--ok); }
+  .code { margin: 8px 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line2); background: #1e1f23; }
+  .code .ch { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #26272b; font-size: 11.5px; color: var(--mut); }
+  .code pre { margin: 0; padding: 8px 0; font: 12px/1.55 'Roboto Mono', monospace; color: #d7dae0; }
+  .code .ln { display: inline-block; width: 36px; text-align: right; padding-right: 10px; color: #5c606a; }
+  .code .hlc { background: rgba(244,112,103,.13); display: block; box-shadow: inset 3px 0 0 var(--bad); }
+  .kw { color: #c39bff; } .st { color: #a5d6a7; } .cm { color: #7f8590; font-style: italic; }
+  .tbl { border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+  .tbl td, .tbl th { border: 1px solid var(--line2); padding: 4px 9px; text-align: left; }
+  .tbl th { color: var(--mut); font-weight: 500; background: rgba(255,255,255,.03); }
+  .qa { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .qa > span { height: 28px; padding: 0 11px; border-radius: 14px; border: 1px solid rgba(196,167,255,.35); color: var(--spec); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .qa > span > .mi { font-size: 15px; }
+  .voice { display: flex; align-items: center; gap: 10px; }
+  .play { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.15); display: flex; align-items: center; justify-content: center; }
+  .wave { display: flex; align-items: center; gap: 2px; height: 26px; }
+  .wave i { width: 3px; border-radius: 2px; background: rgba(255,255,255,.7); }
+  .trans { font-size: 12.5px; color: #cdd9ef; margin-top: 6px; font-style: italic; }
+  .prop { margin-top: 10px; border-radius: 12px; border: 1px solid rgba(171,199,255,.35); background: rgba(171,199,255,.06); padding: 10px 12px; }
+  .prop h5 { margin: 0 0 6px; font-size: 13px; display: flex; gap: 6px; align-items: center; color: var(--pri); }
+  .prop ul { margin: 0 0 8px; padding-left: 18px; font-size: 12.5px; }
+  .prop li { margin: 2px 0; }
+  .prop .note { font-size: 11.5px; color: var(--mut); display: flex; gap: 5px; align-items: center; }
+  .typing { font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 8px; padding: 0 26px 8px; }
+  .dots i { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--mut); margin: 0 1px; opacity: .6; }
+  .comp { padding: 10px 18px 14px; border-top: 1px solid var(--line); background: var(--s2); }
+  .quick { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .quick > span { height: 26px; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,.05); color: #cfd2d8; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .quick > span > .mi { font-size: 15px; color: var(--spec); }
+  .box { display: flex; align-items: flex-end; gap: 6px; border: 1px solid var(--line2); border-radius: 14px; padding: 8px 8px 8px 12px; background: var(--s1); }
+  .box .ph { flex: 1; color: var(--mut2); padding: 6px 0; }
+  .att { display: flex; gap: 6px; margin-bottom: 6px; }
+  .att > span { height: 44px; width: 44px; border-radius: 8px; background: #e9edf3; position: relative; }
+  .send { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #8e6cf0, #6a4fd0); display: flex; align-items: center; justify-content: center; color: #fff; }
+  .mic { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--mut); background: rgba(255,255,255,.05); }
+  .aside { padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; background: #2c2c2e; }
+  .aside h6 { margin: 0 0 7px; font-size: 11.5px; letter-spacing: .6px; text-transform: uppercase; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+  .ctx { display: flex; flex-wrap: wrap; gap: 5px; }
+  .pt { display: flex; gap: 8px; font-size: 12.5px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .pt:first-of-type { border-top: 0; }
+  .pt .mi { font-size: 16px; }
+  .fl { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 0; }
+  .fl .mi { color: var(--mut); font-size: 17px; }
+  .fl small { color: var(--mut2); margin-left: auto; }
+  .guard { border-radius: 10px; padding: 9px 10px; background: rgba(63,185,80,.07); border: 1px solid rgba(63,185,80,.22); font-size: 12px; color: #b7e4bf; display: flex; gap: 7px; }
+  .guard .mi { color: var(--ok); font-size: 17px; }
+  .mini { width: 92px; height: 58px; border-radius: 8px; border: 1px solid var(--line2); background: linear-gradient(90deg, #f6e1e0 50%, #e1f3e4 50%); display: flex; font-size: 8.5px; color: #333; overflow: hidden; }
+  .mini div { flex: 1; padding: 5px; }
+</style></head>
+<body>
+<div class="back"></div>
+<div class="modal">
+  <div class="mh">
+    <span class="av av--spec"><span class="mi">psychology</span></span>
+    <div class="tt"><b>Especialista do caso · #77881</b><span>Conhece o card, a análise v2, as decisões, a correção v1 cancelada e o PR #3021 · conversa com quem está no caso · não mexe no plano sem você pedir</span></div>
+    <span class="sp"></span>
+    <span class="work"><span class="spin"></span>consultando o banco da QA · 12 s</span>
+    <span class="chip" title="Executor separado do tratamento"><span class="mi">dns</span>executor do especialista · MacBook-Bruno</span>
+    <span class="chip"><span class="mi">token</span>conversa: 184 k tokens</span>
+    <span class="ppl"><span class="av av--bf">BF</span><span class="av av--ds">DS</span><span class="av av--spec" style="width:28px;height:28px"><span class="mi" style="font-size:15px">psychology</span></span></span>
+    <span class="ib"><span class="mi">person_add</span></span>
+    <span class="ib"><span class="mi">close</span></span>
+  </div>
+
+  <div class="grid">
+    <div class="chat">
+      <div class="msgs">
+        <span class="div">↑ 5 comentários anteriores do plano · hoje, 17:12 — Bruno abriu o Especialista do caso</span>
+
+        <div class="m m--me">
+          <span class="av av--bf">BF</span>
+          <div><div class="who"><b>Bruno Ferreira</b> · 17:12</div>
+            <div class="b">a branch de QA não aceita PNG, quando tento subir dá erro. segue o print
+              <div class="shot"><div class="bar"></div><div class="dlg"><b>⚠ Error saving image.</b>Client Parameters · Login</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m">
+          <span class="av av--spec"><span class="mi">psychology</span></span>
+          <div><div class="who"><b>Especialista do caso</b> · 17:13 · 41 s · 9,8 k tokens</div>
+            <div class="b b--spec">
+              <div class="steps">
+                <div><span class="mi">check_circle</span>Li o print: modal "Error saving image." no admin da QA</div>
+                <div><span class="mi">check_circle</span>Abri <span class="lnk">EnvironmentService.cs</span> e <span class="lnk">S3FileHelper.cs</span> na branch <code>qa</code></div>
+                <div><span class="mi">check_circle</span>Consultei <code>TB_WCM_API_UPLOAD_PARAMETER</code> na QA (só leitura)</div>
+              </div>
+              <p>Na <code>qa</code> o .png <b>já é aceito</b> (fix do <span class="lnk">#75706</span>), então a extensão não é o problema. O que recusa é o <b>tamanho</b>: o upload valida o limite do parâmetro 18 <b>antes</b> da extensão.</p>
+              <div class="code"><div class="ch"><span class="mi" style="font-size:15px">description</span><span class="lnk">ApiHelpers/S3/S3FileHelper.cs:36-45</span><span class="sp"></span>branch qa · fotografia de código</div>
+<pre><span class="ln">36</span><span class="kw">public static</span> ValidationResult ValidateFileUpload(IFormFile file, UploadParameter p)
+<span class="ln">37</span>{
+<span class="hlc"><span class="ln">38</span>    <span class="kw">if</span> (file.Length &gt; UploadFileBucket.GetFileSizeType(p.FileSizeLimit))   <span class="cm">// ← cai aqui</span></span><span class="ln">39</span>        <span class="kw">return</span> Fail(<span class="st">"Error saving image."</span>);
+<span class="ln">40</span>    <span class="kw">if</span> (!p.ExtensionAllowed.Contains(ext)) …</pre></div>
+              <table class="tbl"><tr><th>QA · parâmetro</th><th>FILE_SIZE_LIMIT</th><th>seu PNG</th></tr><tr><td>18 · Tela de login</td><td>1 MB</td><td style="color:var(--bad)">1,4 MB</td></tr></table>
+              <p class="muted" style="font-size:11.5px">Trecho e valores ilustrativos do mock.</p>
+              <div class="qa"><span><span class="mi">play_arrow</span>Rodar o upload na QA com um PNG de 250 KB</span><span><span class="mi">code</span>Ver a consulta</span><span><span class="mi">push_pin</span>Levar para o plano</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m">
+          <span class="av av--ds">DS</span>
+          <div><div class="who"><b>Daniel Strinta</b> · 17:15</div>
+            <div class="b">@Especialista a build da QA é de ontem, já com o 75706. Então o 18 está com limite menor que os 300 KB que o TL pediu?</div>
+          </div>
+        </div>
+
+        <div class="m m--me">
+          <span class="av av--bf">BF</span>
+          <div><div class="who"><b>Bruno Ferreira</b> · 17:16 · mensagem de voz</div>
+            <div class="b">
+              <div class="voice"><span class="play"><span class="mi">play_arrow</span></span>
+                <span class="wave"><i style="height:8px"></i><i style="height:16px"></i><i style="height:22px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:26px"></i><i style="height:14px"></i><i style="height:9px"></i><i style="height:20px"></i><i style="height:24px"></i><i style="height:11px"></i><i style="height:17px"></i><i style="height:22px"></i><i style="height:8px"></i><i style="height:15px"></i><i style="height:21px"></i><i style="height:12px"></i><i style="height:7px"></i><i style="height:18px"></i><i style="height:10px"></i></span>
+                <span style="font-size:12px">0:14</span></div>
+              <div class="trans">“Então não mexe em extensão nenhuma. Só garante os 300 KB nas três imagens, com mensagem clara, e na QA a gente corrige o parâmetro.”</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m">
+          <span class="av av--spec"><span class="mi">psychology</span></span>
+          <div><div class="who"><b>Especialista do caso</b> · 17:17 · 22 s</div>
+            <div class="b b--spec">
+              <p>Fechado. Gerei o Antes × Depois da mensagem para validar com o TL:</p>
+              <div class="row" style="gap:10px"><div class="mini"><div><b>Antes</b><br>Error saving image.</div><div><b>Depois</b><br>A imagem deve ter no máximo 300 KB.</div></div><span class="lnk" style="font-size:12px">antes-depois-mensagem.png</span></div>
+              <div class="prop">
+                <h5><span class="mi">auto_awesome</span>Chegamos a uma conclusão. Quer que eu gere a correção v2 com a solução discutida?</h5>
+                <ul>
+                  <li>Base da correção: <code>qa</code>, que já aceita .png. <b>Sem mudar extensões nem o GetImage</b></li>
+                  <li>Limite de 300 KB nas 3 imagens, com o motivo em <code>listValidacao</code> (mantido da v1)</li>
+                  <li>Etapa nova (você): ajustar o parâmetro 18 na QA, com script de UPDATE e texto do chamado</li>
+                  <li>PR: só qa, com o checklist do template preenchido por você antes de abrir</li>
+                </ul>
+                <div class="row"><span class="btn btn--pri" style="height:30px"><span class="mi">check</span>Sim, gerar a v2</span><span class="btn" style="height:30px"><span class="mi">difference</span>Ver o que muda</span><span class="btn btn--ghost" style="height:30px">Ainda não</span>
+                  <span class="sp"></span><span class="note"><span class="mi" style="font-size:14px;color:var(--ok)">lock</span>Nada foi alterado no plano até agora</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="typing"><span class="av av--sm av--ds">DS</span>Daniel está digitando<span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="comp">
+          <div class="quick">
+            <span><span class="mi">summarize</span>Resumir a conversa</span>
+            <span><span class="mi">auto_awesome</span>Gerar nova versão do plano</span>
+            <span><span class="mi">code</span>Mostrar o código</span>
+            <span><span class="mi">storage</span>Consultar o banco (só leitura)</span>
+            <span><span class="mi">image</span>Gerar imagem / mock</span>
+            <span><span class="mi">note_add</span>Gerar arquivo (script, texto do chamado)</span>
+          </div>
+          <div class="att"><span><span class="mi" style="position:absolute;top:2px;right:2px;font-size:13px;color:#555">close</span></span><span style="background:#2f3034;width:auto;padding:0 10px;display:flex;align-items:center;gap:6px;color:#cfd2d8;font-size:12px"><span class="mi">description</span>fundo-login-250kb.png</span></div>
+          <div class="box">
+            <span class="ib"><span class="mi">add_circle</span></span>
+            <span class="ph">Mensagem para o especialista e para quem está no caso — @ menciona, cole ou arraste imagens e arquivos</span>
+            <span class="mic"><span class="mi">mic</span></span>
+            <span class="send"><span class="mi">send</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="aside">
+      <div class="guard"><span class="mi">verified_user</span><span>A conversa <b>não altera o plano</b>. Ele só muda quando alguém pede explicitamente ou aceita uma proposta do especialista.</span></div>
+      <div>
+        <h6><span class="mi" style="font-size:15px">school</span>O que o especialista sabe</h6>
+        <div class="ctx">
+          <span class="chip">Card + discussion</span><span class="chip">Análise v2</span><span class="chip">6 decisões</span><span class="chip chip--bad">Correção v1 · cancelada</span>
+          <span class="chip">PR #3021</span><span class="chip">Base Solvace · api_util</span><span class="chip">Banco QA (leitura)</span><span class="chip">Código qa × master</span>
+        </div>
+      </div>
+      <div>
+        <h6><span class="mi" style="font-size:15px">push_pin</span>Pontos combinados na conversa</h6>
+        <div class="pt"><span class="mi" style="color:var(--ok)">check_circle</span><span>Base = <b>qa</b>, sem mexer em extensões</span></div>
+        <div class="pt"><span class="mi" style="color:var(--ok)">check_circle</span><span>300 KB nas 3 imagens, mensagem clara</span></div>
+        <div class="pt"><span class="mi" style="color:var(--warn)">pending</span><span>Parâmetro 18 na QA: script + chamado <span class="muted">(em discussão)</span></span></div>
+      </div>
+      <div>
+        <h6><span class="mi" style="font-size:15px">folder</span>Arquivos desta conversa</h6>
+        <div class="fl"><span class="mi">image</span>print-qa-erro.png<small>Bruno</small></div>
+        <div class="fl"><span class="mi">graphic_eq</span>áudio 0:14 + transcrição<small>Bruno</small></div>
+        <div class="fl"><span class="mi">dataset</span>upload-parameter-qa.csv<small>especialista</small></div>
+        <div class="fl"><span class="mi">image</span>antes-depois-mensagem.png<small>especialista</small></div>
+      </div>
+      <div style="margin-top:auto">
+        <span class="btn btn--pri" style="width:100%;justify-content:center"><span class="mi">auto_awesome</span>Gerar nova versão do plano</span>
+        <div class="muted" style="font-size:11.5px;text-align:center;margin-top:6px">usa os pontos combinados · você revisa antes de valer</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

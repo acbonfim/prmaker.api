@@ -8,6 +8,8 @@ public class ExecutionRequestResponse
     public Guid Id { get; set; }
     public string CardNumber { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
+    /// <summary>0080: especialista em "investigar a fundo".</summary>
+    public bool Deep { get; set; }
     public string Source { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public Guid? PlanId { get; set; }
@@ -93,6 +95,65 @@ public class ExecutionWorkerResponse
     public int Running { get; set; }
     /// <summary>Versão do executor publicada pelo PRMake (para avisar "desatualizado").</summary>
     public string? LatestAgentVersion { get; set; }
+
+    /// <summary>
+    /// 0099 (ajustes 2): perfil do dono para os primeiros passos e o doctor — <c>management</c> (só management, sem papel de dev
+    /// nem admin) ou <c>dev</c>. Preenchido nas respostas para o próprio dono (<c>GET ExecutionWorker/mine</c> e ações dele).
+    /// </summary>
+    public string? Profile { get; set; }
+
+    /// <summary>
+    /// 0099 (ajustes 2): para cada checagem do doctor (pelo nome), os perfis que precisam dela (<c>["dev","management"]</c> ou
+    /// <c>["dev"]</c>). Fora do perfil = "não necessário para o seu perfil" (nunca erro).
+    /// </summary>
+    public Dictionary<string, List<string>>? DoctorRequiredFor { get; set; }
+
+    /// <summary>0099 (ajustes 2): checagens que falharam e são necessárias para o <see cref="Profile"/>.</summary>
+    public int? ProfileDoctorProblems { get; set; }
+}
+
+/// <summary>
+/// 0099 (ajustes 2): o que o doctor exige por perfil. PO / gestor de problemas (<c>management</c>): Claude Code instalado e com
+/// login, skills do PRMake (+ api-key e MCP), executor registrado e as ferramentas que as skills usam (bash, jq, python3) — sem
+/// workspace/repositórios, git, AWS, NuGet/CodeArtifact nem bancos. O resto é só do perfil <c>dev</c>.
+/// </summary>
+public static class DoctorProfiles
+{
+    public const string Dev = "dev";
+    public const string Management = "management";
+
+    /// <summary>Checagens (nome exato do doctor do executor) que o perfil management também precisa.</summary>
+    public static readonly IReadOnlySet<string> ManagementChecks = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Claude Code", "Login do Claude Code", "MCP do PRMake", "Skills do PRMake", "api-key do usuário", "Credencial do executor",
+        "Ferramenta bash", "Ferramenta jq", "Ferramenta python3"
+    };
+
+    public static List<string> RequiredFor(string? check) =>
+        ManagementChecks.Contains((check ?? string.Empty).Trim()) ? [Dev, Management] : [Dev];
+
+    /// <summary>Preenche perfil, exigências por checagem e os problemas que contam para o perfil.</summary>
+    public static ExecutionWorkerResponse Apply(ExecutionWorkerResponse w, string profile)
+    {
+        w.Profile = profile;
+        var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var problems = 0;
+        if (w.Doctor is { ValueKind: System.Text.Json.JsonValueKind.Array } checks)
+            foreach (var c in checks.EnumerateArray())
+            {
+                if (c.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                var name = c.TryGetProperty("name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String ? n.GetString() ?? string.Empty : string.Empty;
+                var required = RequiredFor(name);
+                map[name] = required;
+                if (c.TryGetProperty("ok", out var ok) && ok.ValueKind == System.Text.Json.JsonValueKind.False && required.Contains(profile))
+                    problems++;
+            }
+        foreach (var name in ManagementChecks)
+            map.TryAdd(name, [Dev, Management]);
+        w.DoctorRequiredFor = map;
+        w.ProfileDoctorProblems = problems;
+        return w;
+    }
 }
 
 /// <summary>Registro do executor: a credencial só aparece aqui (guarde-a).</summary>
@@ -128,6 +189,18 @@ public class ExecutionClaimResponse
     /// </summary>
     public string Phase { get; set; } = ExecutionPhase.Analysis;
     public string? Model { get; set; }
+    /// <summary>
+    /// 0080: pedido do Especialista do caso — token restrito ao caso (leitura, conversa e o que a pessoa pede — CaseSpecialistMiddleware), que o
+    /// executor passa ao MCP (<c>--mcp-config --strict-mcp-config</c>) e aos scripts (<c>PRMAKE_TOKEN</c>). Vale só
+    /// enquanto o pedido estiver ativo.
+    /// </summary>
+    public string? CaseToken { get; set; }
+    /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — o executor limpa os worktrees do item no fim.</summary>
+    public long? WorkItemNumber { get; set; }
+    /// <summary>0102: esforço do Claude Code (<c>--effort</c>: low | medium | high | xhigh | max); null = o padrão da máquina.</summary>
+    public string? Effort { get; set; }
+    /// <summary>0102: anexos da pergunta da Base Solvace — o executor grava na pasta do pedido (<c>PRMAKE_FILES_DIR</c>).</summary>
+    public List<BaseQuestionFile>? Files { get; set; }
 }
 
 public class ExecutionHeartbeatResponse
@@ -150,6 +223,13 @@ public class ExecutionWorkerStateResponse
     public List<Guid> ActiveRequestIds { get; set; } = [];
     /// <summary>0068: há pedido que este executor pode pegar agora — ele chama o next (cobre o que fica pronto com o tempo).</summary>
     public bool QueueReady { get; set; }
+    /// <summary>0085: itens de trabalho rodando ao mesmo tempo nesta máquina (fora do <see cref="MaxConcurrency"/>).</summary>
+    public int WorkItemSlots { get; set; } = 2;
+    /// <summary>
+    /// Intervalo do próximo sinal de vida. Preenchido só com o relay falhando (o aviso de fila pode não chegar): o
+    /// executor volta a perguntar mais cedo; nulo = o padrão dele (60 s).
+    /// </summary>
+    public int? ReportEverySeconds { get; set; }
 }
 
 /// <summary>0068: conexão do executor ao relay de tempo real.</summary>
@@ -177,6 +257,14 @@ public class ExecutionUserSettingsResponse
     public string? AutoLastError { get; set; }
 }
 
+/// <summary>0076: preferência de publicação da situação na discussion (do usuário logado) e o padrão global.</summary>
+public class SituationPostSettingsResponse
+{
+    public bool? AutoPost { get; set; }
+    public bool GlobalDefault { get; set; }
+    public bool Effective => AutoPost ?? GlobalDefault;
+}
+
 public static class ExecutionQueueResponseExtensions
 {
     public static ExecutionRequestResponse ToResponse(this ExecutionRequest r) => new()
@@ -184,6 +272,7 @@ public static class ExecutionQueueResponseExtensions
         Id = r.Id,
         CardNumber = r.CardNumber,
         Kind = r.Kind,
+        Deep = r.Deep,
         Source = r.Source,
         Status = r.Status,
         PlanId = r.PlanId,
@@ -275,4 +364,36 @@ public static class ExecutionQueueResponseExtensions
             return null;
         }
     }
+}
+
+/// <summary>Resposta do GET ExecutionQueue/ready (o executor com o relay fora).</summary>
+public class ExecutionQueueReadyResponse
+{
+    public bool Ready { get; set; }
+}
+
+/// <summary>0102: pergunta à Base Solvace respondida pelo executor — andamento (do pedido) e a resposta.</summary>
+public class BaseQuestionResponse
+{
+    public Guid Id { get; set; }
+    /// <summary>Chave da pergunta na fila: a tela ouve <c>execplan:{Key}</c>.</summary>
+    public string Key { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+    public bool Deep { get; set; }
+    public bool HasFiles { get; set; }
+    /// <summary>queued | claimed | running | done | failed | cancelled | expired (done sem resposta vira failed).</summary>
+    public string Status { get; set; } = ExecutionRequestStatus.Queued;
+    public Guid RequestId { get; set; }
+    public string? WaitReason { get; set; }
+    public string? WaitCode { get; set; }
+    public string? WorkerName { get; set; }
+    public ExecutionActivityResponse? Activity { get; set; }
+    /// <summary>JSON do <c>ArchitectureAskResponse</c> (o mesmo formato do Pergunte pelo provedor).</summary>
+    public JsonElement? Answer { get; set; }
+    public string? Error { get; set; }
+    public string? Model { get; set; }
+    public decimal? CostUsd { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? AnsweredAt { get; set; }
 }

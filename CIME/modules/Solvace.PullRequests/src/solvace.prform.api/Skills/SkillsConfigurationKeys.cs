@@ -12,6 +12,8 @@ public static class SkillsConfigurationKeys
     public const string BranchFlowByArea = "BranchFlowByArea";
     public const string BranchStrategy = "BranchStrategy";
     public const string BranchNamePattern = "BranchNamePattern";
+    /// <summary>Nome da branch principal de User Story (<c>feature/{card}</c>) — User Story não é hotfix; o <c>BranchNamePattern</c> vale para Bug.</summary>
+    public const string BranchNamePatternUserStory = "BranchNamePatternUserStory";
     public const string CommitMessagePattern = "CommitMessagePattern";
     public const string PrTitlePattern = "PrTitlePattern";
     public const string DefaultRepository = "DefaultRepository";
@@ -22,7 +24,7 @@ public static class SkillsConfigurationKeys
     public const string ExecutorCorrectionModel = "ExecutorCorrectionModel";
     /// <summary>0049: a correção abre uma sessão nova do Claude (só o resumo da análise) em vez de retomar a da análise.</summary>
     public const string ExecutorCorrectionNewSession = "ExecutorCorrectionNewSession";
-    /// <summary>0049: segundos de espera depois de um comentário antes de retomar o card (0 = na hora).</summary>
+    /// <summary>0049: segundos de espera depois de um comentário. 0080: não é mais lida (o plano retoma na hora).</summary>
     public const string ExecutorNoteDelaySeconds = "ExecutorNoteDelaySeconds";
     /// <summary>0052: papéis que aprovam e publicam a engenharia reversa ("admin,gestor").</summary>
     public const string ReverseEngineeringApproverRoles = "ReverseEngineeringApproverRoles";
@@ -46,10 +48,79 @@ public static class SkillsConfigurationKeys
     public const string ReverseEngineeringInfra = "ReverseEngineeringInfra";
     /// <summary>0066: como a engenharia reversa gera — modelo dos subagentes, paralelismo, orçamento da área, checkpoint, idade do retrato (JSON).</summary>
     public const string ReverseEngineeringGeneration = "ReverseEngineeringGeneration";
+    /// <summary>0097: a visão prática é sob demanda — sugerida quando o módulo tem ao menos N perguntas sem resposta no Pergunte (padrão 3).</summary>
+    public const string ReverseEngineeringPracticalMinQuestions = "ReverseEngineeringPracticalMinQuestions";
     /// <summary>0063: etapas padrão do plano de análise da analisar-bug (JSON: [{key,title,description,kind?}]) — a skill usa quando o plano nasce.</summary>
     public const string AnalysisDefaultSteps = "AnalysisDefaultSteps";
     /// <summary>0069: testes locais da correção — "changed" (só os specs do que mudou, uma vez) ou "off" (só o CI do PR).</summary>
     public const string CorrectionLocalTests = "CorrectionLocalTests";
     /// <summary>0069: limite em segundos dos testes locais da correção (passou → segue para o PR; o CI valida).</summary>
     public const string CorrectionTestMaxSeconds = "CorrectionTestMaxSeconds";
+    /// <summary>0074: perfis de destino da promoção em lote por tipo de repositório (JSON: {profiles: {kind: {label, targets: [{branch, draft?, mode?}]}}}); {version} = a versão do lote.</summary>
+    public const string PromotionProfiles = "PromotionProfiles";
+    /// <summary>0074: padrão do nome da branch do cherry-pick ({branch}, {target}; 0085: {suffix} = sufixo do destino no BranchSuffixByTarget).</summary>
+    public const string PromotionBranchPattern = "PromotionBranchPattern";
+    /// <summary>0075: linhas de contexto antes e depois do foco na fotografia do código citado (prmake-plan.sh coderef).</summary>
+    public const string CodeRefContextLines = "CodeRefContextLines";
+    /// <summary>0075: etapas da analisar-bug que só concluem com toda citação caminho:linha fotografada (lista; vazio desliga).</summary>
+    public const string CodeRefGateSteps = "CodeRefGateSteps";
+    /// <summary>0075: PR da branch de QA mesclado move o card para Dev Test in QA sozinho (true/false).</summary>
+    public const string AutoDevTestInQa = "AutoDevTestInQa";
+    /// <summary>0075: branches de destino que contam como QA (lista; "qa*" = prefixo).</summary>
+    public const string QaBranchPattern = "QaBranchPattern";
+    /// <summary>0075: o resumo da situação (chamado, PR, QA) vai sozinho para a discussion do card no DevOps (true/false).</summary>
+    public const string SituationPostToDevOps = "SituationPostToDevOps";
+    /// <summary>0076: etapas da analisar-bug que só concluem com as evidências do card (DevOps) importadas e abertas (lista; vazio desliga).</summary>
+    public const string EvidenceGateSteps = "EvidenceGateSteps";
+    /// <summary>0078: assistente do card (sugestões que não travam: estimativa, horas, publicação) ligado (true/false).</summary>
+    public const string AssistantEnabled = "AssistantEnabled";
+    /// <summary>0078: etapas que sugerem lançar horas ao concluir (lista; "corrigir-*" = prefixo).</summary>
+    public const string AssistantHoursSteps = "AssistantHoursSteps";
+    /// <summary>0078: horas sugeridas por etapa concluída.</summary>
+    public const string AssistantHoursPerStep = "AssistantHoursPerStep";
+    /// <summary>0078: média de horas do time por card (o assistente avisa quando passa).</summary>
+    public const string AssistantAverageHours = "AssistantAverageHours";
+    /// <summary>0085: média de horas do time por bug (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursBug = "AssistantAverageHoursBug";
+    /// <summary>0085: média de horas do time por User Story (vazio = AssistantAverageHours).</summary>
+    public const string AssistantAverageHoursUserStory = "AssistantAverageHoursUserStory";
+    /// <summary>0080: modelo do Especialista do caso nas respostas rápidas (apelido ou id; vazio = padrão da máquina).</summary>
+    public const string SpecialistModel = "SpecialistModel";
+    /// <summary>0080: modelo do Especialista do caso ao "investigar a fundo".</summary>
+    public const string SpecialistDeepModel = "SpecialistDeepModel";
+    /// <summary>0102: modelo do Claude Code nas perguntas da Base Solvace pelo executor (padrão sonnet).</summary>
+    public const string BaseAskExecutorModel = "BaseAskExecutorModel";
+    /// <summary>0102: esforço (<c>--effort</c>) nas perguntas da Base Solvace pelo executor (padrão low).</summary>
+    public const string BaseAskExecutorEffort = "BaseAskExecutorEffort";
+    /// <summary>0102: esforço no "Analisar a fundo" pelo executor (padrão medium).</summary>
+    public const string BaseAskExecutorDeepEffort = "BaseAskExecutorDeepEffort";
+    /// <summary>0085: etapas padrão do plano de análise de User Story (analisar-us; mesmo formato de AnalysisDefaultSteps).</summary>
+    public const string UsAnalysisDefaultSteps = "UsAnalysisDefaultSteps";
+    /// <summary>0085: sufixo da branch de trabalho por destino (JSON: {"release-version": "-rv", ...}) — hotfix/77434-rv.</summary>
+    public const string BranchSuffixByTarget = "BranchSuffixByTarget";
+    /// <summary>0085: tipos de sub-tarefa dos itens de trabalho (JSON: [{kind, label, icon, executor, params[{key,label}], undo}]).</summary>
+    public const string WorkItemTaskKinds = "WorkItemTaskKinds";
+    /// <summary>0085: modelos prontos de itens de trabalho (JSON: [{key, title, description, type?, tasks[{title, kind, executor?, params}]}]; marcadores {card}, {branch}, {suffix:destino}, {repository}, {flowTargets}).</summary>
+    public const string WorkItemTemplates = "WorkItemTemplates";
+    /// <summary>0085: itens de trabalho rodando ao mesmo tempo por máquina (fora do limite de execuções da pista principal).</summary>
+    public const string WorkItemSlots = "WorkItemSlots";
+
+    /// <summary>0085 r4: tipos de item de trabalho (JSON: [{key, label, icon, color, description}]).</summary>
+    public const string WorkItemTypes = "WorkItemTypes";
+
+    /// <summary>0092: ambientes de validação (JSON: {environments: [{key, label, url, user?, kind?, readOnly?, database?}], plantAdminPattern, corporate, defaults}).</summary>
+    public const string ValidationEnvironments = "ValidationEnvironments";
+
+    /// <summary>0100: ambientes da aba AWS (JSON: [{key, label, host, tier?, order}]) — host do CloudFront de cada ambiente; tier fixo vence a descoberta.</summary>
+    public const string AwsDeployEnvironments = "AwsDeployEnvironments";
+    /// <summary>0100: deploy em andamento no retrato → nova coleta (mesma máquina) daqui a N minutos.</summary>
+    public const string AwsDeployFollowMinutes = "AwsDeployFollowMinutes";
+    /// <summary>0100: quantas coletas de acompanhamento no máximo por pedido.</summary>
+    public const string AwsDeployFollowMax = "AwsDeployFollowMax";
+
+    /// <summary>
+    /// 0099 (ajustes 2): campos do card do DevOps para cada parte da história/bug escrita na Mesa de gestão (JSON:
+    /// {"user-story": {type, description, acceptanceCriteria}, "bug": {type, description, reproSteps}}; priority/severity opcionais).
+    /// </summary>
+    public const string DeskStoryFieldMap = "DeskStoryFieldMap";
 }

@@ -25,16 +25,22 @@ public static class RealTimeServiceExtensions
         // chamada; TryAdd respeita o que já estiver registrado.
         services.TryAddSingleton<IRealTimeOptionsProvider, DefaultRealTimeOptionsProvider>();
         services.AddSingleton<IRealTimeConnectionService, RealTimeConnectionService>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<RealTimeDeliveryHealth>();
 
         if (section.Get<RealTimeOptions>()?.IsRelay == true)
         {
             // Hub no relay externo: a API só publica por HTTP e não mantém WebSocket aberto.
-            services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(3));
+            services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = RelayRealTimeNotifier.RequestTimeout)
+                .ConfigurePrimaryHttpMessageHandler(RelayRealTimeNotifier.CreateHandler)
+                // a troca de conexões fica com o PooledConnectionLifetime do handler (DNS em dia sem descartar o pool a cada 2 min)
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
             services.AddSingleton<IRealTimeNotifier, RelayRealTimeNotifier>();
             return services;
         }
 
         services.AddSignalR();
+        services.AddRealTimePresence();
         services.AddSingleton<IRealTimeNotifier, RealTimeNotifier>();
 
         // Policy dedicada: a policy global usa AllowAnyOrigin(), incompatível com AllowCredentials()
@@ -44,6 +50,14 @@ public static class RealTimeServiceExtensions
         services.AddCors();
         services.AddSingleton<ICorsPolicyProvider, RealTimeCorsPolicyProvider>();
 
+        return services;
+    }
+
+    /// <summary>Presença em memória do hub (0079). Registrada onde o hub roda: em processo ou no relay.</summary>
+    public static IServiceCollection AddRealTimePresence(this IServiceCollection services)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<PresenceTracker>();
         return services;
     }
 

@@ -16,7 +16,7 @@ bash $PLAN contexto <card>                                           # 1 comando
 bash $PLAN usage <card>                                              # custo desta sessao no plano (vai sozinho ao mudar o status)
 bash ~/.claude/skills/analisar-bug/scripts/prmake-card.sh <card>     # (terminal) volta para a sessao do card ou abre uma nova
 bash $PLAN start <card> "Analise do bug <card>: <titulo curto>"      # cria OU retoma o plano aberto do card
-bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}, ...]'  # refina as etapas
+bash $PLAN steps <card> - <<< '[{"key":"...","title":"...","description":"..."}, ...]'  # refina as etapas (lista parcial: so as enviadas mudam; STEPS_REPLACE=1 = plano inteiro, pendentes omitidas saem)
 bash $PLAN step <card> <key> running                                  # comecou a etapa
 bash $PLAN log <card> <key> progress "Lendo OrderService.cs (fluxo de aprovacao)"   # pedaco de andamento
 bash $PLAN log <card> <key> finding  "UserStatus = FORCE_CHANGE_PASSWORD no pool demo"
@@ -24,7 +24,8 @@ bash $PLAN log <card> <key> decision "Nao vou consultar o SQL: o erro e de valid
 bash $PLAN checkpoint <card> <key> "Onde parei / o que falta nesta etapa"   # para retomar
 bash $PLAN sync <card> <key>                                          # envia arquivos novos/alterados da pasta do card
 bash $PLAN step <card> <key> completed                                # terminou
-bash $PLAN advance <card> <key> <proxima> "resumo curto"              # terminou + log + comecou a proxima (1 chamada)
+bash $PLAN advance <card> <key> <proxima> "resumo curto" --result r.md # terminou + resultado na sub-tarefa + log + comecou a proxima
+bash $PLAN result <card> <key> r.md                                    # completa/troca o resultado de uma etapa (card 78505)
 bash $PLAN step <card> <key> cancelled "Motivo (ex.: nao necessario — bug so no front)"  # pulou
 bash $PLAN block <card> <key> "Ligar a VPN e clicar em Ja resolvi (ou colar o resultado de scripts/00_x.sql)"  # travada esperando o usuario
 bash $PLAN unblock <card> <key>                                       # o usuario resolveu pelo chat: volta a running
@@ -144,9 +145,9 @@ fecha sem o banco — `ref.sh consultas 3c`), `causa-raiz`,
   retomadas seguintes da correcao continuam essa sessao nova. O prompt manda **ler esta SKILL.md** (`cat`) em vez de
   invocar a skill: o `model: opus` do cabecalho valeria para a execucao inteira e a correcao roda no modelo configurado
   (`ExecutorCorrectionModel`) — nao chame a ferramenta Skill nessa sessao. "Skills Configurations" → `ExecutorCorrectionNewSession`.
-- **Comentarios em sequencia = uma retomada (0049)**: um comentario espera `ExecutorNoteDelaySeconds` (padrao 120 s)
-  antes de retomar o card; outro comentario nesse meio empurra a espera (ate 3×). "Continuar" ou outra acao do usuario
-  comeca na hora. Leia **todos** os comentarios novos (`prmake_notes`) e atenda-os juntos.
+- **Comentario retoma na hora (0080)**: a conversa com as pessoas e do Especialista do caso; comentario no plano e
+  instrucao explicita (proposta aceita, "Levar para o plano") e o executor retoma o card na hora. Leia **todos** os
+  comentarios novos (`prmake_notes`) e atenda-os juntos.
 - **Sem prompt de permissao**: merge/aprovacao de PR, push forcado ou em branch protegida, escrita em banco/Cognito sao
   bloqueados pelo executor (o comando volta com "Bloqueado pelo executor do PRMake") — registre no plano o que precisa
   de uma pessoa e siga.

@@ -32,7 +32,10 @@ public partial class PrmakeMcpTools(
     solvace.prform.Skills.SkillsConfigService skillsConfig,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
-    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse)
+    solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+    CodeCitationGate citations,
+    EvidenceGate evidenceGate,
+    SpecialistActions specialist)
 {
     public const string Instructions =
         "PRMake: plano de execucao do card (etapas, andamento, perguntas ao usuario, comentarios e anexos, Timeline, " +
@@ -42,9 +45,29 @@ public partial class PrmakeMcpTools(
         "prmake_ask/prmake_answer (nova rodada da analise: a pergunta revisada leva replaces e as que perderam o sentido vao para " +
         "prmake_cancel_questions — so ficam abertas as que ainda decidem o plano), prmake_correction (plano de correcao), prmake_file (grava script/analise/chamado nos arquivos do plano). " +
         "Git e o 'status' final ficam no prmake-plan.sh. " +
+        "0075: codigo citado = fotografia (prmake-plan.sh coderef; cite [caminho:linhas](ref:<id>); ajuste com prmake_code_ref); " +
+        "ao entrar em espera (chamado, PR, QA) grave prmake_handoff com o contexto da passagem. " +
+        "0076: evidencias do card (anexos, prints da descricao e da discussion) com prmake_evidence — abra todas antes da causa raiz. " +
         "Base Solvace ANTES do codigo (0052): prmake_base_search (itens da engenharia reversa: regras RN, casos de uso UC, telas, " +
         "endpoints, tabelas, integracoes) -> prmake_base_get (so o texto do item) -> prmake_base_impact (quem mais usa); informe o card. " +
-        "Codigo so para confirmar o 'Onde:' que o item cita.";
+        "Codigo so para confirmar o 'Onde:' que o item cita. " +
+        "0085: regras do card (nome de branch por destino, fluxo, padroes) com prmake_rules — nunca invente branch; itens de trabalho " +
+        "com prmake_work_items/prmake_work_item (confira antes de criar: nao duplique), prmake_work_item_create/_update (so pending) e " +
+        "prmake_work_task (start|complete|fail|wait|skip|revert de cada sub-tarefa, em ordem). " +
+        "0091: o que a sub-tarefa gerou vira entrega dela — PR aberto pelo PRMake, acoes do DevOps e Timeline sozinhos (informe taskNumber quando souber); " +
+        "codigo alterado com prmake-plan.sh deliver-code no worktree ao fim de cada etapa/sub-tarefa de codigo; o resto com prmake_work_deliverable. " +
+        "0085 r4: ferramentas do card (modelos prontos: PR para uma branch, PRs do fluxo, promocao, fechamento, QA, script, resumo...) com " +
+        "prmake_tools (applicable + perguntas ask) e prmake_tool_run (cria o item com as respostas) — prefira a ferramenta ao item livre. " +
+        "Tipo do item = WorkItemTypes (task, pull-request, review, fix, implementation, adjustment, closing, data, ticket, text, analysis); " +
+        "nunca bug/user-story (tipo do card no DevOps). " +
+        "0085 r5: abrir PR de branch existente com prmake_pr_open (nome pelas regras); cancelar/executar item com " +
+        "prmake_work_item_cancel/prmake_work_item_execute; sub-tarefa a mais no item espelho do plano com prmake_work_item_add_task " +
+        "(etapa pedido-* pendente antes da etapa atual: o tratamento a faz primeiro e nunca a remove); item avulso ja comecado: sub-tarefa a mais " +
+        "com prmake_work_item_add_task e pendente editada com prmake_work_task_update; concluido/cancelado: prmake_work_item_reopen (redo = " +
+        "sub-tarefas a refazer) antes; horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
+        "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados). " +
+        "Analise respondida sem plano de implementacao/correcao ('so a analise por enquanto'): a pessoa pede os itens depois com " +
+        "prmake_analysis_items(card, start) — o Claude do tratamento monta o plano (start=false: deixa pausado ate o Executar do item).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -60,12 +83,15 @@ public partial class PrmakeMcpTools(
     {
         var plan = await plans.GetAsync(await PlanIdAsync(card, phase, ct), ct);
         var request = (await queue.GetCardAsync(card, null, ct)).Active;
+        var codeRefs = await plans.GetCardCodeRefHeadsAsync(card, ct);
         return Serialize(new
         {
             plan.Id, plan.Phase, plan.Status, plan.StatusReason, plan.Title,
             steps = plan.Steps.OrderBy(s => s.Order).Select(s => new
             {
-                s.Key, s.Title, s.Status, s.Executor, s.Kind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
+                s.Key, s.Title, s.Status, s.Executor, s.Kind, s.TaskKind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
+                // Card 78680: pausada pela pessoa (nao comece, nem as que dependem dela); posicao escolhida pela pessoa.
+                held = s.Held ? true : (bool?)null, heldBy = s.Held ? s.HeldBy : null, pinned = s.OrderPinned ? true : (bool?)null,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
                 links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new
@@ -82,24 +108,29 @@ public partial class PrmakeMcpTools(
             userActions = plan.UserActions.Count,
             lastUserNote = plan.Notes.Where(n => !n.FromExecutor).Select(n => n.Number).DefaultIfEmpty(0).Max(),
             plan.NotesReadNumber,
+            // 0075: fotografias de codigo do card (cite com [texto](ref:<id>))
+            codeRefs = codeRefs.Count > 0 ? codeRefs.Select(r => $"{r.Ref} {r.Change} {r.Path}:{r.StartLine}-{r.EndLine}").ToList() : null,
             request = request is null ? null : new { request.Id, request.Kind, request.Status, request.Attempts, request.WaitReason }
         });
     });
 
     [McpServerTool(Name = "prmake_steps")]
-    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation.")]
+    [Description("Cria ou atualiza as etapas do plano (upsert pela chave). executor: claude|user; kind: task|code|pr|ticket|question|validation; taskKind = tipo da sub-tarefa na Bancada (research, sql-query, sql-script, devops-action, notify, decision, task... — catalogo WorkItemTaskKinds; sem ele o PRMake deduz). " +
+                 "Lista parcial so muda as etapas enviadas (title opcional nas que existem) — nenhuma sai nem muda de lugar; para tirar etapa pendente mande o plano inteiro com replace: true.")]
     public Task<string> Steps(
         string card,
-        [Description("Etapas: [{ key, title, description?, executor?, kind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
+        [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         string? phase = null,
+        [Description("true = a lista e o plano inteiro: pendentes omitidas saem (padrao false)")] bool replace = false,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var plan = await plans.UpsertStepsAsync(await PlanIdAsync(card, phase, ct), new UpsertExecutionStepsRequest { Steps = steps }, await ActorAsync(ct), ct);
+        var plan = await plans.UpsertStepsAsync(await PlanIdAsync(card, phase, ct), new UpsertExecutionStepsRequest { Steps = steps, Replace = replace }, await ActorAsync(ct), ct);
         return Serialize(new { plan.Status, steps = plan.Steps.OrderBy(s => s.Order).Select(s => new { s.Key, s.Status }) });
     });
 
     [McpServerTool(Name = "prmake_step")]
-    [Description("Atualiza uma etapa: status (pending|running|waiting|completed|failed|cancelled), motivo, atividade (o que esta fazendo agora), checkpoint (onde retomar), waitingOn (answer|user|external).")]
+    [Description("Atualiza uma etapa: status (pending|running|waiting|completed|failed|cancelled), motivo, atividade (o que esta fazendo agora), checkpoint (onde retomar), waitingOn (answer|user|external). " +
+                 "0096: title/description ajustam o texto da etapa no lugar (so ela; as outras nao mudam) — a sub-tarefa pendente/em espera do item acompanha.")]
     public Task<string> Step(
         string card,
         [Description("Chave da etapa")] string key,
@@ -109,23 +140,31 @@ public partial class PrmakeMcpTools(
         string? checkpoint = null,
         string? waitingOn = null,
         string? phase = null,
+        [Description("Titulo novo da etapa (opcional)")] string? title = null,
+        [Description("Descricao/instrucao nova da etapa (opcional)")] string? description = null,
+        [Description("Resultado da etapa em markdown rico (card 78505) — vai para a sub-tarefa espelho; so 'result' completa o de uma etapa ja concluida")] string? result = null,
         CancellationToken ct = default) => Safe(async () =>
     {
-        var step = await plans.UpdateStepAsync(await PlanIdAsync(card, phase, ct), key, new UpdateExecutionStepRequest
+        var planId = await PlanIdAsync(card, phase, ct);
+        // 0096: o especialista ajusta etapa que existe — chave errada criaria uma etapa nova sem querer.
+        if (specialist.IsSpecialist && (await plans.GetAsync(planId, ct)).Steps.All(s => s.Key != key.Trim().ToLowerInvariant()))
+            throw new McpException($"Etapa '{key}' nao existe no plano — confira as chaves com prmake_plan (etapa nova: prmake_work_item_add_task).");
+        var step = await plans.UpdateStepAsync(planId, key, new UpdateExecutionStepRequest
         {
-            Status = status, Reason = reason, Activity = activity, Checkpoint = checkpoint, WaitingOn = waitingOn
+            Status = status, Reason = reason, Activity = activity, Checkpoint = checkpoint, WaitingOn = waitingOn,
+            Title = title, Description = description, Result = result
         }, await ActorAsync(ct), ct);
         return Serialize(new { step.Key, step.Status, step.WaitingOn, reason = step.StatusReason });
     });
 
     [McpServerTool(Name = "prmake_log")]
-    [Description("Registra andamento no plano (aparece ao vivo na tela). kind: info|progress|finding|decision|warning|error.")]
+    [Description("Registra andamento no plano (aparece ao vivo na tela). kind: info|progress|finding|decision|warning|error|divergence (0080: a base real difere da analise — vira alerta e trava a etapa de PR ate a pessoa confirmar).")]
     public Task<string> Log(string card, string message, string? kind = null, string? stepKey = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
         var count = await plans.AppendLogsAsync(await PlanIdAsync(card, phase, ct), new AppendExecutionLogsRequest
         {
             Logs = [new ExecutionLogItem { Message = message, Kind = kind, StepKey = stepKey }]
-        }, ct);
+        }, ct, await ActorAsync(ct));
         return count > 0 ? "ok" : "ignorado (duplicado)";
     });
 
@@ -144,9 +183,15 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_plan_status")]
-    [Description("Muda o status do plano: running (retomar), completed (com resumo), failed (com motivo).")]
-    public Task<string> PlanStatus(string card, string status, string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    [Description("Muda o status do plano: running (retomar/continuar), paused (pausar), completed (com resumo), failed (com motivo), " +
+                 "cancelled (com motivo). status e obrigatorio — para so ver o status, use prmake_plan.")]
+    public Task<string> PlanStatus(string card,
+        [Description("running | paused | completed | failed | cancelled")] string? status = null,
+        string? reason = null, string? summary = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
     {
+        // Card 78505: sem status o binding do MCP respondia "arguments dictionary is missing a value" — diga o que mandar.
+        if (string.IsNullOrWhiteSpace(status))
+            throw new McpException("Informe status: running (retomar), paused, completed, failed ou cancelled. Para ver o status: prmake_plan.");
         var plan = await plans.ChangeStatusAsync(await PlanIdAsync(card, phase, ct), new ChangeExecutionPlanStatusRequest
         {
             Status = status, Reason = reason, Summary = summary
@@ -220,15 +265,18 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_attachment", ReadOnly = true)]
-    [Description("Abre um anexo do card: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem), ou o nome do arquivo.")]
+    [Description("Abre um anexo do card ou um arquivo dos planos: imagem volta como imagem; texto volta como texto. Referencia: '#12', '12', 'imagem 2' (a 2a imagem anexada pelo usuario), ou o nome do arquivo (ex.: mock-depois.png).")]
     public Task<CallToolResult> Attachment(string card, [Description("'#12', 'imagem 2', 'print.png'...")] string reference, CancellationToken ct = default) => Safe(async () =>
     {
-        var all = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
-        var found = Resolve(all, reference);
+        var attachments = (await plans.GetNotesByCardAsync(card.Trim(), ct)).SelectMany(n => n.Attachments).OrderBy(a => a.Number).ToList();
+        // 0075: número/nome também acham os arquivos do plano (mock-depois.png, analise-inicial.md); "imagem n" segue
+        // contando só as imagens que o usuário anexou.
+        var all = (await plans.GetCardArtifactsAsync(card.Trim(), ct)).Where(a => a.NoteId is null).Concat(attachments).OrderBy(a => a.Number).ToList();
+        var found = OrdinalRef().IsMatch(reference.Trim()) ? Resolve(attachments, reference) : Resolve(all, reference);
         if (found is null)
             return Error($"Anexo '{reference}' nao encontrado. Anexos do card: " +
                          (all.Count == 0 ? "nenhum" : string.Join(", ", all.Select(a => $"#{a.Number} {a.Name}"))));
-        var file = await plans.GetArtifactFileAsync(found.PlanId, found.Id, ct);
+        var file = await plans.GetArtifactFileAsync(found.PlanId, found.Id, ct, markRead: true);
         var header = new TextContentBlock { Text = $"#{found.Number} {found.Name} ({found.ContentType}, {found.Size} bytes)" };
         if (found.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !found.ContentType.Contains("svg"))
             return new CallToolResult { Content = [header, ImageContentBlock.FromBytes(file.Data, found.ContentType)] };
@@ -245,27 +293,45 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_timeline")]
-    [Description("Escreve na Timeline do card (markdown). O PRMake ja escreve sozinho os marcos do plano — nao duplique.")]
-    public Task<string> Timeline(string card, string markdown, CancellationToken ct = default) => Safe(async () =>
-    {
-        var actor = await ActorAsync(ct);
-        await timeline.WriteAsync(card.Trim(), markdown, actor.UserId, actor.Name, ct);
-        return "ok";
-    });
+    [Description("Escreve na Timeline do card (markdown). O PRMake ja escreve sozinho os marcos do plano — nao duplique. " +
+                 "Especialista do caso: so quando a pessoa pede; o PRMake grava com o nome de quem pediu e a marca 'via Especialista do caso'.")]
+    public Task<string> Timeline(string card, string markdown,
+        [Description("0091: sub-tarefa (#n) que publicou — vira entrega dela (padrao: a sub-tarefa em andamento no card)")] long? taskNumber = null,
+        CancellationToken ct = default) => Safe(() =>
+        specialist.RunAsync(card.Trim(), "Publicar na Timeline", Trim(markdown, 600), async () =>
+        {
+            var actor = await ActorAsync(ct);
+            await timeline.WriteAsync(card.Trim(), specialist.Mark(markdown), actor.UserId, actor.Name, ct);
+            if (Hooks is { } hooks)
+                await hooks.TimelineAsync(card.Trim(), markdown, taskNumber, specialist.Via is null, actor, ct);
+            return ("ok", "publicado na Timeline do card");
+        }, ct));
+
+    /// <summary>0091: ganchos das entregas (resolvidos pelo pedido — o construtor fica como está).</summary>
+    private WorkDeliverableHooks? Hooks => http.HttpContext?.RequestServices.GetService<WorkDeliverableHooks>();
 
     [McpServerTool(Name = "prmake_devops", Destructive = true)]
-    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify. ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). classify: 'preset' (chave de prmake_devops_config) ou os tres valores.")]
+    [Description("Move/atualiza o card no Azure DevOps pelas regras configuradas no PRMake e registra na Timeline. action: dev-test-in-qa | ready-for-qa | test-in-production | zero-remaining | initial-estimate | classify | set-state (0085: 'state' = estado valido do tipo do card; desfazer de item volta o estado anterior) | log-hours (r5: 'hours' trabalhadas — soma no Completed Work e tira do Remaining). ready-for-qa so com a etapa validar-qa concluida pelo usuario ou com 'authorization' (quem autorizou e quando, explicitamente). User Story (fechamento do RCA, ferramenta fechamento-rca-us): classify (sem bugType), zero-remaining e ready-for-qa (estado de pronto da US) valem; dev-test-in-qa/test-in-production/initial-estimate sao so do Bug. classify: 'preset' (chave de prmake_devops_config) ou os tres valores e, nos Bugs, 'bugType' (um valor de bugTypes do prmake_devops_config, pela area/funcionalidade afetada; pode ir sozinho). Especialista do caso: so com pedido explicito da pessoa (usa a integracao de quem pediu).")]
     public Task<string> DevOps(string card, string action,
         [Description("Autorizacao explicita do usuario para ready-for-qa")] string? authorization = null,
         [Description("classify: chave da classificacao pronta")] string? preset = null,
         [Description("classify: Resolution Type")] string? resolutionType = null,
         [Description("classify: General Classification")] string? generalClassification = null,
         [Description("classify: Classification")] string? classification = null,
+        [Description("classify: Bug Type (um valor de bugTypes do prmake_devops_config)")] string? bugType = null,
+        [Description("set-state: estado de destino (valido para o tipo do card)")] string? state = null,
+        [Description("set-state: comentario na Discussion (opcional)")] string? reason = null,
+        [Description("log-hours: horas trabalhadas (ex.: 1.5)")] decimal? hours = null,
+        [Description("0091: sub-tarefa (#n) que fez a acao — vira entrega dela (padrao: a de DevOps em andamento no card)")] long? taskNumber = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var id = card.Trim();
+        DevOpsActionRunner.EnsureCard(id); // 0099: épico (E…) não é card do DevOps
+        if (specialist.Via is { } via && !string.IsNullOrWhiteSpace(reason))
+            reason = $"{reason.Trim()} ({via})";
         Func<IDevOpsActionsService, Task<DevOpsActionResponse>> run = action.Trim().ToLowerInvariant() switch
         {
+            "log-hours" => a => a.LogHoursAsync(id, hours is > 0 ? hours.Value : throw new McpException("log-hours: informe 'hours' (> 0)."), ct),
             "dev-test-in-qa" => a => a.MoveToDevTestInQaAsync(id, ct),
             "test-in-production" => a => a.MoveToTestInProductionAsync(id, ct),
             "zero-remaining" => a => a.ZeroRemainingAsync(id, ct),
@@ -273,20 +339,85 @@ public partial class PrmakeMcpTools(
             "ready-for-qa" => a => a.MoveToReadyForQaAsync(id, ct),
             "classify" => a => a.ClassifyAsync(id, new ClassifyCardRequest
             {
-                Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification
+                Preset = preset, ResolutionType = resolutionType, GeneralClassification = generalClassification, Classification = classification,
+                BugType = bugType
             }, ct),
+            "set-state" => a => a.SetStateAsync(id, state ?? throw new McpException("set-state: informe 'state'."), reason, ct),
             _ => throw new McpException($"Acao desconhecida: {action}")
         };
         if (action.Trim().Equals("ready-for-qa", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(authorization) && !await QaValidatedAsync(id, ct))
             throw new McpException("Ready for QA so com a etapa validar-qa concluida pelo usuario no plano ou com a autorizacao explicita dele (informe em 'authorization').");
-        return Serialize(await devops.RunAsync(id, run, http.HttpContext?.User ?? new ClaimsPrincipal(), ct));
+        var label = action.Trim().ToLowerInvariant() switch
+        {
+            "log-hours" => $"Lançar {hours}h no card",
+            "set-state" => $"Mover o card para {state}",
+            var other => $"Ação do card no DevOps: {other}"
+        };
+        return await specialist.RunAsync(id, label, null, async () =>
+        {
+            var result = await devops.RunAsync(id, run, http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
+            if (Hooks is { } hooks)
+                await hooks.DevOpsAsync(id, action, result.Message, hours, state, taskNumber, specialist.Via is null, await ActorAsync(ct), ct);
+            return (Serialize(result), result.Message);
+        }, ct);
     });
 
+    [McpServerTool(Name = "prmake_devops_spec", Destructive = true)]
+    [Description("Card 78525: especificacao da User Story (refinamento) nos campos do card no DevOps. Sem document/fields = so le (secoes configuradas, campo de cada uma e o texto atual). " +
+                 "document = o texto inteiro em markdown com UMA LINHA DE TITULO POR SECAO, exatamente os nomes das secoes (ex.: '1. High Level Business Specification (PM)', " +
+                 "'2. Detailed Business Specification (PO)', '3. Specification Main Highlights', '4. Technical Specification (Tech Lead / Architect)', '5. Main Validation Scenarios (QA)') " +
+                 "e o texto embaixo; fields = {secao ou campo: texto} (campo que nao e secao, ex.: picklist Custom.AgreedLevelofTechnicalSpecification, vai como veio). " +
+                 "Markdown vira HTML; secao vazia nao apaga o campo; [ ] / [x] viram ☐ / ☑. Imagens: ![legenda](anexo:<nome do arquivo>) — o PRMake acha o arquivo pelo nome nos arquivos do card " +
+                 "(e dos cards em filesFrom, ex.: o card onde a analise gravou os prints), sobe como anexo do DevOps e aponta para ele; imagem nao achada recusa a gravacao. " +
+                 "Registra na Timeline. Especialista do caso: so com pedido explicito da pessoa.")]
+    public Task<string> DevOpsSpec(string card,
+        [Description("Documento inteiro (markdown) com uma linha de titulo por secao")] string? document = null,
+        [Description("{secao ou campo: texto} (objeto JSON ou o JSON em texto)")] JsonElement? fields = null,
+        [Description("0091: sub-tarefa (#n) que fez a acao — vira entrega dela")] long? taskNumber = null,
+        [Description("Cards onde estao os arquivos citados como anexo:<nome> (alem do proprio card), ex.: [\"78505\"]")] string[]? filesFrom = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var id = card.Trim();
+        var map = ParseStringMap(fields);
+        if (string.IsNullOrWhiteSpace(document) && map.Count == 0)
+            return Serialize(await devops.SpecAsync(id, ct));
+        var request = new WriteSpecRequest { Document = document, Fields = map.Count == 0 ? null : map, FilesFrom = filesFrom?.ToList() };
+        return await specialist.RunAsync(id, "Gravar a especificação da US no card", null, async () =>
+        {
+            var result = await devops.RunAsync(id, a => a.WriteSpecAsync(id, request, ct), http.HttpContext?.User ?? new ClaimsPrincipal(), ct, specialist.Via);
+            if (Hooks is { } hooks)
+                await hooks.DevOpsAsync(id, "spec", result.Message, null, null, taskNumber, specialist.Via is null, await ActorAsync(ct), ct);
+            return (Serialize(result), result.Message);
+        }, ct);
+    });
+
+    private static Dictionary<string, string> ParseStringMap(JsonElement? value)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (value is not { } v) return result;
+        var element = v;
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var text = v.GetString();
+            if (string.IsNullOrWhiteSpace(text)) return result;
+            try { element = JsonDocument.Parse(text).RootElement.Clone(); }
+            catch (JsonException) { throw new McpException("fields: envie um objeto {secao: texto}."); }
+        }
+        if (element.ValueKind != JsonValueKind.Object) return result;
+        foreach (var p in element.EnumerateObject())
+            if (p.Value.ValueKind == JsonValueKind.String)
+                result[p.Name] = p.Value.GetString()!;
+        return result;
+    }
+
     [McpServerTool(Name = "prmake_devops_config", ReadOnly = true)]
-    [Description("Regras das acoes do DevOps configuradas no PRMake (estados/colunas de cada acao, area exigida, comentarios) e as classificacoes prontas (presets).")]
+    [Description("Regras das acoes do DevOps configuradas no PRMake (estados/colunas de cada acao, area exigida, comentarios), as classificacoes prontas (presets) e os valores do Bug Type (bugTypes, picklist do DevOps).")]
     public Task<string> DevOpsConfig(CancellationToken ct = default) => Safe(async () =>
-        Serialize(new { actions = await devops.ConfigAsync(ct), classifications = await devops.ClassificationsAsync(ct) }));
+    {
+        var (bugTypes, bugTypesError) = await devops.BugTypesAsync(ct);
+        return Serialize(new { actions = await devops.ConfigAsync(ct), classifications = await devops.ClassificationsAsync(ct), bugTypes, bugTypesError });
+    });
 
     [McpServerTool(Name = "prmake_config", ReadOnly = true)]
     [Description("Configuracao das skills no PRMake (Skills Configurations: fluxo de branches, padroes de nome/commit/titulo, repositorio padrao...), quais prompts existem e os nomes dos campos do DevOps. Nunca escreva essas regras de memoria.")]
@@ -306,6 +437,8 @@ public partial class PrmakeMcpTools(
     public Task<string> Card(string card, [Description("Quantos comentarios (do mais recente), padrao 10")] int comments = 10,
         CancellationToken ct = default) => Safe(async () =>
     {
+        if (solvace.executionplans.domain.Entities.EpicKey.IsEpic(card))
+            throw new McpException($"{card.Trim()} é um épico da Mesa de gestão, não um card do DevOps — detalhe com prmake_epic; cards do épico com prmake_devops_card_get(id).");
         AzureCardFullResponse? full;
         try
         {
@@ -339,6 +472,11 @@ public partial class PrmakeMcpTools(
             assignedTo = F("System.AssignedTo"), priority = F("Microsoft.VSTS.Common.Priority"), severity = F("Microsoft.VSTS.Common.Severity"),
             tags = F("System.Tags"), created = F("System.CreatedDate"), changed = F("System.ChangedDate"),
             description = F("System.Description"), reproSteps = F("Microsoft.VSTS.TCM.ReproSteps"),
+            // Card 78525: User Story — a especificação (seções configuradas) já preenchida no card.
+            spec = string.Equals(F("System.WorkItemType"), "User Story", StringComparison.OrdinalIgnoreCase)
+                ? (await azure.GetUserStorySpecFieldsAsync(ct)).Where(m => m.Field != "System.Description")
+                    .Select(m => new { section = m.Section, field = m.Field, text = F(m.Field) }).Where(s => s.text is not null).ToList()
+                : null,
             comments = full.Comments.OrderByDescending(x => x.CreatedDate).Take(Math.Clamp(comments, 0, 50))
                 .Select(x => new { by = x.CreatedByName, at = x.CreatedDate, text = Trim(StripHtml(x.Text), 1500) }),
             alerts = full.Alerts
@@ -368,25 +506,55 @@ public partial class PrmakeMcpTools(
     // ── 0041: o ciclo inteiro do plano ──────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "prmake_advance")]
-    [Description("Conclui uma etapa e inicia a proxima numa chamada (equivale a prmake-plan.sh advance). 'to' vazio = so conclui. 'message' vira registro da etapa concluida (kind: progress|finding|decision|warning).")]
+    [Description("Conclui uma etapa e inicia a proxima numa chamada (equivale a prmake-plan.sh advance). 'to' vazio = so conclui. 'message' vira registro da etapa concluida (kind: progress|finding|decision|warning). " +
+                 "'result' = o RESULTADO da etapa em markdown rico, que aparece na hora na sub-tarefa do item (consulta: a SQL + tabela com as linhas; Base Solvace: tabela dos itens consultados/encontrados; codigo: [caminho:linhas](ref:<id>) fotografados + o que confirmam; causa raiz: a analise detalhada) — sem ele vale o 'message'.")]
     public Task<string> Advance(string card, [Description("Etapa que terminou")] string from, [Description("Proxima etapa (opcional)")] string? to = null,
-        string? message = null, string? kind = null, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+        string? message = null, string? kind = null, string? phase = null,
+        [Description("Resultado da etapa (markdown rico) — vai para a sub-tarefa espelho assim que a etapa conclui")] string? result = null,
+        CancellationToken ct = default) => Safe(async () =>
     {
         var planId = await PlanIdAsync(card, phase, ct);
         var actor = await ActorAsync(ct);
         // 0052: módulo com engenharia reversa completa — a investigação só conclui consultando a base ou citando item/lacuna.
-        if (await reverse.CheckGateAsync(card, from, message, ct) is { } gate)
+        if (await reverse.CheckGateAsync(card, from, string.Join("\n", new[] { message, result }.Where(t => !string.IsNullOrWhiteSpace(t))), ct) is { } gate)
             throw new McpException(gate);
+        // 0075: análise/soluções só concluem com toda citação de código fotografada.
+        if (await citations.CheckAsync(planId, from, ct) is { } missing)
+            throw new McpException(missing);
+        // 0076: evidências do card importadas e abertas.
+        if (await evidenceGate.CheckAsync(planId, from, ct) is { } unread)
+            throw new McpException(unread);
         if (!string.IsNullOrWhiteSpace(message))
             await plans.AppendLogsAsync(planId, new AppendExecutionLogsRequest
             {
                 Logs = [new ExecutionLogItem { StepKey = from, Kind = string.IsNullOrWhiteSpace(kind) ? ExecutionLogKind.Progress : kind, Message = message }]
-            }, ct);
-        await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed }, actor, ct);
+            }, ct, actor);
+        await plans.UpdateStepAsync(planId, from, new UpdateExecutionStepRequest { Status = ExecutionStatus.Completed, Message = message, Result = result }, actor, ct);
+        // 0091: etapa de código da correção sem o diff registrado — aviso (não recusa).
+        var warning = http.HttpContext?.RequestServices.GetService<IWorkItemDeliverableApplication>() is { } deliverables
+            ? await deliverables.MissingCodeWarningAsync(planId, from, ct)
+            : null;
+        var note = warning is null ? string.Empty : $"\nAVISO: {warning}";
         if (string.IsNullOrWhiteSpace(to) || to == "-")
-            return $"OK {from} -> completed";
+            return $"OK {from} -> completed{note}";
+        // Card 78505 (#874): quem não é o executor não "começa" a próxima etapa — ela ficava em andamento sem ninguém
+        // trabalhando. Fica pronta e o executor do dono foi pedido ao concluir a etapa (UpdateStepAsync).
+        if (!actor.IsExecutor)
+            return $"OK {from} -> completed · {to} fica pronta para o tratamento (executor pedido){note}";
+        // Card 78680: a pessoa pode ter reordenado/pausado etapas — a próxima é a primeira pronta da ordem atual.
+        var current = await plans.GetAsync(planId, ct);
+        var target = current.Steps.FirstOrDefault(s => s.Key == ExecutionStep.NormalizeKey(to));
+        if (target is { Held: true })
+        {
+            var next = current.Steps.Where(s => s.Status == ExecutionStatus.Pending && !s.Held).OrderBy(s => s.Order).FirstOrDefault();
+            return $"OK {from} -> completed · {to} esta PAUSADA por {target.HeldBy ?? "uma pessoa"} (nao comece)" +
+                   (next is null ? " — sem outra etapa pronta: encerre a vez" : $" — siga para '{next.Key}'") + note;
+        }
+        var earlier = current.Steps.Where(s => s.OrderPinned && s.Status == ExecutionStatus.Pending && !s.Held && target is not null && s.Order < target.Order)
+            .OrderBy(s => s.Order).FirstOrDefault();
         await plans.UpdateStepAsync(planId, to, new UpdateExecutionStepRequest { Status = ExecutionStatus.Running }, actor, ct);
-        return $"OK {from} -> completed · {to} -> running";
+        return $"OK {from} -> completed · {to} -> running{note}" +
+               (earlier is null ? string.Empty : $"\nATENCAO: a pessoa pos '{earlier.Key}' antes de '{to}' — faca '{earlier.Key}' primeiro (prmake_step running).");
     });
 
     [McpServerTool(Name = "prmake_block")]
@@ -449,9 +617,9 @@ public partial class PrmakeMcpTools(
     [Description("Grava um arquivo de texto nos arquivos do plano (script .sql com rollback, analise .md, texto do chamado, dados .csv/.json) " +
                  "direto pelo PRMake, sem depender da pasta local do card. Mesmo nome + tipo substitui a versao anterior. " +
                  "Use para todo script/analise/chamado que o usuario precisa ver no plano. " +
-                 "Analise (phase analysis): so consultas somente leitura (00_consulta-<assunto>.sql), analise .md e dados. " +
-                 "Correcao (phase correction): script que altera dados (com rollback), validacao e o texto do chamado " +
-                 "(chamado-<nome>.md, kind ticket), com key = a etapa do chamado.")]
+                 "Analise (phase analysis): so consultas somente leitura (00_<card>_consulta-<assunto>.sql), analise .md e dados. " +
+                 "Correcao/implementacao (phase correction — na User Story e o plano de implementacao): script que altera dados (com rollback), " +
+                 "validacao e o chamado completo (chamado-<card>-<nome>.md, kind ticket), com key = a etapa do chamado — todo script vai com chamado.")]
     public Task<string> SaveFile(string card,
         [Description("Nome do arquivo com extensao, ex.: 01_mover_usuario.sql, analise-inicial.md, chamado.md")] string name,
         [Description("Conteudo completo do arquivo (texto UTF-8)")] string content,
@@ -470,6 +638,107 @@ public partial class PrmakeMcpTools(
         return Serialize(new { artifact.Id, artifact.Number, artifact.Name, artifact.Kind, artifact.Size, artifact.StepKey });
     });
 
+    [McpServerTool(Name = "prmake_code_ref")]
+    [Description("0075: fotografia de um trecho de codigo citado na analise/correcao (o popover do link ref:<id> e das citacoes caminho:linha). " +
+                 "A fotografia (codigo real) se grava pelo script: prmake-plan.sh coderef (le o arquivo local, nao cole codigo aqui). " +
+                 "Aqui: ajuste why/notas/proposta/change de uma ref existente (do plano ou de outro plano do card), ou crie uma 'create' (arquivo novo) " +
+                 "informando path + linhas + proposal. Notas: [{side: old|new, from, to, text}] — por que este codigo, por que faz sentido. " +
+                 "Card sem plano (itens de trabalho avulsos): funciona igual — a fotografia fica no card.")]
+    public Task<string> CodeRef(string card,
+        [Description("Id da ref (slug: sa3-init); o texto cita [texto](ref:sa3-init)")] string reference,
+        [Description("change | create | remove | suspect | read")] string? change = null,
+        string? title = null,
+        [Description("Por que o trecho importa / muda (1-3 frases)")] string? why = null,
+        [Description("Mudanca proposta em diff unificado")] string? proposal = null,
+        [Description("Notas por faixa de linhas: [{ side: old|new, from, to, text }]")] List<ExecutionCodeAnnotation>? annotations = null,
+        [Description("So para criar 'create' sem fotografia: caminho do arquivo novo no repositorio")] string? path = null,
+        string? repository = null, int? startLine = null, int? endLine = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        // Sem 'phase': pelo card — o plano aberto mais recente (senao o mais recente), como o PlanIdAsync; card sem plano
+        // (itens de trabalho avulsos) = fotografia do card. Com 'phase': o plano daquela fase.
+        Guid? planId = string.IsNullOrWhiteSpace(phase) ? null : await PlanIdAsync(card, phase, ct);
+        var actor = await ActorAsync(ct);
+        ExecutionCodeRefResponse saved;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            if (!string.Equals(change?.Trim(), ExecutionCodeChange.Create, StringComparison.OrdinalIgnoreCase))
+                throw new McpException("Fotografia de codigo existente so pelo script (prmake-plan.sh coderef); aqui, path so para change=create.");
+            var capture = new ExecutionCodeCapture(repository, path, null, null, null,
+                startLine ?? 1, endLine, null, null, change, title, why, proposal, annotations);
+            saved = planId is { } id
+                ? await plans.SaveCodeRefAsync(id, reference, capture, actor, ct)
+                : await plans.SaveCardCodeRefAsync(card, reference, capture, actor, ct);
+        }
+        else
+        {
+            var patch = new ExecutionCodeRefPatch(change, title, why, proposal, annotations);
+            saved = planId is { } id
+                ? await plans.PatchCodeRefAsync(id, reference, patch, actor, ct)
+                : await plans.PatchCardCodeRefAsync(card, reference, patch, actor, ct);
+        }
+        return Serialize(new { saved.Ref, saved.Path, lines = $"{saved.StartLine}-{saved.EndLine}", saved.Change, saved.HasProposal, notes = saved.Annotations.Count });
+    });
+
+    [McpServerTool(Name = "prmake_evidence")]
+    [Description("0076: EVIDENCIAS do card no DevOps — importa (idempotente) para os arquivos do plano os anexos do card e as imagens/arquivos " +
+                 "colados na descricao, nos campos e na discussion, e lista cada uma com o numero (#n), a origem e se ja foi aberta. " +
+                 "Abra TODAS as legiveis com prmake_attachment(card, \"#n\") antes da causa raiz e diga na analise o que cada uma mostrou — " +
+                 "montar-analise nao conclui sem isso. Sem acesso ao DevOps: pergunte ao usuario e, com o ok dele, skip=\"motivo\".")]
+    public Task<string> Evidence(string card,
+        [Description("So com o ok do usuario: motivo para seguir a analise sem as evidencias")] string? skip = null,
+        string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var planId = await PlanIdAsync(card, phase, ct);
+        var actor = await ActorAsync(ct);
+        var result = string.IsNullOrWhiteSpace(skip)
+            ? await plans.ImportEvidenceAsync(planId, actor, ct)
+            : await plans.SkipEvidenceAsync(planId, skip, actor, ct);
+        var sb = new StringBuilder();
+        if (result.Error is not null) sb.AppendLine($"ERRO: {result.Error}");
+        if (result.SkipReason is not null) sb.AppendLine($"Seguindo sem as evidencias: {result.SkipReason}");
+        sb.AppendLine(result.Items.Count == 0 ? "Nenhuma evidencia no card (sem anexos nem imagens na descricao/discussion)." : $"{result.Items.Count} evidencia(s); {result.Unread} legivel(is) ainda nao aberta(s):");
+        foreach (var i in result.Items)
+            sb.AppendLine(i.Number is { } n
+                ? $"#{n} {i.Name} — {i.SourceDetail} · {(i.ReadAt is null ? (i.Readable ? "NAO ABERTA" : "abrir a mao (video/compactado)") : "aberta")}"
+                : $"(nao importada) {i.Name} — {i.Source}{(i.SourceDetail is null ? "" : $" ({i.SourceDetail})")}: {i.Error}");
+        return sb.ToString().TrimEnd();
+    });
+
+    [McpServerTool(Name = "prmake_handoff")]
+    [Description("0075: contexto da passagem (handoff) ao entrar em ESPERA (chamado aberto, PR aguardando aprovacao/merge, validacao em QA): " +
+                 "o que foi feito, o que se espera e de quem, riscos e como retomar — curto (ate ~1.500 caracteres), para outra pessoa assumir. " +
+                 "O PRMake junta com os fatos (PRs, aprovacoes, CI, chamado, DevOps) no resumo 'Situacao atual' do card, na discussion do DevOps e no handover. " +
+                 "0096: escreva em PRIMEIRA PESSOA, como quem trata o card (o comentario sai no nome dele): 'Abri o chamado...', 'Vou validar em QA...', " +
+                 "com a espera como status ('Aguardando o merge do PR #489') — nunca 'voce'/'quem trata o card' nem o PRMake ('no PRMake', 'conclua a etapa'): " +
+                 "o comentario parece escrito pela pessoa. Texto vazio limpa.")]
+    public Task<string> Handoff(string card, [Description("Contexto da passagem (markdown curto)")] string text, string? phase = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var situation = await plans.SetHandoffAsync(await PlanIdAsync(card, phase, ct), text, await ActorAsync(ct), ct);
+        return Serialize(new { situation.Kind, situation.Title, situation.Since, situation.Next });
+    });
+
+    [McpServerTool(Name = "prmake_situation")]
+    [Description("0096: 'Situacao atual' do card como o PRMake monta (markdown) e o que esta publicado na discussion do DevOps " +
+                 "(publishedMarkdown, quando e por quem; autoPost = publica sozinho a cada mudanca). Leia antes de ajustar o texto.")]
+    public Task<string> Situation(string card, CancellationToken ct = default) => Safe(async () =>
+    {
+        var s = await plans.GetSituationAsync(card.Trim(), false, ct);
+        return Serialize(new { s.Kind, s.Title, s.Markdown, s.PublishedMarkdown, s.PublishedAt, s.PublishedBy, s.AutoPost, s.PublishPending });
+    });
+
+    [McpServerTool(Name = "prmake_situation_publish")]
+    [Description("0096: publica a 'Situacao atual' na discussion do DevOps ATUALIZANDO o mesmo comentario do card (nunca cria outro " +
+                 "quando ja existe). Sem markdown = o texto que o PRMake monta; com markdown = o texto ajustado como a pessoa pediu " +
+                 "(primeira pessoa, como quem trata o card, sem citar o PRMake). Para mudar so o contexto da espera prefira prmake_handoff (o comentario " +
+                 "acompanha sozinho). O texto ajustado vale ate a situacao mudar — ai o PRMake atualiza o comentario de novo.")]
+    public Task<string> SituationPublish(string card, [Description("Texto (markdown) ajustado; vazio = o montado pelo PRMake")] string? markdown = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var commentId = await plans.PublishSituationAsync(card.Trim(), null, await ActorAsync(ct), ct, markdown);
+        return Serialize(new { commentId, updated = true });
+    });
+
     [McpServerTool(Name = "prmake_link")]
     [Description("Anexa um link a etapa: chamado (kind ticket; blocks=true trava a etapa ate ser resolvido), PR, documento.")]
     public Task<string> Link(string card, string key, string url, string? title = null,
@@ -485,16 +754,21 @@ public partial class PrmakeMcpTools(
     });
 
     [McpServerTool(Name = "prmake_correction")]
-    [Description("Cria o plano de correcao do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. Depois, o 'phase' padrao das ferramentas passa a ser a correcao; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
+    [Description("Cria o plano de correcao (Bug) ou de implementacao (User Story, Kind analisar-us — titulo 'Implementacao <card>: ...'; nunca 'correcao' na US) do card a partir do plano de analise (equivale a prmake-plan.sh correction). Herda a sessao do Claude. O plano nao tem versoes: com um plano de correcao aberto no card, ajusta esse mesmo (etapas pela chave; as feitas ficam). Depois, o 'phase' padrao das ferramentas passa a ser 'correction'; se usar o script, rode antes: prmake-plan.sh use <card> correction.")]
     public Task<string> Correction(string card, string title,
-        [Description("Etapas: [{ key, title, description?, executor?, kind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
+        [Description("Etapas: [{ key, title, description?, executor?, kind?, taskKind?, repository?, dependsOn? }]")] List<ExecutionStepDefinition> steps,
         CancellationToken ct = default) => Safe(async () =>
     {
         var analysis = (await plans.GetByCardAsync(card.Trim(), ct)).FirstOrDefault(p => p.Phase == ExecutionPhase.Analysis)
                        ?? throw new McpException($"O card {card} nao tem plano de analise.");
+        // 0087: etapas ricas — código citado com fotografia (popover) e toda etapa de código dizendo onde muda.
+        if (await citations.CheckWorkAsync(card.Trim(), steps.SelectMany(s => new[] { s.Title, s.Description }),
+                steps.Select(s => (s.Title, s.Kind, s.Description)), ct) is { } incomplete)
+            throw new McpException(incomplete);
         var plan = await plans.CreateAsync(new CreateExecutionPlanRequest
         {
-            CardNumber = card.Trim(), Kind = "analisar-bug", Title = title, Phase = ExecutionPhase.Correction,
+            // 0085: a correção herda a skill da análise (analisar-us numa User Story).
+            CardNumber = card.Trim(), Kind = string.IsNullOrWhiteSpace(analysis.Kind) ? "analisar-bug" : analysis.Kind, Title = title, Phase = ExecutionPhase.Correction,
             ParentPlanId = analysis.Id, Steps = steps
         }, await ActorAsync(ct), ct);
         return Serialize(new
@@ -534,12 +808,19 @@ public partial class PrmakeMcpTools(
         var candidates = string.IsNullOrEmpty(p) ? summaries : summaries.Where(s => s.Phase == p).ToList();
         if (candidates.Count == 0)
             throw new McpException($"O card {card} nao tem plano de {p}.");
-        var open = candidates.FirstOrDefault(s => s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled));
-        return (open ?? candidates[0]).Id;
+        var open = candidates.Where(s => s.Status is not (ExecutionStatus.Completed or ExecutionStatus.Cancelled)).ToList();
+        // Card 78344: duas versões abertas — vale o plano que o executor foi chamado a retomar (o do item), não o mais novo.
+        if (open.Count > 1 && await queue.ActivePlanIdAsync(card, ct) is { } active && open.Any(s => s.Id == active))
+            return active;
+        return (open.FirstOrDefault() ?? candidates[0]).Id;
     }
 
     private async Task<ExecutionActor> ActorAsync(CancellationToken ct)
     {
+        // 0096: mudança do plano pelo especialista — grava como "Especialista do caso, a pedido de X" e, como não é o
+        // executor, a mudança acorda o tratamento quando há trabalho para ele (ex.: a pessoa concluiu a etapa dela).
+        if (http.HttpContext?.Items.ContainsKey(SpecialistPlanEdits.ItemKey) == true && specialist.Actor() is { } asked)
+            return asked;
         var user = http.HttpContext?.User ?? new ClaimsPrincipal();
         Guid? userId = Guid.TryParse(user.FindFirst("ExternalId")?.Value, out var id) ? id : null;
         string? name = userId.HasValue ? await users.GetFullNameAsync(userId.Value, ct) : null;

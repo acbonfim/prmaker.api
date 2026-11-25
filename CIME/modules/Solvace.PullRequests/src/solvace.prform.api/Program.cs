@@ -21,6 +21,7 @@ using solvace.vacations.infra.Extensions;
 using solvace.timeline.infra.Extensions;
 using solvace.executionplans.infra.Extensions;
 using solvace.knowledge.infra.Extensions;
+using solvace.governance.infra.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,17 +41,45 @@ builder.Services.AddScoped<solvace.timeline.application.Contracts.IUserRepositor
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionPullRequestSource, ExecutionPlanPullRequestSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionTimelineWriter, ExecutionPlanTimelineWriter>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardRegistrar, ExecutionPlanCardRegistrar>();
+// 0091: entregas dos itens — PRs do card (do banco) e o compare do GitHub por repositório.
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkDeliverableSources, solvace.prform.Execution.WorkDeliverableSources>();
+builder.Services.AddScoped<solvace.prform.Execution.WorkDeliverableHooks>();
 // Fila de execução e executores (0039): credencial do executor, binários publicados e a regra automática (WIQL).
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutorTokenIssuer>();
+builder.Services.AddSingleton<solvace.prform.Execution.CaseTokenIssuer>();  // 0080: token do Especialista do caso
+builder.Services.AddSingleton<solvace.prform.Execution.BaseAskTokenIssuer>();  // 0102: token da pergunta da Base pelo executor
 builder.Services.AddSingleton<solvace.prform.Execution.ExecutionAgentCatalog>();
 builder.Services.AddSingleton<solvace.executionplans.application.Contracts.IExecutionAgentInfo>(sp => sp.GetRequiredService<solvace.prform.Execution.ExecutionAgentCatalog>());
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionWorkItemSource, solvace.prform.Execution.ExecutionWorkItemSource>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionQueueSettings, solvace.prform.Execution.ExecutionQueueSettings>();
 // 0041: REST e MCP com a mesma lógica (configuração das skills; ação do DevOps + Timeline).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
+// 0085: regras do PRMake calculadas para o card (GET Skills/rules, prmake_rules, contexto do especialista).
+builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
+// 0085 r4: ferramentas (modelos) do card — catálogo, from-template, prmake_tools/prmake_tool_run — e os tipos de item.
+builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());
+builder.Services.AddScoped<solvace.prform.Promotion.PromotionService>();  // 0074: promoção de PRs em lote
+builder.Services.AddScoped<solvace.prform.Promotion.PromotionParser>();
+builder.Services.AddScoped<solvace.prform.AwsDeploy.AwsDeployService>();  // 0100: aba AWS (índice, retrato, fila de coleta da máquina)
 builder.Services.AddScoped<solvace.prform.Home.HomeCardsService>();
+// 0099 (ajustes 2): acompanhamento do épico (PRs, DevOps, AWS em lote) e perfil de quem pede (papéis do schema auth).
+builder.Services.AddScoped<solvace.prform.Execution.EpicMonitorService>();
+builder.Services.AddScoped<solvace.prform.Execution.DeskProfileService>();
 builder.Services.AddScoped<solvace.prform.Admin.CardResetService>();  // 0061: recomeçar um card
 builder.Services.AddScoped<solvace.prform.Execution.DevOpsActionRunner>();
+// 0099: Mesa de gestão — gravações no DevOps (Timeline + devopsCardsUpdated) e os pontos que o épico (B1) liga no Q1.
+builder.Services.AddScoped<solvace.prform.Execution.DevOpsDeskRunner>();
+builder.Services.AddScoped<solvace.prform.Execution.IEpicCardSource, solvace.prform.Execution.EpicCardSource>();
+builder.Services.AddScoped<solvace.prform.Execution.IDevOpsCardCreatedHook, solvace.prform.Execution.EpicCardCreatedHook>();
+builder.Services.AddScoped<solvace.prform.Execution.EpicStoryConverter>();  // 0099 ajustes 2: história do épico → card do DevOps
+// Card 78525: imagens anexo: da especificação da US sobem como anexo do DevOps.
+builder.Services.AddScoped<solvace.azure.application.Contract.ISpecImageSource, solvace.prform.Execution.SpecImageSource>();
+builder.Services.AddScoped<solvace.prform.Execution.CodeCitationGate>();  // 0075: citações de código fotografadas
+builder.Services.AddScoped<solvace.prform.Execution.EvidenceGate>();  // 0076: evidências do card abertas na análise
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardEvidenceSource, solvace.prform.Execution.ExecutionCardEvidenceSource>();
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IExecutionCardDevOps, solvace.prform.Execution.ExecutionCardDevOps>();  // 0075: Dev Test in QA, situação
 builder.Services.AddMemoryCache();
 // 0070: respostas comprimidas (documentos da engenharia reversa chegam a 1 MB de markdown; o export, a 8 MB).
 builder.Services.AddResponseCompression(o =>
@@ -69,11 +98,45 @@ builder.Services.AddMcpServer(o =>
     .WithHttpTransport(o => o.Stateless = true)
     .WithTools<solvace.prform.Execution.PrmakeMcpTools>()
     // 0052: Base Solvace (engenharia reversa por item, seções, KC) pelo MCP — a análise consulta antes do código.
-    .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>();
+    .WithTools<solvace.prform.Execution.PrmakeBaseMcpTools>()
+    // 0102: resposta da pergunta da Base Solvace pelo executor.
+    .WithTools<solvace.prform.Execution.BaseAskMcpTools>()
+    // 0080: Especialista do caso (conversa do card).
+    .WithTools<solvace.prform.Execution.CaseChatMcpTools>()
+    // 0085: regras do card e itens de trabalho.
+    .WithTools<solvace.prform.Execution.WorkItemMcpTools>()
+    // 0085 r5: arquivos do item de trabalho (gravar/listar/ler).
+    .WithTools<solvace.prform.Execution.WorkItemFileMcpTools>()
+    // 0085 r5: abrir PR pelo PRMake (skill e Especialista do caso, a pedido da pessoa).
+    .WithTools<solvace.prform.Execution.PullRequestMcpTools>()
+    // 0101: padrões de banco e de aplicação (ler os do card e conferir antes de gravar).
+    .WithTools<solvace.prform.Execution.StandardsMcpTools>()
+    // 0099: épicos da Mesa de gestão e markdown → PDF nos arquivos do item.
+    .WithTools<solvace.prform.Execution.EpicMcpTools>()
+    // 0099: Azure DevOps da Mesa de gestão (metadados, consulta, ler/criar/editar/mover cards).
+    .WithTools<solvace.prform.Execution.DevOpsMcpTools>()
+    // 0099 (ajustes 2): histórias e bugs do épico (rascunhos no PRMake → card do DevOps a pedido).
+    .WithTools<solvace.prform.Execution.EpicStoryMcpTools>()
+    // 0099 (ajustes 2): acompanhamento das entregas do épico (prmake_epic_monitor).
+    .WithTools<solvace.prform.Execution.EpicMonitorMcpTools>()
+    // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
+    .WithRequestFilters(f =>
+    {
+        // 0098: governança primeiro (barra antes do especialista pausar o tratamento) e registra toda chamada.
+        f.AddCallToolFilter(solvace.prform.Governance.GovernanceMcpFilter.Filter);
+        f.AddCallToolFilter(solvace.prform.Execution.SpecialistPlanEdits.Filter);
+        // 0102: a pergunta da Base só vê as ferramentas dela.
+        f.AddListToolsFilter(solvace.prform.Execution.BaseAskMiddleware.ListFilter);
+    });
+// 0085 r5: ações do Especialista do caso a pedido de uma pessoa (marca "via Especialista", cartão de ação na conversa).
+builder.Services.AddScoped<solvace.prform.Execution.SpecialistActions>();
+// 0099: PDF gerado no servidor para os arquivos do item (REST WorkItems/{n}/files/pdf e MCP prmake_pdf).
+builder.Services.AddScoped<solvace.prform.Execution.WorkItemPdfService>();
 // Skills do Claude Code publicadas pelo PRMake (0024): pasta skills/ copiada para a imagem.
 builder.Services.AddSingleton<solvace.prform.Skills.SkillsCatalog>();
 // Base de conhecimento Solvace (0033): configuração do KC vem do plugin "Knowledge Center Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IKnowledgeSettingsProvider, solvace.prform.Knowledge.PluginKnowledgeSettingsProvider>();
+builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseAccess, solvace.prform.Knowledge.HttpReverseAccess>();  // 0097: engenharia reversa lida por todo usuário autenticado (0074: só admin)
 // Engenharia reversa por módulo (0052): aprovadores, documentos exigidos e trava vêm do "Skills Configurations".
 builder.Services.AddScoped<solvace.knowledge.application.Contracts.IReverseSettingsProvider, solvace.prform.Knowledge.PluginReverseSettingsProvider>();
 builder.Services.AddScoped<solvace.prform.Knowledge.ArchitectureChatService>();
@@ -84,6 +147,9 @@ builder.Services.AddScoped<IFormApplication, FormApplication>();
 builder.Services.AddScoped<IPullRequestApplication, PullRequestApplication>();
 builder.Services.AddScoped<IHandoverApplication, HandoverApplication>();
 builder.Services.AddScoped<IPluginApplication, PluginApplication>();
+// 0086: configurações por seção — catálogo resolvido, PATCH só das chaves alteradas e histórico (também no PUT antigo).
+builder.Services.AddScoped<solvace.prform.application.Contracts.IPluginSettingHistory, solvace.prform.PluginSettings.PluginSettingHistory>();
+builder.Services.AddScoped<solvace.prform.PluginSettings.PluginSettingsService>();
 
 builder.Services.AddSingleton<IPluginCacheManager, PluginCacheManager>();
 // Integrações pessoais (feature 0002): segredos dos usuários criptografados com a chave de UserIntegrations.
@@ -95,8 +161,18 @@ builder.Services.AddScoped<solvace.prform.application.UserIntegrations.IPluginCo
 // Pedido de aprovação de PR no Teams via Workflow (feature 0007).
 builder.Services.AddScoped<solvace.prform.application.Teams.ITeamsApprovalService, solvace.prform.application.Teams.TeamsApprovalService>();
 builder.Services.AddHttpClient(solvace.prform.application.Teams.TeamsApprovalService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
+// 0098: governança — completa o lote da trilha (card/fase pelo plano ou item) e roda os gatilhos do servidor.
+builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceEventEnricher, solvace.prform.Governance.GovernanceEventEnricher>();
+builder.Services.AddScoped<solvace.governance.application.Contracts.IGovernanceServerHookRunner, solvace.prform.Governance.GovernanceServerHookRunner>();
+builder.Services.AddHttpClient(solvace.prform.Governance.GovernanceServerHookRunner.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddScoped<solvace.prform.Governance.GovernanceMetrics>();
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.PersonalIntegrationExceptionFilter>());
+// 0099: chave de épico (E123) nas rotas de card do DevOps → 404 limpo (a Mesa reaproveita componentes da Bancada).
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.EpicKeyCardFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
+// Índice da engenharia reversa pronto antes da primeira pergunta (na instância nova a busca fria levava ~25 s).
+builder.Services.AddSingleton<solvace.prform.Knowledge.ReverseIndexWarmup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<solvace.prform.Knowledge.ReverseIndexWarmup>());
 
 // Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o
 // ambiente. Registrado antes de AddRealTimeService (que usa TryAdd) para prevalecer sobre o default.
@@ -116,7 +192,8 @@ builder.Services
     .AddVacationModule(builder.Configuration)
     .AddTimelineModule(builder.Configuration)
     .AddExecutionPlanModule(builder.Configuration)
-    .AddKnowledgeModule(builder.Configuration);
+    .AddKnowledgeModule(builder.Configuration)
+    .AddGovernanceModule(builder.Configuration);
 
 
 
@@ -179,7 +256,13 @@ app.UseHttpsRedirection()
     .UseCors("CorsPolicy")
     .UseMiddleware<ExceptionHandlerMiddleware>()
     // 0039: credencial do executor só na fila/plano/skills/MCP e revogável na hora.
-    .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>();
+    .UseMiddleware<solvace.prform.Execution.ExecutorCredentialMiddleware>()
+    // 0080: o que o token do Especialista do caso pode fazer (0096: inclusive ajustar o plano atual a pedido).
+    .UseMiddleware<solvace.prform.Execution.CaseSpecialistMiddleware>()
+    // 0102: o token da pergunta da Base só usa o MCP da Base (e a resposta).
+    .UseMiddleware<solvace.prform.Execution.BaseAskMiddleware>()
+    // 0098: regras da governança e trilha de toda gravação HTTP (depois de saber quem é o especialista/executor).
+    .UseMiddleware<solvace.prform.Governance.GovernanceMiddleware>();
 
 // Gate de api-key + mapeamento do hub. Antes do MapControllers para garantir que o middleware
 // rode cedo no pipeline (antes da execução dos endpoints).

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace cliqx.auth.api.Dtos
@@ -17,6 +18,8 @@ namespace cliqx.auth.api.Dtos
         public int CompanyId { get; set; }
         public string ChannelOrigin { get; set; }
         public string ImagemUrlUser { get; set; }
+        /// <summary>Último login com sucesso (DataUltimoLogin; 0079). Null quando nunca entrou.</summary>
+        public DateTime? LastLoginAt { get; set; }
         public List<UserRoleItemDto> UserRoles { get; set; } = new();
     }
 

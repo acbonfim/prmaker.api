@@ -109,3 +109,39 @@ public class LinkSuggestionItemRequest
     public string? ItemId { get; set; }
     public string? SectionKey { get; set; }
 }
+
+/// <summary>Commit de uma fonte do módulo de onde o índice técnico foi extraído (0097).</summary>
+public class ReverseTechnicalCommit
+{
+    public string Repository { get; set; } = string.Empty;
+    public string Commit { get; set; } = string.Empty;
+    public string? Branch { get; set; }
+}
+
+/// <summary>
+/// 0097: índice técnico gerado sem IA pela skill (<c>re.sh indice</c>) — publicado direto na seção <c>re-tecnico</c>.
+/// </summary>
+public class PublishTechnicalIndexRequest
+{
+    public string Content { get; set; } = string.Empty;
+    public List<ReverseTechnicalCommit> Commits { get; set; } = [];
+    public DateTimeOffset? GeneratedAt { get; set; }
+    /// <summary>Contagem por tipo (END, ROT, TAB, DBO, CHV, MSG) como a skill contou.</summary>
+    public Dictionary<string, int>? Counts { get; set; }
+}
+
+/// <summary>Um item marcado como desatualizado (0097): o trecho de código que ele cita mudou desde a geração.</summary>
+public class ReverseStaleItemRequest
+{
+    public string DocType { get; set; } = string.Empty;
+    public string ItemId { get; set; } = string.Empty;
+    public string? Reason { get; set; }
+}
+
+/// <summary>0097: marca itens do módulo como desatualizados (reancoragem); <c>replace</c> limpa as marcas do módulo antes.</summary>
+public class MarkReverseStaleRequest
+{
+    public string? Commit { get; set; }
+    public List<ReverseStaleItemRequest> Items { get; set; } = [];
+    public bool Replace { get; set; }
+}

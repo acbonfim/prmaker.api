@@ -1,0 +1,240 @@
+using System.Text.Json;
+using solvace.executionplans.domain.Entities;
+
+namespace solvace.executionplans.domain.Responses;
+
+/// <summary>0085: item de trabalho como a tela/MCP mostram (JSON camelCase).</summary>
+public class WorkItemResponse
+{
+    public Guid Id { get; set; }
+    public long Number { get; set; }
+    public string CardNumber { get; set; } = string.Empty;
+    public string Type { get; set; } = WorkItemType.Task;
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Status { get; set; } = WorkItemStatus.Pending;
+    public string Origin { get; set; } = WorkItemOrigin.User;
+    public string? TemplateKey { get; set; }
+    public Guid? PlanId { get; set; }
+    public string? PlanPhase { get; set; }
+    public Guid? CreatedBy { get; set; }
+    public string CreatedByName { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? CancelReason { get; set; }
+    /// <summary>Pode editar: item pendente com todas as sub-tarefas pendentes.</summary>
+    public bool Editable { get; set; }
+    public WorkItemProgress Progress { get; set; } = new();
+    public List<WorkItemLink> Links { get; set; } = [];
+    /// <summary>Pedido de execução ativo do item (fila).</summary>
+    public Guid? RequestId { get; set; }
+    /// <summary>O que o Claude está fazendo agora no pedido do item.</summary>
+    public string? Activity { get; set; }
+    public string Fingerprint { get; set; } = string.Empty;
+    public List<WorkTaskResponse> Tasks { get; set; } = [];
+    /// <summary>Histórico (só no GET por número).</summary>
+    public List<WorkItemLogResponse>? Logs { get; set; }
+    /// <summary>0091: o que o item e as sub-tarefas geraram (só no GET por número).</summary>
+    public List<WorkDeliverableResponse>? Deliverables { get; set; }
+    /// <summary>
+    /// O número pedido no GET era de uma sub-tarefa deste item (a numeração é a mesma para itens e sub-tarefas) — quem
+    /// citou <c>#n</c> da sub-tarefa recebe o item dono e sabe qual sub-tarefa destacar.
+    /// </summary>
+    public long? MatchedTaskNumber { get; set; }
+
+    public static WorkItemResponse From(WorkItem item, string? planPhase = null, string? activity = null) => new()
+    {
+        Id = item.Id,
+        Number = item.Number,
+        CardNumber = item.CardNumber,
+        Type = item.Type,
+        Title = item.Title,
+        Description = item.Description,
+        Status = item.Status,
+        Origin = item.Origin,
+        TemplateKey = item.TemplateKey,
+        PlanId = item.PlanId,
+        PlanPhase = planPhase,
+        CreatedBy = item.CreatedBy,
+        CreatedByName = item.CreatedByName,
+        CreatedAt = item.CreatedAt,
+        UpdatedAt = item.UpdatedAt,
+        StartedAt = item.StartedAt,
+        CompletedAt = item.CompletedAt,
+        CancelReason = item.CancelReason,
+        Editable = item.Editable,
+        Progress = new WorkItemProgress
+        {
+            Done = item.Tasks.Count(t => WorkTaskStatus.IsDone(t.Status)),
+            Total = item.Tasks.Count(t => t.Status is not (WorkTaskStatus.Cancelled or WorkTaskStatus.Reverted)),
+        },
+        Links = item.Links.ToList(),
+        RequestId = item.ActiveRequestId,
+        Activity = activity,
+        Fingerprint = item.Fingerprint,
+        Tasks = item.Tasks.OrderBy(t => t.Order).Select(t => WorkTaskResponse.From(t, item)).ToList(),
+    };
+}
+
+public class WorkItemProgress
+{
+    public int Done { get; set; }
+    public int Total { get; set; }
+}
+
+/// <summary>0085: sub-tarefa do item.</summary>
+public class WorkTaskResponse
+{
+    public Guid Id { get; set; }
+    public long Number { get; set; }
+    public int Order { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Kind { get; set; } = string.Empty;
+    public string Executor { get; set; } = ExecutionExecutor.Claude;
+    public Dictionary<string, string> Params { get; set; } = [];
+    public string Status { get; set; } = WorkTaskStatus.Pending;
+    public string? StepKey { get; set; }
+    public string? Result { get; set; }
+    /// <summary>Saídas (objeto JSON livre; <c>{}</c> quando não há).</summary>
+    public JsonElement Output { get; set; }
+    public WorkTaskUndo? Undo { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    /// <summary>
+    /// Chamado na Bancada: chamados e PRs da sub-tarefa — no item espelho, os links da etapa do plano; no item avulso, o
+    /// chamado anexado (<see cref="WorkTaskTicket"/>).
+    /// </summary>
+    public List<WorkTaskLinkResponse> Links { get; set; } = [];
+    /// <summary>Card 78680: pausada pela pessoa.</summary>
+    public bool Held { get; set; }
+    public string? HeldBy { get; set; }
+    /// <summary>Card 78680: dependências, quem depende dela e o que dá para fazer agora (mover/pausar/cancelar) e por quê não.</summary>
+    public WorkTaskControls? Controls { get; set; }
+
+    public static WorkTaskResponse From(WorkItemTask task) => From(task, null);
+
+    public static WorkTaskResponse From(WorkItemTask task, WorkItem? item) => new()
+    {
+        Id = task.Id,
+        Number = task.Number,
+        Order = task.Order,
+        Title = task.Title,
+        Description = task.Description,
+        Kind = task.Kind,
+        Executor = task.Executor,
+        Params = task.Params,
+        Status = task.Status,
+        StepKey = task.StepKey,
+        Result = task.Result,
+        Output = task.OutputElement,
+        Undo = task.Undo,
+        StartedAt = task.StartedAt,
+        CompletedAt = task.CompletedAt,
+        Links = WorkTaskTicket.Read(task) is { } t ? [t] : [],
+        Held = task.Held,
+        HeldBy = task.HeldBy,
+        Controls = item?.Controls(task),
+    };
+}
+
+/// <summary>Chamado na Bancada: link de uma sub-tarefa (chamado ou PR) com o status.</summary>
+public class WorkTaskLinkResponse
+{
+    /// <summary>Id do link do plano (item espelho); null no chamado do item avulso.</summary>
+    public Guid? Id { get; set; }
+    /// <summary>ticket | pr | doc | other.</summary>
+    public string Kind { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string Url { get; set; } = string.Empty;
+    /// <summary>Chamado: open | resolved | closed; PR: open | merged | closed.</summary>
+    public string? Status { get; set; }
+    /// <summary>CI do PR aberto: pending | success | failure.</summary>
+    public string? ChecksStatus { get; set; }
+
+    public static WorkTaskLinkResponse From(ExecutionLink link) => new()
+    {
+        Id = link.Id,
+        Kind = link.Kind,
+        Title = link.Title,
+        Url = link.Url,
+        Status = link.Status,
+        ChecksStatus = link.ChecksStatus,
+    };
+}
+
+/// <summary>
+/// 0094: um item relatado ao card (aba "Relatado", somente leitura) — a origem/contexto da relação mais o item resolvido
+/// (em geral de outro card), com as sub-tarefas, como a aba "Itens de trabalho" mostra.
+/// </summary>
+public class WorkItemRelatedResponse
+{
+    /// <summary>specialist | plan | timeline | item-ref | manual.</summary>
+    public string Source { get; set; } = WorkItemRelatedSource.Manual;
+    public string? Context { get; set; }
+    /// <summary>Sub-tarefa citada (quando a menção foi a um <c>#n</c> de sub-tarefa), para destacar.</summary>
+    public long? MatchedTaskNumber { get; set; }
+    public DateTimeOffset RelatedAt { get; set; }
+    public string AddedByName { get; set; } = string.Empty;
+    public WorkItemResponse Item { get; set; } = new();
+
+    public static WorkItemRelatedResponse From(WorkItemRelated r, WorkItemResponse item) => new()
+    {
+        Source = r.Source,
+        Context = r.Context,
+        MatchedTaskNumber = r.RelatedTaskNumber,
+        RelatedAt = r.CreatedAt,
+        AddedByName = r.CreatedByName,
+        Item = item,
+    };
+}
+
+public class WorkItemLogResponse
+{
+    public long Id { get; set; }
+    public long? TaskNumber { get; set; }
+    public DateTimeOffset At { get; set; }
+    public string Actor { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+
+    public static WorkItemLogResponse From(WorkItemLog log) => new()
+    {
+        Id = log.Id,
+        TaskNumber = log.TaskNumber,
+        At = log.At,
+        Actor = log.Actor,
+        Kind = log.Kind,
+        Text = log.Text,
+    };
+}
+
+/// <summary>0085: <c>POST WorkItems/{number}/execute</c>.</summary>
+public class WorkItemExecuteResponse
+{
+    public Guid? RequestId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public WorkItemResponse? Item { get; set; }
+}
+
+/// <summary>
+/// Resultado da busca de itens de trabalho por número ou título (<c>GET WorkItems/search</c>, lista do <c>##</c> na conversa
+/// do especialista) — item ou sub-tarefa, sem texto grande.
+/// </summary>
+public class WorkItemSearchHit
+{
+    /// <summary><c>item</c> ou <c>task</c>.</summary>
+    public string Kind { get; set; } = "item";
+    public long Number { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string CardNumber { get; set; } = string.Empty;
+    /// <summary>Item dono (na sub-tarefa; no item é o próprio).</summary>
+    public long ItemNumber { get; set; }
+    public string ItemTitle { get; set; } = string.Empty;
+    /// <summary>Tipo do item (no item e no dono da sub-tarefa).</summary>
+    public string ItemType { get; set; } = string.Empty;
+    public DateTimeOffset UpdatedAt { get; set; }
+}

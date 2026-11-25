@@ -18,6 +18,10 @@ public static class Paths
     public static string Lock => Path.Combine(Root, "run.lock");
     public static string Bin => Path.Combine(Root, "bin", IsWindows ? "prmake-agent.exe" : "prmake-agent");
     public static string ClaudeSettings => Path.Combine(Root, "claude-settings.json");
+    /// <summary>0080: perfil do Claude Code do Especialista do caso.</summary>
+    public static string CaseClaudeSettings => Path.Combine(Root, "claude-settings-case.json");
+    /// <summary>0102: perfil da pergunta da Base Solvace — só leitura, sem hooks.</summary>
+    public static string BaseAskClaudeSettings => Path.Combine(Root, "claude-settings-base.json");
     /// <summary>Pasta do Claude Code (CLAUDE_CONFIG_DIR, como o próprio Claude Code, ou ~/.claude).</summary>
     public static string ClaudeHome => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } c ? c : Path.Combine(Home, ".claude");
     public static string UserTokenFile => Path.Combine(ClaudeHome, "prmake-token.txt");
@@ -35,6 +39,27 @@ public static class Paths
         Directory.CreateDirectory(CardsRoot);
         return CardsRoot;
     }
+
+    /// <summary>
+    /// 0099 (ajustes 2): pasta neutra dos pedidos de épico (<c>E…</c> — especialista e itens de gestão da Mesa): não
+    /// precisam de workspace nem de repositórios (PO / gestor de problemas sem código na máquina).
+    /// </summary>
+    public static string DeskRoot => Path.Combine(PrmakeHome, "desk");
+
+    /// <summary>Cria a pasta neutra da Mesa e devolve o caminho.</summary>
+    public static string EnsureDeskRoot()
+    {
+        Directory.CreateDirectory(DeskRoot);
+        return DeskRoot;
+    }
+
+    /// <summary>Chave de épico do PRMake (<c>E123</c>, sem caixa) — o mesmo formato do <c>EpicKey</c> do servidor.</summary>
+    public static bool IsEpicKey(string? card)
+    {
+        var k = (card ?? string.Empty).Trim().TrimStart('#');
+        return k.Length is > 1 and <= 19 && (k[0] == 'E' || k[0] == 'e') && k.Skip(1).All(char.IsAsciiDigit);
+    }
+
     public static bool IsWindows => OperatingSystem.IsWindows();
     public static bool IsMac => OperatingSystem.IsMacOS();
 
@@ -190,6 +215,10 @@ public sealed class PrmakeClient : IDisposable
     public async Task<RealTimeInfo?> RealTimeAsync(CancellationToken ct) =>
         await GetAsync("ExecutionWorker/realtime", AgentJson.Default.RealTimeInfo, ct);
 
+    /// <summary>1.9.2: há pedido na fila pronto para começar? (1 consulta no PRMake — com o relay fora, a cada poucos segundos)</summary>
+    public async Task<bool> ReadyAsync(CancellationToken ct) =>
+        (await GetAsync("ExecutionQueue/ready", AgentJson.Default.QueueReady, ct))?.Ready == true;
+
     /// <summary>Consulta a fila (<paramref name="waitSeconds"/> = 0: responde na hora): null = nada na fila.</summary>
     public async Task<ClaimResponse?> NextAsync(int waitSeconds, CancellationToken ct)
     {
@@ -209,6 +238,50 @@ public sealed class PrmakeClient : IDisposable
 
     public Task FinishAsync(Guid id, FinishRequest request, CancellationToken ct) =>
         PostAsync($"ExecutionQueue/{id}/finish", request, AgentJson.Default.FinishRequest, AgentJson.Default.DictionaryStringJsonElement, ct);
+
+    /// <summary>0074: próximo item de promoção de PRs do dono (cherry-pick local); null = nada agora.</summary>
+    public async Task<PromotionClaim?> NextPromotionAsync(CancellationToken ct)
+    {
+        using var response = await _http.PostAsync("PromotionExecutor/next", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        await EnsureAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync(AgentJson.Default.PromotionClaim, ct);
+    }
+
+    public async Task<PromotionHeartbeat> PromotionHeartbeatAsync(Guid itemId, CancellationToken ct)
+    {
+        using var response = await _http.PostAsync($"PromotionExecutor/items/{itemId}/heartbeat", null, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync(AgentJson.Default.PromotionHeartbeat, ct)) ?? new PromotionHeartbeat();
+    }
+
+    public async Task ReportPromotionAsync(Guid itemId, PromotionReport report, CancellationToken ct)
+    {
+        using var response = await _http.PostAsJsonAsync($"PromotionExecutor/items/{itemId}/report", report, AgentJson.Default.PromotionReport, ct);
+        await EnsureAsync(response, ct);
+    }
+
+    /// <summary>0100: próxima coleta da AWS pedida pelo dono deste executor; null = nada agora.</summary>
+    public async Task<AwsRefreshClaim?> NextAwsRefreshAsync(CancellationToken ct)
+    {
+        using var response = await _http.PostAsync("AwsDeployExecutor/next", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        await EnsureAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync(AgentJson.Default.AwsRefreshClaim, ct);
+    }
+
+    public async Task<AwsRefreshHeartbeat> AwsRefreshHeartbeatAsync(Guid id, CancellationToken ct)
+    {
+        using var response = await _http.PostAsync($"AwsDeployExecutor/{id}/heartbeat", null, ct);
+        await EnsureAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync(AgentJson.Default.AwsRefreshHeartbeat, ct)) ?? new AwsRefreshHeartbeat();
+    }
+
+    public async Task ReportAwsRefreshAsync(Guid id, AwsRefreshReport report, CancellationToken ct)
+    {
+        using var response = await _http.PostAsJsonAsync($"AwsDeployExecutor/{id}/report", report, AgentJson.Default.AwsRefreshReport, ct);
+        await EnsureAsync(response, ct);
+    }
 
     public async Task<PlanPending?> CurrentPlanAsync(string card, CancellationToken ct)
     {
@@ -276,7 +349,7 @@ public sealed class PrmakeClient : IDisposable
 public static class Shell
 {
     public static async Task<(int Code, string Output)> RunAsync(string file, IEnumerable<string> args, string? cwd = null,
-        TimeSpan? timeout = null, CancellationToken ct = default)
+        TimeSpan? timeout = null, CancellationToken ct = default, IReadOnlyDictionary<string, string>? env = null)
     {
         var psi = new ProcessStartInfo(file)
         {
@@ -287,6 +360,8 @@ public static class Shell
             WorkingDirectory = cwd ?? Environment.CurrentDirectory
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (env is not null)
+            foreach (var (k, v) in env) psi.Environment[k] = v;
         using var p = new Process { StartInfo = psi };
         try
         {

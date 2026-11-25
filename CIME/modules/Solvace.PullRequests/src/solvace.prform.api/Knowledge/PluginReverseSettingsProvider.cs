@@ -33,8 +33,11 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
 
         var d = ReverseSettings.Default;
         var roles = List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringApproverRoles));
+        // 0097: o índice técnico (gerado sem IA) nunca conta para o "completo"
         var required = List(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringRequiredDocs))
-            .Select(x => x.ToLowerInvariant()).Where(ReverseDocTypes.ByKey.ContainsKey).ToList();
+            .Select(x => x.ToLowerInvariant()).Where(x => ReverseDocTypes.ByKey.TryGetValue(x, out var t) && !t.Generated).ToList();
+        var practicalMin = int.TryParse(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringPracticalMinQuestions)?.Trim(),
+            NumberStyles.Integer, CultureInfo.InvariantCulture, out var pm) && pm >= 0 ? pm : d.PracticalMinQuestions;
         var gate = values.TryGetValue(SkillsConfigurationKeys.ReverseEngineeringGateStep, out var g) ? g.Trim() : d.GateStep;
         var coverage = double.TryParse(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringMinCoverage)?.Trim().TrimEnd('%'),
             NumberStyles.Float, CultureInfo.InvariantCulture, out var c) ? (c > 1 ? c / 100 : c) : d.MinCoverage;
@@ -49,7 +52,8 @@ public class PluginReverseSettingsProvider(IPluginConfigurationResolver resolver
             Supersedes(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringSupersedes)) ?? d.Supersedes,
             Translations(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringTranslations)) ?? d.Translations,
             Infra(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringInfra)) ?? d.Infra,
-            JsonObject(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGeneration), SkillsConfigurationKeys.ReverseEngineeringGeneration) ?? d.Generation);
+            JsonObject(values.GetValueOrDefault(SkillsConfigurationKeys.ReverseEngineeringGeneration), SkillsConfigurationKeys.ReverseEngineeringGeneration) ?? d.Generation,
+            practicalMin);
     }
 
     /// <summary>0066: configuração em JSON objeto (inválido = o padrão do código).</summary>

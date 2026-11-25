@@ -19,6 +19,10 @@ public sealed class AgentConfig
     public int WorktreeRetentionDays { get; set; } = 7;
     public bool AutoUpdate { get; set; } = true;
     public bool Notifications { get; set; } = true;
+    /// <summary>0095: porta da tela ao vivo (só 127.0.0.1) — a Bancada procura nesta porta; 0 desliga.</summary>
+    public int LiveViewPort { get; set; } = 47615;
+    /// <summary>0095: origens do PRMake que podem listar as sessões do navegador desta máquina.</summary>
+    public List<string> LiveViewOrigins { get; set; } = ["https://app.softhouse.app.br", "http://localhost:4200"];
 }
 
 public sealed class RegisterRequest
@@ -67,6 +71,10 @@ public sealed class WorkerState
     public List<Guid> ActiveRequestIds { get; set; } = [];
     /// <summary>0068: há pedido que esta máquina pode pegar agora.</summary>
     public bool QueueReady { get; set; }
+    /// <summary>0085: itens de trabalho ao mesmo tempo (pista própria, fora do MaxConcurrency); o PRMake confere a mesma regra.</summary>
+    public int WorkItemSlots { get; set; } = 2;
+    /// <summary>Próximo sinal de vida em N s (relay falhando no PRMake); nulo = 60 s.</summary>
+    public int? ReportEverySeconds { get; set; }
 }
 
 /// <summary>0068: conexão ao relay de tempo real (GET ExecutionWorker/realtime).</summary>
@@ -116,6 +124,28 @@ public sealed class ClaimResponse
     /// <summary>0047: fase do card (analysis | correction) e o modelo do Claude Code para ela (null = padrão da máquina).</summary>
     public string? Phase { get; set; }
     public string? Model { get; set; }
+    /// <summary>0080: pedido do Especialista do caso — token restrito ao caso (MCP e scripts; nunca altera o plano).</summary>
+    public string? CaseToken { get; set; }
+    /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — limpa os worktrees do item no fim.</summary>
+    public long? WorkItemNumber { get; set; }
+    /// <summary>0102: esforço do Claude Code (<c>--effort</c>); null = o padrão da máquina.</summary>
+    public string? Effort { get; set; }
+    /// <summary>0102: anexos da pergunta da Base Solvace (gravados na pasta do pedido, <c>PRMAKE_FILES_DIR</c>).</summary>
+    public List<ClaimFile>? Files { get; set; }
+}
+
+/// <summary>1.9.2: GET ExecutionQueue/ready.</summary>
+public sealed class QueueReady
+{
+    public bool Ready { get; set; }
+}
+
+/// <summary>0102: anexo do pedido (base64).</summary>
+public sealed class ClaimFile
+{
+    public string Name { get; set; } = string.Empty;
+    public string MediaType { get; set; } = string.Empty;
+    public string Data { get; set; } = string.Empty;
 }
 
 public sealed class StartRequest
@@ -236,12 +266,19 @@ public sealed class AgentDescriptor
 [JsonSerializable(typeof(RealTimeInfo))]
 [JsonSerializable(typeof(DoctorRequest))]
 [JsonSerializable(typeof(ClaimResponse))]
+[JsonSerializable(typeof(QueueReady))]
 [JsonSerializable(typeof(StartRequest))]
 [JsonSerializable(typeof(HeartbeatRequest))]
 [JsonSerializable(typeof(HeartbeatResponse))]
 [JsonSerializable(typeof(FinishRequest))]
 [JsonSerializable(typeof(PlanPending))]
 [JsonSerializable(typeof(AgentDescriptor))]
+[JsonSerializable(typeof(PromotionClaim))]
+[JsonSerializable(typeof(PromotionReport))]
+[JsonSerializable(typeof(PromotionHeartbeat))]
+[JsonSerializable(typeof(AwsRefreshClaim))]
+[JsonSerializable(typeof(AwsRefreshReport))]
+[JsonSerializable(typeof(AwsRefreshHeartbeat))]
 [JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(string))]

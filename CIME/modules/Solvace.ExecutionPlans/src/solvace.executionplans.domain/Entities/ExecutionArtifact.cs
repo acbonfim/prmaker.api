@@ -34,6 +34,26 @@ public class ExecutionArtifact
     /// <summary>Comentário do plano a que o arquivo foi anexado (0031); null = arquivo da skill.</summary>
     public Guid? NoteId { get; private set; }
 
+    /// <summary>
+    /// 0076: de onde veio, quando é evidência do card no DevOps (<c>devops:&lt;id do anexo&gt;</c>) — a importação não
+    /// baixa de novo. null = arquivo da skill ou anexo de comentário do PRMake.
+    /// </summary>
+    public string? ExternalKey { get; private set; }
+    public const int MaxExternalKeyLength = 200;
+
+    /// <summary>0076: quando a skill abriu o conteúdo pela primeira vez (a análise precisa ler toda evidência).</summary>
+    public DateTimeOffset? ReadAt { get; private set; }
+
+    public bool IsEvidence => ExternalKey is not null;
+
+    public void SetExternalKey(string key)
+    {
+        var k = key.Trim();
+        if (k.Length == 0 || k.Length > MaxExternalKeyLength)
+            throw new DomainException("Chave externa inválida.");
+        ExternalKey = k;
+    }
+
     public string CreatedBy { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }

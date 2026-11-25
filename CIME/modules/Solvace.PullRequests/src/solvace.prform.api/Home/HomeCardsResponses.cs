@@ -1,10 +1,14 @@
 namespace solvace.prform.Home;
 
-/// <summary>Listas da home (0051): <c>mine</c> = cards registrados pelo usuário; <c>participated</c> = cards em que ele mexeu.</summary>
+/// <summary>
+/// Listas da home (0051): <c>mine</c> = cards registrados pelo usuário; <c>participated</c> = cards em que ele mexeu;
+/// <c>workbench</c> (0088) = todos os cards em que ele atuou, pela última atualização no card (abrem na Bancada).
+/// </summary>
 public static class HomeCardsScope
 {
     public const string Mine = "mine";
     public const string Participated = "participated";
+    public const string Workbench = "workbench";
 }
 
 /// <summary>Como o usuário participou do card (selos "por que este card está aqui"). Mantenha em sincronia com o front.</summary>
@@ -15,6 +19,7 @@ public static class HomeCardRole
     public const string Timeline = "timeline";
     public const string Plan = "plan";
     public const string Handover = "handover";
+    public const string WorkItem = "workitem";
 }
 
 /// <summary>Tipo da última atividade do card. Mantenha em sincronia com o front.</summary>
@@ -26,6 +31,7 @@ public static class HomeCardActivityKind
     public const string Note = "note";
     public const string Plan = "plan";
     public const string Handover = "handover";
+    public const string WorkItem = "workitem";
 }
 
 public sealed class HomeCardResponse
@@ -53,6 +59,10 @@ public sealed class HomeCardResponse
     public HomeCardTimeline Timeline { get; init; } = new();
     public HomeCardNotes Notes { get; init; } = new();
     public HomeCardHandover? Handover { get; init; }
+    /// <summary>0088: última atualização no card, de qualquer pessoa (atividades + andamento do plano e dos itens).</summary>
+    public DateTimeOffset? UpdatedAt { get; init; }
+    /// <summary>0088: itens de trabalho da Bancada.</summary>
+    public HomeCardWorkItems WorkItems { get; init; } = new();
 }
 
 public sealed record HomeCardParticipant(Guid? UserId, string Name, bool IsOwner);
@@ -76,6 +86,9 @@ public sealed class HomeCardPlan
     public string? WaitingOn { get; init; }
     public string? WaitingReason { get; init; }
     public int OpenQuestions { get; init; }
+    /// <summary>0075: o que o card está aguardando (none|ticket|pr-review|qa-validation|answer|user) e desde quando.</summary>
+    public string? SituationKind { get; init; }
+    public DateTimeOffset? SituationAt { get; init; }
     /// <summary>Fases que o card tem (análise e/ou correção).</summary>
     public IReadOnlyList<string> Phases { get; init; } = [];
     public DateTimeOffset UpdatedAt { get; init; }
@@ -97,3 +110,14 @@ public sealed class HomeCardNotes
 public sealed record HomeCardEntry(Guid? UserId, string UserName, string Excerpt, DateTimeOffset CreatedAt, int? Number = null);
 
 public sealed record HomeCardHandover(Guid? UserId, DateTimeOffset At);
+
+public sealed class HomeCardWorkItems
+{
+    public int Count { get; init; }
+    /// <summary>Não concluídos, cancelados nem desfeitos.</summary>
+    public int Open { get; init; }
+    /// <summary>O em andamento mais recente; sem nenhum, o último mexido.</summary>
+    public HomeCardWorkItem? Current { get; init; }
+}
+
+public sealed record HomeCardWorkItem(long Number, string Title, string Type, string Status, DateTimeOffset UpdatedAt);

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using solvace.prform.application.Contracts;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Enums;
+using solvace.prform.domain.Extensions;
 using solvace.prform.domain.RealTime;
 using solvace.prform.domain.Requests;
 using solvace.prform.domain.Responses;
@@ -15,13 +16,16 @@ public class PluginApplication : IPluginApplication
     private readonly DefaultContext _context;
     private readonly IPluginCacheManager _pluginCacheManager;
     private readonly IRealTimeNotifier _realTimeNotifier;
+    private readonly IPluginSettingHistory? _history;
     private DbSet<Plugin> _repository;
 
-    public PluginApplication(DefaultContext context, IPluginCacheManager pluginCacheManager, IRealTimeNotifier realTimeNotifier)
+    public PluginApplication(DefaultContext context, IPluginCacheManager pluginCacheManager, IRealTimeNotifier realTimeNotifier,
+        IPluginSettingHistory? history = null)
     {
         _context = context;
         _pluginCacheManager = pluginCacheManager;
         _realTimeNotifier = realTimeNotifier;
+        _history = history;
         _repository = context.Plugins;
     }
     
@@ -63,6 +67,8 @@ public class PluginApplication : IPluginApplication
     {
         var plugin = await GetPluginById(id, cancellationToken);
 
+        // 0086: histórico chave a chave (gravado no mesmo SaveChanges da alteração).
+        _history?.Track(plugin, plugin.Configurations?.GetAllConfigurations(), request.Configurations);
         plugin.SetConfigurations(request.Configurations);
         plugin.SetAdminOnly(request.AdminOnly);
         plugin.SetPersonal(request.IsPersonal);
@@ -86,7 +92,7 @@ public class PluginApplication : IPluginApplication
     /// Avisa quem está na tela de PR que a configuração de repositórios/branches mudou.
     /// Só dispara para o plugin de Pull Request. Best-effort: nunca quebra a operação.
     /// </summary>
-    private async Task NotifyPullRequestConfigUpdatedAsync(int pluginId, CancellationToken cancellationToken)
+    public async Task NotifyPullRequestConfigUpdatedAsync(int pluginId, CancellationToken cancellationToken)
     {
         if (pluginId != EPlugin.PULLREQUEST)
             return;

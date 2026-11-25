@@ -1,3 +1,4 @@
+using solvace.executionplans.domain.Entities;
 using solvace.executionplans.domain.Requests;
 using solvace.executionplans.domain.Responses;
 
@@ -18,6 +19,15 @@ public interface IExecutionPlanApplication
     Task<ExecutionPlanResponse> GetAsync(Guid planId, CancellationToken cancellationToken);
 
     Task<ExecutionPlanResponse> UpsertStepsAsync(Guid planId, UpsertExecutionStepsRequest request, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Etapa nova, pendente, a pedido de uma pessoa — sem mexer nas outras (antes da etapa em andamento).</summary>
+    Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken,
+        string? position = null);
+    /// <summary>
+    /// Card 78680: mexe numa etapa sem cancelar o plano — move (first/last/up/down/before), pausa, continua ou cancela (com as
+    /// que dependem dela, se pedido). Etapa em andamento atropelada: o plano é pausado e retomado na ordem nova.
+    /// </summary>
+    Task<ExecutionStepResponse> ControlStepAsync(Guid planId, string stepKey, WorkTaskControlRequest request, string? beforeKey,
+        ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionStepResponse> CancelStepAsync(Guid planId, string stepKey, string reason, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionPlanResponse> ChangeStatusAsync(Guid planId, ChangeExecutionPlanStatusRequest request, ExecutionActor actor, CancellationToken cancellationToken);
@@ -33,19 +43,62 @@ public interface IExecutionPlanApplication
     Task<ExecutionLinkResponse> UpdateLinkAsync(Guid planId, Guid linkId, UpdateExecutionLinkRequest request, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteLinkAsync(Guid planId, Guid linkId, ExecutionActor actor, CancellationToken cancellationToken);
 
+    // 0075 — arquivos do card (todos os planos) e um arquivo pelo nome (imagem anexo:<nome> no texto)
+    Task<List<ExecutionArtifactResponse>> GetCardArtifactsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionArtifactFile> GetCardArtifactFileByNameAsync(string cardNumber, string name, CancellationToken cancellationToken);
+
+    // 0076 — evidências do card no DevOps guardadas no plano
+    Task<CardEvidenceResponse> ImportEvidenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> ListEvidenceAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<CardEvidenceResponse> SkipEvidenceAsync(Guid planId, string reason, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<string?> CheckEvidenceAsync(Guid planId, CancellationToken cancellationToken);
+
+    // 0078 — assistente do card (sugestões que não travam) e publicação por card
+    Task<List<ExecutionSuggestionResponse>> GetSuggestionsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionSuggestionResponse> ActOnSuggestionAsync(Guid suggestionId, string action, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionSuggestionResponse> DismissSuggestionAsync(Guid suggestionId, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<CardSituationResponse> SetCardSituationAutoPostAsync(string cardNumber, bool? autoPost, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>0078: edita o texto de um arquivo do plano (análise, soluções, chamado...).</summary>
+    Task<ExecutionArtifactResponse> UpdateArtifactTextAsync(Guid planId, Guid artifactId, string content, ExecutionActor actor, CancellationToken cancellationToken);
+
+    // 0075 — situação atual do card (o que está sendo aguardado) e o contexto da passagem
+    Task<CardSituationResponse> GetSituationAsync(string cardNumber, bool withDevOps, CancellationToken cancellationToken);
+    Task<CardSituationResponse> SetHandoffAsync(Guid planId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pela tela.</summary>
+    Task<int> PublishSituationAsync(string cardNumber, string? html, ExecutionActor actor, CancellationToken cancellationToken, string? markdown = null);
+    /// <summary>0076: publicação automática da situação — preferência do usuário e o padrão global.</summary>
+    Task<SituationPostSettingsResponse> GetSituationPostSettingsAsync(Guid userId, CancellationToken cancellationToken);
+    Task<SituationPostSettingsResponse> SetSituationPostSettingsAsync(Guid userId, bool? autoPost, CancellationToken cancellationToken);
+
+    // 0075 — fotografias do código citado
+    Task<ExecutionCodeRefResponse> SaveCodeRefAsync(Guid planId, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<ExecutionCodeRefResponse> PatchCodeRefAsync(Guid planId, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);
+    Task DeleteCodeRefAsync(Guid planId, string reference, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Grava pelo card: no plano do card ou, sem plano, como fotografia do card (PlanId nulo).</summary>
+    Task<ExecutionCodeRefResponse> SaveCardCodeRefAsync(string cardNumber, string reference, ExecutionCodeCapture capture, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>Ajusta pelo card: no plano do card (ou outra ref do card) ou, sem plano, a fotografia do card.</summary>
+    Task<ExecutionCodeRefResponse> PatchCardCodeRefAsync(string cardNumber, string reference, ExecutionCodeRefPatch patch, ExecutionActor actor, CancellationToken cancellationToken);
+    Task<List<ExecutionCodeRefHeadResponse>> GetCodeRefHeadsAsync(Guid planId, CancellationToken cancellationToken);
+    Task<List<ExecutionCodeRefHeadResponse>> GetCardCodeRefHeadsAsync(string cardNumber, CancellationToken cancellationToken);
+    Task<ExecutionCodeRefResponse> GetCardCodeRefAsync(string cardNumber, string reference, CancellationToken cancellationToken);
+
     /// <summary>Heartbeat da skill: registra o sinal de vida e diz se ela segue, espera ou para.</summary>
     Task<ExecutionControlResponse> ControlAsync(Guid planId, CancellationToken cancellationToken);
 
     /// <summary>Grava um lote de pedaços de andamento; devolve quantos eram novos.</summary>
-    Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken);
+    /// <param name="actor">Quem registra: só o executor conta como atividade do Claude (padrão: executor).</param>
+    Task<int> AppendLogsAsync(Guid planId, AppendExecutionLogsRequest request, CancellationToken cancellationToken, ExecutionActor? actor = null);
     Task<List<ExecutionLogResponse>> GetLogsAsync(Guid planId, long afterId, string? stepKey, int limit, CancellationToken cancellationToken);
 
     Task<ExecutionArtifactResponse> UploadArtifactAsync(Guid planId, ExecutionArtifactUpload upload, ExecutionActor actor, CancellationToken cancellationToken);
-    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
+    /// <param name="markRead">0076: quem pede é a skill — a evidência conta como aberta.</param>
+    Task<ExecutionArtifactFile> GetArtifactFileAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken, bool markRead = false);
     Task DeleteArtifactAsync(Guid planId, Guid artifactId, CancellationToken cancellationToken);
 
     // 0031 — comentários com anexos
-    Task<ExecutionNoteResponse> AddNoteAsync(Guid planId, string? text, string? stepKey, IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>0080: confirma a divergência pendente (a etapa de PR pode começar).</summary>
+    Task<ExecutionPlanResponse> ConfirmDivergenceAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken);
+        Task<ExecutionNoteResponse> AddNoteAsync(Guid planId, string? text, string? stepKey, IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
     Task<ExecutionNoteResponse> EditNoteAsync(Guid planId, Guid noteId, string? text, ExecutionActor actor, CancellationToken cancellationToken);
     Task DeleteNoteAsync(Guid planId, Guid noteId, ExecutionActor actor, CancellationToken cancellationToken);
     /// <param name="fromExecutor">A skill está lendo: grava até qual comentário ela leu (0037).</param>

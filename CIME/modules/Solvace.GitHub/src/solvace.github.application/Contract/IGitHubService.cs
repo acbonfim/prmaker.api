@@ -16,6 +16,20 @@ public interface IGitHubService
     Task<PullRequestChecksResponse> GetPullRequestChecksAsync(string repository, int number, CancellationToken cancellationToken = default);
     Task<CardReferencesResponse?> GetCardReferencesAsync(string cardNumber, int maxPerType, CancellationToken cancellationToken = default);
     Task<CommitDiffResponse?> GetCommitDiffAsync(string sha, CancellationToken cancellationToken = default, string? repository = null);
-    Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default);
+    /// <summary>Compare base...head; 0091: <paramref name="repository"/> = repositório do card (padrão: o configurado).</summary>
+    Task<CompareDiffResponse?> CompareRefsDiffAsync(string @base, string head, CancellationToken cancellationToken = default, string? repository = null);
     Task<List<BranchCommitResponse>> GetBranchCommitsAsync(string repository, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>0074: nomes de todas as branches do repositório (cache curto). Quem chama filtra.</summary>
+    /// <param name="bypassCache">true consulta o GitHub de novo (branch recém-criada).</param>
+    Task<IReadOnlyList<string>> ListBranchesAsync(string repository, CancellationToken cancellationToken = default, bool bypassCache = false);
+    /// <summary>
+    /// 0085 r3: branches do repositório com <c>protected</c> e <c>isDefault</c> (cache de 60 s por repositório e token).
+    /// Repositório inexistente/sem acesso: <see cref="Octokit.NotFoundException"/>. Quem chama filtra/ordena (<c>BranchSearch</c>).
+    /// </summary>
+    Task<IReadOnlyList<BranchInfoResponse>> ListBranchInfosAsync(string repository, CancellationToken cancellationToken = default);
+    /// <summary>0074: a branch existe no remoto?</summary>
+    Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default);
+    /// <summary>0074: commits de <paramref name="head"/> que não estão em <paramref name="base"/> (sem merges); null se alguma das refs não existe.</summary>
+    Task<BranchDeltaResponse?> GetBranchDeltaAsync(string repository, string @base, string head, CancellationToken cancellationToken = default);
 }

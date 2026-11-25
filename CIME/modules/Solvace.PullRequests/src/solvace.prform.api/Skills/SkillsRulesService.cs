@@ -1,0 +1,566 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
+using solvace.azure.application.Contract;
+using solvace.executionplans.application.Contracts;
+using solvace.executionplans.domain.Entities;
+using solvace.prform.application.UserIntegrations;
+using solvace.prform.domain.Extensions;
+using solvace.prform.domain.Promotion;
+
+namespace solvace.prform.Skills;
+
+/// <summary>Um PR do fluxo do card para um tipo de repositório: branch de origem (já com o sufixo), de onde ela sai e o destino.</summary>
+public record CardFlowPr(string Branch, string? From, string Target);
+
+/// <summary>Fluxo de um tipo de repositório (BranchStrategy.flows[flow][kind]).</summary>
+public record CardFlowKind(string Kind, IReadOnlyList<string> Repositories, string? Base, IReadOnlyList<string> BaseOptions, bool AskBase,
+    IReadOnlyList<CardFlowPr> Prs);
+
+/// <summary>Destino de um PR do fluxo para um repositório e a branch de trabalho dele (já com o sufixo do destino).</summary>
+public record RepositoryFlowTarget(string Target, string Branch);
+
+/// <summary>
+/// Branches de um repositório no fluxo do card: o tipo do repositório (legacy, revamp-backend…), a base e só os destinos
+/// que existem para esse tipo — revamp-backend não tem QA, por exemplo. <c>Known</c> = o repositório casa com o
+/// <c>BranchStrategy</c> e o fluxo do card tem o tipo; senão <c>Targets</c> vem vazio e quem chama usa a lista geral.
+/// </summary>
+public record RepositoryBranchPlan(string? Repository, string? Kind, string? Base, IReadOnlyList<RepositoryFlowTarget> Targets, bool Known);
+
+/// <summary>
+/// 0085: o que as regras do PRMake dizem para um card — tipo (Bug/US), área e fluxo, branch principal, branches por
+/// destino, fluxo por tipo de repositório e padrões. Base do <c>GET Skills/rules</c>, do <c>prmake_rules</c>, do
+/// contexto do especialista e do catálogo de modelos de itens.
+/// </summary>
+public record CardRules(
+    string Card,
+    string? WorkItemType,
+    bool IsUserStory,
+    string? Title,
+    string? AreaPath,
+    string? Flow,
+    string? FlowRule,
+    string MainBranch,
+    string BranchNamePattern,
+    IReadOnlyDictionary<string, string> Suffixes,
+    IReadOnlyList<CardFlowKind> Kinds,
+    string? DefaultRepository,
+    string? DefaultKind,
+    string CommitPattern,
+    string PrTitlePattern,
+    string PromotionBranchPattern,
+    IReadOnlyDictionary<string, string> Settings,
+    string? CardError,
+    string? State = null)
+{
+    /// <summary>Destinos dos PRs do fluxo para o repositório padrão (ex.: "development, qa"; release: "release-version/hotfix-version").</summary>
+    public string FlowTargets()
+    {
+        var kind = Kinds.FirstOrDefault(k => string.Equals(k.Kind, DefaultKind, StringComparison.OrdinalIgnoreCase)) ?? Kinds.FirstOrDefault();
+        if (kind is null) return string.Empty;
+        var targets = kind.Prs.Select(p => p.Target.Contains("{base}", StringComparison.OrdinalIgnoreCase) && kind.BaseOptions.Count > 0
+                ? string.Join("/", kind.BaseOptions)
+                : p.Target)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return string.Join(", ", targets);
+    }
+
+    /// <summary>Marcadores extras dos modelos de itens ({repository}, {flowTargets}, {flow}).</summary>
+    public IReadOnlyDictionary<string, string> TemplateExtras() => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["repository"] = DefaultRepository ?? string.Empty,
+        ["flowTargets"] = FlowTargets(),
+        ["flow"] = Flow ?? string.Empty
+    };
+}
+
+/// <summary>
+/// 0085: "Regras do PRMake" calculadas para o card — o especialista e as skills leem daqui em vez de inventar nome de
+/// branch. Tudo vem do "Skills Configurations" (BranchFlowByArea, BranchStrategy, BranchNamePattern,
+/// BranchSuffixByTarget, padrões) e do card no DevOps (área, tipo). Cache curto por card.
+/// </summary>
+public class SkillsRulesService(
+    IPluginConfigurationResolver resolver,
+    IAzureService azure,
+    IMemoryCache cache,
+    ILogger<SkillsRulesService> logger,
+    solvace.governance.application.Contracts.IGovernancePolicyProvider governance,
+    solvace.governance.application.IGovernanceStandardsApplication standards) : IPrmakeRulesProvider
+{
+    private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(2);
+
+    public async Task<CardRules> GetAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var card = NormalizeCard(cardNumber);
+        if (card.Length == 0)
+            throw new ArgumentException("Informe o número do card.");
+        var key = "prmake-rules:" + card;
+        if (cache.TryGetValue(key, out CardRules? cached) && cached is not null)
+            return cached;
+        var rules = await BuildAsync(card, cancellationToken);
+        // Sem o card (DevOps fora/sem integração) guarda por pouco tempo: a próxima chamada tenta de novo.
+        cache.Set(key, rules, rules.CardError is null ? CacheFor : TimeSpan.FromSeconds(15));
+        return rules;
+    }
+
+    public async Task<string?> RulesMarkdownAsync(string cardNumber, bool summary, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rules = await GetAsync(cardNumber, cancellationToken);
+            return summary ? SummaryMarkdown(rules) : Markdown(rules) + await GovernanceMarkdownAsync(cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Regras do PRMake indisponíveis para o card {Card}", cardNumber);
+            return null;
+        }
+    }
+
+    public async Task<bool?> IsUserStoryAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rules = await GetAsync(cardNumber, cancellationToken);
+            return rules.WorkItemType is null ? null : rules.IsUserStory;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>0099: "tipo" do épico da Mesa de gestão nas regras (não é card do DevOps).</summary>
+    public const string EpicWorkItemType = "Épico (Mesa de gestão)";
+
+    private async Task<CardRules> BuildAsync(string card, CancellationToken cancellationToken)
+    {
+        var settings = await SettingsAsync(cancellationToken);
+        // 0099: chave de épico (E123) — sem DevOps, branch nem fluxo: regras de gestão.
+        if (EpicKey.IsEpic(card))
+            return new CardRules(card, EpicWorkItemType, false, null, null, null, null, string.Empty, string.Empty,
+                new Dictionary<string, string>(), [], null, null, string.Empty, string.Empty, string.Empty, settings, null);
+        string V(string k, string fallback = "") => settings.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : fallback;
+
+        string? type = null, title = null, area = null, state = null, cardError = null;
+        try
+        {
+            var wi = await azure.GetCardAsync(card, cancellationToken);
+            if (wi is null || !string.IsNullOrWhiteSpace(wi.Error))
+                cardError = wi?.Error is { Length: > 0 } err ? err : "card não encontrado no DevOps";
+            else
+            {
+                type = wi.Fields.WorkItemType;
+                title = wi.Fields.Title;
+                area = wi.Fields.AreaPath;
+                state = wi.Fields.State;
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            cardError = e.Message;
+        }
+
+        // User Story é feature/{card}; Bug (ou tipo não lido) é o BranchNamePattern (hotfix/{card}).
+        var pattern = BranchRules.PatternFor(IsUserStory(type), V(SkillsConfigurationKeys.BranchNamePattern), V(SkillsConfigurationKeys.BranchNamePatternUserStory));
+        var main = BranchRules.MainBranch(pattern, card);
+        var suffixes = BranchRules.ParseSuffixes(V(SkillsConfigurationKeys.BranchSuffixByTarget));
+        var (flow, flowRule) = FlowOf(area, V(SkillsConfigurationKeys.BranchFlowByArea));
+        var strategy = V(SkillsConfigurationKeys.BranchStrategy);
+        var defaultRepo = V(SkillsConfigurationKeys.DefaultRepository);
+        var kinds = flow is null ? [] : KindsOf(strategy, flow, main);
+
+        return new CardRules(card, type, IsUserStory(type), title, area, flow, flowRule, main, pattern, suffixes, kinds,
+            defaultRepo.Length > 0 ? defaultRepo : null,
+            defaultRepo.Length > 0 ? BranchStrategyKinds.KindOf(defaultRepo, strategy) : null,
+            V(SkillsConfigurationKeys.CommitMessagePattern, "AB#{card} {summary}"),
+            V(SkillsConfigurationKeys.PrTitlePattern, "AB#{card} {TARGET}"),
+            V(SkillsConfigurationKeys.PromotionBranchPattern, "{branch}-{target}"),
+            settings, cardError, state);
+    }
+
+    /// <summary>
+    /// Branches do repositório no fluxo do card: o tipo vem do <c>BranchStrategy.repositories</c>; os destinos, dos PRs do
+    /// fluxo desse tipo (<c>{base}</c> vira as opções de base); a branch de cada destino é a principal + o sufixo do
+    /// <c>BranchSuffixByTarget</c>. Repositório desconhecido ou fluxo sem o tipo → <c>Known = false</c>, sem destinos.
+    /// </summary>
+    public static RepositoryBranchPlan PlanForRepository(CardRules r, string? repository)
+    {
+        var repo = repository?.Trim();
+        if (string.IsNullOrEmpty(repo)) return new RepositoryBranchPlan(null, null, null, [], false);
+        r.Settings.TryGetValue(SkillsConfigurationKeys.BranchStrategy, out var strategy);
+        var kindName = BranchStrategyKinds.KindOf(repo, strategy);
+        var kind = kindName is null ? null : r.Kinds.FirstOrDefault(k => string.Equals(k.Kind, kindName, StringComparison.OrdinalIgnoreCase));
+        if (kind is null) return new RepositoryBranchPlan(repo, kindName, null, [], false);
+
+        var targets = new List<RepositoryFlowTarget>();
+        foreach (var pr in kind.Prs)
+        {
+            var names = pr.Target.Contains("{base}", StringComparison.OrdinalIgnoreCase)
+                ? (kind.BaseOptions.Count > 0 ? kind.BaseOptions : kind.Base is { Length: > 0 } b ? [b] : [])
+                : [pr.Target];
+            foreach (var name in names)
+                if (name.Length > 0 && !targets.Exists(t => string.Equals(t.Target, name, StringComparison.OrdinalIgnoreCase)))
+                    targets.Add(new RepositoryFlowTarget(name, BranchRules.BranchFor(r.MainBranch, name, r.Suffixes)));
+        }
+        return new RepositoryBranchPlan(repo, kind.Kind, kind.Base ?? kind.BaseOptions.FirstOrDefault(), targets, targets.Count > 0);
+    }
+
+    public static bool IsUserStory(string? workItemType) =>
+        string.Equals(workItemType?.Trim(), "User Story", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Só o "Skills Configurations" (sem card) — catálogo sem card.</summary>
+    public Task<IReadOnlyDictionary<string, string>> SettingsOnlyAsync(CancellationToken cancellationToken) => SettingsAsync(cancellationToken);
+
+    private async Task<IReadOnlyDictionary<string, string>> SettingsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var config = await resolver.GetEffectiveConfigurationAsync(SkillsConfigurationKeys.PluginName, cancellationToken);
+            var values = string.IsNullOrWhiteSpace(config.Options) ? null : config.Options.JsonToListOfDictionaries().FirstOrDefault();
+            return new Dictionary<string, string>(values ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is InvalidOperationException or PersonalIntegrationRequiredException)
+        {
+            logger.LogWarning("Plugin {Plugin} indisponível: {Error} — regras com os padrões.", SkillsConfigurationKeys.PluginName, e.Message);
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>Fluxo pela área do card (BranchFlowByArea: [{areaContains, flow}], primeira que casa). Null = perguntar.</summary>
+    public static (string? Flow, string? Rule) FlowOf(string? areaPath, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(areaPath) || string.IsNullOrWhiteSpace(json)) return (null, null);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return (null, null);
+            foreach (var rule in doc.RootElement.EnumerateArray())
+            {
+                var contains = Str(rule, "areaContains");
+                var flow = Str(rule, "flow");
+                if (contains is { Length: > 0 } && flow is { Length: > 0 }
+                    && areaPath.Contains(contains, StringComparison.OrdinalIgnoreCase))
+                    return (flow, contains);
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return (null, null);
+    }
+
+    /// <summary>Tipos de repositório do fluxo com base, opções de base e os PRs (branch de origem já calculada).</summary>
+    public static List<CardFlowKind> KindsOf(string? strategyJson, string flow, string mainBranch)
+    {
+        var result = new List<CardFlowKind>();
+        if (string.IsNullOrWhiteSpace(strategyJson)) return result;
+        try
+        {
+            using var doc = JsonDocument.Parse(strategyJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return result;
+            var repos = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            if (root.TryGetProperty("repositories", out var r) && r.ValueKind == JsonValueKind.Array)
+                foreach (var rule in r.EnumerateArray())
+                    if (Str(rule, "kind") is { Length: > 0 } k && Str(rule, "match") is { Length: > 0 } m)
+                    {
+                        if (!repos.TryGetValue(k, out var list)) repos[k] = list = [];
+                        list.Add(m);
+                    }
+            if (!root.TryGetProperty("flows", out var flows) || flows.ValueKind != JsonValueKind.Object
+                || !flows.TryGetProperty(flow, out var f) || f.ValueKind != JsonValueKind.Object)
+                return result;
+            foreach (var kind in f.EnumerateObject())
+            {
+                if (kind.Value.ValueKind != JsonValueKind.Object) continue;
+                var v = kind.Value;
+                var options = v.TryGetProperty("baseOptions", out var bo) && bo.ValueKind == JsonValueKind.Array
+                    ? bo.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList()
+                    : [];
+                var ask = v.TryGetProperty("askBase", out var a) && a.ValueKind == JsonValueKind.True;
+                var prs = new List<CardFlowPr>();
+                if (v.TryGetProperty("prs", out var p) && p.ValueKind == JsonValueKind.Array)
+                    foreach (var pr in p.EnumerateArray())
+                        prs.Add(new CardFlowPr(mainBranch + (Str(pr, "suffix") ?? string.Empty), Str(pr, "from"), Str(pr, "target") ?? "?"));
+                result.Add(new CardFlowKind(kind.Name, repos.TryGetValue(kind.Name, out var rl) ? rl : [], Str(v, "base"), options, ask, prs));
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return result;
+    }
+
+    private static string? Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()?.Trim() : null;
+
+    /// <summary>
+    /// 0085 r3: bases e destinos do fluxo (para ordenar o autocomplete de branches) — master/main, as bases, opções de base e
+    /// destinos dos PRs de todos os fluxos do BranchStrategy e os destinos do BranchSuffixByTarget, sem repetir, nessa ordem.
+    /// Destino com marcador (<c>{base}</c>) fica de fora.
+    /// </summary>
+    public static List<string> FlowBaseBranches(string? strategyJson, IReadOnlyDictionary<string, string> suffixes)
+    {
+        var result = new List<string>();
+        void Add(string? name)
+        {
+            var v = name?.Trim();
+            if (string.IsNullOrEmpty(v) || v.Contains('{') || result.Contains(v, StringComparer.OrdinalIgnoreCase)) return;
+            result.Add(v);
+        }
+
+        Add("master");
+        Add("main");
+        if (!string.IsNullOrWhiteSpace(strategyJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(strategyJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("flows", out var flows) && flows.ValueKind == JsonValueKind.Object)
+                    foreach (var flow in flows.EnumerateObject())
+                    {
+                        if (flow.Value.ValueKind != JsonValueKind.Object) continue;
+                        foreach (var kind in flow.Value.EnumerateObject())
+                        {
+                            var v = kind.Value;
+                            if (v.ValueKind != JsonValueKind.Object) continue;
+                            Add(Str(v, "base"));
+                            if (v.TryGetProperty("baseOptions", out var bo) && bo.ValueKind == JsonValueKind.Array)
+                                foreach (var o in bo.EnumerateArray())
+                                    if (o.ValueKind == JsonValueKind.String) Add(o.GetString());
+                            if (v.TryGetProperty("prs", out var prs) && prs.ValueKind == JsonValueKind.Array)
+                                foreach (var pr in prs.EnumerateArray())
+                                    Add(Str(pr, "target"));
+                        }
+                    }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+        foreach (var target in suffixes.Keys)
+            Add(target);
+        return result;
+    }
+
+    public static string NormalizeCard(string? card)
+    {
+        var v = (card ?? string.Empty).Trim();
+        if (v.StartsWith("AB#", StringComparison.OrdinalIgnoreCase)) v = v[3..];
+        v = v.TrimStart('#').Trim();
+        return EpicKey.Normalize(v) ?? v; // 0099: e12 → E12
+    }
+
+    /// <summary>0099: o card é a chave de um épico da Mesa de gestão?</summary>
+    public static bool IsEpic(CardRules r) => EpicKey.IsEpic(r.Card);
+
+    private static readonly string[] ManagementRules =
+    [
+        "Toda gravação passa pelo PRMake — cards (`prmake_devops_card_create/update/move`), épico (`prmake_epic_save`, `prmake_epic_cards`), itens (`prmake_work_*`), arquivos e PDF (`prmake_work_item_file`, `prmake_pdf`); nada de PAT nem API direta do DevOps. Cada gravação no DevOps usa a integração pessoal de quem pediu.",
+        "Nunca mesclar PR; nunca fechar, remover nem mesclar/ligar como duplicado um card sem a pessoa decidir (estado/coluna de fechamento só com a decisão escrita).",
+        "Lote com mais de 10 cards gravando (criar, editar, mover): mostre a lista (card, o que muda, de → para) e espere a confirmação antes de gravar.",
+        "Antes de criar card, procure duplicado (`prmake_devops_query` com os termos do título, últimos 180 dias); antes de tag nova, procure a existente (`prmake_devops_meta(what: tags)`).",
+        "Picklists do DevOps são a lei: tipo, estado, coluna, lane, área, iteração, responsável e campos com valores permitidos sempre de `prmake_devops_meta` — nunca invente.",
+        "No board do time, considere os filtros salvos do épico (colunas ocultas, lanes, tipos, estados, responsável, tags, texto) — `prmake_devops_board(epic)` já aplica; para ver além deles, passe `useEpicFilters=false` e diga isso na resposta.",
+        "Números de relatório vêm da consulta (contagens do script/consulta), nunca estimados; diga a fonte, a data e se o `top` cortou.",
+        "PDF é gerado no servidor (`prmake_pdf` / `POST WorkItems/{n}/files/pdf`) a partir do markdown final do item.",
+        "Itens de trabalho: antes de criar, liste (`prmake_work_items`) e não duplique; kinds de gestão (devops-*, report, duplicates, understanding, rca-doc, pdf) seguem a skill `tarefas-de-gestao`.",
+        "Ações de card (Timeline, horas, estado, root cause) usam o NÚMERO DO CARD do DevOps, nunca a chave do épico."
+    ];
+
+    /// <summary>0099: regras do épico (Mesa de gestão) — o completo do <c>prmake_rules</c>/<c>Skills/rules</c>.</summary>
+    public static string ManagementMarkdown(CardRules r)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"# Regras do PRMake — épico {r.Card} (Mesa de gestão)");
+        sb.AppendLine();
+        sb.AppendLine($"`{r.Card}` é a chave de um **épico do PRMake** (tema de gestão), não um card do DevOps: não tem branch, PR, worktree, " +
+                      "plano de análise/correção nem estado de card. Os itens de trabalho, a conversa do especialista, os arquivos e os relatados " +
+                      $"do épico usam `{r.Card}` como card; o épico em si (dados, time/board preferido, cards) é `prmake_epic`.");
+        sb.AppendLine().AppendLine("## Regras de gestão");
+        foreach (var rule in ManagementRules) sb.AppendLine($"- {rule}");
+        sb.AppendLine().AppendLine("## Regras fixas");
+        sb.AppendLine("- Sub-tarefas de um item rodam em ordem; itens diferentes rodam em paralelo.");
+        sb.AppendLine("- `#n` é a mesma numeração de épicos, itens e sub-tarefas; citar `#<épico>` na conversa/Timeline de um card põe o card no épico.");
+        return sb.ToString();
+    }
+
+    /// <summary>0099: resumo das regras de gestão para o contexto do especialista do épico.</summary>
+    public static string ManagementSummaryMarkdown(CardRules r) =>
+        $"- `{r.Card}` é épico (Mesa de gestão): sem branch/PR/plano; ações de card usam o número do card.\n" +
+        "- Toda gravação pelo PRMake com a integração de quem pediu; nunca fechar/remover/mesclar card sem a pessoa decidir.\n" +
+        "- Lote > 10 cards: confirmar antes; criar card só depois de procurar duplicado; tag existente antes de tag nova; picklists de prmake_devops_meta.\n" +
+        "- Board do time: considere os filtros salvos do épico (prmake_devops_board(epic) já aplica; useEpicFilters=false para ver além — diga na resposta).\n" +
+        "- Relatórios com números da consulta; PDF pelo servidor (prmake_pdf). Regras completas: prmake_rules.\n";
+
+    // ── Markdown ─────────────────────────────────────────────────────────────────────────────────
+
+    private static string TypeText(CardRules r) => r.IsUserStory ? "User Story" : r.WorkItemType is { Length: > 0 } t ? t : "Bug (tipo não confirmado no DevOps)";
+
+    private static void AppendTypeChanges(StringBuilder sb, CardRules r)
+    {
+        if (r.IsUserStory)
+            sb.AppendLine("- **User Story**: análise pela skill `analisar-us` (plano com Kind `analisar-us`), texto do card = critérios de aceite, item da análise `analysis` e da implementação `implementation`, sem campo de Root Cause no DevOps. **US de RCA** (`[RCA]` no título / Requirement Type RCA) fecha **depois da validação em QA aprovada** pela ferramenta `fechamento-rca-us`: RCA no Modelo do prompt como comentário na discussion, classificação, resumo PT/EN, Remaining zerado e Ready for QA da US.");
+        else
+            sb.AppendLine("- **Bug**: análise pela skill `analisar-bug`, texto do card = Repro Steps, item da análise `analysis` e da correção `fix`, Root Cause no DevOps ao gerar o PR.");
+        sb.AppendLine("- Tipo do card (Bug/US, do DevOps) não é o tipo do item de trabalho: itens têm tipos próprios (`WorkItemTypes`: task, pull-request, review, adjustment, closing, data, ticket, text...). Nunca crie item como `bug`/`user-story` (US é uma história do DevOps).");
+    }
+
+    private static void AppendBranchesByTarget(StringBuilder sb, CardRules r)
+    {
+        sb.AppendLine("| Destino | Branch de trabalho |");
+        sb.AppendLine("|---|---|");
+        foreach (var (target, _) in r.Suffixes)
+            sb.AppendLine($"| {target} | `{BranchRules.BranchFor(r.MainBranch, target, r.Suffixes)}` |");
+        sb.AppendLine($"| outro destino | `{r.MainBranch}-<destino>` |");
+    }
+
+    private static readonly string[] FixedRules =
+    [
+        "Nunca mesclar PR: só abrir (o merge é sempre humano).",
+        "Toda gravação (plano, itens, PRs, card no DevOps, Timeline, arquivos) passa pelo PRMake — MCP `prmake_*` ou `prmake-plan.sh`; nada direto no GitHub/DevOps.",
+        "O Especialista do caso ajusta o plano atual a pedido da pessoa (etapa, espera, situação, respostas, arquivos); o plano não tem versões: mudança de solução pela proposta (`prmake_case_propose`) que uma pessoa aceita ajusta o mesmo plano; outra entrega = item de trabalho novo.",
+        "Nunca invente nome de branch: use a branch principal e a tabela de branches por destino acima.",
+        "Itens de trabalho: antes de criar, liste (`prmake_work_items`) e confira se já existe item com o mesmo objetivo (fingerprint/status) — o PRMake recusa duplicata; `allowDuplicate` + motivo só quando for de fato outro trabalho.",
+        "Itens de trabalho: edição só com o item `pending` (todas as sub-tarefas `pending`); iniciado/concluído → criar um novo a partir dele.",
+        "Sub-tarefas de um item rodam em ordem; itens diferentes rodam em paralelo. Branch nunca é reaproveitada e nunca há force-push."
+    ];
+
+    /// <summary>
+    /// 0098: guardrails ativos da governança (as mesmas regras que o hook PreToolUse e o servidor aplicam), para a skill
+    /// saber de antemão o que será barrado ou avisado. Vazio com a governança desligada.
+    /// </summary>
+    public async Task<string> GovernanceMarkdownAsync(CancellationToken ct)
+    {
+        try
+        {
+            var p = await governance.GetAsync(ct);
+            return GovernanceMarkdown(p.Settings.Mode, p.Rules);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Governança indisponível para as regras do card");
+            return string.Empty;
+        }
+    }
+
+    /// <summary>0101: padrões de banco/aplicação que valem para os repositórios do card (vazio quando nenhum).</summary>
+    public async Task<string> StandardsMarkdownAsync(string card, IReadOnlyCollection<string> repositories, CancellationToken ct)
+    {
+        try
+        {
+            return await standards.ForCardMarkdownAsync(null, repositories, null, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Padrões indisponíveis para o card {Card}", card);
+            return string.Empty;
+        }
+    }
+
+    public static string GovernanceMarkdown(string mode, IEnumerable<solvace.governance.domain.Entities.GovernanceRule> rules)
+    {
+        if (mode == solvace.governance.domain.GovernanceMode.Off) return string.Empty;
+        var active = rules.Where(r => r.Enabled && r.Effect != solvace.governance.domain.GovernanceEffect.Monitor)
+            .OrderBy(r => r.Category).ThenBy(r => r.Order).ToList();
+        if (active.Count == 0) return string.Empty;
+        var sb = new StringBuilder();
+        sb.AppendLine().AppendLine($"## Governança (modo {(mode == solvace.governance.domain.GovernanceMode.Enforce ? "aplicando" : "monitorando")})");
+        sb.AppendLine("Ação barrada: não contorne (nem por comando equivalente) — registre no plano o que precisa de uma pessoa e siga com o resto. Aviso: siga e cite o aviso no resultado.");
+        foreach (var r in active)
+        {
+            var effect = r.Effect switch { "block" => "barra", "approval" => "precisa de aprovação", _ => "avisa" };
+            var scope = r.Scope.Sources.Count > 0 ? $" (só {string.Join(", ", r.Scope.Sources)})" : string.Empty;
+            sb.AppendLine($"- **{r.Name}** — {effect}{scope}: {solvace.governance.domain.Engine.GovernanceRuleEngine.MessageOf(r)} (`{r.Key}`)");
+        }
+        return sb.ToString();
+    }
+
+    public static string Markdown(CardRules r, IReadOnlyList<RepositoryBranchPlan>? repositories = null)
+    {
+        if (IsEpic(r)) return ManagementMarkdown(r);
+        var sb = new StringBuilder();
+        sb.AppendLine($"# Regras do PRMake — card {r.Card}");
+        sb.AppendLine();
+        if (r.Title is { Length: > 0 }) sb.AppendLine($"**Card:** {r.Title}");
+        sb.AppendLine($"**Tipo:** {TypeText(r)}");
+        sb.AppendLine($"**Área:** {r.AreaPath ?? "(não lida)"} → **fluxo:** " +
+                      (r.Flow is null ? "não identificado — pergunte ao usuário qual fluxo (BranchFlowByArea sem regra para a área)" : $"`{r.Flow}` (regra \"{r.FlowRule}\")"));
+        if (r.CardError is { Length: > 0 }) sb.AppendLine($"> Não consegui ler o card no DevOps ({r.CardError}) — tipo e fluxo podem estar incompletos.");
+
+        sb.AppendLine().AppendLine("## O que muda pelo tipo do card");
+        AppendTypeChanges(sb, r);
+
+        sb.AppendLine().AppendLine("## Branches");
+        sb.AppendLine($"- Branch principal do card: `{r.MainBranch}` ({(r.IsUserStory ? "BranchNamePatternUserStory — User Story é feature/, nunca hotfix/" : "BranchNamePattern")} `{r.BranchNamePattern}`).");
+        sb.AppendLine("- Nome da branch por destino (BranchSuffixByTarget) — use exatamente estes:");
+        sb.AppendLine();
+        AppendBranchesByTarget(sb, r);
+        sb.AppendLine();
+        sb.AppendLine($"- Promoção/cherry-pick para outra versão: padrão `{r.PromotionBranchPattern}` (ex.: release-version → `{PromotionExample(r, "release-version")}`).");
+
+        sb.AppendLine().AppendLine(r.Flow is null ? "## Fluxo por tipo de repositório" : $"## Fluxo `{r.Flow}` por tipo de repositório (BranchStrategy)");
+        if (r.Kinds.Count == 0)
+            sb.AppendLine("- Sem fluxo calculado (área sem regra ou BranchStrategy sem o fluxo): pergunte ao usuário a base e os destinos.");
+        foreach (var k in r.Kinds)
+        {
+            var repos = k.Repositories.Count > 0 ? $" (repositórios: {string.Join(", ", k.Repositories)})" : string.Empty;
+            var baseText = k.Base is { Length: > 0 } b ? $"base `{b}`"
+                : k.BaseOptions.Count > 0 ? $"base a escolher entre {string.Join(", ", k.BaseOptions.Select(o => $"`{o}`"))}{(k.AskBase ? " — pergunte ao usuário" : string.Empty)}"
+                : "base não configurada";
+            sb.AppendLine($"- **{k.Kind}**{repos}: {baseText}.");
+            foreach (var pr in k.Prs)
+                sb.AppendLine($"  - PR `{pr.Branch}`{(pr.From is { Length: > 0 } f ? $" (cortada de `{f}`)" : string.Empty)} → `{pr.Target}`");
+        }
+        if (r.DefaultRepository is { Length: > 0 } repo)
+            sb.AppendLine($"- Repositório padrão (sem git remote): `{repo}`{(r.DefaultKind is { } dk ? $" ({dk})" : string.Empty)}.");
+
+        if (repositories is { Count: > 0 })
+        {
+            sb.AppendLine().AppendLine("## Branches por repositório do card");
+            sb.AppendLine("Só os destinos que o fluxo do tipo do repositório tem — **nunca** sugira, abra nem planeje PR/branch para outro destino (ex.: revamp-backend não tem QA).");
+            foreach (var p in repositories)
+            {
+                if (!p.Known)
+                    sb.AppendLine($"- `{p.Repository}`{(p.Kind is { } k ? $" ({k})" : string.Empty)}: sem fluxo nas regras (BranchStrategy/BranchFlowByArea) — pergunte a base e os destinos.");
+                else
+                    sb.AppendLine($"- `{p.Repository}` ({p.Kind}): " + string.Join("; ", p.Targets.Select(t => $"`{t.Branch}` → `{t.Target}`")) + ".");
+            }
+        }
+
+        sb.AppendLine().AppendLine("## Padrões");
+        sb.AppendLine($"- Commit: `{r.CommitPattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}`");
+        sb.AppendLine($"- Título do PR: `{r.PrTitlePattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}` ({{TARGET}} = destino em maiúsculas)");
+
+        sb.AppendLine().AppendLine("## Regras fixas");
+        foreach (var rule in FixedRules) sb.AppendLine($"- {rule}");
+        return sb.ToString();
+    }
+
+    /// <summary>Resumo para o contexto do Especialista do caso (o completo vem do prmake_rules).</summary>
+    public static string SummaryMarkdown(CardRules r)
+    {
+        if (IsEpic(r)) return ManagementSummaryMarkdown(r);
+        var sb = new StringBuilder();
+        sb.AppendLine($"- Tipo: {TypeText(r)} · área: {r.AreaPath ?? "?"} · fluxo: {(r.Flow is null ? "não identificado (perguntar)" : $"`{r.Flow}`")}");
+        sb.AppendLine($"- Branch principal: `{r.MainBranch}`. Por destino: " +
+                      string.Join(", ", r.Suffixes.Select(s => $"{s.Key} → `{BranchRules.BranchFor(r.MainBranch, s.Key, r.Suffixes)}`")) + ".");
+        foreach (var k in r.Kinds)
+            sb.AppendLine($"- {k.Kind}: " + string.Join("; ", k.Prs.Select(p => $"`{p.Branch}` → `{p.Target}`")) +
+                          (k.BaseOptions.Count > 0 ? $" (base: {string.Join("/", k.BaseOptions)})" : k.Base is { Length: > 0 } b ? $" (base `{b}`)" : string.Empty));
+        sb.AppendLine($"- Commit `{r.CommitPattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}` · título do PR `{r.PrTitlePattern.Replace("{card}", r.Card, StringComparison.OrdinalIgnoreCase)}`.");
+        sb.AppendLine("- Nunca mesclar PR; toda gravação pelo PRMake; ajuste pedido = no plano atual, direto; plano sem versões (outra entrega = item novo). Regras completas: prmake_rules.");
+        return sb.ToString();
+    }
+
+    private static string PromotionExample(CardRules r, string target)
+    {
+        var safe = BranchRules.SafeTarget(target);
+        return r.PromotionBranchPattern
+            .Replace("{branch}", r.MainBranch, StringComparison.OrdinalIgnoreCase)
+            .Replace("{suffix}", BranchRules.SuffixFor(target, r.Suffixes), StringComparison.OrdinalIgnoreCase)
+            .Replace("{target}", safe, StringComparison.OrdinalIgnoreCase);
+    }
+}

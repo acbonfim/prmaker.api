@@ -19,7 +19,12 @@ public class ExecutionPlanPullRequestSource(IPullRequestGithubApplication github
         if (checks.Error is not null)
             return null;
         var state = checks.State == solvace.github.domain.Responses.PullRequestChecksResponse.None ? null : checks.State;
-        return new CardPullRequestChecks(state, checks.HeadSha, checks.Failed.Select(f => new ExecutionCheckItem(f.Name, f.Url, f.Preexisting)).ToList());
+        return new CardPullRequestChecks(state, checks.HeadSha, checks.Failed.Select(f => new ExecutionCheckItem(f.Name, f.Url, f.Preexisting)).ToList())
+        {
+            Approvals = checks.Approvals,
+            ChangesRequested = checks.ChangesRequested,
+            ReviewersPending = checks.ReviewersPending
+        };
     }
 
     public async Task<IReadOnlyList<CardPullRequest>> ListByCardAsync(string cardNumber, CancellationToken cancellationToken)

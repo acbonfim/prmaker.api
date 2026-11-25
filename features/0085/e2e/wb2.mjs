@@ -1,0 +1,27 @@
+import { open, shot, sleep } from './lib.mjs';
+const clickText = async (page, sel, text) => page.evaluate((sel, text) => {
+  const el = [...document.querySelectorAll(sel)].find(e => e.innerText.trim().includes(text)); if (el) { el.click(); return true; } return false; }, sel, text);
+const { browser, page, logs } = await open({ width: 1440, height: 960 });
+await page.goto('http://localhost:4200/auth/workbench?card=77434&item=1', { waitUntil: 'networkidle2' });
+await sleep(3500);
+await clickText(page, 'button', 'Entendi'); await sleep(600);
+await shot(page, '02-modal-item');
+console.log('modal tabs:', await page.evaluate(() => [...document.querySelectorAll('.mat-mdc-dialog-container [role=tab], .mat-mdc-dialog-container button')].map(b => b.innerText.trim()).filter(Boolean).slice(0, 20).join(' | ')));
+await clickText(page, '.mat-mdc-dialog-container [role=tab], .mat-mdc-dialog-container button', 'Sub-tarefas'); await sleep(600);
+await shot(page, '03-modal-subtarefas');
+await clickText(page, '.mat-mdc-dialog-container *', 'Cherry-pick dos commits'); await sleep(900);
+await shot(page, '04-modal-subtarefa');
+await page.keyboard.press('Escape'); await sleep(400); await page.keyboard.press('Escape'); await sleep(600);
+await clickText(page, 'button', 'Novo item'); await sleep(1200);
+await shot(page, '05-editor');
+console.log('editor:', (await page.evaluate(() => document.querySelector('.mat-mdc-dialog-container')?.innerText || '')).slice(0, 600));
+await page.keyboard.press('Escape'); await sleep(600);
+await clickText(page, 'button', 'Plano'); await sleep(1500);
+await shot(page, '06-plano');
+await browser.close();
+const m = await open({ width: 412, height: 900, mobile: true });
+await m.page.goto('http://localhost:4200/auth/workbench?card=77434', { waitUntil: 'networkidle2' }); await sleep(3500);
+await clickText(m.page, 'button', 'Entendi'); await sleep(500);
+await shot(m.page, '07-celular');
+await m.browser.close();
+console.log(logs.filter(l => !l.includes('ngIf') && !l.includes('77434/full') && !l.includes('effort') && !l.includes('Failed to load')).join('\n'));

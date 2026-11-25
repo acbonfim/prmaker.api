@@ -41,9 +41,13 @@ public partial class KnowledgeRepository
         public bool Removed { get; set; }
         public int SectionVersion { get; set; }
         public DateTimeOffset UpdatedAt { get; set; }
+        // 0097: código citado mudou desde a geração (reancoragem)
+        public DateTimeOffset? StaleSince { get; set; }
+        public string? StaleReason { get; set; }
+        public string? StaleCommit { get; set; }
 
         public ReverseIndexEntry ToEntry() => ReverseIndexEntry.Light(Id, ModuleKey, DocType, ItemId, Kind, Title, Level, Order, Body, List(Tags), List(Tables),
-            List(Refs), List(Evidence), List(Modules), List(Synonyms), Removed, SectionVersion, UpdatedAt);
+            List(Refs), List(Evidence), List(Modules), List(Synonyms), Removed, SectionVersion, UpdatedAt, StaleSince, StaleReason, StaleCommit);
 
         private static List<string> List(string json) => JsonSerializer.Deserialize<List<string>>(json) ?? [];
     }
@@ -53,7 +57,7 @@ public partial class KnowledgeRepository
         {body switch { ReverseBodyMode.None => "''::text", ReverseBodyMode.Preview => "left(e.\"Body\", 3000)", _ => "e.\"Body\"" }} AS "Body",
         {(body == ReverseBodyMode.Complete ? "e.\"Evidence\"::text" : "'[]'::text")} AS "Evidence",
         e."Tags"::text AS "Tags", e."Tables"::text AS "Tables", e."Refs"::text AS "Refs", e."Modules"::text AS "Modules", e."Synonyms"::text AS "Synonyms",
-        e."Removed", e."SectionVersion", e."UpdatedAt"
+        e."Removed", e."SectionVersion", e."UpdatedAt", e."StaleSince", e."StaleReason", e."StaleCommit"
         """;
 
     /// <summary>Acumula condições e parâmetros nomeados (<c>@p0</c>, <c>@p1</c>…) de uma consulta.</summary>
@@ -87,6 +91,7 @@ public partial class KnowledgeRepository
         if (query.DocType is not null) q.Where.Add($"e.\"DocType\" = {q.Param(query.DocType)}");
         if (query.NotDocType is not null) q.Where.Add($"e.\"DocType\" <> {q.Param(query.NotDocType)}");
         if (!query.IncludeRemoved) q.Where.Add("NOT e.\"Removed\"");
+        if (query.StaleOnly) q.Where.Add("e.\"StaleSince\" IS NOT NULL");
         var limit = query.Limit is { } l ? $"LIMIT {Math.Max(l, 0)}" : "";
         return RunIndexAsync($"SELECT {IndexColumns(query.Body)} FROM {IndexTable} e {q.WhereClause} ORDER BY {DefaultOrder} {limit}", q, cancellationToken);
     }

@@ -22,6 +22,12 @@ public class PullRequestChecksResponse
     /// </summary>
     public List<PullRequestCheckItem> Failed { get; set; } = [];
     public string? Error { get; set; }
+
+    /// <summary>0075: revisões vigentes (a última de cada revisor): aprovações e pedidos de alteração.</summary>
+    public int Approvals { get; set; }
+    public int ChangesRequested { get; set; }
+    /// <summary>0075: revisores (pessoas/times) ainda pedidos no PR.</summary>
+    public List<string> ReviewersPending { get; set; } = [];
 }
 
 public class PullRequestCheckItem

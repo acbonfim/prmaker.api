@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using solvace.azure.application.Contract;
+using solvace.azure.domain.Exceptions;
 using solvace.azure.domain.Models;
 using solvace.prform.Controllers;
 using solvace.timeline.application.Contracts;
@@ -12,16 +13,52 @@ namespace solvace.prform.Execution;
 /// </summary>
 public class DevOpsActionRunner(IDevOpsActionsService actions, ITimelineApplication timeline, ILogger<DevOpsActionRunner> logger)
 {
+    /// <param name="via">r5: marca de quem fez (ex.: "via Especialista do caso, a pedido de Ana") no texto da Timeline.</param>
     public async Task<DevOpsActionResponse> RunAsync(string cardNumber, Func<IDevOpsActionsService, Task<DevOpsActionResponse>> action,
-        ClaimsPrincipal user, CancellationToken cancellationToken)
+        ClaimsPrincipal user, CancellationToken cancellationToken, string? via = null)
     {
+        EnsureCard(cardNumber);
         var result = await action(actions);
-        await AzureController.RegisterOnTimelineAsync(timeline, cardNumber, $"{result.Message} pelo CIME (Ações DevOps).", logger, user, cancellationToken);
+        var text = string.IsNullOrWhiteSpace(via)
+            ? $"{result.Message} pelo CIME (Ações DevOps)."
+            : $"{result.Message} pelo CIME (Ações DevOps) — {via}.";
+        await AzureController.RegisterOnTimelineAsync(timeline, cardNumber, text, logger, user, cancellationToken);
         return result;
+    }
+
+    /// <summary>Card 78525: especificação da User Story (só leitura).</summary>
+    public Task<IReadOnlyList<SpecSectionResponse>> SpecAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        EnsureCard(cardNumber);
+        return actions.GetSpecAsync(cardNumber, cancellationToken);
+    }
+
+    /// <summary>
+    /// 0099: a chave de épico (E123) não é card do DevOps — ação de card com ela falha com mensagem clara (quem chama já trata
+    /// <see cref="InvalidOperationException"/> como "sem integração/regra": 400/409, nunca 500).
+    /// </summary>
+    public static void EnsureCard(string? cardNumber)
+    {
+        if (solvace.executionplans.domain.Entities.EpicKey.IsEpic(cardNumber))
+            throw new InvalidOperationException($"{cardNumber!.Trim()} é um épico da Mesa de gestão, não um card do DevOps — use o número de um card do épico.");
     }
 
     public Task<DevOpsActionsConfigResponse> ConfigAsync(CancellationToken cancellationToken) => actions.GetConfigAsync(cancellationToken);
 
+    /// <summary>0078: horas do card (Original/Completed/Remaining).</summary>
+    public Task<DevOpsEffortResponse> EffortAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        EnsureCard(cardNumber);
+        return actions.GetEffortAsync(cardNumber, cancellationToken);
+    }
+
     public Task<IReadOnlyList<DevOpsClassificationPreset>> ClassificationsAsync(CancellationToken cancellationToken) =>
         actions.GetClassificationPresetsAsync(cancellationToken);
+
+    /// <summary>Picklist do Bug Type; falha do DevOps não derruba o resto da configuração (vai no erro).</summary>
+    public async Task<(IReadOnlyList<string> Values, string? Error)> BugTypesAsync(CancellationToken cancellationToken)
+    {
+        try { return (await actions.GetBugTypesAsync(cancellationToken), null); }
+        catch (DevOpsActionException e) { return ([], e.Message); }
+    }
 }

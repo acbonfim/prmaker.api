@@ -13,7 +13,7 @@ orientacao ao cliente).
 | Padrao | ~% | Sinais tipicos | Diagnostico | Etapas tipicas (adapte) | `devops classify` |
 |---|---|---|---|---|---|
 | **A. Defeito de codigo** | 32 | reproduz em qa/sandbox; comportamento contradiz a regra; erro identificavel no codigo | codigo (legado/revamp), reproducao | `corrigir-<repo>` → validar (build/local) → `pr-<repo>` (com `pr-text`/`save-pr-text`) → `validar-qa` (usuario) → fechamento | `code-fix` (ou `code-data-fix` se tambem corrigiu dados causados pelo defeito) |
-| **B. Correcao de dados (script via chamado)** | 11 | registro excluido/estado inconsistente, preferencia ausente, flag/menu errado, `LAST_SITE_ID`/site/area errados | SQL **somente leitura** (`sql-query.sh`) | `montar-script` (voce: `scripts/01_*.sql` + `99_rollback_*.sql` + texto do chamado) → `chamado-script` (usuario, link com `--blocks`) → `validar-dados` (voce, SQL somente leitura depois do script) → fechamento | `script-defect` (causa foi defeito) · `script-user-action` (causa foi acao do usuario) · `script-environment` |
+| **B. Correcao de dados (script via chamado)** | 11 | registro excluido/estado inconsistente, preferencia ausente, flag/menu errado, `LAST_SITE_ID`/site/area errados | SQL **somente leitura** (`sql-query.sh`) | `preparar-script-<nome>` (voce: `scripts/01_<card>_*.sql` + `99_<card>_rollback_*.sql` + texto do chamado) → `chamado-<nome>` (usuario anexa o chamado na etapa; conclui quando resolvido) → `validar-chamado-<nome>` (voce, SQL somente leitura depois do chamado + evidencia) → fechamento | `script-defect` (causa foi defeito) · `script-user-action` (causa foi acao do usuario) · `script-environment` |
 | **C. Acesso / Cognito / SSO** | (parte de B, D, E) | loop de login, usuario desabilitado/deslogado no Cognito, SSO trocou o e-mail, usuario nativo + federado duplicados, usuario sem planta/area | `cognito-query.sh` + SQL | ajuste no Cognito ou no cadastro → **etapa do usuario** (voce nao escreve no Cognito) com o passo a passo; se precisar de banco → padrao B; confirmar o login | conforme o que foi feito: `script-*`, `configuration` ou `user-education` |
 | **D. Configuracao / ambiente / plataforma** | 11 | parametro de ambiente, WAF/instancia, habilitar modulo, criar usuarios de treino, configuracao de tela | codigo + ambiente + dados | `configurar-<o que>` (usuario ou time de infra — voce redige o passo a passo exato em `analises/configuracao.md`) → validar o ambiente (se fizer sentido) → fechamento (o resumo PT/EN leva a orientacao ao cliente) | `configuration` (ou `configuration-change-request`) |
 | **E. User education (nao e defeito)** | 28 | funciona conforme a regra de negocio; filtro/uso incorreto; expectativa diferente do produto | provar pelo codigo/dados que o comportamento e o esperado | so o fechamento: voce redige a orientacao em `analises/orientacao-cliente.md` (sem jargao) e ela **e o resumo PT/EN** publicado na discussion — sem etapa `orientar-cliente` | `user-education` (ou `user-education-change-request`) |
@@ -48,10 +48,18 @@ pelo PRMake (`bug-fetch.sh` → `state`/`area`).
 ## Fechamento do card (devops)
 **Fechamento (todo card, com ou sem codigo)** — o que os cards reais sempre tem no fim, via `devops` (endpoints
 das "Acoes DevOps" do PRMake). Comece por `bash $PLAN devops <card> config`:
-1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz);
-2. classificacao: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
-   `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e
-   grave com `bash $PLAN devops <card> classify <opcao>`;
+1. root cause no DevOps: `bash $PLAN devops <card> rootcause rca.md` (com codigo, a `gerar-prmake` ja faz). **Com ou
+   sem codigo, o RCA segue o "Modelo do RCA" do prompt de Bug do PRMake** — o mesmo da `gerar-prmake`: em **ingles**,
+   um titulo em negrito por secao (hoje `**Main Cause:**`, `**Contributing Factors:**`, `**Impact:**`,
+   `**Applied Solution:**`, `**Action/Prevention Plan:**`, `**Modified files/Modified code/Altered data in the
+   database:**`, `**Ticket:** <card>`), linha em branco entre elas, so o caso do card. Sem codigo, a secao de arquivos diz
+   "No code changes" e quais dados foram alterados (tabela/registros). Nunca texto livre nem em portugues: o
+   `rootcause` (e o `save-pr-text`) conferem pelo prompt configurado (`analises/rca-prompt.txt`) e recusam fora do padrao;
+2. classificacao + **Bug Type**: escolha pela evidencia a opcao correta entre as que o PRMake devolve em
+   `devops <card> classifications` (a coluna da tabela acima mostra as usuais, mas o admin pode ajusta-las) e o
+   Bug Type entre os valores do picklist do DevOps em `devops <card> bug-types` (a area/funcionalidade afetada pelo
+   bug — nunca invente valor fora da lista; o card ja preenchido mantem o valor, salvo se estiver errado) e grave
+   os dois juntos com `bash $PLAN devops <card> classify <opcao> "<bug type>"` (so o Bug Type: `classify - "<bug type>"`);
 3. resumo nao tecnico PT/EN na discussion: se o `config` trouxe `summary-prompt`, **siga esse prompt** (arquivo
    `analises/summary-prompt.txt` da pasta do card; mesmos placeholders da `gerar-prmake`) mantendo o formato
    `**PT**` `---` texto `**EN**` `---` texto; senao use esse formato direto. Sem codigo, nao diga que houve
@@ -70,16 +78,31 @@ RCA) — o registro do card no PRMake passa a existir e o resumo fica vinculado.
 ## Dev Test in QA e Ready for QA
 **Dev Test in QA → Ready for QA** (ex.: card 74572 — estado "In Development (doing)", coluna "Dev Test in QA" = o
 dev validando a correcao em QA):
-- Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**: quando a etapa `validar-qa`
-  ficar pronta (PRs mesclados/correcao em QA), rode `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> dev-test-in-qa`
+- Enquanto a correcao nao foi validada em QA, o card fica em **Dev Test in QA**. **0075: quem move e o PRMake** — ao
+  ver o PR para a branch de QA (`QaBranchPattern`, padrao `qa`) mesclado com `validar-qa` pendente, ele move o card uma
+  vez (config `AutoDevTestInQa`), registra na Timeline e a *Situacao atual* vira 🧪 *Validar em QA*. Voce so confere
+  (`prmake_plan`/`bash $PLAN situation <card>`): se a situacao mostrar erro ao mover (sem integracao, 409) ou a
+  automacao estiver desligada, rode `bash ~/.claude/skills/analisar-bug/scripts/prmake-plan.sh devops <card> dev-test-in-qa`
   — **pode mover sem perguntar**. Estado e coluna vem do `config` (AI Configurations); nunca escreva de memoria.
-- **Ready for QA so com autorizacao**: rode `devops <card> ready-for-qa` **somente** quando (a) o usuario
-  concluir a etapa `validar-qa` na tela do plano (o `control`/`watch` mostra `etapa validar-qa: ... -> completed`)
+  Grave tambem o `prmake_handoff` com o roteiro do que o QA deve validar (`ref.sh correcao 8`).
+- **Ready for QA so com autorizacao**: ao concluir `validar-qa` na tela, o PRMake ja oferece "Mover para Ready for QA
+  agora" (0075) — se o card ja estiver em Ready for QA, nao mova de novo. Rode `devops <card> ready-for-qa` **somente**
+  quando (a) o usuario concluir a etapa `validar-qa` na tela do plano (o `control`/`watch` mostra `etapa validar-qa: ... -> completed`)
   ou (b) o usuario autorizar explicitamente depois disso, pelo chat ou por comentario no plano ("pode mover para
   Ready for QA"). A resposta a pergunta de fechamento do passo 6 **nao** autoriza o Ready for QA — ela veio antes
   da validacao. Sem (a) ou (b), nao mova: deixe o `watch` em segundo plano e siga quando a etapa for concluida.
-- Por isso, com codigo, o `fechar-card` tem `dependsOn: ["validar-qa"]`; o root cause, a classificacao e o resumo
-  podem ser gravados antes, mas o `ready-for-qa` fica para depois da validacao.
+- Por isso, com codigo, o fechamento e dividido (0075, ordem corrigida no card 78728): **`preparar-fechamento` com a
+  correcao em QA** — `dependsOn` as etapas `pr-*`, que so concluem com **todos** os PRs mesclados (o PR da branch de QA
+  mesclado leva o card a Dev Test in QA); ai sim root cause, classificacao, resumo PT/EN e `zero-remaining` (itens 1–4
+  de *Fechamento do card*, sem mover). **Nunca antes do merge**: com o PR aguardando, encerre a vez — nao troque o
+  `dependsOn` para adiantar o fechamento. `validar-qa` (usuario) depende dele e o plano **espera** a pessoa; o
+  `fechar-card` tem `dependsOn: ["validar-qa"]`, confere (`prmake_card`) e move para Ready for QA se o card ainda nao
+  estiver la — **Ready for QA e o fechamento e o fim do fluxo do dev**. Assim o card chega ao Ready for QA sem
+  pendencias (o PRMake recusa com 409 se faltar Root Cause, Resolution Type, classificacoes, Bug Type ou Remaining
+  zerado — card 77698). O item de validacao em ambiente (0092) e uma ferramenta opcional da pessoa: **nao substitui**
+  `validar-qa` nem a tira do plano.
+- Card que fecha em **Test in Production** (sem QA no fluxo, coluna QA done) tem outro fechamento: nao ha
+  `preparar-fechamento`/`validar-qa` — o `fechar-card` faz os itens 1–4 e move (secao acima).
 
 ## Mover o card (permissao, DevOps fora do ar, 409)
 **Mover o card e sempre pelo PRMake — voce chama, o usuario nao move na mao.** `devops <card> ready-for-qa` e

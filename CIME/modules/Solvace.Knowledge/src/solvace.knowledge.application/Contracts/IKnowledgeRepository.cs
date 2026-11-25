@@ -78,6 +78,11 @@ public interface IKnowledgeRepository
     void AddTrap(ReverseTrap trap);
     Task<ReverseCardContext?> GetCardContextAsync(string cardNumber, bool tracked, CancellationToken cancellationToken);
     void AddCardContext(ReverseCardContext context);
+    /// <summary>
+    /// 0097: histórico dos cards (os que têm <see cref="ReverseCardContext.Query"/>), mais recentes primeiro, sem rastreamento —
+    /// só número, texto, módulos e refs lidos.
+    /// </summary>
+    Task<List<ReverseCardContext>> GetCardHistoryAsync(int limit, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 
@@ -108,7 +113,8 @@ public interface IKnowledgeRepository
     /// <summary>Itens publicados (sem os removidos) contados por módulo, documento e tipo — sem trazer o texto.</summary>
     async Task<List<ReverseItemCount>> CountIndexItemsAsync(string? moduleKey, CancellationToken cancellationToken) =>
         (await GetIndexEntriesAsync(moduleKey, cancellationToken)).Where(e => !e.Removed)
-            .GroupBy(e => (e.ModuleKey, e.DocType, e.Kind)).Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count())).ToList();
+            .GroupBy(e => (e.ModuleKey, e.DocType, e.Kind))
+            .Select(g => new ReverseItemCount(g.Key.ModuleKey, g.Key.DocType, g.Key.Kind, g.Count(), g.Count(e => e.StaleSince != null))).ToList();
 
     /// <summary>
     /// Cabeças dos itens (ID, tipo, título, nível, tags, tabelas, módulos; SEM o texto), de um módulo/documento ou de todos,
@@ -132,7 +138,7 @@ public interface IKnowledgeRepository
                 && (query.Kinds is not { Count: > 0 } || query.Kinds.Contains(e.Kind))
                 && (query.ExcludeKinds is not { Count: > 0 } || !query.ExcludeKinds.Contains(e.Kind))
                 && (query.DocType is null || e.DocType == query.DocType) && (query.NotDocType is null || e.DocType != query.NotDocType)
-                && (query.IncludeRemoved || !e.Removed))
+                && (query.IncludeRemoved || !e.Removed) && (!query.StaleOnly || e.StaleSince != null))
             .OrderBy(e => e.ModuleKey).ThenBy(e => e.DocType).ThenBy(e => e.Order).AsEnumerable();
         return (query.Limit is { } limit ? items.Take(limit) : items).ToList();
     }
@@ -199,8 +205,8 @@ public interface IKnowledgeRepository
     }
 }
 
-/// <summary>Contagem de itens publicados da engenharia reversa (0070).</summary>
-public sealed record ReverseItemCount(string ModuleKey, string DocType, string Kind, int Count);
+/// <summary>Contagem de itens publicados da engenharia reversa (0070); 0097: quantos estão desatualizados.</summary>
+public sealed record ReverseItemCount(string ModuleKey, string DocType, string Kind, int Count, int Stale = 0);
 
 /// <summary>Posições em code points (a contagem do PostgreSQL) sobre strings .NET (UTF-16) — 0070.</summary>
 public static class CodePoints
@@ -247,11 +253,16 @@ public sealed record ReverseReferenceDatabase(string Environment, string Host, s
 /// JSON livre que a skill interpreta (fonte, ambiente, schema, arquivo de credencial, secret, idiomas). Sem segredo.</param>
 /// <param name="Infra">0058: etapa OPCIONAL de infra — contas, perfis do AWS CLI e regiões que a skill consulta (somente leitura).
 /// JSON livre que a skill interpreta. Sem segredo.</param>
+/// <param name="PracticalMinQuestions">0097: a visão prática é sob demanda — sugerida quando o módulo acumula ao menos este
+/// número de perguntas sem resposta no Pergunte.</param>
 public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadOnlyList<string> RequiredDocs, string? GateStep, double MinCoverage,
     IReadOnlyDictionary<string, string> Templates, ReverseReferenceDatabase? ReferenceDatabase = null, IReadOnlyList<string>? GlossaryExclusions = null,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Supersedes = null, string? Translations = null,
-    string? Infra = null, string? Generation = null)
+    string? Infra = null, string? Generation = null, int PracticalMinQuestions = ReverseSettings.DefaultPracticalMinQuestions)
 {
+    /// <summary>0097: perguntas sem resposta no Pergunte a partir das quais a visão prática é sugerida.</summary>
+    public const int DefaultPracticalMinQuestions = 3;
+
     public static ReverseSettings Default { get; } = new(["admin", "gestor"], domain.Reverse.ReverseDocTypes.DefaultRequired, "consultar-base,investigar-codigo", 0.9,
         new Dictionary<string, string>(), ReverseReferenceDatabase.Demo, DefaultGlossaryExclusions, DefaultSupersedes, DefaultTranslations, DefaultInfra,
         DefaultGeneration);
@@ -274,12 +285,17 @@ public sealed record ReverseSettings(IReadOnlyList<string> ApproverRoles, IReadO
         {"accounts": [{"id": "367983645102", "label": "Solvace (revamp)"}], "regions": ["us-east-1"], "readOnly": true}
         """;
 
-    /// <summary>Documentos exigidos que são técnicos (a visão prática fica de fora: é para pessoas, não para as análises).</summary>
-    public IReadOnlyList<string> TechnicalRequired => RequiredDocs.Where(d => d != domain.Reverse.ReverseDocTypes.Practical).ToList();
+    /// <summary>
+    /// Documentos exigidos que são técnicos (a visão prática fica de fora: é para pessoas, não para as análises). 0097: o
+    /// índice técnico (gerado sem IA) também nunca conta para o "completo".
+    /// </summary>
+    public IReadOnlyList<string> TechnicalRequired => RequiredDocs
+        .Where(d => d != domain.Reverse.ReverseDocTypes.Practical && !(domain.Reverse.ReverseDocTypes.ByKey.TryGetValue(d, out var t) && t.Generated)).ToList();
 
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultSupersedes { get; } = new Dictionary<string, IReadOnlyList<string>>
     {
-        ["visao-geral"] = ["visao", "arquitetura"],
+        // 0097: a visão foi descontinuada — o resumo do funcional e a arquitetura substituem a visão geral antiga
+        ["visao-geral"] = ["funcional", "arquitetura"],
         ["modulos"] = ["funcional", "uiux"],
         ["dados"] = ["arquitetura"],
         ["integracoes"] = ["arquitetura"],

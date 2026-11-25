@@ -85,6 +85,15 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
     public Task<ActionResult<ExecutionRequestResponse>> Create([FromBody] CreateExecutionRequestRequest request, CancellationToken ct) =>
         Run<ExecutionRequestResponse>(async () => Ok(await queue.CreateAsync(request, await GetActorAsync(ct), ExecutionRequestSource.Button, ct)));
 
+    /// <summary>
+    /// Card 77988: "Criar itens da análise" — a análise respondida sem plano de entrega vira o plano de implementação/correção
+    /// (e o item de trabalho dele); <c>start=false</c> deixa o plano pausado até o Executar do item.
+    /// </summary>
+    [HttpPost("card/{cardNumber}/delivery")]
+    public Task<ActionResult<ExecutionRequestResponse>> Delivery([FromRoute] string cardNumber, [FromBody] AnalysisDeliveryRequest? request, CancellationToken ct) =>
+        Run<ExecutionRequestResponse>(async () =>
+            Ok(await queue.RequestDeliveryAsync(cardNumber, request?.Start ?? false, request?.Note, await GetActorAsync(ct), ct)));
+
     /// <summary>Pedido ativo do card, últimos pedidos e as máquinas de quem está vendo.</summary>
     [HttpGet("card/{cardNumber}")]
     public Task<ActionResult<ExecutionCardQueueResponse>> GetCard([FromRoute] string cardNumber, CancellationToken ct) =>
@@ -119,6 +128,7 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
     [HttpGet("next")]
     public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait,
         [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
+        [FromServices] CaseTokenIssuer caseTokens, [FromServices] BaseAskTokenIssuer baseTokens,
         [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
         Run<ExecutionClaimResponse>(async () =>
         {
@@ -127,9 +137,48 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
                     new { error = "Executor desatualizado — reinicie o prmake-agent para ele se atualizar (ou rode o instalador de novo)." });
             var claim = await queue.NextAsync(RequireWorkerId(), ct);
             if (claim is null) return NoContent();
+            if (claim.Request.Kind == ExecutionRequestKind.Specialist)
+            {
+                // 0080: o especialista roda com o token do caso (só lê e conversa) e o modelo dele.
+                claim.CaseToken = caseTokens.Issue(User, claim.Request.Id, claim.Request.CardNumber);
+                claim.Model = await ModelForAsync(claim.Request.Deep ? DeepSpecialistPhase : ExecutionQueueApplication.SpecialistPhase, settings, logger, ct);
+                return Ok(claim);
+            }
+            if (claim.Request.Kind == ExecutionRequestKind.BaseAsk)
+            {
+                // 0102: pergunta da Base Solvace — token só das ferramentas da Base, modelo básico com pouco esforço.
+                (claim.Model, claim.Effort) = await BaseAskModelAsync(claim.Request.Deep, settings, logger, ct);
+                claim.CaseToken = baseTokens.Issue(User, claim.Request.Id, claim.Model);
+                return Ok(claim);
+            }
             claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);
             return Ok(claim);
         });
+
+    /// <summary>0102: efforts que o Claude Code aceita em <c>--effort</c>.</summary>
+    public static readonly IReadOnlySet<string> Efforts = new HashSet<string>(StringComparer.Ordinal) { "low", "medium", "high", "xhigh", "max" };
+
+    /// <summary>0102: modelo e esforço das perguntas da Base pelo executor ("Skills Configurations"; padrão sonnet, low / a fundo medium).</summary>
+    private static async Task<(string? Model, string? Effort)> BaseAskModelAsync(bool deep,
+        solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings, ILogger logger, CancellationToken ct)
+    {
+        string model = "sonnet", effort = deep ? "medium" : "low";
+        try
+        {
+            var config = await settings.GetEffectiveConfigurationAsync(solvace.prform.Skills.SkillsConfigurationKeys.PluginName, ct);
+            model = solvace.prform.domain.Extensions.PluginConfigurationExtensions
+                .GetConfigurationValueOrDefault(config, solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorModel, model).Trim();
+            effort = solvace.prform.domain.Extensions.PluginConfigurationExtensions
+                .GetConfigurationValueOrDefault(config, deep ? solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorDeepEffort
+                    : solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorEffort, effort).Trim().ToLowerInvariant();
+        }
+        catch (Exception e) when (e is InvalidOperationException or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException)
+        {
+            logger.LogWarning(e, "Sem a configuração do modelo das perguntas da Base — vão os padrões (sonnet, {Effort})", effort);
+        }
+        var validModel = model.Length is > 0 and <= 100 && model.All(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '_' or '[' or ']') ? model : null;
+        return (validModel, Efforts.Contains(effort) ? effort : null);
+    }
 
     /// <summary>
     /// 0047: modelo da fase pela "Skills Configurations" (ExecutorAnalysisModel / ExecutorCorrectionModel). Sem a
@@ -141,10 +190,18 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
         try
         {
             var config = await settings.GetEffectiveConfigurationAsync(solvace.prform.Skills.SkillsConfigurationKeys.PluginName, ct);
-            var key = phase == ExecutionPhase.Correction
-                ? solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel
-                : solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel;
-            var model = solvace.prform.domain.Extensions.PluginConfigurationExtensions.GetConfigurationValueOrDefault(config, key, string.Empty).Trim();
+            var key = phase switch
+            {
+                ExecutionPhase.Correction => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel,
+                // 0085: item de trabalho roda no modelo da correção (é execução, não investigação).
+                ExecutionQueueApplication.WorkItemPhase => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorCorrectionModel,
+                ExecutionQueueApplication.SpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistModel,
+                DeepSpecialistPhase => solvace.prform.Skills.SkillsConfigurationKeys.SpecialistDeepModel,
+                _ => solvace.prform.Skills.SkillsConfigurationKeys.ExecutorAnalysisModel
+            };
+            // 0080: sem a chave do especialista, os padrões da decisão 3 (rápido = sonnet, a fundo = opus).
+            var fallback = phase switch { ExecutionQueueApplication.SpecialistPhase => "sonnet", DeepSpecialistPhase => "opus", _ => string.Empty };
+            var model = solvace.prform.domain.Extensions.PluginConfigurationExtensions.GetConfigurationValueOrDefault(config, key, fallback).Trim();
             // Só apelido ou id de modelo (vai como argumento do Claude Code).
             return model.Length is > 0 and <= 100 && model.All(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '_' or '[' or ']') ? model : null;
         }
@@ -154,6 +211,13 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
             return null;
         }
     }
+
+    private const string DeepSpecialistPhase = "specialist-deep";
+
+    /// <summary>Com o relay fora: o executor pergunta aqui (1 SQL) a cada poucos segundos e só chama o next quando há pedido.</summary>
+    [HttpGet("ready")]
+    public Task<ActionResult<ExecutionQueueReadyResponse>> Ready(CancellationToken ct) =>
+        Run<ExecutionQueueReadyResponse>(async () => Ok(new ExecutionQueueReadyResponse { Ready = await queue.IsQueueReadyAsync(RequireWorkerId(), ct) }));
 
     [HttpPost("{id:guid}/start")]
     public Task<ActionResult<ExecutionRequestResponse>> Start([FromRoute] Guid id, [FromBody] StartExecutionRequestRequest request, CancellationToken ct) =>
@@ -170,7 +234,10 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
         {
             var response = await queue.FinishAsync(id, RequireWorkerId(), request, ct);
             // 0044: consumo FINAL da sessão (lido do transcript pelo executor) — a skill só manda fotos no meio da execução.
-            if (request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
+            // 0080: a sessão do especialista é do caso, não de um plano.
+            // 0085: item de trabalho avulso (sem plano) fica com o consumo só no pedido.
+            if (response.Kind != ExecutionRequestKind.Specialist && !(ExecutionRequestKind.IsWorkItem(response.Kind) && response.PlanId is null)
+                && request.SessionUsage is { } usage && !string.IsNullOrWhiteSpace(usage.SessionId) && usage.Turns > 0)
             {
                 try
                 {
@@ -211,7 +278,7 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
     /// <summary>Máquinas do usuário.</summary>
     [HttpGet("mine")]
     public Task<ActionResult<List<ExecutionWorkerResponse>>> Mine(CancellationToken ct) =>
-        Run<List<ExecutionWorkerResponse>>(async () => Ok(await queue.GetWorkersAsync(RequireUserId(), ct)));
+        Run<List<ExecutionWorkerResponse>>(async () => Ok((await queue.GetWorkersAsync(RequireUserId(), ct)).Select(WithProfile).ToList()));
 
     /// <summary>O executor pergunta quem ele é (status, concorrência, versão publicada).</summary>
     [HttpGet("me")]
@@ -220,8 +287,26 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
 
     /// <summary>Sinal de vida do executor com versões e capacidades; devolve o estado e os pedidos que o PRMake acha que estão com ele.</summary>
     [HttpPost("report")]
-    public Task<ActionResult<ExecutionWorkerStateResponse>> Report([FromBody] ExecutionWorkerReportRequest request, CancellationToken ct) =>
-        Run<ExecutionWorkerStateResponse>(async () => Ok(await queue.ReportWorkerAsync(RequireWorkerId(), request, ct)));
+    public Task<ActionResult<ExecutionWorkerStateResponse>> Report([FromBody] ExecutionWorkerReportRequest request,
+        [FromServices] RealTimeDeliveryHealth relay, [FromServices] IServiceProvider services, CancellationToken ct) =>
+        Run<ExecutionWorkerStateResponse>(async () =>
+        {
+            var state = await queue.ReportWorkerAsync(RequireWorkerId(), request, ct);
+            // Relay falhando: o executor não recebe o executionQueueReady e só acharia o pedido no próximo sinal de vida
+            // (60 s; promoção, só na reserva de 10 min — a coleta da AWS já entra no queueReady). Volta mais cedo e o
+            // queueReady cobre também a promoção.
+            if (relay.FailedWithin(RelayDegradedWindow))
+            {
+                state.ReportEverySeconds = DegradedReportSeconds;
+                if (!state.QueueReady && state.Status == ExecutionWorkerStatus.Active)
+                    state.QueueReady = await services.GetRequiredService<solvace.prform.Promotion.PromotionService>()
+                        .HasQueuedForOwnerAsync(RequireUserId(), ct);
+            }
+            return Ok(state);
+        });
+
+    private static readonly TimeSpan RelayDegradedWindow = TimeSpan.FromMinutes(10);
+    private const int DegradedReportSeconds = 15;
 
     /// <summary>
     /// 0068: conexão do executor ao relay de tempo real (token curto, o grupo dos executores do dono e o evento que manda
@@ -249,24 +334,31 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
 
     [HttpPatch("{id:guid}")]
     public Task<ActionResult<ExecutionWorkerResponse>> Configure([FromRoute] Guid id, [FromBody] ConfigureExecutionWorkerRequest request, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.ConfigureWorkerAsync(id, request, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.ConfigureWorkerAsync(id, request, await GetActorAsync(ct), ct))));
 
     /// <summary>"Rodar diagnóstico agora": o executor roda o doctor no próximo sinal de vida (até 1 min).</summary>
     [HttpPost("{id:guid}/doctor-request")]
     public Task<ActionResult<ExecutionWorkerResponse>> RequestDoctor([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.RequestDoctorAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.RequestDoctorAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/pause")]
     public Task<ActionResult<ExecutionWorkerResponse>> Pause([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.PauseWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.PauseWorkerAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/resume")]
     public Task<ActionResult<ExecutionWorkerResponse>> Resume([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.ResumeWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.ResumeWorkerAsync(id, await GetActorAsync(ct), ct))));
 
     [HttpPost("{id:guid}/revoke")]
     public Task<ActionResult<ExecutionWorkerResponse>> Revoke([FromRoute] Guid id, CancellationToken ct) =>
-        Run<ExecutionWorkerResponse>(async () => Ok(await queue.RevokeWorkerAsync(id, await GetActorAsync(ct), ct)));
+        Run<ExecutionWorkerResponse>(async () => Ok(WithProfile(await queue.RevokeWorkerAsync(id, await GetActorAsync(ct), ct))));
+
+    /// <summary>
+    /// 0099 (ajustes 2): perfil do dono (quem chama é o dono — <c>mine</c> e as ações dele) e o que o doctor exige por perfil
+    /// (<see cref="DoctorProfiles"/>): <c>profile</c>, <c>doctorRequiredFor</c>, <c>profileDoctorProblems</c>.
+    /// </summary>
+    private ExecutionWorkerResponse WithProfile(ExecutionWorkerResponse worker) =>
+        DoctorProfiles.Apply(worker, DeskRoles.Profile(DeskRoles.Of(User)));
 
     /// <summary>Orçamento diário e regra automática do usuário.</summary>
     [HttpGet("settings")]

@@ -12,11 +12,31 @@
 #                                                        Claude Code, VPN, credencial, acesso — a tela mostra "Aguardando
 #                                                        voce" com o texto e o botao "Ja resolvi" (o vigia acorda)
 #   unblock     <card> <key>                             a pendencia foi resolvida: etapa volta a running
-#   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress]
-#                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada
+#   advance     <card> <key-feita> <proxima|-> [mensagem] [kind=progress] [--result arquivo.md]
+#                                                        conclui a etapa (log opcional) e inicia a proxima — 1 chamada.
+#                                                        --result: o RESULTADO da etapa (markdown rico) que aparece na hora
+#                                                        na sub-tarefa do item (card 78505); sem ele, vale a mensagem
+#   result      <card> <key> <arquivo.md|->            completa/troca o resultado de uma etapa (ja concluida ou nao)
 #   activity    <card> <key> <texto>                     o que esta fazendo agora na etapa (uma linha)
-#   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error)
+#   log         <card> <key|-> [kind] [mensagem|STDIN]   pedaco de andamento (kind: info|progress|finding|decision|warning|error|divergence)
 #   checkpoint  <card> <key> [texto|STDIN]               onde parou (para retomar a etapa)
+#   coderef     <card> <ref> --repo <r> --file <caminho> --lines A[-B] [--change change|create|remove|suspect|read]
+#                 [--title ...] [--why ...] [--after <trecho-novo|->] [--notes <notas.json>] [--dir <pasta>] [--context N]
+#                                                        0075: FOTOGRAFIA do codigo citado (o link [texto](ref:<ref>) e as
+#                                                        citacoes caminho:linha abrem o popover com o codigo real, o diff
+#                                                        proposto e as notas). Le na copia da master (ou --dir); --after =
+#                                                        so as linhas novas que substituem A-B (o script faz o diff).
+#                                                        Card sem plano (itens avulsos): grava a fotografia no card
+#   evidencias  <card> [--skip "motivo"]               0076: importa para o plano as EVIDENCIAS do card no DevOps (anexos, prints
+#                                                        da descricao e da discussion) e lista (#n, origem, aberta?); abra
+#                                                        cada uma com `attachment <card> "#n"` + Read. --skip = seguir sem
+#                                                        elas, so com o ok do usuario (motivo)
+#   handoff     <card> [texto|STDIN]                    0075: contexto da passagem ao entrar em ESPERA (chamado, PR, QA): o que
+#                                                        foi feito, o que se espera e de quem, riscos, como retomar — vai no
+#                                                        resumo "Situacao atual" do card e no handover (vazio limpa)
+#   situation   <card>                                   0075: a situacao atual do card (o que esta sendo aguardado), em markdown
+#   coderef     <card> <ref> --implemented <sha> --file <caminho> --dir <worktree>
+#                                                        0075 (correcao): grava o diff REAL do commit na ref
 #   upload      <card> <arquivo> [kind] [key] [descricao] envia um arquivo (kind: script|analysis|data|image|attachment)
 #   sync        <card> [key]                             envia o que mudou em scripts/ analises/ dados/ imagens/ anexos/
 #   status      <card> <running|completed|failed|paused|cancelled> [motivo] [resumo.md]
@@ -32,8 +52,11 @@
 #   save-pr-text <card> <descricao.md> [rca.md] [key]    salva descricao e root cause no card do PRMake (reuso no
 #                                                        "Abrir PR" e na gerar-prmake) e guarda os arquivos no plano
 #   devops      <card> <acao> [arquivo]                  fechamento do card no DevOps (via PRMake), qualquer tratamento:
-#                 config · rootcause <rca.md> · summary <resumo-pt-en.md> · classifications · classify <opcao> ·
-#                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate
+#                 config · rootcause <rca.md> · spec <especificacao.md> (US) · summary <resumo-pt-en.md> · classifications · bug-types ·
+#                 classify <opcao|-> [bug type] (Bug Type = um valor de bug-types; '-' grava so o Bug Type) ·
+#                 zero-remaining · dev-test-in-qa · ready-for-qa · test-in-production · initial-estimate ·
+#                 comment <texto.md> [--image <arquivo>]... [--task <n>] (comentario NOVO na discussion, sem registro
+#                 de PR no PRMake; imagens png/jpg/gif/webp viram anexos do DevOps no fim do texto)
 #                 (tudo gravado pelo PRMake; estados, areas, estimativa, prompt do resumo e opcoes de
 #                 classificacao vem da configuracao do usuario no PRMake — `config`/`classifications`)
 #   settings    <card>                                   configuracao das skills no PRMake (Skills Configurations +
@@ -47,8 +70,41 @@
 #   attachment  <card> <ref>                             baixa um arquivo do card por referencia: "#12", "12", "anexo 12",
 #                                                        "imagem 2", nome ou parte do nome (qualquer plano do card)
 #   note        <card> <texto|-> [arquivo...] [--step <key>]  o Claude comenta no plano (com anexos)
-#   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md]
-#                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge
+#   open-pr     <card> <repo> <branch> <destino> [titulo] [descricao.md] [--item <n>] [--task <n>]
+#                                                        abre o PR pelo PRMake (registra no card) — NUNCA faz merge;
+#                                                        --item = PR de um item de trabalho (0085): nao exige plano nem
+#                                                        anexa a etapa de PR do plano (o PR vai no output da sub-tarefa);
+#                                                        --task = sub-tarefa que abriu o PR (0091: vira entrega dela; sem
+#                                                        ele, a sub-tarefa de PR em andamento no card)
+#   deliver-code <card> <repo> [--task <n> | --step <key>] [--item <n>] [--dir <pasta>] [--base <branch>]
+#                                                        0091: registra o CODIGO ALTERADO na sub-tarefa/etapa (branch, base,
+#                                                        commits e o diff completo desde a base) — rode no fim de cada etapa
+#                                                        ou sub-tarefa de codigo/branch/cherry-pick; o diff vai direto do
+#                                                        worktree para o PRMake (nao passa pelo chat). Sem --task/--step =
+#                                                        a etapa em andamento do plano
+#   rules       <card> [--refresh]                       0085: regras do PRMake para o card (fluxo, base, NOME DE BRANCH
+#                                                        POR DESTINO, padroes de commit/titulo, itens) em
+#                                                        $CARD_DIR/dados/regras.md (cache de 10 min)
+#   standards   <card> [--repo <r>] [--refresh]          0101: PADROES de banco e de aplicacao que valem para o card (nomes
+#                                                        de tabela/chave/indice/procedure/view, scripts, camadas/pastas) em
+#                                                        $CARD_DIR/dados/padroes.md (cache de 10 min) — leia antes de
+#                                                        escrever script SQL, migracao ou objeto de banco
+#   standards-check <card> <arquivo> [--target sql|migration|code] [--repo <r>]
+#                                                        0101: confere o arquivo nos padroes (POST Governance/standards/check)
+#                                                        e imprime os achados (codigo, linha, dica); exit 3 = efeito block
+#                                                        (corrija antes de gravar), 0 = ok/aviso ou PRMake fora (nao trava).
+#                                                        O upload/sync de .sql ja confere antes de enviar
+#   work-items  <card> [numero]                        0085: itens de trabalho do card (lista resumida com fingerprint e
+#                                                        sub-tarefas) ou o detalhe de um item (params, output, undo, logs)
+#   work-task   <card> <sub-tarefa> <start|complete|fail|skip> [resultado|-] [--output <json>] [--undo <json>]
+#                                                        0085 (reserva do MCP prmake_work_task): muda a sub-tarefa
+#   close-pr    <card> <repo> <numero>                   0085 (desfazer): fecha o PR pelo PRMake (sem merge); exit 5 = ja
+#                                                        mesclado (nao desfaz — pergunte), 0 = fechado ou ja estava
+#   delete-branch <card> <repo> <branch>                 0085 (desfazer): apaga a branch remota criada por um item — so
+#                                                        branch de trabalho (com "/"), sem PR mesclado nem aberto (exit 5)
+#   worktree    <card> <pasta|repo> <branch> <base> [--item <n>]
+#                                                        worktree do card (ou do item de trabalho, 0085) com a branch a
+#                                                        partir de origin/<base>; imprime o caminho
 #   test        <card> <worktree> [<base-ref>]           testes da correcao (0069): so o que mudou, uma vez, com o limite
 #                                                        do PRMake (CorrectionLocalTests/CorrectionTestMaxSeconds); exit
 #                                                        do test-changed.sh (0 ok, 1 falhou, 124 lento, 3 sem runner)
@@ -77,7 +133,8 @@
 # Perguntas (JSON): [{"stepKey":"propor-solucoes","text":"...","options":[{"label":"A","description":"...","recommended":true}],"allowFreeText":true}]
 # Estado local: $CARDS_DIR/<card>/.prmake-plan.json (id do plano) e .prmake-outbox.jsonl (fila).
 # Nunca derruba a skill por falha de rede: o envio vai para a fila e e reenviado na proxima chamada.
-# Env: PRMAKE_TOKEN (token), PRMAKE_API_BASE (default https://api.softhouse.app.br/api/v1), CARDS_DIR.
+# Env: PRMAKE_TOKEN (token), PRMAKE_API_BASE (default https://api.softhouse.app.br/api/v1), CARDS_DIR,
+#      PRMAKE_PLAN_KIND (0085: analisar-bug|analisar-us; sem ele, User Story no card = analisar-us).
 # Executor (0039): com PRMAKE_EXECUTOR=1 (sessao aberta pelo prmake-agent, sem terminal) wait/watch/wait-answers
 # saem na hora (exit 12): a skill registra o que espera e encerra a vez — o PRMake retoma sozinho quando a pessoa agir.
 set -uo pipefail
@@ -231,6 +288,20 @@ api_upload() { # <path> <file> <kind> <stepKey> <description>
   return 0
 }
 
+# 0085: chamada a outro controller do PRMake (WorkItems, Skills, PullRequest...): <METHOD> <caminho> [corpo.json]
+# -> corpo em $TMP/resp, HTTP em $CODE (2 tentativas em rede/5xx).
+prmake_req() {
+  local args=(-s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -X "$1" "$BASE/$2" -H "x-api-key: $TOKEN"
+              -H 'accept: application/json' -H 'X-Execution-Client: skill') attempt
+  [[ -n "${3:-}" ]] && args+=(-H 'content-type: application/json' --data-binary "@$3")
+  for attempt in 1 2; do
+    CODE="$(curl "${args[@]}" 2>/dev/null)"; CODE="${CODE:-000}"
+    [[ "$CODE" =~ ^(000|5..)$ ]] || return 0
+    [[ $attempt -lt 2 ]] && sleep 2
+  done
+  return 0
+}
+
 is_transient() { [[ "$CODE" =~ ^(000|5..|409|429)$ ]]; }
 resp_error() { jq -r '.error // .message // .' "$TMP/resp" 2>/dev/null | head -c 500; }
 
@@ -243,7 +314,7 @@ fetch_artifact() { # <planId> <artifactId> <numero> <nome> <sha256>
   mkdir -p "$REFS_DIR"
   local target="$REFS_DIR/$3-$4"
   if [[ ! -f "$target" || "$(sha256 "$target")" != "$5" ]]; then
-    curl -s --max-time 120 -H "x-api-key: $TOKEN" -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$2/content?download=true" \
+    curl -s --max-time 120 -H "x-api-key: $TOKEN" -H 'X-Execution-Client: skill' -o "$target" "$BASE/ExecutionPlan/$1/artifacts/$2/content?download=true" \
       || { warn "falha ao baixar $4"; return 1; }
   fi
   printf '%s' "$target"
@@ -275,7 +346,26 @@ load_settings() {
     die "configuracao das skills indisponivel (HTTP ${code:-000}; plugin 'Skills Configurations' ausente?) — avise o usuario"
   fi
 }
+# RCA no padrao da aplicacao: o "Modelo do RCA" do prompt de Bug configurado no PRMake (o mesmo da gerar-prmake),
+# conferido antes de gravar — com ou sem codigo. RCA_CHECK=0 pula (so com o usuario pedindo).
+check_rca() { # <rca.md>
+  [[ "${RCA_CHECK:-1}" == "0" ]] && return 0
+  local checker prompt="$CARD_DIR/analises/rca-prompt.txt"
+  checker="$(cd "$(dirname "$0")/../.." && pwd)/gerar-prmake/scripts/rca_check.py"
+  [[ -f "$checker" ]] || checker="$HOME/.claude/skills/gerar-prmake/scripts/rca_check.py"
+  [[ -f "$checker" ]] || { warn "rca_check.py ausente (skill gerar-prmake): formato do RCA nao conferido"; return 0; }
+  (load_settings) >/dev/null 2>&1 || true
+  mkdir -p "$CARD_DIR/analises"
+  jq -r '.prompts.bug // empty' "$SETTINGS" 2>/dev/null > "$prompt" || true
+  [[ -s "$prompt" ]] || { warn "prompt de Bug nao configurado no PRMake: formato do RCA nao conferido"; return 0; }
+  python3 "$checker" "$prompt" "$1" "$CARD" || die "RCA fora do padrao — reescreva $1 seguindo o Modelo do RCA de $prompt (ingles, um titulo por secao) e grave de novo"
+}
 setting() { jq -r --arg k "$1" '.settings[$k] // empty | if type == "string" then . else tojson end' "$SETTINGS"; }
+# 0085: sufixo da branch por destino (Skills Configurations -> BranchSuffixByTarget, ex.: {"release-version":"-rv"}).
+target_suffix() { # <destino>
+  jq -r --arg t "$1" '(.settings.BranchSuffixByTarget // {}) | (if type == "string" then (fromjson? // {}) else . end)
+    | (.[$t] // (to_entries | map(select((.key | ascii_downcase) == ($t | ascii_downcase))) | .[0].value) // empty)' "$SETTINGS" 2>/dev/null
+}
 # Preenche {card}, {summary}, {target}, {TARGET} num padrao.
 fill_pattern() { # <padrao> [target] [summary]
   local t="${2:-}" up
@@ -299,6 +389,10 @@ send_or_queue() { # <METHOD> <path> <json-body-file>
 
 upload_or_queue() { # <file> <kind> <key> <desc>
   local file="$1" kind="$2" key="$3" desc="$4"
+  # 0101: script SQL passa pelos padroes antes de subir (efeito block = nao envia; PRMake fora = segue).
+  if [[ "$(printf '%s' "$file" | tr 'A-Z' 'a-z')" == *.sql ]]; then
+    standards_check_file "$file" sql || die "padrao com efeito block em $(basename "$file") — corrija os achados acima e envie de novo"
+  fi
   flush_quiet
   api_upload "/$PLAN/artifacts" "$file" "$kind" "$key" "$desc"
   if [[ "$CODE" =~ ^2 ]]; then echo "   enviado: $(basename "$file") ($(jq -r '.kind' "$TMP/resp"), $(jq -r '.size' "$TMP/resp") bytes)"; return 0; fi
@@ -345,11 +439,47 @@ flush_outbox() {
 }
 flush_quiet() { [[ -s "$OUTBOX" ]] && flush_outbox; return 0; }
 
+# 0085: tipo do plano — analisar-us quando o card e User Story (o PRMake escolhe a skill da fila por ele).
+# PRMAKE_PLAN_KIND > System.WorkItemType do card ja lido (dados/card.json do contexto) > analisar-bug.
+plan_kind() {
+  if [[ -n "${PRMAKE_PLAN_KIND:-}" ]]; then printf '%s' "$PRMAKE_PLAN_KIND"; return; fi
+  if [[ -s "$CARD_DIR/dados/card.json" ]] \
+     && [[ "$(jq -r '.fields["System.WorkItemType"] // ""' "$CARD_DIR/dados/card.json" 2>/dev/null)" == "User Story" ]]; then
+    printf 'analisar-us'; return
+  fi
+  printf 'analisar-bug'
+}
+
+# r5 (0085): como chamar a fase de entrega nas mensagens — US = implementacao, Bug = correcao (a fase no PRMake e "correction").
+delivery_name() { [[ "$(plan_kind)" == analisar-us ]] && printf 'implementacao' || printf 'correcao'; }
+
 default_steps() {
   # 0063: as etapas padrao vem do PRMake (Skills Configurations -> AnalysisDefaultSteps); o texto abaixo e so a reserva
   # para quando a configuracao nao responde. Titulos/descricoes aparecem na tela do card (por isso com acentuacao).
   [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
-  local cfg; cfg="$( [[ -s "$SETTINGS" ]] && setting AnalysisDefaultSteps 2>/dev/null)"
+  local cfg
+  if [[ "$(plan_kind)" == analisar-us ]]; then
+    # 0085: analise de User Story — sem causa raiz/RCA (UsAnalysisDefaultSteps no PRMake; abaixo, a reserva).
+    cfg="$( [[ -s "$SETTINGS" ]] && setting UsAnalysisDefaultSteps 2>/dev/null)"
+    if [[ -n "$cfg" ]] && jq -e 'type == "array" and length > 0 and all(.[]; .key and .title)' <<<"$cfg" >/dev/null 2>&1; then
+      printf '%s\n' "$cfg"; return
+    fi
+    cat <<'EOF'
+[
+ {"key":"identificar-card","title":"Identificar a US","description":"Descobrir o número do card (branch feature/us ou informado) e criar a pasta de artefatos."},
+ {"key":"coletar-dados","title":"Ler a US","description":"Título, estado, descrição, critérios de aceite, discussion e anexos da User Story no PRMake/Azure DevOps."},
+ {"key":"entender-us","title":"Entender a US","description":"Objetivo, quem usa, regras e critérios de aceite numerados (CA-1, CA-2...); o que está claro e o que é dúvida."},
+ {"key":"consultar-base","title":"Consultar a Base Solvace","description":"Engenharia reversa do módulo (prmake_base_search/get com o card, termos em português e inglês), armadilhas e Knowledge Center. Conclui citando os itens usados (módulo#ID) ou “lacuna: o que a base não cobre”."},
+ {"key":"mapear-codigo","title":"Mapear no código onde a US entra","description":"Confirmar no código os “Onde:” dos itens usados e levantar os pontos de alteração (telas, APIs, tabelas) por repositório."},
+ {"key":"desenhar-solucao","title":"Desenhar a solução","description":"Opções de solução com o impacto na base (prmake_base_impact), os critérios de aceite que cada uma cobre, riscos e esforço."},
+ {"key":"montar-analise","title":"Montar a análise da US","description":"Escrever a análise em markdown: entendimento, critérios de aceite, solução proposta, impacto e entregas."},
+ {"key":"publicar","title":"Publicar na timeline","description":"Postar a análise completa na Timeline do card."},
+ {"key":"propor-solucoes","title":"Propor a solução e decidir com você","kind":"question","description":"Apresentar as opções (prós, contras, riscos, entregas) e perguntar o que for preciso — responda no PRMake ou no Claude. Com as respostas, nasce o plano de implementação e os itens de trabalho."}
+]
+EOF
+    return
+  fi
+  cfg="$( [[ -s "$SETTINGS" ]] && setting AnalysisDefaultSteps 2>/dev/null)"
   if [[ -n "$cfg" ]] && jq -e 'type == "array" and length > 0 and all(.[]; .key and .title)' <<<"$cfg" >/dev/null 2>&1; then
     printf '%s\n' "$cfg"; return
   fi
@@ -382,6 +512,7 @@ print_plan() { # imprime o plano em $TMP/resp
             + (if (.executor // "claude") == "user" then "  (usuario)" else "" end)
             + (if .repository then "  repo=\(.repository)" else "" end)
             + (if ((.dependsOn // []) | length) > 0 then "  depende de: \(.dependsOn | join(","))" else "" end)
+            + (if .held then "  PAUSADA por \(.heldBy // "uma pessoa") (nao comece)" else "" end)
             + (if .checkpoint then "\n      checkpoint: \(.checkpoint | gsub("\n"; " | "))" else "" end)
                                                           + (if .statusReason then "\n      motivo: \(.statusReason)" else "" end)),
          (if (.artifacts | length) > 0 then "  arquivos: " + ([.artifacts[] | "\(.kind)/\(.name)"] | join(", ")) else empty end),
@@ -419,6 +550,60 @@ executor_exit() { # <o que esperaria>
   exit 12
 }
 
+# --- Padroes de banco e de aplicacao (0101) ----------------------------------------------------------
+# A conferencia e do PRMake (POST Governance/standards/check: efeito e modo de cada padrao, achados na trilha); aqui so
+# o envio e a impressao. Nunca trava por rede: PRMake fora/sem o recurso = segue com um AVISO.
+STANDARDS_MAX_BYTES=204800
+standards_target_for() { # <arquivo> -> sql | migration | code
+  local lower; lower="$(printf '%s' "$1" | tr '\\' '/' | tr 'A-Z' 'a-z')"
+  case "$lower" in *.sql) echo sql ;; */migrations/*|migrations/*) echo migration ;; *) echo code ;; esac
+}
+standards_source() {
+  if [[ "${PRMAKE_SPECIALIST:-0}" == 1 ]]; then echo specialist
+  elif [[ "${PRMAKE_EXECUTOR:-0}" == 1 ]]; then echo executor
+  else echo skill; fi
+}
+# Nome do repositorio pelo remote origin da pasta do arquivo (vazio fora de um repositorio).
+standards_repo_of() { # <arquivo>
+  local url; url="$(git -C "$(dirname "$1")" remote get-url origin 2>/dev/null | tr -d '\r')"
+  [[ -n "$url" ]] || return 0
+  url="${url%/}"; url="${url##*/}"; url="${url##*:}"; printf '%s' "${url%.git}"
+}
+# Confere um arquivo: imprime os achados; retorno 0 = ok/aviso/monitorar ou PRMake fora, 3 = efeito block.
+standards_check_file() { # <arquivo> <target> [repo]
+  local f="$1" target="$2" repo="${3:-}" src="$TMP/std-text" code bom
+  [[ -f "$f" ]] || { warn "arquivo nao encontrado: $f"; return 0; }
+  # Script salvo pelo SSMS costuma vir em UTF-16 (BOM FF FE / FE FF): converte para UTF-8 antes de mandar.
+  bom="$(head -c 2 "$f" | od -An -tx1 | tr -d ' \n')"
+  if [[ "$bom" == fffe || "$bom" == feff ]] && command -v iconv >/dev/null 2>&1; then
+    iconv -f UTF-16 -t UTF-8 "$f" 2>/dev/null | head -c "$STANDARDS_MAX_BYTES" > "$src"
+  else
+    head -c "$STANDARDS_MAX_BYTES" "$f" > "$src"
+  fi
+  [[ -n "$repo" ]] || repo="$(standards_repo_of "$f")"
+  jq -n --rawfile t "$src" --arg target "$target" --arg path "$(basename "$f")" --arg repo "$repo" --arg card "$CARD" \
+    --arg s "$(standards_source)" \
+    '{text:$t, target:$target, path:$path, source:$s} + (if $repo != "" then {repository:$repo} else {} end)
+      + (if ($card | test("^[0-9]+$")) then {card:($card | tonumber)} else {} end)' > "$TMP/std-body.json" || return 0
+  code="$(curl -s --max-time 20 -o "$TMP/std-resp" -w '%{http_code}' -X POST "$BASE/Governance/standards/check" \
+    -H "x-api-key: $TOKEN" -H 'accept: application/json' -H 'content-type: application/json' -H 'X-Execution-Client: skill' \
+    --data-binary "@$TMP/std-body.json" 2>/dev/null)"; code="${code:-000}"
+  if [[ ! "$code" =~ ^2 ]] || ! jq -e 'type == "object"' "$TMP/std-resp" >/dev/null 2>&1; then
+    warn "padroes (0101): nao conferi $(basename "$f") (HTTP $code) — segue sem a conferencia; diga isso no resultado"
+    return 0
+  fi
+  jq -r --arg f "$(basename "$f")" '
+    "padroes (0101) em \($f): decisao \(.decision // "allow") (modo \(.mode // "?")"
+      + (if (.wouldDecide // "") != "" and .wouldDecide != .decision then ", no enforce seria \(.wouldDecide)" else "" end)
+      + ") — \((.findings // []) | length) achado(s)",
+    ((.findings // [])[:20][] | "  - \(.code // .key) [\(.effect // "monitor")] linha \(.line // "-"): \(.title // "")"
+      + (if (.excerpt // "") != "" then "\n      trecho: \(.excerpt | gsub("\n"; " ") | .[0:160])" else "" end)
+      + (if (.hint // "") != "" then "\n      dica: \(.hint)" else "" end)),
+    (if ((.findings // []) | length) > 20 then "  ... e mais \((.findings | length) - 20)" else empty end)' "$TMP/std-resp"
+  [[ "$(jq -r '.decision // "allow"' "$TMP/std-resp" | tr 'A-Z' 'a-z')" == block ]] && return 3
+  return 0
+}
+
 case "$CMD" in
   start)
     TITLE=""; STEPS_ARG=""; FORCE_NEW=0
@@ -427,7 +612,7 @@ case "$CMD" in
       elif [[ -z "$TITLE" ]]; then TITLE="$a"
       else STEPS_ARG="$a"; fi
     done
-    [[ -n "$TITLE" ]] || TITLE="Análise do bug $CARD"
+    [[ -n "$TITLE" ]] || { [[ "$(plan_kind)" == analisar-us ]] && TITLE="Análise da US $CARD" || TITLE="Análise do bug $CARD"; }
     flush_quiet
     if [[ $FORCE_NEW -eq 0 ]]; then
       api GET "/card/$CARD/current"
@@ -462,8 +647,8 @@ case "$CMD" in
           echo "Continue pelo passo 6 (propor solucoes e perguntar) usando a analise ja publicada: $CARD_DIR/analises/analise-inicial.md"
           echo "(pasta do card vazia? rode: prmake-plan.sh pull $CARD). Para refazer a analise do zero: start $CARD --new"
         else
-          echo "ANALISE CONCLUIDA — ainda sem plano de correcao. Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
-          echo "(montar o plano de correcao com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
+          echo "ANALISE CONCLUIDA — ainda sem plano de $(delivery_name). Continue pelo passo 6 (perguntas sem resposta?) ou pelo passo 7"
+          echo "(montar o plano de $(delivery_name) com as respostas: prmake-plan.sh answers $CARD). Para refazer do zero: start $CARD --new"
         fi
         register_session
         api GET "/$PLAN"
@@ -477,8 +662,8 @@ case "$CMD" in
       [[ "$CODE" =~ ^(200|204)$ ]] || die "HTTP $CODE ao buscar o plano do card: $(resp_error)"
     fi
     read_steps_arg "$STEPS_ARG"
-    jq -n --arg card "$CARD" --arg title "$TITLE" --slurpfile steps "$TMP/steps" \
-      '{cardNumber:$card, kind:"analisar-bug", title:$title, steps:$steps[0]}' > "$TMP/body"
+    jq -n --arg card "$CARD" --arg title "$TITLE" --arg kind "$(plan_kind)" --slurpfile steps "$TMP/steps" \
+      '{cardNumber:$card, kind:$kind, title:$title, steps:$steps[0]}' > "$TMP/body"
     api POST "" "$TMP/body"
     [[ "$CODE" == "000" ]] && go_offline "PRMake inacessivel"
     [[ "$CODE" =~ ^(404|405)$ ]] && go_offline "API sem o recurso de plano de execucao (HTTP $CODE)"
@@ -493,15 +678,18 @@ case "$CMD" in
 
   steps)
     require_plan; read_steps_arg "${1:--}"
-    jq -n --slurpfile steps "$TMP/steps" '{steps:$steps[0]}' > "$TMP/body"
+    # Card 78728: lista parcial so muda as enviadas; STEPS_REPLACE=1 = a lista e o plano inteiro (pendentes omitidas saem).
+    jq -n --slurpfile steps "$TMP/steps" --arg r "${STEPS_REPLACE:-}" '{steps:$steps[0], replace:($r == "1")}' > "$TMP/body"
     send_or_queue PUT "/$PLAN/steps" "$TMP/body" && echo "OK etapas"
     ;;
 
   step)
     require_plan; KEY="${1:?key}"; ST="${2:?status}"; REASON="${3:-}"
     # 0052: STEP_MESSAGE = resumo do advance (a trava da engenharia reversa procura os itens citados nele).
-    jq -n --arg s "$ST" --arg r "$REASON" --arg m "${STEP_MESSAGE:-}" \
-      '{status:$s} + (if $r != "" then {reason:$r} else {} end) + (if $m != "" then {message:$m} else {} end)' > "$TMP/body"
+    STEP_RESULT=""; [[ -n "${STEP_RESULT_FILE:-}" ]] && STEP_RESULT="$(cat "$STEP_RESULT_FILE")"
+    jq -n --arg s "$ST" --arg r "$REASON" --arg m "${STEP_MESSAGE:-}" --arg res "$STEP_RESULT" \
+      '{status:$s} + (if $r != "" then {reason:$r} else {} end) + (if $m != "" then {message:$m} else {} end)
+       + (if $res != "" then {result:$res} else {} end)' > "$TMP/body"
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK $KEY -> $ST"
     ;;
 
@@ -528,11 +716,29 @@ case "$CMD" in
 
   advance)
     # Fecha uma etapa e abre a proxima numa chamada so (menos turnos = menos contexto relido).
-    require_plan; FROM="${1:?etapa que terminou}"; TO="${2:--}"; MSG="${3:-}"; KIND="${4:-progress}"
-    STEP_MESSAGE="$MSG" bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
+    require_plan; ADV=(); RES_FILE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in --result) RES_FILE="${2:?--result sem arquivo}"; shift 2 ;; *) ADV+=("$1"); shift ;; esac
+    done
+    FROM="${ADV[0]:?etapa que terminou}"; TO="${ADV[1]:--}"; MSG="${ADV[2]:-}"; KIND="${ADV[3]:-progress}"
+    if [[ -n "$RES_FILE" ]]; then
+      [[ "$RES_FILE" == "-" ]] && { cat > "$TMP/result.md"; RES_FILE="$TMP/result.md"; }
+      [[ -s "$RES_FILE" ]] || die "resultado vazio: $RES_FILE"
+      RES_FILE="$(cd "$(dirname "$RES_FILE")" && pwd)/$(basename "$RES_FILE")"
+    fi
+    STEP_MESSAGE="$MSG" STEP_RESULT_FILE="$RES_FILE" bash "$0" step "$CARD" "$FROM" completed >/dev/null || exit $?
     if [[ -n "$MSG" ]]; then bash "$0" log "$CARD" "$FROM" "$KIND" "$MSG" >/dev/null || exit $?; fi
     if [[ "$TO" != "-" ]]; then bash "$0" step "$CARD" "$TO" running >/dev/null || exit $?; fi
     if [[ "$TO" != "-" ]]; then echo "OK $FROM -> completed · $TO -> running"; else echo "OK $FROM -> completed"; fi
+    ;;
+
+  result)
+    # Card 78505: o resultado da etapa na sub-tarefa do item (markdown rico). Para completar o de uma etapa ja concluida.
+    require_plan; KEY="${1:?key}"; F="${2:--}"
+    if [[ "$F" == "-" ]]; then cat > "$TMP/result.md"; F="$TMP/result.md"; fi
+    [[ -s "$F" ]] || die "resultado vazio: $F"
+    jq -n --rawfile res "$F" '{result:$res}' > "$TMP/body"
+    send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK resultado de $KEY"
     ;;
 
   activity)
@@ -560,6 +766,91 @@ case "$CMD" in
     [[ -n "$TEXT" ]] || TEXT="$(cat)"
     jq -n --arg c "$TEXT" '{checkpoint:$c}' > "$TMP/body"
     send_or_queue PATCH "/$PLAN/steps/$KEY" "$TMP/body" && echo "OK checkpoint $KEY"
+    ;;
+
+  coderef)
+    # 0075: fotografia do codigo citado — o Claude indica arquivo/linhas/trecho novo, o script le e faz o diff.
+    # Card sem plano (itens de trabalho avulsos, sem .prmake-plan.json ou com o plano indisponivel): grava pelo card
+    # (PUT/PATCH ExecutionPlan/card/<card>/code-refs/<ref>) — o PRMake usa o plano do card se houver, senao a
+    # fotografia fica no card. Com plano: a rota do plano, como sempre.
+    PLAN="$(plan_id)"
+    if [[ -n "$PLAN" ]] && ! { [[ -f "$STATE" ]] && jq -e '.offline == true' "$STATE" >/dev/null 2>&1; }; then
+      register_session; CR_ROUTE="/$PLAN"
+    else
+      CR_ROUTE="/card/$CARD"
+    fi
+    REF="${1:?ref (ex.: sa3-init)}"; shift
+    CR_REPO=""; CR_DIR=""; CR_FILE=""; CR_SHA=""; CR_CTX=""; CR_ARGS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --repo) CR_REPO="${2:?}"; shift 2 ;;
+        --dir) CR_DIR="${2:?}"; shift 2 ;;
+        --file) CR_FILE="${2:?}"; shift 2 ;;
+        --implemented) CR_SHA="${2:?}"; shift 2 ;;
+        --context) CR_CTX="${2:?}"; shift 2 ;;
+        --lines|--change|--title|--why|--after|--notes|--branch) CR_ARGS+=("$1" "${2:?$1 sem valor}"); shift 2 ;;
+        *) die "coderef: opcao desconhecida '$1'" ;;
+      esac
+    done
+    [[ -n "$CR_FILE" ]] || die "coderef: informe --file <caminho relativo ao repositorio>"
+    if [[ -z "$CR_DIR" ]]; then
+      [[ -n "$CR_REPO" ]] || die "coderef: informe --repo <repositorio> (ou --dir <pasta>)"
+      CR_DIR="$(bash "$(dirname "$0")/revamp-repos.sh" master "$CR_REPO")" || die "coderef: repositorio '$CR_REPO' nao encontrado (revamp-repos.sh where)"
+      CR_ARGS+=(--branch master)
+    fi
+    [[ -n "$CR_REPO" ]] || CR_REPO="$(basename "$(git -C "$CR_DIR" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null)"
+    if [[ -n "$CR_SHA" ]]; then
+      python3 "$(dirname "$0")/coderef.py" implemented --dir "$CR_DIR" --file "$CR_FILE" --sha "$CR_SHA" > "$TMP/body" || exit 1
+      api PATCH "$CR_ROUTE/code-refs/$REF" "$TMP/body"
+    else
+      if [[ -z "$CR_CTX" ]]; then
+        [[ -s "$SETTINGS" ]] || (load_settings) >/dev/null 2>&1 || true
+        CR_CTX="$( [[ -s "$SETTINGS" ]] && setting CodeRefContextLines 2>/dev/null)"
+      fi
+      [[ "$CR_CTX" =~ ^[0-9]+$ ]] || CR_CTX=30
+      python3 "$(dirname "$0")/coderef.py" snapshot --dir "$CR_DIR" --file "$CR_FILE" --repo "$CR_REPO" --context "$CR_CTX" \
+        ${CR_ARGS[@]+"${CR_ARGS[@]}"} > "$TMP/body" || exit 1
+      api PUT "$CR_ROUTE/code-refs/$REF" "$TMP/body"
+    fi
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em coderef $REF: $(resp_error)"
+    jq -r '"OK coderef \(.ref) \(.change) \(.path):\(.startLine)-\(.endLine)\(if .hasProposal then " +proposta" else "" end)\(if .hasImplemented then " +feito" else "" end) — cite com [texto](ref:\(.ref))"' "$TMP/resp"
+    ;;
+
+  evidencias)
+    require_plan
+    if [[ "${1:-}" == "--skip" ]]; then
+      jq -n --arg r "${2:?motivo (o que o usuario autorizou)}" '{reason:$r}' > "$TMP/body"
+      api POST "/$PLAN/evidence/skip" "$TMP/body"
+    else
+      api POST "/$PLAN/evidence/import"
+    fi
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em evidencias: $(resp_error)"
+    jq -r '
+      (if .error then "ERRO ao ler o DevOps: \(.error)" else empty end),
+      (if .skipReason then "Seguindo sem as evidencias: \(.skipReason)" else empty end),
+      (if (.items | length) == 0 then "Nenhuma evidencia no card (sem anexos nem imagens na descricao/discussion)."
+       else "\(.items | length) evidencia(s) do card no DevOps (guardadas nos arquivos do plano):" end),
+      (.items[] | if .number then
+          "  #\(.number) \(.name) — \(.sourceDetail // .source) · \(if .readAt then "aberta" elif .readable then "NAO ABERTA" else "abrir a mao (video/compactado)" end)"
+        else "  (nao importada) \(.name) — \(.source)\(if .sourceDetail then " (\(.sourceDetail))" else "" end): \(.error // "")" end),
+      (if ([.items[] | select(.number and .readable and (.readAt | not))] | length) > 0
+       then "Abra TODAS as NAO ABERTAS antes da causa raiz: prmake_attachment(card, "#n") ou bash $PLAN attachment <card> "#n" + Read (Office/e-mail: evidence-text.py)." else empty end)
+    ' "$TMP/resp" | sed "s|\$PLAN|$0|"
+    ;;
+
+  handoff)
+    require_plan; TEXT="${1:-}"
+    [[ -n "$TEXT" ]] || TEXT="$(cat)"
+    jq -n --arg t "$TEXT" '{text:$t}' > "$TMP/body"
+    api PUT "/$PLAN/handoff" "$TMP/body"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em handoff: $(resp_error)"
+    jq -r '"OK handoff — situacao: \(.icon) \(.title)\(if .next then " · proximo: \(.next)" else "" end)"' "$TMP/resp"
+    ;;
+
+  situation)
+    api GET "/card/$CARD/situation"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em situation: $(resp_error)"
+    jq -r '.markdown' "$TMP/resp"
     ;;
 
   upload)
@@ -637,10 +928,32 @@ case "$CMD" in
       echo "--- repro steps/descricao ($(wc -c < "$DESC" | tr -d ' ') bytes; inteiro em $DESC)"
       head -c 4000 "$DESC"; [[ $(wc -c < "$DESC") -gt 4000 ]] && echo "…(cortado — leia o arquivo se precisar)"; echo
     fi
-    echo; echo "=== PLANO"
-    bash "$SELF" start "$CARD" "${1:-Analise do bug $CARD${CTITLE:+: ${CTITLE:0:120}}}" 2>&1
+    if [[ "$(plan_kind)" == analisar-us ]]; then
+      # 0085: User Story — criterios de aceite (bug-fetch.sh) e plano analisar-us (sem causa raiz/RCA).
+      CA="$CARD_DIR/dados/criterios-aceite.txt"
+      if [[ -s "$CA" ]]; then
+        echo "--- criterios de aceite ($(wc -c < "$CA" | tr -d ' ') bytes; inteiros em $CA)"
+        head -c 3000 "$CA"; [[ $(wc -c < "$CA") -gt 3000 ]] && echo "…(cortado — leia o arquivo se precisar)"; echo
+      else
+        echo "--- criterios de aceite: (o card nao tem — pergunte ou derive da descricao e diga isso na analise)"
+      fi
+      echo; echo "=== PLANO (User Story — analisar-us: siga a skill analisar-us)"
+      bash "$SELF" start "$CARD" "${1:-Analise da US $CARD${CTITLE:+: ${CTITLE:0:120}}}" 2>&1
+    else
+      echo; echo "=== PLANO"
+      bash "$SELF" start "$CARD" "${1:-Analise do bug $CARD${CTITLE:+: ${CTITLE:0:120}}}" 2>&1
+    fi
     echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
     bash "$SELF" notes "$CARD" 2>&1
+    echo
+    # 0076: tudo o que o card tem de evidencia (anexos, prints da descricao e da discussion) vai para o plano agora.
+    echo "=== EVIDENCIAS DO CARD (DevOps)"
+    bash "$SELF" evidencias "$CARD" 2>&1 || echo "(nao deu para importar — veja o erro acima; a analise nao conclui sem as evidencias)"
+    DISC="$CARD_DIR/dados/discussion.txt"
+    if [[ -s "$DISC" ]]; then
+      echo; echo "=== DISCUSSION DO CARD ($(grep -c '^--- ' "$DISC") comentario(s); inteira em $DISC)"
+      head -c 3500 "$DISC"; [[ $(wc -c < "$DISC") -gt 3500 ]] && echo "…(cortado — leia o arquivo inteiro)"; echo
+    fi
     echo
     # 0052: engenharia reversa do modulo do card — os itens que casam com o titulo/repro ja vem com o texto, e o card
     # fica registrado (a etapa investigar-codigo so conclui consultando/citando a base quando o modulo esta completo).
@@ -663,6 +976,8 @@ case "$CMD" in
     else
       echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
     fi
+    # 0085: regras do PRMake para o card ja no cache (dados/regras.md) — branches por destino para a correcao/itens.
+    bash "$SELF" rules "$CARD" >/dev/null 2>&1 || true
     # 0037: o usuario precisa saber logo se o Claude consegue ler o banco do cliente (nunca mostra senha).
     echo; echo "=== ACESSO AOS BANCOS DOS CLIENTES (somente leitura)"
     CREDS="${SQLSERVER_CREDENTIALS:-$HOME/.claude/sqlserver-credentials.json}"
@@ -682,18 +997,22 @@ case "$CMD" in
     # a analise deixou no checkpoint de propor-solucoes, as respostas, os comentarios e os arquivos dos planos.
     SELF="$0"; SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
     CARDS_DIR="$CARDS_ROOT" bash "$SCRIPTS/card-init.sh" "$CARD" >/dev/null
-    echo "=== CARD $CARD (pasta: $CARD_DIR) — FASE DE CORRECAO"
     MANIFEST_OUT="$(OUTDIR="$CARD_DIR/dados" bash "$SCRIPTS/bug-fetch.sh" "$CARD" 2>&1)" || warn "nao consegui ler o card: $MANIFEST_OUT"
+    FASE="$(delivery_name | tr '[:lower:]' '[:upper:]')"
+    echo "=== CARD $CARD (pasta: $CARD_DIR) — FASE DE $FASE"
     grep -E "^(workItemType|fluxo|state|area|title)=" <<<"$MANIFEST_OUT"
-    echo "(campos e repro steps inteiros em $CARD_DIR/dados/ — abra so se a correcao precisar)"
+    echo "(campos e textos inteiros do card em $CARD_DIR/dados/ — abra so se a $(delivery_name) precisar)"
     echo; echo "=== PLANO"
     bash "$SELF" start "$CARD" 2>&1
+    # 0076: evidencia nova no card depois da analise (print na discussion) entra no plano.
+    echo; echo "=== EVIDENCIAS DO CARD (DevOps)"
+    bash "$SELF" evidencias "$CARD" 2>&1 || true
     ANALYSIS="$(state_get analysisPlanId)"
     if [[ -n "$ANALYSIS" ]]; then
       pull_plan "$ANALYSIS" >/dev/null 2>&1 || true
       api GET "/$ANALYSIS"
       if [[ "$CODE" == "200" ]]; then
-        echo; echo "=== RESUMO PARA A CORRECAO (deixado pela analise — base desta sessao; nao refaca a investigacao)"
+        echo; echo "=== RESUMO PARA A $FASE (deixado pela analise — base desta sessao; nao refaca a investigacao)"
         jq -r '[.steps[] | select(.key == "propor-solucoes")][0].checkpoint // empty' "$TMP/resp" > "$TMP/handoff"
         if [[ -s "$TMP/handoff" ]]; then cat "$TMP/handoff"
         else
@@ -707,6 +1026,12 @@ case "$CMD" in
     fi
     CURRENT="$(plan_id)"
     [[ -n "$CURRENT" && "$CURRENT" != "$ANALYSIS" ]] && { pull_plan "$CURRENT" >/dev/null 2>&1 || true; }
+    # 0085: itens de trabalho do card (o plano de correcao vira item; entregas separadas = itens novos, sem repetir)
+    # e as regras do PRMake em cache (nome de branch por destino, padroes) — so o caminho, leia a secao que precisar.
+    echo; echo "=== ITENS DE TRABALHO DO CARD"
+    { bash "$SELF" work-items "$CARD" 2>/dev/null || echo "(itens de trabalho indisponiveis no PRMake agora)"; } | head -40
+    bash "$SELF" rules "$CARD" >/dev/null 2>&1 \
+      && echo "(regras do PRMake para o card em $CARD_DIR/dados/regras.md — nome de branch por destino, padroes de commit/titulo)"
     echo; echo "=== ARQUIVOS NA PASTA DO CARD (dos planos)"
     (cd "$CARD_DIR" && find analises scripts -maxdepth 1 -type f 2>/dev/null | sort | head -30) || true
     echo; echo "=== COMENTARIOS E ANEXOS DO USUARIO"
@@ -822,18 +1147,20 @@ case "$CMD" in
   correction)
     require_plan
     ANALYSIS="$(state_get analysisPlanId)"; [[ -n "$ANALYSIS" ]] || ANALYSIS="$PLAN"
-    TITLE="${1:?titulo do plano de correcao}"; read_steps_arg "${2:--}"
+    TITLE="${1:?titulo do plano de correcao/implementacao}"; read_steps_arg "${2:--}"
     api GET "/$ANALYSIS"
     [[ "$CODE" == "200" ]] || die "HTTP $CODE ao ler o plano de analise: $(resp_error)"
     jq -e '.phase == "analysis"' "$TMP/resp" >/dev/null || die "o plano ativo nao e de analise (use: prmake-plan.sh use $CARD analysis)"
-    jq -n --arg card "$CARD" --arg title "$TITLE" --arg parent "$ANALYSIS" --slurpfile steps "$TMP/steps" \
-      '{cardNumber:$card, kind:"analisar-bug", title:$title, phase:"correction", parentPlanId:$parent, steps:$steps[0]}' > "$TMP/body"
+    # 0085: a correcao herda o tipo da analise (analisar-us = User Story); o PRMake cria o item de trabalho do plano.
+    PKIND="$(jq -r '.kind // empty' "$TMP/resp")"; PKIND="${PKIND:-$(plan_kind)}"
+    jq -n --arg card "$CARD" --arg title "$TITLE" --arg parent "$ANALYSIS" --arg kind "$PKIND" --slurpfile steps "$TMP/steps" \
+      '{cardNumber:$card, kind:$kind, title:$title, phase:"correction", parentPlanId:$parent, steps:$steps[0]}' > "$TMP/body"
     api POST "" "$TMP/body"
-    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao criar o plano de correcao: $(resp_error)"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao criar o plano de $( [[ "$PKIND" == analisar-us ]] && echo implementacao || echo correcao): $(resp_error)"
     CORR=$(jq -r '.id' "$TMP/resp")
     save_state "$CORR" "$ANALYSIS" "$CORR"
     PLAN="$CORR"; register_session
-    echo "PLANO DE CORRECAO criado (agora e o plano ativo):"
+    echo "PLANO DE $( [[ "$PKIND" == analisar-us ]] && echo IMPLEMENTACAO || echo CORRECAO) criado (agora e o plano ativo; titulo: $(jq -r '.title // empty' "$TMP/resp")):"
     print_plan
     ;;
 
@@ -975,6 +1302,7 @@ case "$CMD" in
     USER_ID="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | sed -n 's/.*"ExternalId":"\([^"]*\)".*/\1/p')"
     [[ -n "$USER_ID" ]] || die "nao consegui extrair o ExternalId do token"
     RCA=""; [[ -n "$RCA_FILE" && -f "$RCA_FILE" ]] && RCA="$(cat "$RCA_FILE")"
+    [[ -n "$RCA" ]] && check_rca "$RCA_FILE"
     jq -n --rawfile desc "$DESC_FILE" --arg rca "$RCA" --arg uid "$USER_ID" --arg card "$CARD" --argjson form "${FORM_ID:-1}" \
       '{description:$desc, cardNumber:$card, userId:$uid, formId:$form, rootCause:$rca}' > "$TMP/reg.json"
     CODE="$(curl -s --max-time 60 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest" \
@@ -996,7 +1324,7 @@ case "$CMD" in
   devops)
     # Fechamento do card: SEMPRE pelos endpoints do PRMake (0028) — voce gera os textos; quem grava no
     # DevOps e o PRMake (integracao do Azure do usuario, registro na Timeline).
-    ACTION="${1:?acao: config|rootcause|summary|classifications|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate}"
+    ACTION="${1:?acao: config|rootcause|spec|summary|comment|classifications|bug-types|classify|zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate|set-state}"
     MD2HTML="$HOME/.claude/skills/gerar-prmake/scripts/md2html.py"
     to_html() { if [[ -f "$MD2HTML" ]]; then python3 "$MD2HTML" "$1"; else sed 's/&/\&amp;/g; s/</\&lt;/g' "$1" | awk 'BEGIN{print "<pre>"} {print} END{print "</pre>"}'; fi; }
     prmake_post() { # <caminho> [corpo.json]
@@ -1018,16 +1346,66 @@ case "$CMD" in
     case "$ACTION" in
       rootcause)
         F="${2:?arquivo .md do root cause}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        check_rca "$F"
         jq -n --arg rc "$(to_html "$F")" '{rootCause:$rc}' > "$TMP/body"
-        prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body" ;;
+        prmake_post_retry "Azure/card/$CARD/rootcause" "$TMP/body"
+        # Card 78323: User Story (US de RCA) nao tem o campo de root cause — o PRMake responde 409 e o RCA (ja conferido
+        # pelo modelo) vai como comentario na discussion, com titulo proprio.
+        if [[ "$CODE" == 409 ]] && resp_error | grep -q "User Story"; then
+          { printf '<p><b>Root Cause Analysis (RCA)</b></p>\n'; to_html "$F"; } > "$TMP/rca.html"
+          jq -n --rawfile h "$TMP/rca.html" '{html:$h, images:[]}' > "$TMP/body"
+          prmake_post "Azure/card/$CARD/comment" "$TMP/body"
+          [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao publicar o RCA na discussion: $(resp_error)"
+          echo "OK RCA publicado como comentario na discussion do card $CARD (a User Story nao tem campo de root cause; id $(jq -r '.commentId // "?"' "$TMP/resp"))"
+          exit 0
+        fi ;;
+      spec)
+        # Card 78525: especificacao da User Story nos campos do card — uma linha de titulo por secao (as secoes do
+        # PRMake: GET Azure/card/<card>/spec); o PRMake separa, converte para HTML e grava cada secao no seu campo.
+        # Imagens: ![legenda](anexo:<arquivo>) — o PRMake acha pelo nome nos arquivos do card (e dos cards de
+        # --files-from, ex.: o card onde a analise gravou os prints) e sobe como anexo do DevOps.
+        F="${2:?arquivo .md da especificacao (uma linha de titulo por secao)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
+        FROM_CARDS="[]"; [[ "${3:-}" == "--files-from" ]] && FROM_CARDS="$(printf '%s' "${4:?--files-from <card[,card]>}" | jq -R 'split(",")')"
+        jq -n --rawfile d "$F" --argjson from "$FROM_CARDS" '{document:$d, filesFrom:$from}' > "$TMP/body"
+        prmake_post_retry "Azure/card/$CARD/actions/spec" "$TMP/body" ;;
       summary)
         F="${2:?arquivo .md do resumo nao tecnico (**PT** --- ... **EN** --- ...)}"; [[ -s "$F" ]] || die "arquivo vazio: $F"
         jq -n --rawfile s "$F" --arg html "$(to_html "$F")" '{summary:$s, html:$html}' > "$TMP/body"
         prmake_post "PullRequest/$CARD/summary" "$TMP/body" ;;
+      comment)
+        # Comentario novo na discussion (sub-tarefa comment da Bancada): nao depende do registro de PR do card nem
+        # sobrescreve o resumo. --image anexa prints (anexo do DevOps, no fim do texto). Cria comentario: nao repete.
+        F="${2:?arquivo .md do comentario}"; [[ -s "$F" ]] || die "arquivo vazio: $F"; shift 2
+        IMAGES=(); CM_TASK=""
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --image) [[ -s "${2:-}" ]] || die "imagem nao encontrada: ${2:-}"; IMAGES+=("$2"); shift 2 ;;
+            --task) CM_TASK="${2:?numero da sub-tarefa}"; CM_TASK="${CM_TASK#\#}"; shift 2 ;;
+            *) die "argumento desconhecido: $1 (use --image <arquivo> ou --task <n>)" ;;
+          esac
+        done
+        to_html "$F" > "$TMP/comment.html"
+        python3 - "$TMP/comment.html" "$TMP/body" ${IMAGES[@]+"${IMAGES[@]}"} <<'PY'
+import base64, json, os, sys
+html_file, out, images = sys.argv[1], sys.argv[2], sys.argv[3:]
+with open(html_file, encoding="utf-8") as f:
+    body = {"html": f.read(), "images": []}
+for path in images:
+    with open(path, "rb") as f:
+        body["images"].append({"fileName": os.path.basename(path), "contentBase64": base64.b64encode(f.read()).decode()})
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(body, f)
+PY
+        prmake_post "Azure/card/$CARD/comment${CM_TASK:+?workItemTask=$CM_TASK}" "$TMP/body"
+        [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao comentar: $(resp_error)"
+        echo "OK $(jq -r '.message // "comentario publicado"' "$TMP/resp") (id $(jq -r '.commentId // "?"' "$TMP/resp"))"
+        exit 0 ;;
       classify)
-        # Opcoes vem do PRMake (GET Azure/actions/classifications); quem grava no DevOps e o PRMake.
-        KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications)}"
-        jq -n --arg p "$KIND" '{preset:$p}' > "$TMP/body"
+        # Opcoes vem do PRMake (GET Azure/actions/classifications e bug-types, o picklist do DevOps); quem grava no
+        # DevOps e o PRMake. classify <opcao|-> [bug type]: '-' = so o Bug Type.
+        KIND="${2:?opcao (veja: prmake-plan.sh devops <card> classifications) ou - para gravar so o Bug Type}"
+        jq -n --arg p "$KIND" --arg b "${3:-}" \
+          '{preset:(if $p == "-" then null else $p end), bugType:(if $b == "" then null else $b end)}' > "$TMP/body"
         prmake_post_retry "Azure/card/$CARD/actions/classify" "$TMP/body"
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao classificar: $(resp_error)"
         echo "OK $(jq -r '.message // "classificado"' "$TMP/resp")"
@@ -1051,6 +1429,7 @@ case "$CMD" in
                 + " (dev validando em QA — pode mover sem perguntar quando a correcao estiver em QA)"
               else "NAO configurado" end),
           "ready-for-qa: " + (if ($b.readyForQa.state // "") != "" then "move para \"\($b.readyForQa.state)\" (SO com autorizacao do usuario ou etapa validar-qa concluida por ele)" else "NAO configurado" end),
+          "ready-for-qa (User Story, fechamento do RCA): " + (if (.userStory.readyForQa.state // "") != "" then "move para \"\(.userStory.readyForQa.state)\" (depois da validacao em QA, classificacao e Remaining zerado)" else "NAO configurado" end),
           "initial-estimate: " + (if $b.initialEstimate.configured
               then "Original \($b.initialEstimate.originalEstimate) · Remaining \($b.initialEstimate.remainingWork) · Completed \($b.initialEstimate.completedWork)"
               else "NAO configurado" end),
@@ -1062,8 +1441,17 @@ case "$CMD" in
         [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao listar as opcoes: $(resp_error)"
         jq -r '.[] | "\(.key)\t[\(.pattern // "-")] \(.label) — \(.resolutionType) | \(.generalClassification) | \(.classification)"' "$TMP/resp"
         exit 0 ;;
+      bug-types)
+        # Valores do Bug Type (picklist do Bug no DevOps), um por linha — o classify so aceita um deles.
+        CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/actions/bug-types" 2>/dev/null)"
+        [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao listar os Bug Types: $(resp_error)"
+        jq -r '.[]' "$TMP/resp"
+        exit 0 ;;
       zero-remaining|dev-test-in-qa|ready-for-qa|test-in-production|initial-estimate)
         prmake_post_retry "Azure/card/$CARD/actions/$ACTION" ;;
+      set-state) # 0085 (desfazer item): volta o card para um estado valido do tipo — devops <card> set-state <estado> [motivo]
+        jq -n --arg s "${2:?estado}" --arg r "${3:-}" '{state:$s, reason:(if $r == "" then null else $r end)}' > "$TMP/body"
+        prmake_post "Azure/card/$CARD/actions/set-state" "$TMP/body" ;;
       *) die "acao desconhecida: $ACTION" ;;
     esac
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em $ACTION: $(resp_error)"
@@ -1091,13 +1479,20 @@ case "$CMD" in
       esac
     done
     load_settings
-    NAME_PATTERN="$(setting BranchNamePattern)"; NAME_PATTERN="${NAME_PATTERN:-hotfix/{card\}}"
     COMMIT_PATTERN="$(setting CommitMessagePattern)"; TITLE_PATTERN="$(setting PrTitlePattern)"
     [[ -n "$(setting BranchStrategy)" ]] || die "BranchStrategy nao configurado no PRMake (Skills Configurations) — avise o usuario"
+    # Card no DevOps: tipo (Bug x User Story) e area (fluxo).
+    CODE="$(curl -s --max-time 60 -o "$TMP/card" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/card/$CARD" 2>/dev/null)"
+    AREA="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.AreaPath"] // ""' "$TMP/card" || true)"
+    WI_TYPE="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.WorkItemType"] // ""' "$TMP/card" || true)"
+    # Nome da branch pelo tipo: User Story = BranchNamePatternUserStory (feature/{card}, nunca hotfix/); Bug = BranchNamePattern (hotfix/{card}).
+    if [[ "$WI_TYPE" == "User Story" || "$(plan_kind)" == analisar-us ]]; then
+      NAME_PATTERN="$(setting BranchNamePatternUserStory)"; NAME_PATTERN="${NAME_PATTERN:-feature/{card\}}"
+    else
+      NAME_PATTERN="$(setting BranchNamePattern)"; NAME_PATTERN="${NAME_PATTERN:-hotfix/{card\}}"
+    fi
     # Fluxo: --flow > area do card (BranchFlowByArea) > perguntar.
     if [[ -z "$FLOW" ]]; then
-      CODE="$(curl -s --max-time 60 -o "$TMP/card" -w '%{http_code}' -H "x-api-key: $TOKEN" "$BASE/Azure/card/$CARD" 2>/dev/null)"
-      AREA="$( [[ "$CODE" =~ ^2 ]] && jq -r '.fields["System.AreaPath"] // ""' "$TMP/card" || true)"
       FLOW="$(jq -r --arg a "$AREA" '[.settings.BranchFlowByArea // [] | .[] | . as $r | select($a != "" and (($a | ascii_downcase) | contains($r.areaContains | ascii_downcase))) | $r.flow][0] // empty' "$SETTINGS")"
     fi
     # Tipo do repositorio: primeira regra de BranchStrategy.repositories que casa (glob, sem diferenciar maiusculas).
@@ -1151,9 +1546,17 @@ case "$CMD" in
         CMDS+=("$G checkout -b $BR origin/$FROM && $G cherry-pick <sha(s)>"); PUSH="$PUSH $BR"
       else
         echo "  $BR -> $TARGET  titulo \"$TITLE\""
+        # 0085: destino com sufixo proprio (BranchSuffixByTarget, ex.: release-version -> -rv) — linha a mais, so
+        # informativa: e o nome quando esse destino precisar de branch propria (item de trabalho, PR avulso).
+        TSUF="$(target_suffix "$TARGET")"
+        [[ -n "$TSUF" ]] && echo "    por-destino: $FIX$TSUF (BranchSuffixByTarget[$TARGET]; branch propria para $TARGET, ex.: item de trabalho)"
       fi
       CMDS+=("#open-pr $BR $TARGET \"$TITLE\"")
     done < <(jq -r '.prs // [] | .[] | "\(.suffix // "")|\(.from // "")|\(.target)"' "$TMP/rule")
+    # 0085: nome da branch por destino para todos os destinos configurados (nunca invente: -rv, -dev, -qa...).
+    BYT="$(jq -r --arg fix "$FIX" '(.settings.BranchSuffixByTarget // {}) | (if type == "string" then (fromjson? // {}) else . end)
+      | to_entries | map("\(.key)=\($fix)\(.value)") | join(" ")' "$SETTINGS" 2>/dev/null)"
+    [[ -n "$BYT" ]] && echo "branches-por-destino: $BYT"
     echo "comandos:"
     echo "  git fetch origin"
     if [[ "$G" != git ]]; then
@@ -1182,6 +1585,11 @@ case "$CMD" in
   worktree)
     # worktree <card> <pasta-do-repo> <branch> <base>: cria (ou reaproveita) <pasta-do-repo>/../.prmake-wt/<card>/<repo>
     # com a branch de correcao a partir de origin/<base> e imprime o caminho. O executor limpa depois que o plano termina.
+    # 0085: --item <n> = worktree proprio do item de trabalho (.prmake-wt/<card>/item-<n>/<repo>) — itens rodam em
+    # paralelo e cada um tem a sua branch; sem ele, o worktree do card (plano).
+    WT_ITEM=""; ARGS_WT=()
+    while [[ $# -gt 0 ]]; do case "$1" in --item) WT_ITEM="${2:?numero do item}"; shift 2 ;; *) ARGS_WT+=("$1"); shift ;; esac; done
+    set -- ${ARGS_WT[@]+"${ARGS_WT[@]}"}
     REPO_DIR="${1:?pasta do repositorio}"; BR="${2:?branch de correcao}"; BASE_BR="${3:?branch base}"
     # 0048: aceita o nome do repositorio no lugar da pasta (resolvido pelo mapa da maquina).
     if [[ ! -d "$REPO_DIR" && -f "$SKILLS_TOOL" ]]; then
@@ -1189,7 +1597,16 @@ case "$CMD" in
     fi
     [[ -d "$REPO_DIR/.git" || -f "$REPO_DIR/.git" ]] || die "nao e um repositorio git: $REPO_DIR"
     REPO_DIR="$(cd "$REPO_DIR" && pwd)"
-    WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD/$(basename "$REPO_DIR")"
+    WT="$(dirname "$REPO_DIR")/.prmake-wt/$CARD${WT_ITEM:+/item-${WT_ITEM#\#}}/$(basename "$REPO_DIR")"
+    if [[ -e "$WT/.git" && -n "$WT_ITEM" && "$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null)" != "$BR" ]]; then
+      # Mesmo item, outra branch (ex.: desfazer numa branch diferente): troca se o worktree estiver limpo.
+      [[ -z "$(git -C "$WT" status --porcelain 2>/dev/null)" ]] || die "worktree $WT tem mudancas pendentes em outra branch"
+      git -C "$WT" fetch origin "$BR" >/dev/null 2>&1 || true
+      if git -C "$WT" show-ref --verify --quiet "refs/heads/$BR"; then git -C "$WT" checkout -q "$BR" >&2
+      elif git -C "$WT" show-ref --verify --quiet "refs/remotes/origin/$BR"; then git -C "$WT" checkout -q -b "$BR" "origin/$BR" >&2
+      else git -C "$WT" fetch origin "$BASE_BR" >/dev/null 2>&1; git -C "$WT" checkout -q -b "$BR" "origin/$BASE_BR" >&2; fi \
+        || die "nao consegui trocar o worktree $WT para $BR"
+    fi
     if [[ ! -e "$WT/.git" ]]; then
       mkdir -p "$(dirname "$WT")"
       git -C "$REPO_DIR" fetch origin "$BASE_BR" >/dev/null 2>&1 || git -C "$REPO_DIR" fetch origin >/dev/null 2>&1 || die "git fetch falhou em $REPO_DIR"
@@ -1281,9 +1698,15 @@ case "$CMD" in
       echo "Mais de um arquivo para '$REF' — seja mais especifico:"; jq -r 'sort_by(.number)[] | "  #\(.number) \(.name) (\(.kind))"' "$TMP/match.json"; exit 2
     fi
     IFS=$'\t' read -r pid aid num name sha kind ctype size < <(jq -r '.[0] | [.planId, .id, .number, .name, .sha256, .kind, .contentType, .size] | @tsv' "$TMP/match.json")
+    # 0076: abrir pelo comando conta como leitura da evidencia — baixa de novo (o PRMake marca quem abriu).
+    rm -f "$REFS_DIR/$num-$name"
     LOCAL="$(fetch_artifact "$pid" "$aid" "$num" "$name" "$sha")" || die "nao consegui baixar $name"
     echo "anexo #$num $name ($ctype, $(human_size "$size")) -> $LOCAL"
-    echo "(abra com a ferramenta Read para ver/analisar)"
+    case "$name" in
+      *.docx|*.xlsx|*.pptx|*.eml|*.DOCX|*.XLSX|*.PPTX|*.EML)
+        echo "(Office/e-mail: texto com: python3 $(dirname "$0")/evidence-text.py \"$LOCAL\")" ;;
+      *) echo "(abra com a ferramenta Read para ver/analisar)" ;;
+    esac
     ;;
 
   note)
@@ -1309,7 +1732,18 @@ case "$CMD" in
   open-pr)
     # Abre o PR pelo PRMake (o mesmo endpoint da tela/gerar-prmake): fica registrado no card, na Timeline e
     # e acompanhado pela etapa de PR do repositorio (conclui quando for mesclado — por outra pessoa).
-    require_plan; REPO="${1:?repositorio}"; BRANCH="${2:?branch (ex.: hotfix/74517-dev)}"; TARGET="${3:?branch de destino}"
+    # 0085: --item <n> = PR de um item de trabalho: sem plano, sem anexar a etapa de PR (vai no output da sub-tarefa).
+    ITEM=""; PR_TASK=""; ARGS_PR=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --item) ITEM="${2:?numero do item}"; shift 2 ;;
+        --task) PR_TASK="${2:?numero da sub-tarefa}"; PR_TASK="${PR_TASK#\#}"; shift 2 ;;
+        *) ARGS_PR+=("$1"); shift ;;
+      esac
+    done
+    set -- ${ARGS_PR[@]+"${ARGS_PR[@]}"}
+    [[ -n "$ITEM" ]] || require_plan
+    REPO="${1:?repositorio}"; BRANCH="${2:?branch (ex.: hotfix/74517-dev)}"; TARGET="${3:?branch de destino}"
     if [[ -n "${4:-}" ]]; then TITLE="$4"; else
       load_settings; TITLE="$(fill_pattern "$(setting PrTitlePattern)" "$TARGET")"
       [[ -n "$TITLE" ]] || TITLE="$CARD $(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')"
@@ -1323,11 +1757,20 @@ case "$CMD" in
     jq -n --arg repo "$REPO" --arg prefix "$PREFIX" --arg name "$NAME" --arg target "$TARGET" --arg title "$TITLE" \
       --arg desc "$DESC" --arg uid "$USER_ID" \
       '{repositoryId:$repo, branchPrefix:$prefix, branchName:$name, targetBranch:$target, title:$title, description:$desc, draft:false, userId:$uid}' > "$TMP/pr.json"
-    CODE="$(curl -s --max-time 90 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest/$CARD/github" \
-      -H "x-api-key: $TOKEN" -H 'content-type: application/json' --data-binary "@$TMP/pr.json" 2>/dev/null)"
+    CODE="$(curl -s --max-time 90 -o "$TMP/resp" -w '%{http_code}' -X POST "$BASE/PullRequest/$CARD/github${PR_TASK:+?workItemTask=$PR_TASK}" \
+      -H "x-api-key: $TOKEN" -H 'content-type: application/json' -H 'X-Execution-Client: skill' --data-binary "@$TMP/pr.json" 2>/dev/null)"
     [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao abrir o PR: $(resp_error)"
     NUMBER=$(jq -r '.number // empty' "$TMP/resp"); URL=$(jq -r '.url // empty' "$TMP/resp")
     echo "PR #$NUMBER aberto: $REPO $BRANCH -> $TARGET  $URL$(jq -e '.alreadyExisted' "$TMP/resp" >/dev/null && echo '  (ja existia)')"
+    if [[ -n "$ITEM" ]]; then
+      # Saida pronta para o output/undo da sub-tarefa (prmake_work_task complete).
+      jq -cn --arg u "$URL" --arg r "$REPO" --arg b "$BRANCH" --arg t "$TARGET" --arg n "$NUMBER" \
+        --argjson ex "$(jq '.alreadyExisted // false' "$TMP/resp")" \
+        '{output:{pr:$u, number:$n, repository:$r, branch:$b, target:$t, alreadyExisted:$ex},
+          undo:(if $ex then {action:"none", params:{reason:"o PR ja existia antes do item"}} else {action:"close-pr", params:{repo:$r, number:$n}} end)}'
+      echo "Lembrete: o merge e feito por outra pessoa — nunca mescle."
+      exit 0
+    fi
     # Anexa ja a etapa de PR desse repositorio (a sincronizacao do PRMake faria em ate 1 min).
     api GET "/$PLAN"
     # Etapa de PR desse repositorio ainda aberta (ex.: pr-edv-solvace-2 de uma nova rodada); senao, a primeira.
@@ -1340,6 +1783,253 @@ case "$CMD" in
       [[ "$CODE" =~ ^2 ]] && echo "   anexado a etapa $STEP"
     fi
     echo "Lembrete: o merge e feito por outra pessoa — nunca mescle."
+    ;;
+
+  deliver-code)
+    # 0091: codigo alterado da sub-tarefa/etapa — branch, base, merge-base, commits e o diff completo (committed + o que
+    # ainda nao foi commitado nos arquivos versionados), do worktree direto para o PRMake. A tela mostra no modal da
+    # sub-tarefa e na aba Entregas do item. Rode de novo depois de novos commits: substitui o anterior (mesma branch).
+    REPO="${1:?repositorio (ex.: edv-solvace)}"; shift
+    DC_TASK=""; DC_STEP=""; DC_ITEM=""; DC_DIR=""; DC_BASE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --task) DC_TASK="${2:?}"; DC_TASK="${DC_TASK#\#}"; shift 2 ;;
+        --step) DC_STEP="${2:?}"; shift 2 ;;
+        --item) DC_ITEM="${2:?}"; DC_ITEM="${DC_ITEM#\#}"; shift 2 ;;
+        --dir) DC_DIR="${2:?}"; shift 2 ;;
+        --base) DC_BASE="${2:?}"; shift 2 ;;
+        *) die "argumento desconhecido: $1" ;;
+      esac
+    done
+    # Pasta: --dir > worktree do item/card (.prmake-wt) > clone pelo mapa da maquina > pasta atual.
+    if [[ -z "$DC_DIR" ]]; then
+      RD=""
+      [[ -f "$SKILLS_TOOL" ]] && RD="$(bash "$SKILLS_TOOL" repos path "$REPO" 2>/dev/null)" || true
+      if [[ -n "$RD" && -d "$RD" ]]; then
+        RD="$(cd "$RD" && pwd)"
+        WTC="$(dirname "$RD")/.prmake-wt/$CARD${DC_ITEM:+/item-$DC_ITEM}/$(basename "$RD")"
+        if [[ -e "$WTC/.git" ]]; then DC_DIR="$WTC"; else DC_DIR="$RD"; fi
+      else
+        DC_DIR="$(pwd)"
+      fi
+    fi
+    git -C "$DC_DIR" rev-parse --git-dir >/dev/null 2>&1 || die "nao e um repositorio git: $DC_DIR (informe --dir <worktree>)"
+    BR="$(git -C "$DC_DIR" rev-parse --abbrev-ref HEAD)"
+    [[ "$BR" != HEAD ]] || die "worktree sem branch (HEAD solto) em $DC_DIR"
+    # Base: --base > de onde a branch nasceu (reflog "Created from origin/<base>") > upstream de outra branch.
+    if [[ -z "$DC_BASE" ]]; then
+      DC_BASE="$(git -C "$DC_DIR" reflog show --format='%gs' "refs/heads/$BR" 2>/dev/null | tail -1 | sed -n 's#^branch: Created from \(refs/remotes/\)\{0,1\}origin/##p')"
+      [[ "$DC_BASE" == HEAD || "$DC_BASE" == */HEAD ]] && DC_BASE=""
+    fi
+    [[ -n "$DC_BASE" ]] || die "nao achei a base da branch $BR — informe --base <branch> (a mesma do 'branches')"
+    git -C "$DC_DIR" fetch -q origin "$DC_BASE" >/dev/null 2>&1 || true
+    BASE_REF="origin/$DC_BASE"; git -C "$DC_DIR" rev-parse -q --verify "$BASE_REF" >/dev/null || BASE_REF="$DC_BASE"
+    MB="$(git -C "$DC_DIR" merge-base HEAD "$BASE_REF" 2>/dev/null)" || die "sem ancestral comum entre $BR e $BASE_REF"
+    HEAD_SHA="$(git -C "$DC_DIR" rev-parse HEAD)"
+    git -C "$DC_DIR" log --no-merges --reverse --format='%H%x09%s' "$MB..HEAD" \
+      | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {sha: .[0], title: (.[1:] | join("\t"))})' > "$TMP/commits.json"
+    git -C "$DC_DIR" diff --no-color -M "$MB" > "$TMP/code.diff"
+    NC="$(jq 'length' "$TMP/commits.json")"
+    STAT="$(git -C "$DC_DIR" diff --shortstat -M "$MB" | sed 's/^ *//')"
+    [[ -s "$TMP/code.diff" || "$NC" -gt 0 ]] || die "nada alterado em $BR desde $BASE_REF — nada a registrar"
+    if [[ -n "$DC_TASK" ]]; then
+      URL_DC="$BASE/WorkItems/tasks/$DC_TASK/deliverables/code"; WHERE="sub-tarefa #$DC_TASK"
+    else
+      require_plan
+      if [[ -z "$DC_STEP" ]]; then
+        api GET "/$PLAN"
+        DC_STEP="$(jq -r '[.steps[] | select(.status == "running")][0].key // empty' "$TMP/resp")"
+        [[ -n "$DC_STEP" ]] || die "nenhuma etapa em andamento — informe --step <key> ou --task <n>"
+      fi
+      URL_DC="$BASE/ExecutionPlan/$PLAN/steps/$DC_STEP/deliverables/code"; WHERE="etapa $DC_STEP"
+    fi
+    CODE="$(curl -s --max-time 120 -o "$TMP/resp" -w '%{http_code}' -X POST "$URL_DC" \
+      -H "x-api-key: $TOKEN" -H 'accept: application/json' -H 'X-Execution-Client: skill' \
+      -F "repository=$REPO" -F "branch=$BR" -F "base=$DC_BASE" -F "mergeBase=$MB" -F "head=$HEAD_SHA" \
+      -F "commits=<$TMP/commits.json" -F "patch=@$TMP/code.diff;type=text/x-diff;filename=code.diff" 2>/dev/null)"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao registrar o codigo alterado: $(resp_error)"
+    echo "codigo registrado ($WHERE): $REPO $BR (base $DC_BASE) — $NC commit(s)${STAT:+, $STAT}$(jq -e '.data.truncated == true' "$TMP/resp" >/dev/null 2>&1 && echo ' — diff grande, gravado cortado')"
+    ;;
+
+  rules)
+    # 0085: regras do PRMake calculadas para o card (GET Skills/rules?card=) — fluxo pela area, base, nome de branch
+    # por destino (BranchSuffixByTarget), padroes de commit/titulo, nunca mesclar, gravacao pelo PRMake, itens.
+    # Cache de 10 min em dados/regras.md (o especialista e as skills de itens leem dali; --refresh forca).
+    OUT="$CARD_DIR/dados/regras.md"; mkdir -p "$CARD_DIR/dados"
+    if [[ "${1:-}" != "--refresh" && -s "$OUT" && -n "$(find "$OUT" -mmin -10 2>/dev/null)" ]]; then cat "$OUT"; exit 0; fi
+    prmake_req GET "Skills/rules?card=$CARD&format=md"
+    if [[ "$CODE" =~ ^2 ]]; then
+      # Markdown puro ou JSON {markdown|rules|text}.
+      if jq -e 'type == "object"' "$TMP/resp" >/dev/null 2>&1; then
+        jq -r '.markdown // .rules // .text // .content // tojson' "$TMP/resp" > "$OUT"
+      elif jq -e 'type == "string"' "$TMP/resp" >/dev/null 2>&1; then
+        jq -r '.' "$TMP/resp" > "$OUT"
+      else
+        cp "$TMP/resp" "$OUT"
+      fi
+      cat "$OUT"
+    elif [[ -s "$OUT" ]]; then
+      warn "PRMake sem as regras agora (HTTP $CODE) — usando o cache de $(date -r "$OUT" '+%d/%m %H:%M' 2>/dev/null || echo '?')"
+      cat "$OUT"
+    else
+      die "HTTP $CODE ao ler as regras do card (GET Skills/rules): $(resp_error) — sem regras, nao invente nomes: use 'branches'"
+    fi
+    ;;
+
+  standards)
+    # 0101: padroes de banco e de aplicacao que valem para o card (GET Governance/standards/for-card/{card}) — o
+    # mesmo markdown do MCP prmake_standards. Cache de 10 min em dados/padroes.md (por repositorio); --refresh forca.
+    REPO=""; REFRESH=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in --repo) REPO="${2:?repositorio}"; shift 2 ;; --refresh) REFRESH=1; shift ;; *) die "argumento desconhecido: $1" ;; esac
+    done
+    mkdir -p "$CARD_DIR/dados"
+    OUT="$CARD_DIR/dados/padroes${REPO:+-${REPO//\//_}}.md"
+    if [[ $REFRESH -eq 0 && -f "$OUT" && -n "$(find "$OUT" -mmin -10 2>/dev/null)" ]]; then
+      [[ -s "$OUT" ]] && cat "$OUT" || echo "Nenhum padrao de banco/aplicacao vale para o card $CARD."
+      exit 0
+    fi
+    Q=""; [[ -n "$REPO" ]] && Q="?repository=$(jq -rn --arg r "$REPO" '$r | @uri')"
+    CODE="$(curl -s --max-time 30 -o "$TMP/resp" -w '%{http_code}' "$BASE/Governance/standards/for-card/$CARD$Q" \
+      -H "x-api-key: $TOKEN" -H 'accept: text/markdown, application/json' -H 'X-Execution-Client: skill' 2>/dev/null)"; CODE="${CODE:-000}"
+    if [[ "$CODE" =~ ^2 ]]; then
+      # Markdown puro ou JSON {markdown|text} / string.
+      if jq -e 'type == "object"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.markdown // .text // .content // ""' "$TMP/resp" > "$OUT"
+      elif jq -e 'type == "string"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.' "$TMP/resp" > "$OUT"
+      else cp "$TMP/resp" "$OUT"; fi
+      if [[ -n "$(tr -d '[:space:]' < "$OUT")" ]]; then cat "$OUT"; else : > "$OUT"; echo "Nenhum padrao de banco/aplicacao vale para o card $CARD."; fi
+    elif [[ -s "$OUT" ]]; then
+      warn "PRMake sem os padroes agora (HTTP $CODE) — usando o cache de $(date -r "$OUT" '+%d/%m %H:%M' 2>/dev/null || echo '?')"
+      cat "$OUT"
+    else
+      warn "padroes (0101) indisponiveis agora (HTTP $CODE) — siga as regras do card (prmake_rules) e diga no resultado que nao leu os padroes"
+    fi
+    ;;
+
+  standards-check)
+    # 0101: confere um arquivo (script SQL, migracao, codigo) nos padroes do PRMake. exit 3 = efeito block.
+    FILE="${1:?arquivo}"; shift; TARGET=""; REPO=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --target) TARGET="${2:?sql|migration|code}"; shift 2 ;;
+        --repo) REPO="${2:?repositorio}"; shift 2 ;;
+        *) die "argumento desconhecido: $1" ;;
+      esac
+    done
+    [[ -f "$FILE" ]] || die "arquivo nao encontrado: $FILE"
+    [[ -n "$TARGET" ]] || TARGET="$(standards_target_for "$FILE")"
+    case "$TARGET" in sql|migration|code) ;; *) die "--target deve ser sql, migration ou code" ;; esac
+    standards_check_file "$FILE" "$TARGET" "$REPO"
+    exit $?
+    ;;
+
+  work-items)
+    # 0085: itens de trabalho do card (MCP prmake_work_items/prmake_work_item tem o mesmo conteudo).
+    NUM="${1:-}"; NUM="${NUM#\#}"; mkdir -p "$CARD_DIR/dados"
+    if [[ -n "$NUM" ]]; then
+      prmake_req GET "WorkItems/$NUM"
+      [[ "$CODE" == 200 ]] || die "HTTP $CODE ao ler o item #$NUM: $(resp_error)"
+      cp "$TMP/resp" "$CARD_DIR/dados/work-item-$NUM.json"
+      jq -r '"#\(.number) [\(.status)] \(.type) · \(.title)" + (if .planId then "  (plano \(.planPhase // "?"))" else "" end)
+          + "\n  origem=\(.origin) · editavel=\(.editable) · progresso \(.progress.done // 0)/\(.progress.total // 0) · fingerprint \(.fingerprint // "-" | .[0:12])"
+          + (if .cancelReason then "\n  motivo do cancelamento: \(.cancelReason)" else "" end),
+        (if (.description // "") != "" then "  descricao: " + (.description | gsub("\n"; " ") | .[0:600]) else empty end),
+        ((.tasks // []) | sort_by(.order)[] | "  - #\(.number) [\(.status)] \(.kind)/\(.executor) · \(.title)"
+          + (if (.params // {}) != {} then "\n      params: \(.params | tojson)" else "" end)
+          + (if .stepKey then "\n      etapa: \(.stepKey)" else "" end)
+          + (if (.output // null) != null and (.output // {}) != {} then "\n      output: \(.output | tojson)" else "" end)
+          + (if .undo then "\n      undo: \(.undo | tojson)" else "" end)
+          + (if (.result // "") != "" then "\n      resultado: \(.result | gsub("\n"; " ") | .[0:300])" else "" end)),
+        (if ((.links // []) | length) > 0 then "  links: " + ([.links[] | "\(.kind) \(.url)"] | join(" · ")) else empty end),
+        (if ((.logs // []) | length) > 0 then "  ultimos registros:", ((.logs | .[-5:])[] | "    \(.at[0:16] | sub("T"; " ")) \(.actor // "") \(.kind): \(.text | gsub("\n"; " ") | .[0:200])") else empty end)' "$TMP/resp"
+      echo "(json completo: $CARD_DIR/dados/work-item-$NUM.json)"
+      exit 0
+    fi
+    prmake_req GET "WorkItems/card/$CARD"
+    [[ "$CODE" == 200 ]] || die "HTTP $CODE ao listar os itens de trabalho do card: $(resp_error)"
+    cp "$TMP/resp" "$CARD_DIR/dados/work-items.json"
+    if [[ "$(jq 'length' "$TMP/resp")" == 0 ]]; then echo "Nenhum item de trabalho no card $CARD."; exit 0; fi
+    jq -r '.[] | "#\(.number) [\(.status)] \(.type) · \(.title) · \(.progress.done // 0)/\(.progress.total // 0)"
+        + (if .planId then " · plano \(.planPhase // "")" else "" end) + " · fp \(.fingerprint // "-" | .[0:12])",
+      ((.tasks // []) | sort_by(.order)[] | "    #\(.number) [\(.status)] \(.kind) · \(.title)")' "$TMP/resp"
+    echo "(json: $CARD_DIR/dados/work-items.json · detalhe: work-items $CARD <numero>)"
+    ;;
+
+  work-task)
+    # 0085: reserva do MCP prmake_work_task (start|complete|fail|skip). wait/revert so pelo MCP.
+    TASK="${1:?numero da sub-tarefa}"; TASK="${TASK#\#}"; [[ "$TASK" =~ ^[0-9]+$ ]] || die "numero da sub-tarefa invalido: $TASK"; ACTION="${2:?acao: start|complete|fail|skip}"; shift 2
+    case "$ACTION" in start|complete|fail|skip) ;; *) die "acao '$ACTION' so pelo MCP prmake_work_task (aqui: start|complete|fail|skip)" ;; esac
+    RESULT=""; OUTPUT="null"; UNDO="null"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output) OUTPUT="${2:?json}"; shift 2 ;;
+        --undo) UNDO="${2:?json}"; shift 2 ;;
+        -) RESULT="$(cat)"; shift ;;
+        *) RESULT="$1"; shift ;;
+      esac
+    done
+    jq -e . <<<"$OUTPUT" >/dev/null 2>&1 || die "--output nao e JSON valido"
+    jq -e . <<<"$UNDO" >/dev/null 2>&1 || die "--undo nao e JSON valido"
+    jq -n --arg r "$RESULT" --argjson o "$OUTPUT" --argjson u "$UNDO" \
+      '(if $r != "" then {result:$r} else {} end) + (if $o != null then {output:$o} else {} end) + (if $u != null then {undo:$u} else {} end)' > "$TMP/body"
+    prmake_req POST "WorkItems/tasks/$TASK/$ACTION" "$TMP/body"
+    [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE em $ACTION da sub-tarefa #$TASK: $(resp_error)"
+    echo "OK sub-tarefa #$TASK -> $ACTION"
+    ;;
+
+  close-pr)
+    # 0085 (desfazer item): fecha um PR do card pelo PRMake — nunca mescla, nunca reabre. Usa a rota que ja existe
+    # (PUT PullRequest/{card}/github/{id}/status CLOSED, a mesma da tela); PR mesclado = exit 5 (desfazer pede revert
+    # com o ok da pessoa). PR fora do registro do card: rota direta do GitHub (TODO: confirmar com o B2 a rota final).
+    REPO="${1:?repositorio}"; NUM="${2:?numero do PR}"; NUM="${NUM#\#}"
+    [[ "$NUM" =~ ^[0-9]+$ ]] || die "numero do PR invalido: $NUM"
+    prmake_req GET "PullRequest/$CARD/github?refreshStatus=true&forceRefresh=true"
+    [[ "$CODE" == 200 ]] || die "HTTP $CODE ao listar os PRs do card: $(resp_error)"
+    jq --arg r "$REPO" --argjson n "$NUM" '[.[] | select(.number == $n and ((.repositoryId // "") | ascii_downcase) == ($r | ascii_downcase))][0] // empty' \
+      "$TMP/resp" > "$TMP/pr.json"
+    if [[ -s "$TMP/pr.json" ]]; then
+      ST="$(jq -r '.status' "$TMP/pr.json" | tr '[:lower:]' '[:upper:]')"; ID="$(jq -r '.id' "$TMP/pr.json")"; URL="$(jq -r '.url' "$TMP/pr.json")"
+      case "$ST" in
+        MERGED) echo "JA MESCLADO: PR #$NUM ($REPO) $URL — fechar nao desfaz; precisa de revert com o ok da pessoa"; exit 5 ;;
+        CLOSED) echo "OK PR #$NUM ($REPO) ja estava fechado  $URL"; exit 0 ;;
+      esac
+      jq -n '{status:"CLOSED"}' > "$TMP/body"
+      prmake_req PUT "PullRequest/$CARD/github/$ID/status" "$TMP/body"
+      [[ "$CODE" =~ ^2 ]] || die "HTTP $CODE ao fechar o PR #$NUM: $(resp_error)"
+      echo "OK PR #$NUM ($REPO) fechado pelo PRMake  $URL"
+      exit 0
+    fi
+    # So fecha PR registrado no card (os PRs do item sao abertos pelo open-pr e ficam registrados).
+    die "PR #$NUM ($REPO) nao esta registrado no card — o PRMake so fecha PRs do card; avise o usuario (feche pela tela do PR)"
+    ;;
+
+  delete-branch)
+    # 0085 (desfazer item): apaga a branch REMOTA que o item criou. Protecoes: so branch de trabalho (prefixo/nome),
+    # nunca as bases do fluxo; nenhum PR do card com ela mesclado ou aberto (feche antes com close-pr).
+    REPO="${1:?repositorio}"; BR="${2:?branch}"
+    [[ "$BR" == */* ]] || { echo "RECUSADO: '$BR' nao e branch de trabalho (sem prefixo/) — base do fluxo nunca e apagada"; exit 5; }
+    case "$BR" in master|main|development|develop|qa|release-version|hotfix-version|edge|release/*|refs/*) echo "RECUSADO: '$BR' e branch protegida"; exit 5 ;; esac
+    prmake_req GET "PullRequest/$CARD/github?refreshStatus=true&forceRefresh=true"
+    [[ "$CODE" == 200 ]] || die "HTTP $CODE ao listar os PRs do card (necessario para apagar com seguranca): $(resp_error)"
+    BLOCK="$(jq -r --arg r "$REPO" --arg b "$BR" '[.[] | select(((.repositoryId // "") | ascii_downcase) == ($r | ascii_downcase)
+        and ((.branchPrefix // "") + (.branchName // "")) == $b and ((.status // "") | ascii_upcase) != "CLOSED")]
+      | map("#\(.number) \(.status) -> \(.targetBranch)") | join(", ")' "$TMP/resp")"
+    if [[ -n "$BLOCK" ]]; then
+      echo "RECUSADO: a branch $BR tem PR nao fechado ($BLOCK) — mesclado nao se desfaz sem a pessoa; aberto: close-pr antes"
+      exit 5
+    fi
+    REPO_DIR=""
+    [[ -f "$SKILLS_TOOL" ]] && REPO_DIR="$(bash "$SKILLS_TOOL" repos path "$REPO" 2>/dev/null)"
+    [[ -n "$REPO_DIR" && -d "$REPO_DIR" ]] || die "pasta do repositorio $REPO desconhecida — fixe com: bash $SKILLS_TOOL repos set $REPO <pasta>"
+    if ! git -C "$REPO_DIR" ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+      echo "OK branch $BR nao existe no origin de $REPO (nada a apagar)"; exit 0
+    fi
+    # Worktree do card com essa branch: remove antes (o executor tambem limpa depois).
+    WTP="$(git -C "$REPO_DIR" worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$BR" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w}')"
+    [[ -n "$WTP" ]] && git -C "$REPO_DIR" worktree remove --force "$WTP" >/dev/null 2>&1
+    git -C "$REPO_DIR" push origin --delete "$BR" || die "git push --delete falhou ($REPO $BR)"
+    git -C "$REPO_DIR" branch -D "$BR" >/dev/null 2>&1 || true
+    echo "OK branch $BR apagada do origin de $REPO"
     ;;
 
   flush)

@@ -13,6 +13,8 @@ public class ExecutionPlanSummaryResponse
     public string? StatusReason { get; set; }
     public string? StatusChangedBy { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
+    /// <summary>0074: externalId de quem criou — a tela busca a foto (avatar) por ele.</summary>
+    public Guid? CreatedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
@@ -20,6 +22,12 @@ public class ExecutionPlanSummaryResponse
     public DateTimeOffset? LastActivityAt { get; set; }
     public int StepsTotal { get; set; }
     public int StepsCompleted { get; set; }
+
+    /// <summary>
+    /// 0074: número da versão do plano entre os do mesmo card e fase (1 = o mais antigo). Só é preenchido no histórico
+    /// do card (<c>GET ExecutionPlan/card/{n}</c>); em outras respostas fica 0. Não confundir com o token de concorrência <c>Version</c> (xmin).
+    /// </summary>
+    public int VersionNumber { get; set; }
 
     /// <summary>analysis | correction (0024).</summary>
     public string Phase { get; set; } = ExecutionPhase.Analysis;
@@ -201,6 +209,19 @@ public class ExecutionPlanResponse : ExecutionPlanSummaryResponse
 
     /// <summary>Hora do servidor na resposta — o front calcula "sem sinal há X min" sem depender do relógio local.</summary>
     public DateTimeOffset ServerTime { get; set; }
+
+    /// <summary>0080: divergência entre a análise e a base real (pendente = a etapa de PR espera a confirmação).</summary>
+    public ExecutionDivergenceResponse? Divergence { get; set; }
+}
+
+public class ExecutionDivergenceResponse
+{
+    public string Text { get; set; } = string.Empty;
+    public string? StepKey { get; set; }
+    public DateTimeOffset At { get; set; }
+    public bool Pending { get; set; }
+    public string? ConfirmedBy { get; set; }
+    public DateTimeOffset? ConfirmedAt { get; set; }
 }
 
 public class ExecutionStepResponse
@@ -222,8 +243,15 @@ public class ExecutionStepResponse
     public DateTimeOffset UpdatedAt { get; set; }
     public string Executor { get; set; } = ExecutionExecutor.Claude;
     public string Kind { get; set; } = ExecutionStepKind.Task;
+    /// <summary>Tipo da sub-tarefa na Bancada (o informado pela skill ou o deduzido).</summary>
+    public string TaskKind { get; set; } = WorkTaskKind.Task;
     public string? Repository { get; set; }
     public List<string> DependsOn { get; set; } = [];
+    /// <summary>Card 78680: pausada pela pessoa (não começa, nem as que dependem dela).</summary>
+    public bool Held { get; set; }
+    public string? HeldBy { get; set; }
+    /// <summary>Card 78680: a pessoa escolheu a posição (a skill não a tira do lugar ao refinar).</summary>
+    public bool OrderPinned { get; set; }
 }
 
 public class ExecutionQuestionResponse
@@ -294,6 +322,9 @@ public class ExecutionArtifactResponse
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    /// <summary>0076: evidência do DevOps (<c>devops:&lt;id&gt;</c>) e quando a skill a abriu.</summary>
+    public string? ExternalKey { get; set; }
+    public DateTimeOffset? ReadAt { get; set; }
 }
 
 /// <summary>
@@ -375,7 +406,14 @@ public static class ExecutionPlanMappings
             UserActions = plan.UserActions(questions ?? []),
             LastLogId = lastLogId,
             ServerTime = now,
-            Notes = notes ?? []
+            Notes = notes ?? [],
+            Divergence = plan.DivergenceAt is { } at && plan.DivergenceText is { } text
+                ? new ExecutionDivergenceResponse
+                {
+                    Text = text, StepKey = plan.DivergenceStepKey, At = at, Pending = plan.DivergencePending,
+                    ConfirmedBy = plan.DivergenceConfirmedBy, ConfirmedAt = plan.DivergenceConfirmedAt
+                }
+                : null
         };
         plan.FillSummary(response, plan.Steps.Count, plan.Steps.Count(s => s.Status == ExecutionStatus.Completed));
         response.UserPending = response.UserActions.Count;
@@ -415,6 +453,20 @@ public static class ExecutionPlanMappings
         return actions;
     }
 
+    /// <summary>
+    /// 0074: numera os planos do histórico de um card por fase (análise e correção contam separado), do mais antigo (1)
+    /// ao mais novo, pela data de criação (empate desfeito pelo Id, para a numeração não mudar entre chamadas).
+    /// </summary>
+    public static void AssignVersionNumbers(IEnumerable<ExecutionPlanSummaryResponse> summaries)
+    {
+        foreach (var phase in summaries.GroupBy(s => s.Phase))
+        {
+            var number = 0;
+            foreach (var s in phase.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id))
+                s.VersionNumber = ++number;
+        }
+    }
+
     public static T FillSummary<T>(this ExecutionPlan plan, T target, int stepsTotal, int stepsCompleted)
         where T : ExecutionPlanSummaryResponse
     {
@@ -426,6 +478,7 @@ public static class ExecutionPlanMappings
         target.StatusReason = plan.StatusReason;
         target.StatusChangedBy = plan.StatusChangedBy;
         target.CreatedBy = plan.CreatedBy;
+        target.CreatedByUserId = plan.CreatedByUserId;
         target.CreatedAt = plan.CreatedAt;
         target.UpdatedAt = plan.UpdatedAt;
         target.StartedAt = plan.StartedAt;
@@ -502,8 +555,12 @@ public static class ExecutionPlanMappings
         UpdatedAt = step.UpdatedAt,
         Executor = step.Executor,
         Kind = step.Kind,
+        TaskKind = WorkTaskKind.FromStep(step.Kind, step.Executor, step.Key, step.Title, step.TaskKind),
         Repository = step.Repository,
-        DependsOn = step.DependsOn.ToList()
+        DependsOn = step.DependsOn.ToList(),
+        Held = step.Held,
+        HeldBy = step.HeldBy,
+        OrderPinned = step.OrderPinned
     };
 
     public static ExecutionQuestionResponse ToResponse(this ExecutionQuestion q) => new()
@@ -570,7 +627,9 @@ public static class ExecutionPlanMappings
         Description = artifact.Description,
         CreatedBy = artifact.CreatedBy,
         CreatedAt = artifact.CreatedAt,
-        UpdatedAt = artifact.UpdatedAt
+        UpdatedAt = artifact.UpdatedAt,
+        ExternalKey = artifact.ExternalKey,
+        ReadAt = artifact.ReadAt
     };
 
     public static ExecutionNoteResponse ToResponse(this ExecutionNote note, string planPhase, IEnumerable<ExecutionArtifact> attachments) => new()

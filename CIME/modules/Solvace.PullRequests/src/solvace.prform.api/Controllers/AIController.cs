@@ -25,7 +25,16 @@ public class AIController : ControllerBase
             return BadRequest(new { error = "Prompt não pode ser vazio" });
         }
 
-        var result = await _aiService.GenerateContentAsync(prompt, cancellationToken);
+        solvace.ai.domain.Responses.AIGenerateResponse? result;
+        try
+        {
+            result = await _aiService.GenerateContentAsync(prompt, cancellationToken);
+        }
+        catch (InvalidOperationException e)
+        {
+            // 0078: IA não configurada ("Plugin 'AI Configurations' não encontrado") — mensagem para a tela, não 500.
+            return BadRequest(new { error = e.Message });
+        }
 
         if (result == null)
         {

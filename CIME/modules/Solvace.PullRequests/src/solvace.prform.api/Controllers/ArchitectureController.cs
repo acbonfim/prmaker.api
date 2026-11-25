@@ -150,7 +150,30 @@ public class ArchitectureController(IArchitectureApplication application, solvac
 
     /// <summary>A pergunta à base com IA está disponível? (plugin AI Configurations) — 0037.</summary>
     [HttpGet("ask/status")]
-    public async Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatStatus>> AskStatus(CancellationToken ct) => Ok(await chat.GetStatusAsync(ct));
+    public async Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatStatus>> AskStatus(
+        [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
+        [FromServices] solvace.executionplans.application.Contracts.IExecutionQueueApplication queue,
+        [FromServices] solvace.prform.Knowledge.ReverseIndexWarmup warmup, CancellationToken ct)
+    {
+        // a tela da Base abriu: o índice da busca fica pronto antes da pergunta
+        _ = warmup.WarmAsync();
+        var status = await chat.GetStatusAsync(ct);
+        // 0102: o Pergunte desta pessoa pode ir para o executor (Minhas integrações); a tela diz qual máquina responde.
+        status.Runner = await solvace.prform.Knowledge.BaseSolvaceRunner.ResolveAsync(settings, ct);
+        if (status.Runner == solvace.prform.Knowledge.BaseSolvaceRunner.Executor)
+        {
+            var workers = Guid.TryParse(User.FindFirst("ExternalId")?.Value, out var userId)
+                ? (await queue.GetWorkersAsync(userId, ct)).Where(w => w.Status != "revoked").ToList()
+                : [];
+            var ready = workers.FirstOrDefault(w => w.Online && w.Status == "active");
+            status.ExecutorOnline = ready is not null;
+            status.ExecutorName = ready?.Name;
+            status.ExecutorReason = ready is not null ? null
+                : workers.Count == 0 ? "Nenhuma máquina com o executor — instale em Meus executores."
+                : workers.Any(w => w.Online) ? "Seu executor está pausado." : "Seu executor está offline.";
+        }
+        return Ok(status);
+    }
 
     /// <summary>"Pergunte à Base Solvace" (0037): a IA entende a pergunta e leva aos trechos que respondem.</summary>
     [HttpPost("ask")]
@@ -224,5 +247,6 @@ public class ArchitectureController(IArchitectureApplication application, solvac
         try { return await action(); }
         catch (DomainException e) { return BadRequest(new { error = e.Message }); }
         catch (KnowledgeNotFoundException e) { return NotFound(new { error = e.Message }); }
+        catch (solvace.knowledge.application.ReverseForbiddenException e) { return StatusCode(StatusCodes.Status403Forbidden, new { error = e.Message }); }
     }
 }

@@ -13,6 +13,12 @@ public class ExecutionStepDefinition
     /// <summary>task (padrão) | code | pr | ticket | question | validation (0024).</summary>
     public string? Kind { get; set; }
 
+    /// <summary>
+    /// Tipo da sub-tarefa na Bancada (catálogo <c>WorkItemTaskKinds</c>: research, sql-query, sql-script, devops-action,
+    /// notify, decision, task...). Opcional: sem ele o PRMake deduz pelo tipo, chave e título; "" volta a deduzir.
+    /// </summary>
+    public string? TaskKind { get; set; }
+
     /// <summary>Repositório da etapa (código/PR), ex.: "edv-solvace" (0024).</summary>
     public string? Repository { get; set; }
 
@@ -41,6 +47,12 @@ public class CreateExecutionPlanRequest
 public class UpsertExecutionStepsRequest
 {
     public List<ExecutionStepDefinition> Steps { get; set; } = [];
+
+    /// <summary>
+    /// true = a lista é o plano inteiro: pendentes omitidas saem (pedidas/fixadas pela pessoa ficam). false (padrão,
+    /// card 78728) = só as enviadas mudam; lista parcial não remove nem reordena as outras.
+    /// </summary>
+    public bool Replace { get; set; }
 }
 
 /// <summary>Atualização parcial de uma etapa: só os campos informados mudam.</summary>
@@ -63,6 +75,18 @@ public class UpdateExecutionStepRequest
     /// reversa procura nele os itens citados (RN-…, UC-…) ou "lacuna".
     /// </summary>
     public string? Message { get; set; }
+
+    /// <summary>
+    /// Card 78505: resultado da etapa (markdown rico — tabelas dos dados consultados, itens da Base encontrados, código
+    /// citado com <c>ref:</c>, a análise detalhada) gravado na hora na sub-tarefa que espelha a etapa. Sem ele, a etapa
+    /// concluída leva o <see cref="Message"/> do advance. Só <c>result</c> (sem status) completa o resultado de uma etapa
+    /// já concluída.
+    /// </summary>
+    public string? Result { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool OnlyResult => Status is null && Reason is null && WaitingOn is null && Activity is null && Checkpoint is null
+                                && Title is null && Description is null && !string.IsNullOrWhiteSpace(Result);
 }
 
 public class CancelExecutionStepRequest

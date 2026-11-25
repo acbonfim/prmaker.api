@@ -1,0 +1,17 @@
+{
+  "requires": [
+    "curl",
+    "jq",
+    "git"
+  ],
+  "optional": [
+    "python3",
+    "gh"
+  ],
+  "depends": [
+    "analisar-bug",
+    "gerar-prmake",
+    "validar-ambiente",
+    "tarefas-de-gestao"
+  ]
+}

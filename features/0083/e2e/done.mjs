@@ -1,0 +1,10 @@
+import { launch, open, sleep } from './lib.mjs';
+const browser = await launch();
+const { page } = await open(browser);
+await page.goto('http://localhost:4283/auth/dashboard', { waitUntil: 'networkidle2' });
+await sleep(6000);
+console.log('guia aberto para quem já está pronto?', !!(await page.$('app-setup-guide-dialog')));
+console.log('flag:', await page.evaluate(() => localStorage.getItem('prmake.setup.33333333-3333-3333-3333-333333333333')));
+await page.click('[data-tour="user-menu"]'); await sleep(1500);
+console.log('selo no menu:', await page.$eval('.pm-progress', e => e.textContent).catch(() => '(sem selo)'));
+await browser.close();

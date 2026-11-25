@@ -43,8 +43,18 @@ public class ExecutionPlanController : ControllerBase
 
     /// <summary>Cria o plano de um card (a skill chama no início da análise).</summary>
     [HttpPost]
-    public Task<ActionResult<ExecutionPlanResponse>> Create([FromBody] CreateExecutionPlanRequest request, CancellationToken ct) =>
-        Run<ExecutionPlanResponse>(async () => Ok(await _application.CreateAsync(request, await GetActorAsync(ct, executor: true), ct)));
+    public Task<ActionResult<ExecutionPlanResponse>> Create([FromBody] CreateExecutionPlanRequest request,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () =>
+        {
+            // 0087: plano de correção/implementação (vira item de trabalho): etapas ricas, com o código citado e fotografado.
+            if (IsExecutorRequest() && string.Equals(request.Phase, ExecutionPhase.Correction, StringComparison.OrdinalIgnoreCase)
+                && request.Steps is { Count: > 0 } steps
+                && await citations.CheckWorkAsync(request.CardNumber?.Trim() ?? string.Empty, steps.SelectMany(s => new[] { s.Title, s.Description }),
+                    steps.Select(s => (s.Title, s.Kind, s.Description)), ct) is { } incomplete)
+                return BadRequest(new { error = incomplete });
+            return Ok(await _application.CreateAsync(request, await GetActorAsync(ct, executor: true), ct));
+        });
 
     /// <summary>Planos do card, do mais recente para o mais antigo (histórico).</summary>
     [HttpGet("card/{cardNumber}")]
@@ -72,15 +82,23 @@ public class ExecutionPlanController : ControllerBase
     /// <summary>Atualiza uma etapa (status, atividade atual, checkpoint...). Etapa nova é criada no fim.</summary>
     [HttpPatch("{id:guid}/steps/{key}")]
     public Task<ActionResult<ExecutionStepResponse>> UpdateStep([FromRoute] Guid id, [FromRoute] string key, [FromBody] UpdateExecutionStepRequest request,
-        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse, CancellationToken ct) =>
+        [FromServices] solvace.knowledge.application.Contracts.IReverseEngineeringApplication reverse,
+        [FromServices] solvace.prform.Execution.CodeCitationGate citations,
+        [FromServices] solvace.prform.Execution.EvidenceGate evidence, CancellationToken ct) =>
         Run<ExecutionStepResponse>(async () =>
         {
             // 0052: a skill concluindo a investigação de card com engenharia reversa completa precisa ter consultado/citado a base.
             if (string.Equals(request.Status, ExecutionStatus.Completed, StringComparison.OrdinalIgnoreCase) && IsExecutorRequest())
             {
                 var plan = await _application.GetAsync(id, ct);
-                if (await reverse.CheckGateAsync(plan.CardNumber, key, request.Message ?? request.Reason, ct) is { } gate)
+                if (await reverse.CheckGateAsync(plan.CardNumber, key, string.Join("\n", new[] { request.Message ?? request.Reason, request.Result }.Where(t => !string.IsNullOrWhiteSpace(t))), ct) is { } gate)
                     return BadRequest(new { error = gate });
+                // 0075: análise/soluções só concluem com toda citação de código fotografada.
+                if (await citations.CheckAsync(id, key, ct) is { } missing)
+                    return BadRequest(new { error = missing });
+                // 0076: evidências do card importadas e abertas.
+                if (await evidence.CheckAsync(id, key, ct) is { } unread)
+                    return BadRequest(new { error = unread });
             }
             return Ok(await _application.UpdateStepAsync(id, key, request, await GetActorAsync(ct, executor: true), ct));
         });
@@ -141,6 +159,28 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult<ExecutionLinkResponse>> AddLink([FromRoute] Guid id, [FromRoute] string key, [FromBody] AddExecutionLinkRequest request, CancellationToken ct) =>
         Run<ExecutionLinkResponse>(async () => Ok(await _application.AddLinkAsync(id, key, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
 
+    /// <summary>0091: entrega da etapa (vai para a sub-tarefa espelho do item do plano). Body <c>WorkDeliverableInput</c>.</summary>
+    [HttpPost("{id:guid}/steps/{key}/deliverables")]
+    public Task<ActionResult<WorkDeliverableResponse>> RecordStepDeliverable([FromRoute] Guid id, [FromRoute] string key,
+        [FromBody] WorkDeliverableInput input,
+        [FromServices] IWorkItemDeliverableApplication deliverables, CancellationToken ct) =>
+        Run<WorkDeliverableResponse>(async () =>
+            StatusCode(StatusCodes.Status201Created, await deliverables.RecordForStepAsync(id, key, input, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>0091: código alterado da etapa (multipart do <c>deliver-code</c>, igual ao da sub-tarefa).</summary>
+    [HttpPost("{id:guid}/steps/{key}/deliverables/code")]
+    [RequestSizeLimit(WorkItemDeliverable.MaxPatchBytes * 3L)]
+    [RequestFormLimits(MultipartBodyLengthLimit = WorkItemDeliverable.MaxPatchBytes * 3L)]
+    public Task<ActionResult<WorkDeliverableResponse>> RecordStepCode([FromRoute] Guid id, [FromRoute] string key,
+        [FromServices] IWorkItemDeliverableApplication deliverables, CancellationToken ct) =>
+        Run<WorkDeliverableResponse>(async () =>
+        {
+            var (upload, error) = await WorkItemsController.ReadCodeUploadAsync(Request, ct);
+            if (upload is null)
+                return BadRequest(new { error });
+            return StatusCode(StatusCodes.Status201Created, await deliverables.RecordCodeForStepAsync(id, key, upload, await GetActorAsync(ct, executor: IsExecutorRequest()), ct));
+        });
+
     /// <summary>Chamado: o usuário marca aberto/resolvido/fechado (o PRMake não lê o Freshservice).</summary>
     [HttpPatch("{id:guid}/links/{linkId:guid}")]
     public Task<ActionResult<ExecutionLinkResponse>> UpdateLink([FromRoute] Guid id, [FromRoute] Guid linkId, [FromBody] UpdateExecutionLinkRequest request, CancellationToken ct) =>
@@ -158,6 +198,50 @@ public class ExecutionPlanController : ControllerBase
     [HttpPost("{id:guid}/status")]
     public Task<ActionResult<ExecutionPlanResponse>> ChangeStatus([FromRoute] Guid id, [FromBody] ChangeExecutionPlanStatusRequest request, CancellationToken ct) =>
         Run<ExecutionPlanResponse>(async () => Ok(await _application.ChangeStatusAsync(id, request, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>
+    /// 0085: cancela o plano (fluxo do status), o pedido ativo do card na pista principal e os itens de trabalho do plano;
+    /// <c>undo=true</c> desfaz o que os itens já fizeram (pedido <c>work-item-undo</c> por item). Plano concluído só com
+    /// <c>undo</c>; plano já cancelado + <c>undo</c> só desfaz.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    public Task<ActionResult<ExecutionPlanResponse>> Cancel([FromRoute] Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelWorkItemRequest? request,
+        [FromServices] IWorkItemApplication workItems, [FromServices] IExecutionQueueApplication queue,
+        [FromServices] IExecutionQueueRepository requests, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: IsExecutorRequest());
+            var undo = request?.Undo ?? false;
+            var reason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request!.Reason!.Trim();
+            var plan = await _application.GetAsync(id, ct);
+            if (plan.Status == ExecutionStatus.Completed && !undo)
+                throw new DomainException("O plano já foi concluído — para voltar o que ele fez, use desfazer.");
+            if (plan.Status is not (ExecutionStatus.Cancelled or ExecutionStatus.Completed))
+                await _application.ChangeStatusAsync(id, new ChangeExecutionPlanStatusRequest
+                {
+                    Status = ExecutionStatus.Cancelled,
+                    Reason = reason ?? $"Plano cancelado por {actor.Name}",
+                }, actor, ct);
+
+            // O Claude que está rodando o plano para (pista principal; o especialista e os itens têm pista própria).
+            if (await requests.GetActiveRequestForCardAsync(plan.CardNumber, ct) is { } active
+                && active.Kind is ExecutionRequestKind.Analyze or ExecutionRequestKind.Resume
+                && (active.PlanId is null || active.PlanId == id))
+            {
+                try
+                {
+                    await queue.CancelAsync(active.Id, reason ?? "Plano cancelado", actor, ct);
+                }
+                catch (DomainException)
+                {
+                    // Terminou entre a leitura e o cancelamento.
+                }
+            }
+
+            await workItems.CancelByPlanAsync(id, undo, reason, actor, ct);
+            return Ok(await _application.GetAsync(id, ct));
+        });
 
     /// <summary>Heartbeat da skill: devolve se ela segue (continue), espera (wait) ou para (stop).</summary>
     [HttpPost("{id:guid}/control")]
@@ -199,7 +283,7 @@ public class ExecutionPlanController : ControllerBase
     public Task<ActionResult> GetArtifactContent([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromQuery] bool download = false, CancellationToken ct = default) =>
         RunPlain(async () =>
         {
-            var file = await _application.GetArtifactFileAsync(id, artifactId, ct);
+            var file = await _application.GetArtifactFileAsync(id, artifactId, ct, markRead: IsExecutorRequest());
             Response.Headers["X-Content-Type-Options"] = "nosniff";
             if (download)
                 return File(file.Data, file.Artifact.ContentType, file.Artifact.Name);
@@ -222,6 +306,165 @@ public class ExecutionPlanController : ControllerBase
         {
             await _application.DeleteArtifactAsync(id, artifactId, ct);
             return NoContent();
+        });
+
+    // ── 0078: assistente do card (sugestões que não travam) e textos gerados ──────────────────────
+
+    /// <summary>Sugestões do assistente no card (abertas primeiro).</summary>
+    [HttpGet("card/{cardNumber}/suggestions")]
+    public Task<ActionResult<List<ExecutionSuggestionResponse>>> GetSuggestions([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionSuggestionResponse>>(async () => Ok(await _application.GetSuggestionsAsync(cardNumber, ct)));
+
+    /// <summary>Responde uma sugestão (a ação usa a integração do DevOps de quem clicou).</summary>
+    [HttpPost("suggestions/{suggestionId:guid}/act")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> ActOnSuggestion([FromRoute] Guid suggestionId, [FromBody] ActOnSuggestionRequest request, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.ActOnSuggestionAsync(suggestionId, request.Action ?? string.Empty, await GetActorAsync(ct, executor: false), ct)));
+
+    [HttpPost("suggestions/{suggestionId:guid}/dismiss")]
+    public Task<ActionResult<ExecutionSuggestionResponse>> DismissSuggestion([FromRoute] Guid suggestionId, CancellationToken ct) =>
+        Run<ExecutionSuggestionResponse>(async () => Ok(await _application.DismissSuggestionAsync(suggestionId, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Publicação automática da situação só neste card (null = volta para a preferência/padrão).</summary>
+    [HttpPut("card/{cardNumber}/situation/auto-post")]
+    public Task<ActionResult<CardSituationResponse>> SetCardAutoPost([FromRoute] string cardNumber, [FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.SetCardSituationAutoPostAsync(cardNumber, request.AutoPost, await GetActorAsync(ct, executor: false), ct)));
+
+    /// <summary>Edita o texto de um arquivo gerado no plano (análise, soluções, chamado, orientação...).</summary>
+    [HttpPut("{id:guid}/artifacts/{artifactId:guid}/text")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public Task<ActionResult<ExecutionArtifactResponse>> UpdateArtifactText([FromRoute] Guid id, [FromRoute] Guid artifactId, [FromBody] UpdateArtifactTextRequest request, CancellationToken ct) =>
+        Run<ExecutionArtifactResponse>(async () => Ok(await _application.UpdateArtifactTextAsync(id, artifactId, request.Content ?? string.Empty, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    // ── 0076: evidências do card no DevOps ─────────────────────────────────────────────────────────
+
+    /// <summary>Importa (idempotente) as evidências do card no DevOps para os arquivos do plano e devolve a lista.</summary>
+    [HttpPost("{id:guid}/evidence/import")]
+    public Task<ActionResult<CardEvidenceResponse>> ImportEvidence([FromRoute] Guid id, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.ImportEvidenceAsync(id, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Evidências já guardadas no card (sem ir ao DevOps), com o que a análise já abriu.</summary>
+    [HttpGet("card/{cardNumber}/evidence")]
+    public Task<ActionResult<CardEvidenceResponse>> GetEvidence([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.ListEvidenceAsync(cardNumber, ct)));
+
+    /// <summary>Seguir a análise sem as evidências (o usuário autorizou; motivo obrigatório).</summary>
+    [HttpPost("{id:guid}/evidence/skip")]
+    public Task<ActionResult<CardEvidenceResponse>> SkipEvidence([FromRoute] Guid id, [FromBody] SkipExecutionEvidenceRequest request, CancellationToken ct) =>
+        Run<CardEvidenceResponse>(async () => Ok(await _application.SkipEvidenceAsync(id, request.Reason ?? string.Empty, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    // ── 0075: situação atual do card ───────────────────────────────────────────────────────────────
+
+    /// <summary>O que o card está aguardando (chamado, aprovação/merge, QA, resposta, você), com os fatos e o contexto da passagem.</summary>
+    [HttpGet("card/{cardNumber}/situation")]
+    public Task<ActionResult<CardSituationResponse>> GetSituation([FromRoute] string cardNumber, [FromQuery] bool devops = true, CancellationToken ct = default) =>
+        Run<CardSituationResponse>(async () => Ok(await _application.GetSituationAsync(cardNumber, devops, ct)));
+
+    /// <summary>A skill grava o contexto da passagem ao entrar em espera (texto vazio limpa).</summary>
+    [HttpPut("{id:guid}/handoff")]
+    public Task<ActionResult<CardSituationResponse>> SetHandoff([FromRoute] Guid id, [FromBody] SetExecutionHandoffRequest request, CancellationToken ct) =>
+        Run<CardSituationResponse>(async () =>
+            Ok(await _application.SetHandoffAsync(id, request.Text, await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Publica (ou atualiza) a situação na discussion do card no DevOps — manual, pelo botão da tela.</summary>
+    [HttpPost("card/{cardNumber}/situation/publish")]
+    public Task<ActionResult> PublishSituation([FromRoute] string cardNumber, [FromBody] PublishExecutionSituationRequest? request, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var commentId = await _application.PublishSituationAsync(cardNumber, request?.Html, await GetActorAsync(ct, executor: false), ct, request?.Markdown);
+            return Ok(new { commentId });
+        });
+
+    /// <summary>0076: publicação automática da situação na discussion — preferência do usuário logado (null = padrão global).</summary>
+    [HttpGet("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> GetSituationPostSettings(CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.GetSituationPostSettingsAsync(userId, ct));
+        });
+
+    [HttpPut("settings/situation-post")]
+    public Task<ActionResult<SituationPostSettingsResponse>> SetSituationPostSettings([FromBody] SituationPostSettingsRequest request, CancellationToken ct) =>
+        Run<SituationPostSettingsResponse>(async () =>
+        {
+            var actor = await GetActorAsync(ct, executor: false);
+            if (actor.UserId is not { } userId) return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
+            return Ok(await _application.SetSituationPostSettingsAsync(userId, request.AutoPost, ct));
+        });
+
+    // ── 0075: fotografias do código citado ─────────────────────────────────────────────────────────
+
+    /// <summary>Grava (ou substitui) a fotografia de um trecho de código — a skill, pelo <c>coderef</c>.</summary>
+    [HttpPut("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> SaveCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] SaveExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.SaveCodeRefAsync(id, reference, request.ToCapture(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Ajusta por quê, notas, proposta ou o diff feito, sem nova fotografia.</summary>
+    [HttpPatch("{id:guid}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> PatchCodeRef([FromRoute] Guid id, [FromRoute] string reference,
+        [FromBody] PatchExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.PatchCodeRefAsync(id, reference, request.ToPatch(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    [HttpDelete("{id:guid}/code-refs/{reference}")]
+    public Task<ActionResult> DeleteCodeRef([FromRoute] Guid id, [FromRoute] string reference, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            await _application.DeleteCodeRefAsync(id, reference, await GetActorAsync(ct, executor: IsExecutorRequest()), ct);
+            return NoContent();
+        });
+
+    /// <summary>Cabeças das fotografias do plano (sem o código).</summary>
+    [HttpGet("{id:guid}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCodeRefs([FromRoute] Guid id, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCodeRefHeadsAsync(id, ct)));
+
+    /// <summary>Cabeças das fotografias do card (uma por ref, a mais recente) — a tela liga as citações a elas.</summary>
+    [HttpGet("card/{cardNumber}/code-refs")]
+    public Task<ActionResult<List<ExecutionCodeRefHeadResponse>>> GetCardCodeRefs([FromRoute] string cardNumber, CancellationToken ct) =>
+        Run<List<ExecutionCodeRefHeadResponse>>(async () => Ok(await _application.GetCardCodeRefHeadsAsync(cardNumber, ct)));
+
+    /// <summary>
+    /// Grava pelo card: com plano, no plano do card (o aberto mais recente, senão o mais recente); sem plano (itens de
+    /// trabalho avulsos), como fotografia do card (<c>planId</c> nulo). O <c>coderef</c> da skill usa quando não há plano.
+    /// </summary>
+    [HttpPut("card/{cardNumber}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> SaveCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference,
+        [FromBody] SaveExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.SaveCardCodeRefAsync(cardNumber, reference, request.ToCapture(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Ajusta pelo card (mesma regra do PUT): por quê, notas, proposta ou o diff feito, sem nova fotografia.</summary>
+    [HttpPatch("card/{cardNumber}/code-refs/{reference}")]
+    [RequestSizeLimit(512 * 1024)]
+    public Task<ActionResult<ExecutionCodeRefResponse>> PatchCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference,
+        [FromBody] PatchExecutionCodeRefRequest request, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () =>
+            Ok(await _application.PatchCardCodeRefAsync(cardNumber, reference, request.ToPatch(), await GetActorAsync(ct, executor: IsExecutorRequest()), ct)));
+
+    /// <summary>Uma fotografia completa (código, proposta, notas) — o popover.</summary>
+    [HttpGet("card/{cardNumber}/code-refs/{reference}")]
+    public Task<ActionResult<ExecutionCodeRefResponse>> GetCardCodeRef([FromRoute] string cardNumber, [FromRoute] string reference, CancellationToken ct) =>
+        Run<ExecutionCodeRefResponse>(async () => Ok(await _application.GetCardCodeRefAsync(cardNumber, reference, ct)));
+
+    /// <summary>
+    /// 0075: arquivo do card pelo nome (qualquer plano; sem nenhum, os arquivos dos itens de trabalho do card) — imagens
+    /// <c>anexo:&lt;nome&gt;</c> do texto da análise e da Visão geral do item.
+    /// </summary>
+    [HttpGet("card/{cardNumber}/artifacts/by-name/{name}/content")]
+    public Task<ActionResult> GetCardArtifactByName([FromRoute] string cardNumber, [FromRoute] string name, CancellationToken ct) =>
+        RunPlain(async () =>
+        {
+            var file = await _application.GetCardArtifactFileByNameAsync(cardNumber, name, ct);
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(file.Artifact.Name)}";
+            return File(file.Data, file.Artifact.ContentType);
         });
 
     // ── 0031: comentários com anexos ──────────────────────────────────────────────────────────────
@@ -313,6 +556,11 @@ public class ExecutionPlanController : ControllerBase
                 return BadRequest(new { error = "Seu usuário não tem identificação no PRMake." });
             return Ok(await _application.GetUsageReportAsync(all ? null : userId, days, ct));
         });
+
+    /// <summary>0080: a pessoa confirma a divergência entre a análise e a base real (a etapa de PR pode começar).</summary>
+    [HttpPost("{id:guid}/divergence/confirm")]
+    public Task<ActionResult<ExecutionPlanResponse>> ConfirmDivergence([FromRoute] Guid id, CancellationToken ct) =>
+        Run<ExecutionPlanResponse>(async () => Ok(await _application.ConfirmDivergenceAsync(id, await GetActorAsync(ct, executor: false), ct)));
 
     private bool IsExecutorRequest() =>
         string.Equals(Request.Headers[ExecutorHeader].ToString(), "skill", StringComparison.OrdinalIgnoreCase);

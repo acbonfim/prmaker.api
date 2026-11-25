@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>0080 — Nova versão do plano e cancelar</title>
+<link rel="stylesheet" href="mock.css">
+<style>
+  body { width: 1440px; }
+  .wrap { display: grid; grid-template-columns: 1fr 520px; gap: 22px; padding: 22px; align-items: start; }
+  .k { font-size: 11px; letter-spacing: .7px; text-transform: uppercase; color: var(--mut); font-weight: 600; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; }
+  .pane { background: var(--s1); border: 1px solid var(--line2); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+  .phd { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: var(--s2); border-bottom: 1px solid var(--line); }
+  .phd b { font-size: 15px; }
+  .pb { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .from { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(142,108,240,.09); border: 1px solid rgba(196,167,255,.22); font-size: 12.5px; }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .col h4 { margin: 0 0 6px; font-size: 12.5px; color: var(--mut); font-weight: 600; display: flex; gap: 6px; align-items: center; }
+  .s { display: flex; gap: 8px; align-items: flex-start; padding: 7px 9px; border-radius: 9px; font-size: 12.5px; margin-bottom: 5px; background: rgba(255,255,255,.03); }
+  .s .mi { font-size: 16px; margin-top: 1px; }
+  .s small { display: block; color: var(--mut); font-size: 11.5px; }
+  .s--add { background: rgba(63,185,80,.09); box-shadow: inset 3px 0 0 var(--ok); }
+  .s--add .mi { color: var(--ok); }
+  .s--del { background: rgba(244,112,103,.08); box-shadow: inset 3px 0 0 var(--bad); color: #e9b2ad; text-decoration: line-through; text-decoration-color: rgba(244,112,103,.6); }
+  .s--del .mi { color: var(--bad); }
+  .s--chg { background: rgba(227,179,65,.08); box-shadow: inset 3px 0 0 var(--warn); }
+  .s--chg .mi { color: var(--warn); }
+  .s--same .mi { color: var(--mut2); }
+  .why { font-size: 12.5px; border-radius: 10px; background: rgba(255,255,255,.03); padding: 10px 12px; }
+  .why b { color: #dfe2e8; }
+  .why ul { margin: 6px 0 0; padding-left: 18px; }
+  .acts { display: flex; gap: 8px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--s2); }
+  .opt { display: flex; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line2); font-size: 12.5px; align-items: flex-start; }
+  .opt .rd { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--mut); flex: none; margin-top: 1px; }
+  .opt--on { border-color: rgba(171,199,255,.5); background: rgba(171,199,255,.06); }
+  .opt--on .rd { border: 5px solid var(--pri); }
+  .opt small { display: block; color: var(--mut); font-size: 11.5px; }
+  .ta { border: 1px solid var(--line2); border-radius: 10px; padding: 9px 11px; color: #cfd2d8; font-size: 12.5px; min-height: 52px; }
+  .alt { border-radius: 12px; padding: 11px 12px; background: rgba(142,108,240,.09); border: 1px solid rgba(196,167,255,.25); display: flex; gap: 10px; align-items: center; font-size: 12.5px; }
+  .chk { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #cfd2d8; }
+  .box { width: 16px; height: 16px; border-radius: 4px; background: var(--pri); display: inline-flex; align-items: center; justify-content: center; color: #0b2a57; }
+  .box .mi { font-size: 13px; }
+</style></head>
+<body>
+<div class="wrap">
+  <div>
+    <div class="k"><span class="mi" style="font-size:15px">auto_awesome</span>Proposta do especialista → "Ver o que muda"</div>
+    <div class="pane">
+      <div class="phd"><span class="mi" style="color:var(--pri)">difference</span><b>Correção v2 — o que muda em relação à v1</b><span class="sp"></span><span class="chip chip--spec"><span class="mi">psychology</span>proposta · ainda não vale</span></div>
+      <div class="pb">
+        <div class="from"><span class="av av--sm av--spec"><span class="mi">psychology</span></span><span>Gerada a partir da conversa com <b>Bruno Ferreira</b> e <b>Daniel Strinta</b> (17:12–17:17, 9 mensagens). Cada mudança cita a mensagem de onde veio.</span><span class="sp"></span><span class="lnk" style="color:var(--pri);white-space:nowrap">abrir a conversa</span></div>
+        <div class="vs">
+          <div class="col"><h4><span class="mi" style="font-size:15px">history</span>v1 · cancelada</h4>
+            <div class="s s--same"><span class="mi">check</span><span>Impacto na base</span></div>
+            <div class="s s--chg"><span class="mi">edit</span><span>Corrigir EnvironmentService<small>300 KB + listValidacao (base qa)</small></span></div>
+            <div class="s s--same"><span class="mi">check</span><span>Validar build e testes</span></div>
+            <div class="s s--del"><span class="mi">remove</span><span>PR para QA aberto direto</span></div>
+            <div class="s s--same"><span class="mi">check</span><span>Preparar o fechamento</span></div>
+            <div class="s s--same"><span class="mi">check</span><span>Validar em QA · Fechamento</span></div>
+          </div>
+          <div class="col"><h4><span class="mi" style="font-size:15px">fiber_new</span>v2 · proposta</h4>
+            <div class="s s--same"><span class="mi">check</span><span>Impacto na base</span></div>
+            <div class="s s--chg"><span class="mi">edit</span><span>Corrigir EnvironmentService<small>reaproveita o commit da v1 · <b>sem mexer em extensões/GetImage</b></small></span></div>
+            <div class="s s--same"><span class="mi">check</span><span>Validar build e testes</span></div>
+            <div class="s s--add"><span class="mi">add</span><span>Ajustar o parâmetro 18 na QA (você)<small>script UPDATE + texto do chamado · “na QA a gente corrige o parâmetro” — Bruno, 17:16</small></span></div>
+            <div class="s s--add"><span class="mi">add</span><span>Confirmar a base qa e o checklist do PR (você)<small>antes de abrir o PR · alerta de divergência qa × master</small></span></div>
+            <div class="s s--same"><span class="mi">check</span><span>PR para QA · Preparar o fechamento · Validar em QA · Fechamento</span></div>
+          </div>
+        </div>
+        <div class="why"><b>Decisões que mudam</b>
+          <ul>
+            <li>Formatos do fundo do login: <b>“só .jpg e .png”</b> → <b>manter o que a qa já aceita (fix do 75706)</b></li>
+            <li>Nova: <b>parâmetro 18 da QA</b> com limite compatível com 300 KB (script + chamado)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="acts">
+        <span class="btn btn--pri"><span class="mi">check</span>Aceitar e criar a v2</span>
+        <span class="btn"><span class="mi">play_arrow</span>Aceitar e já executar</span>
+        <span class="btn btn--ghost"><span class="mi">psychology</span>Ajustar com o especialista</span>
+        <span class="sp"></span>
+        <span class="muted" style="font-size:11.5px">o executor principal monta a v2 · histórico de versões guarda a v1</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="k"><span class="mi" style="font-size:15px">stop_circle</span>Cancelar deixa de ser a única saída</div>
+    <div class="pane">
+      <div class="phd"><span class="mi" style="color:var(--bad)">stop_circle</span><b>Cancelar a correção v1?</b><span class="sp"></span><span class="ib"><span class="mi">close</span></span></div>
+      <div class="pb">
+        <div style="font-size:12.5px;color:var(--mut)">O que está errado? Isso orienta a próxima versão e o especialista.</div>
+        <div class="opt opt--on"><span class="rd"></span><span>A correção não resolve o problema que eu vejo<small>ex.: “a branch de QA não aceita PNG, dá erro”</small></span></div>
+        <div class="opt"><span class="rd"></span><span>Partiu da branch ou do repositório errado</span></div>
+        <div class="opt"><span class="rd"></span><span>Fez algo que eu não pedi<small>ex.: abriu PR quando eu disse “só deixar o plano pronto”</small></span></div>
+        <div class="opt"><span class="rd"></span><span>O card não precisa mais de correção</span></div>
+        <div class="ta">a branch de QA não aceita PNG quando tento subir png dá erro</div>
+        <div class="chk"><span class="box"><span class="mi">check</span></span>Fechar o PR #3021 e apagar a branch bugfix/77881-qa</div>
+        <div class="chk"><span class="box" style="background:transparent;border:2px solid var(--mut)"></span>Manter o commit na branch para reaproveitar</div>
+        <div class="alt"><span class="av av--spec"><span class="mi">psychology</span></span><span style="flex:1"><b>Antes de cancelar, quer entender com o especialista?</b><br><span class="muted">Ele já tem o contexto e responde em segundos, sem mexer no plano.</span></span></div>
+      </div>
+      <div class="acts">
+        <span class="btn btn--spec" style="height:32px"><span class="mi">psychology</span>Conversar primeiro</span>
+        <span class="sp"></span>
+        <span class="btn">Voltar</span>
+        <span class="btn btn--warn"><span class="mi">stop_circle</span>Cancelar a correção</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

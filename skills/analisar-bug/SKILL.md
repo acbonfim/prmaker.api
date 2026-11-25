@@ -1,6 +1,6 @@
 ---
 name: analisar-bug
-description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados) — so abre PRs, nunca faz merge. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Usa a Base Solvace (engenharia reversa + regras de negocio do Knowledge Center) antes de vasculhar codigo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card", "retomar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
+description: Faz a analise (triagem tecnica) de um bug a partir do card no PRMake/Azure DevOps e do codigo do repositorio, publica a analise na Timeline, propoe solucoes perguntando ao usuario (responde no PRMake ou no Claude) e monta e executa o plano de correcao (codigo, PRs por repositorio seguindo o fluxo de branches Solvace, chamados), que o PRMake transforma em item de trabalho (entregas independentes viram itens proprios) — so abre PRs, nunca faz merge. Card User Story vai para a skill analisar-us. Tudo vai para o plano de execucao no PRMake em tempo real (o usuario acompanha, pausa, continua ou cancela pela tela do card; se a sessao cair, retoma de onde parou). Usa a Base Solvace (engenharia reversa + regras de negocio do Knowledge Center) antes de vasculhar codigo. Descobre o card pela branch atual (hotfix/<card> ou bugfix/<card>) ou por um numero informado. Considera os comentarios, imagens e arquivos que o usuario anexou no plano pelo PRMake. Use quando o usuario pedir para "analisar bug", "fazer analise inicial", "triagem de bug", "investigar o card", "retomar o card" ou similar — e tambem quando ele pedir para ver/analisar um anexo, imagem ou comentario do plano de um card no PRMake ("veja a imagem 2 do card 74519", "olha o anexo print.png", "leia o comentario 3").
 model: opus
 ---
 
@@ -43,6 +43,15 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
   itens usados (`revamp-kaizen#RN-012`) ou `lacuna: ...` — o PRMake recusa o `advance` sem isso. Cite os IDs tambem na analise e no RCA. O consumo do plano
   (0055) mede de onde voce leu: engenharia reversa × base antiga × codigo **confirmando** um item (o arquivo que o `Onde:`
   cita) × codigo **explorando** (sem item que o cite — vira candidato a lacuna na tela).
+- **Historico desempata o modulo (0097)**: o bloco da engenharia reversa do `contexto` (e o `for-card`) pode trazer a linha
+  **"Pelo historico (cards parecidos …)"** — os modulos que cards de titulo/repro parecidos REALMENTE leram. O campo Module
+  erra ("All", modulo trocado — 77697, 78266, 77698): quando ele e generico, nao casa com o titulo ou diverge do historico,
+  comece pelos modulos do historico (`prmake_base_search` com `module` deles) e diga na analise de onde veio o modulo.
+- **Item desatualizado = confirmar no codigo antes de citar (0097)**: item marcado **"(codigo mudou desde a geracao —
+  confirme no codigo)"** (no `contexto`, no `prmake_base_search`/`prmake_base_get`) teve o trecho citado alterado na master
+  depois da geracao. Use-o como mapa, mas **abra o `Onde:` dele** (Read com offset/limit, na copia da master) e confirme a
+  regra antes de cita-la na analise, na causa raiz ou no RCA; divergiu → `log warning` + lacuna/sugestao no item
+  (`arch.sh suggest <modulo> re-<doc> ... --item <ID>`). Esse codigo conta como "confirmando", nao "explorando".
 - **Nunca pule a engenharia reversa pelo `contexto` (0060)**: se ele disser "nao publicada"/"nenhum modulo casou", o campo
   Module do card pode ter apontado o mundo errado (card 75294: "Checklist" foi para o revamp e a tela era do legado, que
   tinha engenharia reversa). Antes de `kb.sh`, rode `prmake_base_search` **sem `module`** com o nome da tela/relatorio e
@@ -72,6 +81,25 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 - **Saidas curtas**: `head`/`grep -m`/`sed -n` com limite; SQL/logs longos → `$CARD_DIR/dados/` e leia so o trecho.
 - **Menos turnos**: agrupe comandos independentes numa chamada (`>/dev/null` no que so confirma), troque de etapa
   com `advance`, `log` curto; nada de "vou fazer X" sem fazer.
+- **Toda etapa conclui com RESULTADO (card 78505)**: cada etapa vira uma sub-tarefa do item e a pessoa abre a
+  sub-tarefa para ver o que ela entregou — **na hora em que a etapa termina**, nao so no fim. Conclua sempre com
+  `prmake_advance(card, from, to, message, kind, result)` (script: `advance ... --result <arquivo.md>`); `message` e o
+  resumo de uma linha, `result` e o markdown rico, no mesmo estilo da analise (callout `> [!SUMMARY]`, selos
+  `**Confirmado:**`/`**Hipotese:**`, tabelas, `ref:`). Por tipo de etapa:
+  - `identificar-card`/`coletar-dados`: tabela do card (tipo, estado, area, cliente/ambiente, versao) + o pedido em 2-3
+    linhas + evidencias abertas (`#n` e o que mostram);
+  - `consultar-base`: tabela **Item | O que diz | Uso no caso** com os itens consultados e encontrados (`modulo#ID`),
+    as buscas feitas (termos) e as lacunas; KC: `ART-n` usados ou "sem artigo";
+  - `consultar-ambiente`: por consulta, o host/banco, a SQL em bloco ```sql``` e uma **tabela com as linhas** (corte
+    em ~20 linhas e diga o total); Cognito/logs do mesmo jeito; o que cada resultado confirma;
+  - `investigar-codigo`: repositorio + commit lido e os trechos como fotografia `[caminho:linhas](ref:<id>)` (o PRMake
+    mostra o codigo) — uma linha por trecho dizendo o que confirma; o fluxo reconstruido em passos numerados;
+  - `causa-raiz`: a analise detalhada — causa confirmada, hipoteses priorizadas (confirmado × hipotese, com
+    evidencia), pontos suspeitos `ref:`, por que acontece so neste caso;
+  - `montar-analise`/`publicar`: o que foi gerado (arquivos, scripts) e o link/resumo publicado;
+  - `propor-solucoes`: as opcoes (tabela pros/contras/risco/impacto) e as perguntas feitas.
+  Esqueceu ou faltou dado: `prmake_step(card, key, result: ...)` / `bash $PLAN result <card> <key> arquivo.md` completa
+  depois (substitui o anterior). Nunca conclua etapa com resultado vazio.
 - **Analise → correcao sem carregar a analise (0049)**: a analise termina deixando o **resumo para a correcao** no
   checkpoint de `propor-solucoes` (`$REF correcao 6`). No executor a correcao comeca numa **sessao nova** so com ele
   (`contexto-correcao`) — nao rele a conversa da analise a cada resposta.
@@ -79,25 +107,31 @@ seguinte** — 10 KB lidos cedo numa analise de 80 respostas = ~200 mil tokens. 
 ## Comandos do plano no dia a dia — MCP primeiro
 Com as ferramentas `mcp__prmake__*` na sessao (MCP do PRMake), conduza o plano por elas: menos tokens, sem bash/jq.
 Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unico
-`ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint")`
+`ToolSearch("select:mcp__prmake__prmake_base_search,mcp__prmake__prmake_base_get,mcp__prmake__prmake_base_impact,mcp__prmake__prmake_advance,mcp__prmake__prmake_step,mcp__prmake__prmake_log,mcp__prmake__prmake_block,mcp__prmake__prmake_ask,mcp__prmake__prmake_control,mcp__prmake__prmake_plan,mcp__prmake__prmake_file,mcp__prmake__prmake_checkpoint,mcp__prmake__prmake_standards,mcp__prmake__prmake_standards_check")`
 (nova rodada de perguntas: `prmake_answers,prmake_cancel_questions`)
 (as outras so quando precisar). Sem as ferramentas (MCP nao registrado) use o script — mesmo efeito no PRMake.
 
 | O que | MCP | Script (reserva) |
 |---|---|---|
 | **Base Solvace (antes do codigo)**: itens da engenharia reversa, secoes, KC · impacto entre modulos | `prmake_base_search(query, module?, kinds?, card)` · `prmake_base_get(refs, card)` · `prmake_base_impact(term)` · `prmake_base_module(module)` | `kb.sh re find` · `kb.sh re get <m>#<ID> --card` · `kb.sh show` |
-| concluir etapa e iniciar a proxima | `prmake_advance(card, from, to, message, kind)` | `advance <card> <key> <proxima\|-> "resumo" [finding]` |
+| concluir etapa (com o resultado) e iniciar a proxima | `prmake_advance(card, from, to, message, kind, result)` | `advance <card> <key> <proxima\|-> "resumo" [finding] --result r.md` |
+| completar o resultado de uma etapa | `prmake_step(card, key, result: ...)` | `result <card> <key> r.md` |
 | mudar etapa / registrar andamento | `prmake_step(card, key, status, reason)` · `prmake_log(card, message, kind, stepKey)` | `step` · `log` |
 | criar/refinar etapas · onde parei | `prmake_steps(card, steps)` · `prmake_checkpoint(card, key, text)` | `steps` · `checkpoint` |
 | entre etapas (pausado? cancelado?) | `prmake_control(card)` (`action`: continue/wait/stop) | `control` (0/10/11) |
 | travada esperando o usuario | `prmake_block(card, key, text)` · `prmake_unblock` | `block` · `unblock` |
 | perguntar · resposta dada no chat · cancelar/substituir | `prmake_ask(card, questions)` (`replaces: [n]` na revisada) · `prmake_answer(card, n, text)` · `prmake_answers` · `prmake_cancel_questions(card, [n], motivo)` | `ask` · `answer` · `answers` · `cancel-questions` |
 | comentarios e anexos do usuario | `prmake_notes(card)` · `prmake_attachment(card, "imagem 2")` (ja mostra a imagem) | `notes` · `attachment` + Read |
+| **evidencias do card no DevOps** (0076: anexos, prints da descricao e da discussion) | `prmake_evidence(card)` · `prmake_attachment(card, "#n")` | `evidencias` · `attachment` + Read · `evidence-text.py` |
 | estado do plano / retomar | `prmake_plan(card)` (etapas com checkpoint, atividade, links) | `resume-info` |
 | link/chamado na etapa · plano de correcao | `prmake_link(...)` · `prmake_correction(card, title, steps)` | `link` · `correction` |
+| contexto da passagem ao entrar em espera (0075) · situacao atual | `prmake_handoff(card, text)` | `handoff` · `situation` |
 | arquivo nos arquivos do plano (script `.sql`, analise `.md`, texto do chamado) | `prmake_file(card, name, content, kind?, key?)` | `upload` · `sync` |
+| **itens/etapas ricos (0087)** — codigo, linha, fotografia, regras da Base, arquivos e imagens no item | ver *Itens de trabalho ricos* em `references/correcao.md` | — |
+| **fotografia do codigo citado** (0075: popover com codigo real, diff e notas) · ajustar why/notas | `prmake_code_ref(card, reference, ...)` (so ajuste) | **`coderef`** (le o arquivo local — sempre por ele) |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
+| **regras do card** (0085: fluxo, base, nome de branch por destino, padroes) · **itens de trabalho** (listar, criar entrega separada) | `prmake_rules(card)` · `prmake_work_items(card)` · `prmake_work_item(card, n)` · `prmake_work_item_create(card, ..., planPhase: "correction")` | `rules` (cache `dados/regras.md`) · `work-items [n]` |
 
 **Sempre pelo script** (arquivos locais, git, custo): `contexto` (inicio), `sync`/`upload`, `branches`, `worktree`,
 `pr-text`/`save-pr-text`/`open-pr`, `watch`/`wait` (fora do executor) e `status <card> completed|failed` ao concluir o
@@ -142,25 +176,52 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Arquivos do card sempre no plano (0046/0049), cada um na sua fase (0050)**: todo script, analise e **texto do
   chamado** que o usuario precisa ver vai para os arquivos do plano — **no plano da fase certa**:
   - **Analise** (`phase: "analysis"`): so as **consultas somente leitura** que levaram ao problema
-    (`00_consulta-<assunto>.sql`, com um comentario no topo dizendo o que cada uma mostrou), a analise `.md` e os dados.
-  - **Correcao** (`phase: "correction"`): o **script que altera dados** (`01_<nome>.sql` com rollback), a consulta de
-    validacao e o **texto do chamado** (`chamado-<nome>.md`, kind `ticket`), com `key` = a etapa do chamado. Rodar o
+    (`00_<card>_consulta-<assunto>.sql`, com um comentario no topo dizendo o que cada uma mostrou), a analise `.md` e os dados.
+  - **Correcao** (`phase: "correction"`): o **script que altera dados** (`01_<card>_<nome>.sql` com rollback), a consulta de
+    validacao e o **texto do chamado** (`chamado-<card>-<nome>.md`, kind `ticket`), com `key` = a etapa do chamado. Rodar o
     script e execucao: **nunca** grave script de alteracao nem chamado na analise — a API recusa (mensagem de regra).
-  **No executor: direto com `prmake_file(card, "01_nome.sql", conteudo, "script", key, phase: "correction")`** — uma
+  **Nome de arquivo sempre com o numero do card** (consultas, scripts, rollback, chamado, validacao — tudo que sai do
+  PRMake para chamado/DBA/cliente): o numero vem logo depois da ordem — `00_<card>_consulta-<assunto>.sql`,
+  `01_<card>_<nome>.sql`, `99_<card>_rollback_<nome>.sql` (ex.: `99_78262_rollback_ligar-sso-otronnier.sql`, nunca
+  `99_rollback_ligar-sso-otronnier.sql`), `chamado-<card>-<nome>.md`, `validacao-<card>-<nome>.md`; o comentario do topo
+  do script tambem cita o card. Ficam como estao so `analise-inicial.md` e `solucoes.md` (o PRMake procura por eles).
+  **No executor: direto com `prmake_file(card, "01_<card>_nome.sql", conteudo, "script", key, phase: "correction")`** — uma
   chamada, sem gravar local antes nem `sync`. No terminal: grave em `$CARD_DIR` (a pasta que o `contexto` imprime,
   padrao `~/.prmake/cards/<card>` — **nunca** `~/.claude/...`, que o Claude Code protege) e rode `sync`, ou use
   `prmake_file`. Gravacao local negada → `prmake_file` na hora e siga — **nunca** trave a etapa, `block` nem peca
   permissao ao usuario por causa de arquivo.
   **Diga o que anexou, pelo nome** (0050): na descricao da etapa, na mensagem final da vez e na Timeline —
-  "Anexei ao plano de correcao: `01_x.sql` (script + rollback), `chamado-x.md` (texto do chamado)"; na analise, o
+  "Anexei ao plano de correcao: `01_<card>_x.sql` (script + rollback), `chamado-<card>-x.md` (texto do chamado)"; na analise, o
   mesmo para as consultas. O usuario nao deve ter que procurar no rodape para saber que o arquivo existe.
 - **Perguntas abertas acompanham a analise**: comentario/anexo/resposta que muda a analise → ao refazer as solucoes,
   revise cada pergunta ainda aberta: a revisada vai com `replaces: [n]`, a que perdeu o sentido e cancelada com o
   motivo (`prmake_cancel_questions`) — o usuario nunca cancela pergunta a mao. Detalhes: `$REF correcao 6`.
+- **Evidencias do card no DevOps sao obrigatorias (0076)**: o `contexto` importa para o plano tudo o que o card tem —
+  arquivos anexados, prints colados nos repro steps/descricao e na **discussion** — e mostra a lista (`#n`, origem) e o
+  texto da discussion (`dados/discussion.txt`; `[imagem: ...]` marca onde havia print). **Antes da causa raiz, abra
+  cada evidencia legivel**: `prmake_attachment(card, "#n")` (imagem volta como imagem) ou `bash $PLAN attachment <card>
+  "#n"` + Read (PDF); Office/e-mail: `python3 ~/.claude/skills/analisar-bug/scripts/evidence-text.py <arquivo>`. Video
+  e compactado: diga que nao abriu. Na analise, a secao *Evidencias do card* diz o que cada uma mostrou. O PRMake
+  recusa concluir `montar-analise` sem a importacao ou com evidencia legivel nao aberta. Sem acesso ao DevOps (erro na
+  importacao): `block` com o que fazer; so siga sem com o ok explicito do usuario (`prmake_evidence(card, skip:
+  "motivo")`). Comentario novo com print no meio da analise: `prmake_evidence` de novo (importa so o que falta).
 - **Comentarios e anexos do usuario sao entrada da analise** (mesmo peso dos repro steps). Referencia a anexo
   ("imagem 2", "#12", "print.png") → `prmake_attachment(card, "<ref>")` (sem MCP: `bash $PLAN attachment <card> "<ref>"` e
   abra com Read); comentario → `prmake_notes(card)` (sem MCP: `bash $PLAN notes <card> <n>`). Anexos do PRMake ficam so em `$CARD_DIR/anexos-prmake/` (nunca copie para
   `imagens/`/`anexos/` — o `sync` duplicaria). Nunca diga que nao consegue ver um anexo sem tentar.
+- **0080 — a conversa e do Especialista do caso, o plano recebe so decisoes.** As perguntas e a troca de mensagens das
+  pessoas acontecem na conversa do caso (outro agente). Comentario novo no plano agora e uma **instrucao explicita**
+  (veio de "Levar para o plano" ou de proposta aceita): siga. **Nunca responda pergunta no andamento de uma etapa**
+  (`log`) — se precisar de decisao, `prmake_ask`; se for so duvida, ela e do Especialista. Comentario que comeca com
+  **"Proposta do Especialista aceita"**: e a mudanca do plano decidida pela pessoa — **ajuste o MESMO plano, sem versao
+  nova** (card 78344: o plano nao tem v2/v3; correcao: `prmake_steps` no plano de correcao atual com as mudancas listadas
+  — as etapas feitas ficam —, citando a proposta no `prmake_log`; analise: refaca so o que mudou no mesmo plano) e
+  respeite a ultima linha: "NAO execute" = ajuste as etapas e pare; "Pode executar" = siga.
+- **0080 — divergencia entre a analise e a base real** (a branch/repositorio onde a correcao vai partir ja tem outro
+  fix, o codigo citado mudou, o ambiente roda outra versao): antes de seguir, `prmake_log(card, kind: "divergence",
+  stepKey: <etapa>, message: "<o que a analise assumiu> x <o que a base real tem> — <o que muda na correcao>")`. O PRMake
+  mostra um alerta e **nao deixa a etapa de PR comecar** ate a pessoa confirmar na tela; registre o que falta com
+  `prmake_block` na etapa de PR e encerre a vez (a confirmacao retoma a sessao).
 - **Regra de negocio: consulte o Knowledge Center antes de perguntar** ao usuario ou concluir o comportamento
   "esperado" (`bash $KC search ...` / `article <n>`); cite o **ART-n** na analise, no RCA e no handover. Sem artigo
   sobre a regra: diga isso (lacuna) — nao invente.
@@ -168,25 +229,83 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
   voce gera os textos; nada direto no Azure DevOps/GitHub. Falta endpoint → pare e avise.
 - **Configuracao vem do PRMake** (`prmake_config` · `prmake_devops_config` — acoes e classificacoes; sem MCP: `bash $PLAN settings <card>`, `devops <card> config|classifications`; `branches` sempre pelo script): nunca escreva de
   memoria estados, areas, branches, titulos. Faltou regra → pergunte e sugira configurar no PRMake.
-- **Ready for QA so com autorizacao**: com a correcao em QA, mova para Dev Test in QA (`devops <card> dev-test-in-qa`,
-  sem perguntar); `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano ou
+- **Ready for QA so com autorizacao**: com a correcao em QA o PRMake move o card para Dev Test in QA sozinho (0075, PR
+  da branch de QA mesclado); voce confere e, se ele avisar erro, move (`devops <card> dev-test-in-qa`, sem perguntar);
+  `devops <card> ready-for-qa` so quando o usuario concluir a etapa `validar-qa` no plano (a tela ja oferece mover) ou
   autorizar explicitamente depois dela (a resposta do passo 6 nao vale). Detalhes: `$REF catalogo "ready for qa"`.
+- **"Ja esta em QA/sandboxefeso/producao?" so com prova (0100)**: antes de afirmar que a correcao esta (ou nao) num
+  ambiente, ou de pedir a validacao em QA, consulte `prmake_aws_status(card)` (aba AWS: esteiras, commit implantado,
+  veredito por ambiente); sem retrato, velho (> 1 h) ou com deploy em andamento → `bash
+  ~/.claude/skills/aws-deploy/scripts/aws.sh collect <card>` (somente leitura). Deploy `failed` → leia o fim do log do
+  build antes de culpar o nosso codigo.
+- **Fechamento com a correcao em QA (0075, card 78728)**: com codigo e QA no fluxo, root cause, classificacao, resumo
+  PT/EN e Remaining zerado vao na etapa `preparar-fechamento`, que depende das etapas `pr-*` — roda **so depois do merge**
+  (correcao em QA, card em Dev Test in QA), nunca com o PR aberto; nao troque `dependsOn` para adianta-la. Depois o plano
+  **espera** `validar-qa` (usuario); o `fechar-card` confere e move para Ready for QA — o fim do fluxo do dev. Card que
+  fecha em Test in Production: o `fechar-card` faz tudo. Ajustar uma etapa: `prmake_steps` so com ela (lista parcial nao
+  remove nada); `replace: true` so com o plano inteiro.
+- **Estimativa e horas sao da pessoa (0078)**: o PRMake pergunta na tela (assistente do card, sem travar o plano) se
+  registra a estimativa inicial e sugere lancar horas em Completed conforme as etapas concluem — **nao** rode
+  `initial-estimate` nem lance horas por conta propria; no fechamento siga o `zero-remaining` como sempre. A publicacao
+  dos resumos de espera na discussion tambem e escolha da pessoa (automatica por card/usuario ou manual pelo cartao).
+- **Espera = contexto da passagem (0075)**: ao entrar em espera (chamado aberto, PR aguardando aprovacao/merge, QA),
+  grave `prmake_handoff` — o que foi feito, o que se espera e de quem, riscos, como retomar (`$REF correcao 8`). O
+  PRMake junta com os fatos no resumo *Situacao atual* do card (tela, Timeline, handover, discussion do DevOps) —
+  em primeira pessoa, como quem trata o card (0096: o comentario sai no nome dele — "Abri o chamado...", "Vou validar
+  em QA..."), espera como status ("Aguardando abrir chamado"), nunca "voce"/"quem trata o card".
+- **Codigo citado = fotografia (0075)**: na analise, nas solucoes, no checkpoint e nas perguntas, cite codigo so como
+  `[caminho:linhas](ref:<id>)` com a fotografia gravada pelo `coderef` (`$REF analise 4b`) — nunca cole blocos de codigo
+  nem `caminho:linha` solto; o *porque* de cada trecho vai no `--why` e nas notas, e o texto fica curto.
 - **Foco no card**: solucoes/scripts so para o caso relatado; outros afetados → so um aviso curto.
 - **Analise e somente leitura**; codigo muda so depois da resposta do usuario, **sem comentarios novos no codigo**
   (o porque vai no commit/PR/plano). **Nunca merge nem aprovacao de PR.** Nunca escrita em banco/Cognito.
+- **Itens de trabalho (0085)**: o plano de correcao **gera o item** — o PRMake cria um item por plano de correcao,
+  com uma sub-tarefa por etapa, e sincroniza as sub-tarefas quando as etapas andam (nao chame `prmake_work_task` para
+  ele); plano concluido → item concluido. Entregas independentes (ex.: PR para producao e PR para release-version) →
+  itens separados com `prmake_work_item_create(..., planPhase: "correction")`, **depois** de conferir em
+  `prmake_work_items` que nao existe item com o mesmo objetivo. Nomes de branch/titulo so do `branches`/`prmake_rules`
+  (`BranchSuffixByTarget`: release-version → `-rv`). Detalhes: `$REF correcao 7`.
+- **Item da analise (ajustes 0085)**: ao criar o plano de analise o servidor ja cria o item "Analise inicial do bug
+  #<card>" (sub-tarefas = etapas, sincronizadas sozinhas) — **nao crie outro item manualmente** para a analise; ao fim,
+  o plano de correcao gera os itens da entrega.
 - PII: o que vai para o plano/Timeline e visivel no PRMake — so o necessario.
 - `PLANO INDISPONIVEL` no `start`/`contexto`: siga normalmente (os comandos do plano viram no-op).
+
+## Governanca (0098)
+
+As regras de governanca vem do PRMake (`prmake_rules` e o hook `PreToolUse`, que consulta o PRMake antes de cada
+comando/ferramenta) — nao repita nem invente regras aqui.
+- **Barrado** ("Barrado pela governanca do PRMake: ... (regra ...)" ou "Bloqueado pelo executor do PRMake"): nao contorne, nem por outro comando, script ou
+  ferramenta equivalente. Registre no plano o que precisa de uma pessoa (com a regra) e siga com o resto.
+- **Aviso** ("Aviso da governanca do PRMake: ..."): siga e cite o aviso (com a regra) no resultado da etapa.
+
+## Padroes (0101)
+
+Os padroes de banco e de aplicacao (nomes de tabela/coluna/chave/indice/procedure/view, scripts, camadas e pastas do
+modulo) vem do PRMake — nao repita nem invente padroes aqui.
+- **Antes de escrever** script SQL, migracao ou objeto de banco: leia os padroes do card — `prmake_standards(card,
+  repository?)` ou a secao "Padroes de banco e de aplicacao" do `prmake_rules` (script: `bash $PLAN standards <card>
+  [--repo <r>]`). Legado no `dbo` mantem os nomes atuais.
+- **Antes de gravar** pelo PRMake (`prmake_file`, `prmake_work_item_file`, PR do item): confira com
+  `prmake_standards_check(card, text, target: sql|migration|code, path?, repository?)` (script: `bash $PLAN
+  standards-check <card> <arquivo>`; o `upload`/`sync` de `.sql` ja confere) e corrija os achados. Efeito **block**
+  impede gravar — corrija e confira de novo; **warn** segue citando o achado (codigo do padrao) no resultado da etapa;
+  **monitor**/padrao proposto: ajuste quando der. O hook tambem confere `.sql`/migracoes ao editar ("Padroes do PRMake").
+- PRMake fora/conferencia indisponivel: siga e diga no resultado que nao conferiu.
 
 ## Fluxo
 **0. Atualizar a skill** — `bash ~/.claude/skills/.prmake/prmake-skills.sh update --quiet analisar-bug 2>/dev/null || true`;
 se imprimir "Skills do PRMake atualizadas", releia esta SKILL.md.
 
-**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte.
+**1. Card** — branch `hotfix/<n>`/`bugfix/<n>` ou o numero informado; sem nenhum dos dois, pergunte. Branch `feature/<n>` = User Story (abaixo). **Card User Story**
+(o `contexto` mostra `workItemType=User Story` e cria o plano `analisar-us`) → siga a skill **`analisar-us`**
+(`~/.claude/skills/analisar-us/SKILL.md`): sem causa raiz/RCA, criterios de aceite, item da implementacao `implementation` (nunca item `user-story`).
 
 **2. Contexto (1 comando)** — `bash $PLAN contexto <card>`. Ele cria/retoma o plano (se ja existe plano aberto,
 **continue da primeira etapa pronta com o checkpoint**; analise concluida sem correcao → siga do passo 6, sem
 refazer), mostra os campos do card e os repro steps (inteiros em `$CARD_DIR/dados/`), lista comentarios/anexos novos
-(abra cada anexo novo com Read), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
+(abra cada anexo novo com Read), **importa as evidencias do card no DevOps e mostra a discussion** (0076 — abra todas
+antes da causa raiz), sincroniza o KC e a Base Solvace e mostra os projetos/artigos ligados ao card.
 Conclua `identificar-card`/`coletar-dados` (um `advance`) e **refine as etapas** (`steps`) para este caso concreto.
 **Correcao numa sessao nova** (o prompt do executor pede): `bash $PLAN contexto-correcao <card>` no lugar do
 `contexto` — resumo da analise, respostas, comentarios e arquivos; nao refaca a investigacao, siga do passo 7.
@@ -209,17 +328,24 @@ codigo (legado `edv-solvace` ou `revamp-<modulo>`). Dados, Cognito, localizar co
 `$REF consultas 3a|3b|3c` (`consultar-ambiente`; cancele com motivo so se o caso **nao** depender de dados). Card que envolve dados
 (usuario, cadastro, status, configuracao por tenant): **antes de investigar a fundo**,
 `bash ~/.claude/skills/analisar-bug/scripts/sql-query.sh --host <h> -d <db> --ping` — falhou → `block` com o que fazer
-(ligar a VPN, liberar a permissao, credencial). Reconheca o padrao do caso no catalogo: `$REF catalogo catalogo`. Se o
+(ligar a VPN, liberar a permissao, credencial). **Reproduzir no ambiente do cliente (0093)**: quando o erro e de tela/fluxo e ver acontecendo
+ajuda a confirmar a causa, crie (sem duplicar) o item de reproducao `prmake_env_reproduction(card)` — padrao: o ambiente
+relatado pelo cliente no card (Environment/Site); outro so se a pessoa indicar — e diga na analise o `#numero`; com o
+executor, ele roda em paralelo (`prmake_work_item_execute`) e os prints ficam na sub-tarefa (cite o resultado na secao
+Reproducao quando chegar; nao espere por ele para seguir a investigacao). Reconheca o padrao do caso no catalogo: `$REF catalogo catalogo`. Se o
 codigo divergir da Base Solvace, registre um `log warning` e proponha a correcao da secao:
 `bash ~/.claude/skills/base-solvace/scripts/arch.sh suggest <projeto> <secao> divergencia.md --kind divergence --card <card>`.
 
 **4–5. Analise e Timeline** — monte `$CARD_DIR/analises/analise-inicial.md` pelo modelo de `$REF analise 4`
 (publicacao: `$REF analise 5`; inclua "Regras de negocio (Knowledge Center)" com os ART-n usados), `sync` e publique
-com `prmake-timeline`. O plano de analise segue para `propor-solucoes`.
+com `prmake-timeline`. O plano de analise segue para `propor-solucoes`. **0075**: todo codigo citado e uma fotografia
+(`$REF analise 4b` — `coderef`, link `[caminho:linhas](ref:<id>)`, `--why` e notas) e mudanca visivel leva Antes x
+Depois em imagem (`$REF analise 4c` — `mock-shot.sh`); o PRMake recusa concluir com citacao sem fotografia.
 
 **6–8b. Solucoes, plano de correcao e execucao** — uma secao por passo: `$REF correcao 6`, depois `7`, `8`, `8b`
-(perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction`, fluxo de branches pelo
-`branches`, PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
+(perguntas com opcoes cujo `label` e a propria opcao, espera nas duas pontas, `correction` — que vira **item de
+trabalho** —, itens separados para entregas independentes, fluxo de branches pelo `branches` (com o nome por destino),
+PRs com `pr-text`/`save-pr-text`/`open-pr`, fechamento pelo `devops`, nova rodada no mesmo plano).
 
 **9. Aprender e reportar** — as lacunas do codigo "explorando" ja foram registradas (regra acima; obrigatorio). Alem disso, se o caso ensinou algo que nao esta na Base Solvace (regra, armadilha, fluxo, tabela,
 query util) ou mostrou um item da engenharia reversa errado/incompleto, proponha em poucas linhas:
@@ -239,12 +365,24 @@ Claude" do PRMake copia esse comando). Ao ser retomado, veja o que mudou na tela
 `answers`) — e siga de onde parou. Para o PRMake rodar e retomar sozinho (botao "Analisar com Claude", respostas
 pela tela) sem terminal: executor do PRMake — `bash ~/.claude/skills/.prmake/prmake-skills.sh agent install`.
 
+**Etapa pedida (`pedido-*`):** a pessoa pode acrescentar uma etapa pelo Especialista do caso ("antes de continuar,
+verifique os logs de acesso"); ela entra **pendente antes da etapa em que voce parou** (a em espera/andamento). Ao ser
+retomado, faca-a primeiro — `prmake_step` running, o que a descricao pede, `prmake_advance`/complete com o achado — e
+volte a etapa em que estava. Se o achado mudar a causa raiz/solucoes, atualize a analise (`prmake_file`) e revise as
+perguntas abertas (`prmake_ask` com `replaces` / `prmake_cancel_questions`). Ao refinar as etapas (`prmake_steps`),
+mantenha as `pedido-*` (o PRMake nao as apaga por omissao).
+
+**Ordem, pausa e cancelamento pela pessoa (card 78680):** a pessoa (tela ou Especialista) pode mudar a ordem das etapas,
+pausar (`held`) ou cancelar uma etapa. Siga sempre a ordem **atual** do `prmake_plan`: a proxima e a primeira etapa
+pendente pronta. **Nao comece etapa `held`** nem as que dependem dela (o PRMake recusa); sem outra pronta, encerre a vez.
+Etapa com `pinned` foi posta no lugar pela pessoa — ao refinar (`prmake_steps`) nao a tire de la (o PRMake a mantem).
+
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
 | Quando | Comando |
 |---|---|
 | passo 3: localizar codigo, Cognito, banco | `$REF consultas 3a` · `3b` · `3c` |
 | passo 3/6/7: padrao do caso (A–H) | `$REF catalogo catalogo` |
-| passos 4–5 | `$REF analise 4` · `$REF analise 5` |
+| passos 4–5 | `$REF analise 4` · `4b` (fotografias) · `4c` (mock visual) · `$REF analise 5` |
 | passos 6–8b | `$REF correcao 6` · `7` · `8` · `8b` |
 | fechamento | `$REF catalogo fechamento` · `"ready for qa"` · `mover` · `"quem grava"` |
 | detalhe do plano | `$REF plano comandos` · `retomar` · `control` · `block` · `watch` · `anexos` |

@@ -7,6 +7,14 @@ public class DevOpsActionsConfigResponse
     public bool Available { get; set; }
 
     public DevOpsBugActionsConfig Bug { get; set; } = new();
+
+    /// <summary>Ações da User Story (fechamento do RCA): classificação, Remaining e o estado de pronto.</summary>
+    public DevOpsUserStoryActionsConfig UserStory { get; set; } = new();
+}
+
+public class DevOpsUserStoryActionsConfig
+{
+    public DevOpsReadyForQaConfig ReadyForQa { get; set; } = new();
 }
 
 public class DevOpsBugActionsConfig
@@ -26,6 +34,8 @@ public class DevOpsTestInProductionConfig
     public string? RequiredArea { get; set; }
     public string? Area { get; set; }
     public string? State { get; set; }
+    /// <summary>Coluna do board junto com o estado (vazio = só o estado).</summary>
+    public string? Column { get; set; }
     public string? Comment { get; set; }
 }
 
@@ -64,10 +74,66 @@ public class DevOpsClassificationPreset
 }
 
 /// <summary>Resultado de uma ação no card.</summary>
+/// <summary>0078: horas do card no DevOps.</summary>
+public class DevOpsEffortResponse
+{
+    public decimal? OriginalEstimate { get; set; }
+    public decimal? CompletedWork { get; set; }
+    public decimal? RemainingWork { get; set; }
+}
+
 public class DevOpsActionResponse
 {
     public long Rev { get; set; }
 
     /// <summary>Texto curto do que foi feito (snackbar e Timeline).</summary>
     public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>Card 78525: uma seção da especificação da User Story — campo do card e o texto atual (sem HTML).</summary>
+public class SpecSectionResponse
+{
+    public string Section { get; set; } = string.Empty;
+    public string Field { get; set; } = string.Empty;
+    public string? Text { get; set; }
+}
+
+/// <summary>Comentário publicado na discussion do card: id no DevOps e quantas imagens foram anexadas.</summary>
+public class DevOpsCommentResponse : DevOpsActionResponse
+{
+    public int CommentId { get; set; }
+    public int Images { get; set; }
+}
+
+/// <summary>0085 r3: estado de um tipo de work item no DevOps (nome, categoria e cor do processo).</summary>
+public class WorkItemTypeState
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Categoria do processo: Proposed, InProgress, Resolved, Completed, Removed (pode faltar).</summary>
+    public string? Category { get; set; }
+    public string? Color { get; set; }
+}
+
+/// <summary>0085 r3: <c>GET Azure/card/{id}/states</c> — estados válidos do tipo do card, o atual e as sugestões.</summary>
+public class CardStatesResponse
+{
+    /// <summary>Tipo do card no DevOps (System.WorkItemType).</summary>
+    public string Type { get; set; } = string.Empty;
+    public string? Current { get; set; }
+    public List<CardStateOption> States { get; set; } = [];
+}
+
+public class CardStateOption
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Category { get; set; }
+
+    /// <summary>Próximo estado usual a partir do atual (ações configuradas ou a categoria seguinte).</summary>
+    public bool Suggested { get; set; }
+
+    /// <summary>Ação do menu "Ações DevOps" que leva a este estado (dev-test-in-qa, ready-for-qa, test-in-production).</summary>
+    public string? Action { get; set; }
+
+    public bool Current { get; set; }
 }

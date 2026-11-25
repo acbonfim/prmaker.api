@@ -26,6 +26,9 @@ public sealed class Runner(AgentConfig config)
     private int _doctorRunning;
     /// <summary>0068: aviso de que pode haver pedido (relay, sinal de vida) — o laço principal consulta a fila.</summary>
     private readonly SemaphoreSlim _wake = new(0, 1);
+    /// <summary>0074: aviso para a promoção de PRs (o mesmo sinal do relay; o laço da promoção é independente do limite de pedidos do Claude).</summary>
+    private readonly SemaphoreSlim _wakePromotion = new(0, 1);
+    private readonly SemaphoreSlim _wakeAws = new(0, 1);
     private RelayListener? _relay;
 
     public async Task<int> RunAsync(CancellationToken stopping)
@@ -55,9 +58,12 @@ public sealed class Runner(AgentConfig config)
         _relay = new RelayListener(client, Wake);
         var background = Task.WhenAll(
             _relay.RunAsync(stopping),
-            Every(ReportEvery, () => ReportAsync(client, stopping), stopping),
+            new LiveView(config).RunAsync(stopping),
+            Every(() => ReportInterval(_state), () => ReportAsync(client, stopping), stopping),
             Every(DoctorEvery, () => DoctorAsync(client, stopping), stopping, initialDelay: TimeSpan.FromSeconds(5)),
-            Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)));
+            Every(JanitorEvery, () => Worktrees.CleanAsync(config, client, stopping), stopping, initialDelay: TimeSpan.FromMinutes(2)),
+            PromotionLoopAsync(client, stopping),
+            AwsDeployLoopAsync(client, stopping));
 
         var failures = 0;
         while (!stopping.IsCancellationRequested)
@@ -72,7 +78,15 @@ public sealed class Runner(AgentConfig config)
                 await Delay(TimeSpan.FromSeconds(30), stopping);
                 continue;
             }
-            if (_state.Status != "active" || _jobs.Count >= Math.Max(1, _state.MaxConcurrency))
+            // 0080: pistas — a principal (limite da máquina), a do Especialista do caso (respostas curtas, até 2) e (0085) a
+            // dos itens de trabalho (vagas próprias, padrão 2). O PRMake só entrega o que cabe em alguma pista livre.
+            var specialists = _jobs.Values.Count(j => j.Job.IsSpecialist);
+            var workItems = _jobs.Values.Count(j => j.Job.IsWorkItem);
+            // 0102: perguntas da Base Solvace — vagas próprias (alguém espera na tela).
+            var baseAsks = _jobs.Values.Count(j => j.Job.IsBaseAsk);
+            var mainFull = _jobs.Count - specialists - workItems - baseAsks >= Math.Max(1, _state.MaxConcurrency);
+            var workItemsFull = workItems >= Math.Max(1, _state.WorkItemSlots);
+            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots && workItemsFull && baseAsks >= BaseAskSlots))
             {
                 await Delay(TimeSpan.FromSeconds(5), stopping);
                 continue;
@@ -86,7 +100,7 @@ public sealed class Runner(AgentConfig config)
                 failures = 0;
                 if (claim is null)
                 {
-                    await WaitWakeAsync(_relay.Connected ? IdleWithRelay : NextPollEvery, stopping);
+                    await IdleAsync(client, stopping);
                     continue;
                 }
                 StartJob(client, claim, stopping);
@@ -116,6 +130,11 @@ public sealed class Runner(AgentConfig config)
         try { await background; } catch { /* encerrando */ }
         return 0;
     }
+
+    /// <summary>0080: respostas do especialista ao mesmo tempo (o PRMake confere a mesma regra).</summary>
+    private const int SpecialistSlots = 2;
+    /// <summary>0102: perguntas da Base ao mesmo tempo (o PRMake confere a mesma regra).</summary>
+    private const int BaseAskSlots = 2;
 
     private void StartJob(PrmakeClient client, ClaimResponse claim, CancellationToken stopping)
     {
@@ -187,6 +206,16 @@ public sealed class Runner(AgentConfig config)
             }
             foreach (var old in _recent.Where(kv => DateTimeOffset.UtcNow - kv.Value > TimeSpan.FromMinutes(10)).Select(kv => kv.Key).ToList())
                 _recent.TryRemove(old, out _);
+
+            // A api-key da máquina passou a ser de outra pessoa (instalou as skills aqui): registra para ela e reinicia com a
+            // credencial nova — sem pedido rodando, para não largar trabalho de quem estava antes no meio.
+            if (_jobs.IsEmpty && Registration.OwnerChanged(config.Token, ConfigStore.UserToken()))
+            {
+                var before = config.WorkerId;
+                await Registration.EnsureOwnerAsync(config, ct);
+                if (config.WorkerId != before)
+                    Updater.Restart();
+            }
 
             if (config.AutoUpdate && _jobs.IsEmpty && state.LatestAgentVersion is { Length: > 0 } latest && Updater.IsNewer(latest, Agent.Version))
             {
@@ -281,7 +310,14 @@ public sealed class Runner(AgentConfig config)
         }
     }
 
-    private static async Task Every(TimeSpan interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null)
+    private static Task Every(TimeSpan interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null) =>
+        Every(() => interval, action, ct, initialDelay);
+
+    /// <summary>Sinal de vida: 60 s; mais cedo quando o PRMake pede (relay falhando — o aviso de fila pode não chegar).</summary>
+    private static TimeSpan ReportInterval(WorkerState state) =>
+        state.ReportEverySeconds is int s and > 0 ? TimeSpan.FromSeconds(Math.Clamp(s, 10, 120)) : ReportEvery;
+
+    private static async Task Every(Func<TimeSpan> interval, Func<Task> action, CancellationToken ct, TimeSpan? initialDelay = null)
     {
         await Delay(initialDelay ?? TimeSpan.Zero, ct);
         while (!ct.IsCancellationRequested)
@@ -295,7 +331,46 @@ public sealed class Runner(AgentConfig config)
                 // um laço de fundo nunca morre (sem o sinal de vida o executor não se atualiza nem se reporta)
                 Log.Warn($"tarefa de fundo falhou: {e.Message}");
             }
-            await Delay(interval, ct);
+            await Delay(interval(), ct);
+        }
+    }
+
+    /// <summary>
+    /// Espera com a fila vazia. 1.9.1: com o relay conectado mas o PRMake avisando que ele está falhando
+    /// (<c>reportEverySeconds</c>), o aviso de "tem pedido" pode não chegar — a pergunta da Base ficou 71 s na fila (2026-11-25):
+    /// consulta a cada <see cref="NextPollEvery"/>, como sem relay.
+    /// </summary>
+    public static TimeSpan IdleWait(bool relayConnected, WorkerState state) =>
+        relayConnected && state.ReportEverySeconds is not > 0 ? IdleWithRelay : NextPollEvery;
+
+    /// <summary>1.9.2: com o relay falhando, pergunta "tem pedido?" (1 consulta) a cada <see cref="ReadyPollEvery"/>.</summary>
+    public static readonly TimeSpan ReadyPollEvery = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Fila vazia. Relay em ordem: espera o aviso (ou a reserva). Relay falhando: a cada <see cref="ReadyPollEvery"/> pergunta
+    /// ao PRMake se há pedido (o next completo custa ~11 consultas e passava a cada 10 s — 15 s de fila numa pergunta da Base).
+    /// </summary>
+    private async Task IdleAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var wait = IdleWait(_relay?.Connected == true, _state);
+        if (_state.ReportEverySeconds is not > 0)
+        {
+            await WaitWakeAsync(wait, stopping);
+            return;
+        }
+        var until = DateTimeOffset.UtcNow + wait;
+        while (!stopping.IsCancellationRequested && DateTimeOffset.UtcNow < until)
+        {
+            if (await WaitWakeAsync(ReadyPollEvery, stopping)) return;
+            try
+            {
+                if (await client.ReadyAsync(stopping)) return;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                return; // o next mostra o erro (e espera do jeito de sempre)
+            }
+            if (_state.ReportEverySeconds is not > 0) return; // o relay voltou
         }
     }
 
@@ -314,16 +389,123 @@ public sealed class Runner(AgentConfig config)
         {
             // já avisado
         }
+        try
+        {
+            if (_wakePromotion.CurrentCount == 0) _wakePromotion.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // já avisado
+        }
+        try
+        {
+            if (_wakeAws.CurrentCount == 0) _wakeAws.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // já avisado
+        }
     }
 
-    private async Task WaitWakeAsync(TimeSpan timeout, CancellationToken ct)
+    /// <summary>
+    /// 0100: coletas da AWS pedidas pela aba AWS da Bancada (ou o acompanhamento do deploy). Laço próprio, sem o Claude —
+    /// não ocupa vaga de execução nem espera o limite da conta. Acordado pelo relay; sem ele, no ritmo da fila.
+    /// </summary>
+    private async Task AwsDeployLoopAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var runner = new AwsDeployRunner(config, client);
+        await Delay(TimeSpan.FromSeconds(20), stopping);
+        var failures = 0;
+        while (!stopping.IsCancellationRequested)
+        {
+            if (_revoked || _state.Status != "active")
+            {
+                await Delay(TimeSpan.FromSeconds(30), stopping);
+                continue;
+            }
+            try
+            {
+                if (await runner.RunNextAsync(stopping))
+                {
+                    failures = 0;
+                    continue;
+                }
+                failures = 0;
+                try { await _wakeAws.WaitAsync(_relay?.Connected == true ? IdleWithRelay : NextPollEvery, stopping); }
+                catch (OperationCanceledException) { }
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (PrmakeException e) when (e.Status == System.Net.HttpStatusCode.NotFound)
+            {
+                // API ainda sem a 0100: tenta de novo bem mais tarde
+                await Delay(TimeSpan.FromMinutes(30), stopping);
+            }
+            catch (Exception e)
+            {
+                failures++;
+                var wait = TimeSpan.FromSeconds(Math.Min(120, 5 << Math.Min(failures, 5)));
+                Log.Warn($"coleta AWS: {e.Message} — nova tentativa em {wait.TotalSeconds:0} s");
+                await Delay(wait, stopping);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 0074: promoção de PRs em lote (cherry-pick com git local). Laço próprio — um item por vez nesta máquina — para não
+    /// esperar o limite de pedidos do Claude. Acordado pelo relay; sem ele, consulta no mesmo ritmo da fila.
+    /// </summary>
+    private async Task PromotionLoopAsync(PrmakeClient client, CancellationToken stopping)
+    {
+        var runner = new PromotionRunner(config, client);
+        // Nenhum git pode parar pedindo senha: sem terminal, falha com a mensagem.
+        Environment.SetEnvironmentVariable("GIT_TERMINAL_PROMPT", "0");
+        await Delay(TimeSpan.FromSeconds(15), stopping);
+        var failures = 0;
+        while (!stopping.IsCancellationRequested)
+        {
+            if (_revoked || _state.Status != "active")
+            {
+                await Delay(TimeSpan.FromSeconds(30), stopping);
+                continue;
+            }
+            try
+            {
+                if (await runner.RunNextAsync(stopping))
+                {
+                    failures = 0;
+                    continue; // pode ter mais itens na fila
+                }
+                failures = 0;
+                try { await _wakePromotion.WaitAsync(_relay?.Connected == true ? IdleWithRelay : NextPollEvery, stopping); }
+                catch (OperationCanceledException) { }
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                failures++;
+                var wait = TimeSpan.FromSeconds(Math.Min(120, 5 << Math.Min(failures, 5)));
+                Log.Warn($"promoção: {e.Message} — nova tentativa em {wait.TotalSeconds:0} s");
+                await Delay(wait, stopping);
+            }
+        }
+    }
+
+    /// <summary>true = acordado (aviso do relay ou queueReady do sinal de vida); false = venceu o tempo.</summary>
+    private async Task<bool> WaitWakeAsync(TimeSpan timeout, CancellationToken ct)
     {
         try
         {
-            await _wake.WaitAsync(timeout, ct);
+            return await _wake.WaitAsync(timeout, ct);
         }
         catch (OperationCanceledException)
         {
+            return false;
         }
     }
 

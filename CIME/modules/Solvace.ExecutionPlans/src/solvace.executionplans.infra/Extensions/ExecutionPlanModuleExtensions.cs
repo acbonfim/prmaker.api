@@ -23,9 +23,30 @@ public static class ExecutionPlanModuleExtensions
 
         // 0039: fila de execução e executores; o mesmo objeto atende o gatilho de retomada do plano.
         services.AddScoped<IExecutionQueueRepository, ExecutionQueueRepository>();
+        // 0080: Especialista do caso.
+        services.AddScoped<ICaseChatRepository, CaseChatRepository>();
+        services.AddScoped<CaseChatApplication>();
         services.AddScoped<ExecutionQueueApplication>();
         services.AddScoped<IExecutionQueueApplication>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
         services.AddScoped<IExecutionResumeTrigger>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+        // 0085: pista dos itens de trabalho (a fila resolve IWorkItemApplication sob demanda — sem ciclo na DI).
+        services.AddScoped<IWorkItemQueue>(sp => sp.GetRequiredService<ExecutionQueueApplication>());
+
+        // 0085: itens de trabalho do card (a fila dos itens, IWorkItemQueue, é registrada junto da fila).
+        services.AddScoped<IWorkItemRepository, WorkItemRepository>();
+        services.AddScoped<IWorkItemApplication, WorkItemApplication>();
+        // 0085 r5: arquivos do item (seção "Arquivos": os do item + os do plano ligado).
+        services.AddScoped<IWorkItemFileRepository, WorkItemFileRepository>();
+        services.AddScoped<IWorkItemFileApplication, WorkItemFileApplication>();
+        services.AddScoped<IWorkItemDeliverableRepository, WorkItemDeliverableRepository>();
+        services.AddScoped<IWorkItemDeliverableApplication, WorkItemDeliverableApplication>();
+        // 0099: épicos da Mesa de gestão e o PDF gerado no servidor (markdown → PDF).
+        services.AddScoped<IEpicRepository, EpicRepository>();
+        services.AddScoped<IEpicApplication, EpicApplication>();
+        // 0099 (ajustes 2): histórias/bugs do épico (a conversão em card é do host — EpicStoryConverter).
+        services.AddScoped<IEpicStoryRepository, EpicStoryRepository>();
+        services.AddScoped<IEpicStoryApplication, EpicStoryApplication>();
+        services.AddSingleton<IMarkdownPdfRenderer, solvace.executionplans.infra.Pdf.MarkdownPdfRenderer>();
 
         return services;
     }

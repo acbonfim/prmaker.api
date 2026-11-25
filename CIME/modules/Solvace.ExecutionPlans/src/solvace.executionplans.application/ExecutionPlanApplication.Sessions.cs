@@ -64,12 +64,13 @@ public partial class ExecutionPlanApplication
 
     public async Task<ExecutionPlanSummaryResponse> RequestResumeAsync(Guid planId, ExecutionActor actor, CancellationToken cancellationToken)
     {
-        // 0039: dono com executor → o pedido vai para a fila (também sem sessão registrada: começa uma nova que retoma o plano).
+        // 0039: quem pediu tem executor → o pedido vai para a fila, na máquina dele (também sem sessão registrada: começa
+        // uma nova que retoma o plano). Card 78723: nunca na máquina de quem criou o plano.
         if (_resumeTrigger is not null)
         {
             var current = await LoadAsync(planId, cancellationToken);
-            if (!current.IsFinished && current.CreatedByUserId is { } owner
-                && (await _resumeTrigger.OwnersWithWorkersAsync([owner], cancellationToken)).Count > 0)
+            if (!current.IsFinished && actor.UserId is { } requester && requester != Guid.Empty
+                && (await _resumeTrigger.OwnersWithWorkersAsync([requester], cancellationToken)).Count > 0)
             {
                 var request = await _resumeTrigger.PlanChangedAsync(current, ExecutionRequestSource.Resume, actor, true, cancellationToken)
                               ?? throw new DomainException("O Claude já está trabalhando neste card — acompanhe por aqui.");

@@ -26,6 +26,8 @@ namespace ProSales.Repository.Contexts
         public DbSet<UserForgetCode> UserForgetCodes { get; set; }
         public DbSet<UserService> UserServices { get; set; }
         public DbSet<MyService> Services { get; set; }
+        /// <summary>Tentativas de login (0079).</summary>
+        public DbSet<LoginEvent> LoginEvents { get; set; }
 
         /// <summary>Schema do PostgreSQL com todas as tabelas da autenticação (feature 0014).</summary>
         public const string Schema = "auth";
@@ -65,6 +67,19 @@ namespace ProSales.Repository.Contexts
                 .WithMany(r => r.UserRoles)
                 .HasForeignKey(fk => fk.UserId)
                 .IsRequired();
+            });
+
+            // 0079: histórico de logins (sucesso e falha) para a análise de uso.
+            modelBuilder.Entity<LoginEvent>(b =>
+            {
+                b.ToTable("LoginEvents");
+                b.HasKey(x => x.Id);
+                b.Property(x => x.UserName).IsRequired().HasMaxLength(LoginEvent.MaxUserNameLength);
+                b.Property(x => x.Reason).IsRequired().HasMaxLength(LoginEvent.MaxReasonLength);
+                b.Property(x => x.Ip).HasMaxLength(LoginEvent.MaxIpLength);
+                b.Property(x => x.UserAgent).HasMaxLength(LoginEvent.MaxUserAgentLength);
+                b.HasIndex(x => x.At);
+                b.HasIndex(x => new { x.UserExternalId, x.At });
             });
 
             modelBuilder.Entity<UserService>(us =>

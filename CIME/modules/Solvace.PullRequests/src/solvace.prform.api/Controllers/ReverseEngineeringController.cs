@@ -11,23 +11,46 @@ using solvace.knowledge.domain.Reverse;
 namespace solvace.prform.Controllers;
 
 /// <summary>
-/// Engenharia reversa por módulo (feature 0052): leitura e sessões (rascunhos) para qualquer usuário logado — quem roda a
-/// skill no módulo; aprovar, publicar e configurar o módulo só os papéis de <c>ReverseEngineeringApproverRoles</c>.
+/// Engenharia reversa por módulo (feature 0052). 0097: leitura (tela, itens, busca, for-card, armadilhas) para todo usuário
+/// autenticado; gerar (sessões, rascunho, andamento, envio, anexos, infra, armadilhas que gravam, índice técnico, itens
+/// desatualizados) só administrador (<see cref="GenerateRole"/>); aprovar, publicar e configurar o módulo continuam com os
+/// papéis de <c>ReverseEngineeringApproverRoles</c> (checados na aplicação).
 /// Publicado, o documento vira a seção <c>re-*</c> do projeto na Base Solvace e os itens entram no índice por item.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-[Authorize]
+[Authorize]   // 0097: leitura para todo usuário autenticado (0074 restringia tudo a admin); a geração é marcada ação por ação
 public class ReverseEngineeringController(IReverseEngineeringApplication application, solvace.timeline.application.Contracts.IUserRepository users,
     Cime.BuildingBlocks.RealTime.IRealTimeNotifier realTime, solvace.executionplans.application.Contracts.IExecutionTimelineWriter timeline,
     ILogger<ReverseEngineeringController> logger) : ControllerBase
 {
+    /// <summary>0097: papel de quem gera a engenharia reversa (as ações de geração levam <c>[Authorize(Roles = GenerateRole)]</c>).</summary>
+    public const string GenerateRole = "admin";
+
     /// <summary>Grupo do tempo real de um módulo (a tela do módulo assina) e o da lista de módulos.</summary>
     public static string Group(string moduleKey) => $"reverse:{moduleKey}";
     public const string ListGroup = "reverse";
     /// <summary>Evento: a revisão mudou (andamento, rascunho, envio, revisão, publicação) — payload = cabeça da revisão.</summary>
     public const string RevisionEvent = "reverseRevision";
+
+    /// <summary>0076: um item da engenharia reversa citado no texto de um card (popover do UC-121/RN-012).</summary>
+    [HttpGet("card/{card}/items/{reference}")]
+    public async Task<ActionResult<ReverseItemResponse>> GetCardItem([FromRoute] string card, [FromRoute] string reference, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await application.GetCardItemAsync(card, reference, ct));
+        }
+        catch (KnowledgeNotFoundException e)
+        {
+            return NotFound(new { error = e.Message });
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+    }
 
     [HttpGet("settings")]
     public Task<ActionResult<ReverseSettingsResponse>> Settings(CancellationToken ct) =>
@@ -65,6 +88,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>Abre (ou retoma) a sessão do Claude para um documento e devolve o pacote (modelo, publicado, sugestões...).</summary>
     [HttpPost("modules/{key}/docs/{doc}/sessions")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseSessionResponse>> StartSession([FromRoute] string key, [FromRoute] string doc,
         [FromBody] StartReverseSessionRequest? request, CancellationToken ct) =>
         Run<ReverseSessionResponse>(async () =>
@@ -76,6 +100,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>Checagem do documento sem gravar (a skill confere antes de enviar).</summary>
     [HttpPost("modules/{key}/lint")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseLintResult>> Lint([FromRoute] string key, [FromBody] LintReverseDocumentRequest request, CancellationToken ct) =>
         Run<ReverseLintResult>(async () => Ok(await application.LintAsync(key, request, ct)));
@@ -102,17 +127,20 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<string>(async () => Content(await application.GetRevisionContentAsync(id, ct), "text/markdown; charset=utf-8"));
 
     [HttpPut("revisions/{id:guid}")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     [RequestSizeLimit(16 * 1024 * 1024)]
     public Task<ActionResult<ReverseRevisionResponse>> SaveRevision([FromRoute] Guid id, [FromBody] SaveReverseRevisionRequest request, CancellationToken ct) =>
         Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SaveRevisionAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 
     /// <summary>Andamento da sessão do Claude (etapa, atividade do momento, registro) — a tela mostra ao vivo.</summary>
     [HttpPost("revisions/{id:guid}/progress")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseRevisionHead>> Progress([FromRoute] Guid id, [FromBody] ReverseProgressUpdate request, CancellationToken ct) =>
         Run<ReverseRevisionHead>(async () => Ok(await NotifyAsync(await application.ReportProgressAsync(id, request, await ActorAsync(ct), Roles(), ct))));
 
     /// <summary>Envia para revisão (a checagem estrutural barra erros).</summary>
     [HttpPost("revisions/{id:guid}/submit")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseRevisionResponse>> Submit([FromRoute] Guid id, CancellationToken ct) =>
         Run<ReverseRevisionResponse>(async () => Ok(await NotifyAsync(await application.SubmitAsync(id, await ActorAsync(ct), Roles(), ct))));
 
@@ -150,11 +178,13 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     // ── UI/UX ───────────────────────────────────────────────────────────────────────────────────
 
     [HttpPost("modules/{key}/assets/link")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseAssetResponse>> AddLink([FromRoute] string key, [FromBody] CreateReverseAssetLinkRequest request, CancellationToken ct) =>
         Run<ReverseAssetResponse>(async () => Ok(await application.AddLinkAsync(key, request, await ActorAsync(ct), ct)));
 
     /// <summary>Arquivo de UI/UX (imagem, PDF, export do Figma) — multipart: file, title, notes, screens (separadas por vírgula).</summary>
     [HttpPost("modules/{key}/assets/file")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     [RequestSizeLimit(ReverseAsset.MaxFileBytes + 1024 * 1024)]
     public Task<ActionResult<ReverseAssetResponse>> AddFile([FromRoute] string key, IFormFile file, [FromForm] string? title, [FromForm] string? notes,
         [FromForm] string? screens, CancellationToken ct) =>
@@ -183,6 +213,7 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     }
 
     [HttpDelete("assets/{id:guid}")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<object>> DeleteAsset([FromRoute] Guid id, CancellationToken ct) =>
         Run<object>(async () =>
         {
@@ -198,8 +229,30 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<ReverseInfraResponse>(async () => await application.GetInfraAsync(key, ct) is { } infra ? (ActionResult)Ok(infra) : NoContent());
 
     [HttpPut("modules/{key}/infra")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseInfraResponse>> UpsertInfra([FromRoute] string key, [FromBody] UpsertReverseInfraRequest request, CancellationToken ct) =>
         Run<ReverseInfraResponse>(async () => Ok(await application.UpsertInfraAsync(key, request, await ActorAsync(ct), ct)));
+
+    // ── 0097: índice técnico (sem IA) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Índice técnico gerado sem IA pela skill (<c>re.sh indice</c>): grava a seção <c>re-tecnico</c>, troca o índice do
+    /// documento e registra uma revisão publicada (modo <c>generated</c>) — sem revisão humana.
+    /// </summary>
+    [HttpPut("modules/{key}/technical-index")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
+    [RequestSizeLimit(16 * 1024 * 1024)]
+    public Task<ActionResult<ReverseTechnicalIndexResponse>> TechnicalIndex([FromRoute] string key, [FromBody] PublishTechnicalIndexRequest request, CancellationToken ct) =>
+        Run<ReverseTechnicalIndexResponse>(async () => Ok(await application.PublishTechnicalIndexAsync(key, request, await ActorAsync(ct), ct)));
+
+    /// <summary>
+    /// 0097: itens desatualizados (reancoragem sem IA): o trecho de código citado mudou na master desde a geração.
+    /// <c>replace=true</c> limpa as marcas do módulo antes; publicar um documento limpa as dele (menos a reancoragem).
+    /// </summary>
+    [HttpPost("modules/{key}/stale")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
+    public Task<ActionResult<ReverseStaleResponse>> MarkStale([FromRoute] string key, [FromBody] MarkReverseStaleRequest request, CancellationToken ct) =>
+        Run<ReverseStaleResponse>(async () => Ok(await application.MarkStaleAsync(key, request, ct)));
 
     // ── 0054: armadilhas, sugestões por item, divergências com o KC ─────────────────────────────
 
@@ -209,14 +262,17 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>Armadilhas novas (lote) ligadas a itens. Quem não aprova — e toda migração automática — cria "a conferir".</summary>
     [HttpPost("modules/{key}/traps")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<List<ReverseTrapResponse>>> CreateTraps([FromRoute] string key, [FromBody] List<CreateReverseTrapRequest> request, CancellationToken ct) =>
         Run<List<ReverseTrapResponse>>(async () => Ok(await application.CreateTrapsAsync(key, request, await ActorAsync(ct), Roles(), ct)));
 
     [HttpPut("traps/{id:guid}")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseTrapResponse>> UpdateTrap([FromRoute] Guid id, [FromBody] UpdateReverseTrapRequest request, CancellationToken ct) =>
         Run<ReverseTrapResponse>(async () => Ok(await application.UpdateTrapAsync(id, request, await ActorAsync(ct), Roles(), ct)));
 
     [HttpDelete("traps/{id:guid}")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<object>> DeleteTrap([FromRoute] Guid id, CancellationToken ct) =>
         Run<object>(async () =>
         {
@@ -226,16 +282,19 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
 
     /// <summary>A skill ligou as armadilhas antigas e as sugestões aos itens — a seção antiga sai do espelho.</summary>
     [HttpPost("modules/{key}/traps/migrated")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseModuleResponse>> TrapsMigrated([FromRoute] string key, CancellationToken ct) =>
         Run<ReverseModuleResponse>(async () => Ok(await application.MarkTrapsMigratedAsync(key, await ActorAsync(ct), Roles(), ct)));
 
     /// <summary>Sugestão → armadilha (aprovador).</summary>
     [HttpPost("suggestions/{id:guid}/to-trap")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ReverseTrapResponse>> SuggestionToTrap([FromRoute] Guid id, [FromBody] CreateReverseTrapRequest? request, CancellationToken ct) =>
         Run<ReverseTrapResponse>(async () => Ok(await application.SuggestionToTrapAsync(id, request?.Title, await ActorAsync(ct), Roles(), ct)));
 
     /// <summary>Liga a sugestão a um item/documento da engenharia reversa (migração, análises).</summary>
     [HttpPost("suggestions/{id:guid}/item")]
+    [Authorize(Roles = GenerateRole)]   // 0097: geração
     public Task<ActionResult<ArchitectureSuggestionResponse>> LinkSuggestion([FromRoute] Guid id, [FromBody] LinkSuggestionItemRequest request, CancellationToken ct) =>
         Run<ArchitectureSuggestionResponse>(async () => Ok(await application.LinkSuggestionAsync(id, request, ct)));
 
@@ -247,12 +306,13 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
     // ── Índice por item ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Busca nos itens publicados (q vazio = lista filtrada). module/kind aceitam vários (separados por vírgula).</summary>
+    /// <param name="stale">0097: só os itens desatualizados (lista do cabeçalho do módulo).</param>
     [HttpGet("index/search")]
     public Task<ActionResult<List<ReverseIndexHit>>> Search([FromQuery] string? q, [FromQuery] string? module, [FromQuery] string? kind, [FromQuery] string? doc,
-        [FromQuery] int limit = 30, [FromQuery] bool removed = false, [FromQuery] string? card = null, CancellationToken ct = default) =>
+        [FromQuery] int limit = 30, [FromQuery] bool removed = false, [FromQuery] string? card = null, [FromQuery] bool stale = false, CancellationToken ct = default) =>
         Run<List<ReverseIndexHit>>(async () =>
         {
-            var hits = await application.SearchAsync(q, Split(module), Split(kind), doc, limit <= 0 ? 30 : limit, removed, ct);
+            var hits = await application.SearchAsync(q, Split(module), Split(kind), doc, limit <= 0 ? 30 : limit, removed, ct, stale);
             if (!string.IsNullOrWhiteSpace(card)) await application.RecordConsultedAsync(card, hits.Take(5).Select(h => h.Ref), ct);
             return Ok(hits);
         });
@@ -263,7 +323,8 @@ public class ReverseEngineeringController(IReverseEngineeringApplication applica
         Run<List<ReverseItemResponse>>(async () =>
         {
             var items = await application.GetItemsAsync(Split(refs) ?? [], module, ct);
-            if (!string.IsNullOrWhiteSpace(card)) await application.RecordConsultedAsync(card, items.Select(i => i.Ref), ct);
+            // 0097: lidos de fato (kb.sh re get com card) → histórico do card + consulta
+            if (!string.IsNullOrWhiteSpace(card)) await application.RecordReadAsync(card, items.Select(i => i.Ref), ct);
             return Ok(items);
         });
 

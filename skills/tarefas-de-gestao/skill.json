@@ -1,0 +1,12 @@
+{
+  "requires": [
+    "curl",
+    "jq",
+    "python3"
+  ],
+  "depends": [
+    "analisar-bug",
+    "gerar-prmake",
+    "base-solvace"
+  ]
+}

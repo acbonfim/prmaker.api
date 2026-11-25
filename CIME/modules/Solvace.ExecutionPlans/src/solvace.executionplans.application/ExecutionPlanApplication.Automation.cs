@@ -139,6 +139,9 @@ public partial class ExecutionPlanApplication
                             checksChanged = true;
                             if (newFailure) failedCi.Add(link);
                         }
+                        // 0075: aprovações e revisores pendentes (vêm na mesma consulta do CI).
+                        if (link.ChangeReviews(ci.Approvals, ci.ChangesRequested, ci.ReviewersPending))
+                            checksChanged = true;
                     }
                 }
 
@@ -148,6 +151,8 @@ public partial class ExecutionPlanApplication
                     p.CompleteStep(step.Key, active.Count == 1 ? "PR mesclado" : $"{active.Count} PRs mesclados", SystemActor.Name, now, false);
                     changed = true;
                 }
+                else if (p.WaitForPullRequests(step.Key, active, SystemActor.Name, now, false) is not null)
+                    changed = true;
             }
             if (changed || checksChanged) p.Touch(now, fromExecutor: false);
         }, cancellationToken, SystemActor,
@@ -205,9 +210,7 @@ public partial class ExecutionPlanApplication
                 case ExecutionStatus.Completed: lines.Add($"✅ Etapa concluída: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Cancelled: lines.Add($"⛔ Etapa cancelada: **{step.Title}**{reason}"); break;
                 case ExecutionStatus.Failed: lines.Add($"❌ Etapa falhou: **{step.Title}**{reason}"); break;
-                // "Aguardando" de chamado/PR (o de pergunta já sai no registro das perguntas).
-                case ExecutionStatus.Waiting when step.Kind is ExecutionStepKind.Ticket or ExecutionStepKind.PullRequest:
-                    lines.Add($"⏳ Etapa aguardando: **{step.Title}**{reason}"); break;
+                // "Aguardando" de chamado/PR: a situação do card (0075) escreve o resumo na Timeline.
             }
         }
 
@@ -218,10 +221,10 @@ public partial class ExecutionPlanApplication
                 case ExecutionStatus.Completed:
                     await WriteTimelineAsync(plan, await CorrectionCompletedTextAsync(plan, lines, cancellationToken), actor, cancellationToken);
                     return;
-                case ExecutionStatus.Paused: lines.Add($"⏸️ Plano de correção **pausado** por {actor.Name}"); break;
-                case ExecutionStatus.Running when before.Status == ExecutionStatus.Paused: lines.Add($"▶️ Plano de correção **retomado** por {actor.Name}"); break;
-                case ExecutionStatus.Cancelled: lines.Add($"⛔ Plano de correção **cancelado** por {actor.Name}{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
-                case ExecutionStatus.Failed: lines.Add($"❌ Plano de correção **falhou**{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
+                case ExecutionStatus.Paused: lines.Add($"⏸️ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **pausado** por {actor.Name}"); break;
+                case ExecutionStatus.Running when before.Status == ExecutionStatus.Paused: lines.Add($"▶️ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **retomado** por {actor.Name}"); break;
+                case ExecutionStatus.Cancelled: lines.Add($"⛔ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **cancelado** por {actor.Name}{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
+                case ExecutionStatus.Failed: lines.Add($"❌ {PlanTerms.DeliveryPlanTitle(plan.Kind)} **falhou**{(plan.StatusReason is null ? "" : $" — {plan.StatusReason}")}"); break;
             }
         }
 
@@ -250,7 +253,7 @@ public partial class ExecutionPlanApplication
     private static string CorrectionPlanCreatedText(ExecutionPlan plan)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"🛠️ **Plano de correção criado** — {plan.Title}");
+        sb.AppendLine($"🛠️ **{PlanTerms.DeliveryPlanTitle(plan.Kind)} criado** — {plan.Title}");
         sb.AppendLine();
         foreach (var step in plan.Steps.OrderBy(s => s.Order))
             sb.AppendLine($"- {ExecutorLabel(step)} {step.Title}{(step.Repository is null ? "" : $" · {step.Repository}")}");
@@ -307,7 +310,7 @@ public partial class ExecutionPlanApplication
     {
         var links = await _repository.GetLinksAsync(plan.Id, cancellationToken);
         var sb = new StringBuilder();
-        sb.AppendLine($"🏁 **Plano de correção concluído** — {plan.Title}");
+        sb.AppendLine($"🏁 **{PlanTerms.DeliveryPlanTitle(plan.Kind)} concluído** — {plan.Title}");
         foreach (var line in stepLines) sb.AppendLine(line);
         sb.AppendLine();
         sb.AppendLine("**Etapas**");
