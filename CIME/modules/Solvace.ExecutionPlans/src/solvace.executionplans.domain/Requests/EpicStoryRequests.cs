@@ -34,4 +34,9 @@ public class ConvertEpicStoryRequest
     public string? Board { get; set; }
     public string? Column { get; set; }
     public string? Lane { get; set; }
+    /// <summary>
+    /// Campos do DevOps preenchidos na hora de converter (<c>{referenceName: valor}</c>), por cima dos da história — os obrigatórios
+    /// que faltavam (ex.: <c>Custom.Module</c>).
+    /// </summary>
+    public Dictionary<string, JsonElement>? Fields { get; set; }
 }

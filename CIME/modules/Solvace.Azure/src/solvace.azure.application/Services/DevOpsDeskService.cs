@@ -180,6 +180,10 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         });
     }
 
+    public async Task<IReadOnlyList<DevOpsFieldInfo>> MissingRequiredFieldsAsync(string workItemType, IReadOnlyDictionary<string, JsonElement>? fields,
+        CancellationToken cancellationToken = default) =>
+        DevOpsDeskMapping.MissingRequired(await GetFieldsAsync(workItemType, cancellationToken), fields);
+
     public async Task<IReadOnlyList<string>> GetTagsAsync(string? q, CancellationToken cancellationToken = default)
     {
         await EnsureConfigAsync(cancellationToken);
@@ -583,6 +587,18 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         await EnsureConfigAsync(cancellationToken);
         var type = request.Type.Trim();
         var fields = await WithTeamAreaAsync(request.Fields, request.Team, cancellationToken);
+        // Card 1109 (E1093): obrigatório sem padrão (Module da User Story) vira 422 com a lista, não o TF401320 cru do DevOps.
+        IReadOnlyList<DevOpsFieldInfo> missing = [];
+        try
+        {
+            missing = await MissingRequiredFieldsAsync(type, fields, cancellationToken);
+        }
+        catch (DevOpsActionException)
+        {
+            // Sem os metadados do tipo, o DevOps confere (a recusa dele continua chegando).
+        }
+        if (missing.Count > 0)
+            throw new DevOpsRequiredFieldsException(type, missing);
         var ops = DevOpsDeskMapping.BuildCreatePatch(request.Title, fields, request.Tags, request.ParentId, OrganizationUrl);
 
         DevOpsCardDetail card;

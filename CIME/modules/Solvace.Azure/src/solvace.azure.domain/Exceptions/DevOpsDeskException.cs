@@ -27,3 +27,15 @@ public class DevOpsDeskException : DevOpsActionException
         _ => new(502, "devops_error", message)
     };
 }
+
+/// <summary>
+/// Campos obrigatórios do tipo, sem valor padrão, que o pedido não preencheu (ex.: <c>Custom.Module</c> na User Story). O PRMake
+/// confere antes de criar o card, para não repassar o TF401320 cru do DevOps, e devolve 422 com <c>{code: "required_fields",
+/// fields}</c> para a tela pedir cada um (picklist com as opções).
+/// </summary>
+public class DevOpsRequiredFieldsException(string type, IReadOnlyList<solvace.azure.domain.Models.DevOpsFieldInfo> fields)
+    : DevOpsDeskException(422, "required_fields",
+        $"O DevOps exige no {type}: {string.Join(", ", fields.Select(f => f.Name))}. Preencha {(fields.Count == 1 ? "o campo" : "os campos")} e tente de novo.")
+{
+    public IReadOnlyList<solvace.azure.domain.Models.DevOpsFieldInfo> Fields { get; } = fields;
+}

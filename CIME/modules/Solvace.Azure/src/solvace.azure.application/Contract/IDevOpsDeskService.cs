@@ -16,6 +16,13 @@ public interface IDevOpsDeskService
     /// <summary>Campos do tipo com tipo do valor, obrigatório, somente leitura e valores permitidos (picklist).</summary>
     Task<IReadOnlyList<DevOpsFieldInfo>> GetFieldsAsync(string workItemType, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Obrigatórios do tipo que os <paramref name="fields"/> não preenchem e que não têm valor padrão (ex.: <c>Custom.Module</c> da User
+    /// Story). A criação do card confere isso antes e recusa com <c>DevOpsRequiredFieldsException</c> (422).
+    /// </summary>
+    Task<IReadOnlyList<DevOpsFieldInfo>> MissingRequiredFieldsAsync(string workItemType, IReadOnlyDictionary<string, System.Text.Json.JsonElement>? fields,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Tags do projeto (filtro "contém", ignora caixa).</summary>
     Task<IReadOnlyList<string>> GetTagsAsync(string? q, CancellationToken cancellationToken = default);
 

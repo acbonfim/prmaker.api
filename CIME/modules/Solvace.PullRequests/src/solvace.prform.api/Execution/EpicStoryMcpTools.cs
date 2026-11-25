@@ -126,10 +126,12 @@ public class EpicStoryMcpTools(
     [Description("Converte a historia/bug do epico em card do DevOps — SO quando a pessoa pedir. Tipo e campos pelo DeskStoryFieldMap " +
                  "(descricao, criterios de aceite / passos em HTML, prioridade, severidade, tags, campos), card entra no epico (created), " +
                  "Timeline do card. column/lane iniciais opcionais (padrao: o time/board do epico). Uma vez so: ja convertida devolve o erro " +
-                 "alreadyConverted com o card. Responda com o numero do card criado.")]
+                 "alreadyConverted com o card. Responda com o numero do card criado. Campo obrigatorio do DevOps sem valor (ex.: " +
+                 "Custom.Module da User Story) volta como erro required_fields com os nomes — grave-o na historia (fields) ou mande em fields.")]
     public Task<string> Convert(
         [Description("Numero da historia (#n)")] long number,
         string? column = null, string? lane = null, string? team = null, string? board = null,
+        [Description("Campos do DevOps {referenceName: valor} so para esta conversao (ex.: {\"Custom.Module\": \"Login\"})")] JsonElement? fields = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var story = await stories.GetAsync(number, ct);
@@ -138,7 +140,7 @@ public class EpicStoryMcpTools(
         var target = specialist.OwnCard ?? EpicKey.Of(story.EpicNumber);
         return await specialist.RunAsync(target, $"Converter a história #{number} em card", story.Title, async () =>
         {
-            var result = await converter.ConvertAsync(number, new ConvertEpicStoryRequest { Column = column, Lane = lane, Team = team, Board = board },
+            var result = await converter.ConvertAsync(number, new ConvertEpicStoryRequest { Column = column, Lane = lane, Team = team, Board = board, Fields = DevOpsMcpTools.FieldMap(fields) },
                 actor, User, specialist.Via, ct);
             return (Serialize(Controllers.EpicStoriesController.ToResponse(result)), $"card #{result.Card.Id} — {result.Summary}");
         }, ct);
