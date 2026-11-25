@@ -161,6 +161,15 @@ public partial class WorkItem
         {
             if (IsSettled(task))
                 throw new DomainException($"{TaskName(task)} já terminou ({task.Status}) — não há o que pausar.");
+            // 0103: pausar a agendada = tirar a data (fica pausada até alguém continuar).
+            if (task.Held && task.ScheduledAt is not null)
+            {
+                task.SetSchedule(null, null, now);
+                AddLog(task.Number, actor, WorkItemLogKind.Task, $"#{task.Number} {task.Title}: agendamento removido — fica pausada, sem data.", now);
+                UpdatedAt = now;
+                Recalculate(actor, now, failedUndo: false);
+                return task;
+            }
             if (task.Held) return task;
             EnsureNotRunningLive(task, "pausar");
             if (task.Status is WorkTaskStatus.Running or WorkTaskStatus.Waiting or WorkTaskStatus.Failed)
@@ -168,13 +177,14 @@ public partial class WorkItem
         }
         else if (!task.Held)
             throw new DomainException($"{TaskName(task)} não está pausada.");
+        var wasScheduled = task.ScheduledAt is { } scheduledFor ? ScheduleTime.Format(scheduledFor) : null;
         task.SetHeld(hold, actor, now);
         var r = Clean(reason, MaxReasonLength);
         var held = hold ? DependentsOf(task) : [];
         AddLog(task.Number, actor, WorkItemLogKind.Task, hold
             ? $"#{task.Number} {task.Title}: pausada{(r is null ? string.Empty : $" — {r}")}" +
               (held.Count == 0 ? "." : $" (esperam junto: {string.Join(", ", held.Select(t => $"#{t.Number}"))}).")
-            : $"#{task.Number} {task.Title}: continua{(r is null ? "." : $" — {r}")}", now);
+            : $"#{task.Number} {task.Title}: continua{(wasScheduled is null ? string.Empty : $" (estava agendada para {wasScheduled})")}{(r is null ? "." : $" — {r}")}", now);
         UpdatedAt = now;
         Recalculate(actor, now, failedUndo: false);
         return task;
@@ -227,7 +237,7 @@ public partial class WorkItem
         if (closed || IsSettled(task))
         {
             var why = closed ? $"O item está {Status}." : "Já terminou.";
-            c.First = c.Last = c.Up = c.Down = c.Pause = c.Cancel = why;
+            c.First = c.Last = c.Up = c.Down = c.Pause = c.Cancel = c.Schedule = why;
             c.CanResume = false;
             return c;
         }
@@ -235,8 +245,10 @@ public partial class WorkItem
         c.Up = MoveBlock(task, TaskPosition.Up);
         c.Down = MoveBlock(task, TaskPosition.Down);
         c.Last = MoveBlock(task, TaskPosition.Last);
-        c.Pause = task.Held ? "Já está pausada." : null;
+        c.Pause = task.Held && task.ScheduledAt is null ? "Já está pausada." : null;
         c.CanResume = task.Held;
+        c.Schedule = null;
+        c.ScheduledAt = task.Held ? task.ScheduledAt : null;
         c.Cancel = null;
         return c;
     }
@@ -265,7 +277,8 @@ public partial class WorkItem
     public void Touch(DateTimeOffset now) => UpdatedAt = now;
 
     /// <summary>Pausa e dependências da etapa na sub-tarefa espelho. Devolve se mudou.</summary>
-    public bool SyncStepControl(string stepKey, bool held, string? heldBy, IEnumerable<string> dependsOnKeys, DateTimeOffset now)
+    public bool SyncStepControl(string stepKey, bool held, string? heldBy, IEnumerable<string> dependsOnKeys, DateTimeOffset now,
+        DateTimeOffset? scheduledAt = null, Guid? scheduledById = null)
     {
         if (WorkItemStatus.IsClosed(Status) || Status == WorkItemStatus.Reverting) return false;
         var task = Tasks.FirstOrDefault(t => t.StepKey == stepKey);
@@ -273,6 +286,7 @@ public partial class WorkItem
         var numbers = dependsOnKeys.Select(k => Tasks.FirstOrDefault(t => t.StepKey == k)?.Number ?? 0).Where(n => n > 0);
         var changed = task.SetDependsOn(numbers);
         changed |= task.SetHeld(held, heldBy, now);
+        changed |= SyncStepSchedule(task, scheduledAt, scheduledById, now);
         if (changed) UpdatedAt = now;
         return changed;
     }
@@ -298,6 +312,10 @@ public class WorkTaskControls
     public string? Pause { get; set; }
     public bool CanResume { get; set; }
     public string? Cancel { get; set; }
+    /// <summary>0103: agendar (ou mudar o horário) — null = pode; texto = por que não.</summary>
+    public string? Schedule { get; set; }
+    /// <summary>0103: agendada para (UTC) — pausada até esse horário; null = sem agendamento.</summary>
+    public DateTimeOffset? ScheduledAt { get; set; }
 }
 
 /// <summary>Card 78680: a mudança atropela a sub-tarefa que o executor está fazendo — parar a execução antes (e retomar depois).</summary>

@@ -69,6 +69,28 @@ public class WorkItemRepository(ExecutionPlanContext context) : IWorkItemReposit
             .ToList();
     }
 
+    public async Task<(List<long> Items, List<long> Tasks)> GetDueSchedulesAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken)
+    {
+        var items = await context.WorkItems.AsNoTracking()
+            .Where(i => i.ScheduledAt != null && i.ScheduledAt <= now
+                        && (i.Status == WorkItemStatus.Pending || i.Status == WorkItemStatus.Failed))
+            .OrderBy(i => i.ScheduledAt)
+            .Select(i => i.Number)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        var tasks = await context.WorkItemTasks.AsNoTracking()
+            .Where(t => t.Held && t.ScheduledAt != null && t.ScheduledAt <= now && t.Status == WorkTaskStatus.Pending)
+            .Join(context.WorkItems.AsNoTracking()
+                    .Where(i => i.Status != WorkItemStatus.Completed && i.Status != WorkItemStatus.Cancelled
+                                && i.Status != WorkItemStatus.Reverted && i.Status != WorkItemStatus.Reverting),
+                t => t.WorkItemId, i => i.Id, (t, i) => t)
+            .OrderBy(t => t.ScheduledAt)
+            .Select(t => t.Number)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        return (items, tasks);
+    }
+
     public Task<List<WorkItem>> GetByPlanAsync(Guid planId, CancellationToken cancellationToken) =>
         context.WorkItems.Include(i => i.Tasks)
             .Where(i => i.PlanId == planId)

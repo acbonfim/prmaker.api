@@ -216,8 +216,31 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
 
     /// <summary>Com o relay fora: o executor pergunta aqui (1 SQL) a cada poucos segundos e só chama o next quando há pedido.</summary>
     [HttpGet("ready")]
-    public Task<ActionResult<ExecutionQueueReadyResponse>> Ready(CancellationToken ct) =>
-        Run<ExecutionQueueReadyResponse>(async () => Ok(new ExecutionQueueReadyResponse { Ready = await queue.IsQueueReadyAsync(RequireWorkerId(), ct) }));
+    public Task<ActionResult<ExecutionQueueReadyResponse>> Ready([FromServices] IWorkItemApplication workItems,
+        [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
+        Run<ExecutionQueueReadyResponse>(async () =>
+        {
+            await ReleaseSchedulesAsync(workItems, logger, ct);
+            return Ok(new ExecutionQueueReadyResponse { Ready = await queue.IsQueueReadyAsync(RequireWorkerId(), ct) });
+        });
+
+    /// <summary>
+    /// 0103: tique do agendamento nos sinais de vida dos executores (no máximo a cada 20 s por instância) — itens e
+    /// sub-tarefas cujo horário chegou começam antes de o executor perguntar se há pedido. Nunca derruba o sinal de vida.
+    /// </summary>
+    internal static async Task ReleaseSchedulesAsync(IWorkItemApplication workItems, ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            var released = await workItems.ReleaseDueSchedulesAsync(ct);
+            if (released > 0)
+                logger.LogInformation("0103: {Count} agendamento(s) liberado(s)", released);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "0103: tique do agendamento falhou");
+        }
+    }
 
     [HttpPost("{id:guid}/start")]
     public Task<ActionResult<ExecutionRequestResponse>> Start([FromRoute] Guid id, [FromBody] StartExecutionRequestRequest request, CancellationToken ct) =>
@@ -291,6 +314,8 @@ public class ExecutionWorkerController(IExecutionQueueApplication queue, Executo
         [FromServices] RealTimeDeliveryHealth relay, [FromServices] IServiceProvider services, CancellationToken ct) =>
         Run<ExecutionWorkerStateResponse>(async () =>
         {
+            await ExecutionQueueController.ReleaseSchedulesAsync(services.GetRequiredService<IWorkItemApplication>(),
+                services.GetRequiredService<ILogger<ExecutionQueueController>>(), ct);
             var state = await queue.ReportWorkerAsync(RequireWorkerId(), request, ct);
             // Relay falhando: o executor não recebe o executionQueueReady e só acharia o pedido no próximo sinal de vida
             // (60 s; promoção, só na reserva de 10 min — a coleta da AWS já entra no queueReady). Volta mais cedo e o

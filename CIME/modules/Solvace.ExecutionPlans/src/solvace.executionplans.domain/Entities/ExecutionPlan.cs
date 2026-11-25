@@ -929,12 +929,41 @@ public class ExecutionPlan
         {
             if (StepSettled(step))
                 throw new DomainException($"{StepName(step)} já terminou ({step.Status}) — não há o que pausar.");
+            // 0103: pausar a agendada = tirar a data (fica pausada até alguém continuar).
+            if (step.Held && step.ScheduledAt is not null)
+            {
+                step.SetSchedule(null, null, now);
+                Touch(now, fromExecutor: false);
+                return step;
+            }
             if (step.Status is ExecutionStatus.Running or ExecutionStatus.Waiting)
                 step.ChangeStatus(ExecutionStatus.Pending, $"Pausada por {actor}", actor, now);
         }
         else if (!step.Held)
             throw new DomainException($"{StepName(step)} não está pausada.");
         step.SetHeld(hold, actor, now);
+        Touch(now, fromExecutor: false);
+        return step;
+    }
+
+    /// <summary>
+    /// 0103: agenda a etapa — pausada até <paramref name="at"/> (no horário o PRMake continua sozinho e retoma o plano). Em
+    /// andamento/espera volta a pendente (quem chama pausa e retoma o plano se o tratamento estava nela).
+    /// </summary>
+    public ExecutionStep ScheduleStep(string key, DateTimeOffset at, string actor, Guid? actorId, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        var step = RequireStep(key);
+        if (StepSettled(step))
+            throw new DomainException($"{StepName(step)} já terminou ({step.Status}) — não há o que agendar.");
+        var when = ScheduleTime.Validate(at, now);
+        if (!step.Held)
+        {
+            if (step.Status is ExecutionStatus.Running or ExecutionStatus.Waiting)
+                step.ChangeStatus(ExecutionStatus.Pending, $"Agendada para {ScheduleTime.Format(when)} por {actor}", actor, now);
+            step.SetHeld(true, actor, now);
+        }
+        step.SetSchedule(when, actorId, now);
         Touch(now, fromExecutor: false);
         return step;
     }

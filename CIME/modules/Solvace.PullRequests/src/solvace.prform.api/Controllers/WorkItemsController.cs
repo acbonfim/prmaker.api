@@ -180,21 +180,33 @@ public partial class WorkItemsController : ExecutionControllerBase
     /// <summary>
     /// Card 78680: mexe numa sub-tarefa sem cancelar o item (avulso ou espelho do plano) — <c>action</c> move (position
     /// first|last|up|down|before + before), pause, resume ou cancel (com <c>dependents</c> cancel|keep quando outras dependem
-    /// dela). A execução atropelada é parada e retomada na ordem nova. As regras (o que pode e por quê) vêm em
+    /// dela); 0103: schedule (+ <c>at</c>) agenda — pausada até o horário; numa agendada, pause tira a data e resume executa agora. A execução atropelada é parada e retomada na ordem nova. As regras (o que pode e por quê) vêm em
     /// <c>tasks[].controls</c> do item.
     /// </summary>
     [HttpPost("tasks/{taskNumber:long}/control")]
     public Task<ActionResult<WorkItemResponse>> ControlTask([FromRoute] long taskNumber, [FromBody] WorkTaskControlRequest request, CancellationToken ct) =>
         RunItem<WorkItemResponse>(async () => Ok(await _items.ControlTaskAsync(taskNumber, request, await ActorAsync(ct), ct)));
 
-    /// <summary>Executa: item avulso entra na fila (pista própria); item de plano retoma o plano.</summary>
+    /// <summary>
+    /// Executa: item avulso entra na fila (pista própria); item de plano retoma o plano. 0103: item agendado/em espera só
+    /// com <c>runNow</c> (409 <c>scheduled</c> sem ele) — tira o agendamento e executa agora.
+    /// </summary>
     [HttpPost("{number:long}/execute")]
-    public Task<ActionResult<WorkItemExecuteResponse>> Execute([FromRoute] long number, CancellationToken ct) =>
+    public Task<ActionResult<WorkItemExecuteResponse>> Execute([FromRoute] long number,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ExecuteWorkItemRequest? request, CancellationToken ct) =>
         RunItem<WorkItemExecuteResponse>(async () =>
         {
-            var item = await _items.ExecuteAsync(number, await ActorAsync(ct), ct);
+            var item = await _items.ExecuteAsync(number, await ActorAsync(ct), ct, request?.RunNow ?? false);
             return Ok(new WorkItemExecuteResponse { RequestId = item.RequestId, Status = item.Status, Item = item });
         });
+
+    /// <summary>
+    /// 0103: agenda o item avulso parado (<c>set</c> + <c>at</c>), deixa em espera sem data (<c>park</c>) ou tira o
+    /// agendamento (<c>clear</c>). Sub-tarefa agenda pelo <c>control</c> (<c>schedule</c>).
+    /// </summary>
+    [HttpPost("{number:long}/schedule")]
+    public Task<ActionResult<WorkItemResponse>> Schedule([FromRoute] long number, [FromBody] WorkItemScheduleRequest request, CancellationToken ct) =>
+        RunItem<WorkItemResponse>(async () => Ok(await _items.ScheduleAsync(number, request, await ActorAsync(ct), ct)));
 
     /// <summary>Cancela (sub-tarefas abertas e pedido na fila); <c>undo=true</c> desfaz o que já foi feito.</summary>
     [HttpPost("{number:long}/cancel")]
@@ -302,6 +314,10 @@ public partial class WorkItemsController : ExecutionControllerBase
             catch (WorkItemNotEditableException e)
             {
                 return Conflict(new { code = "notEditable", error = e.Message, number = e.Number });
+            }
+            catch (WorkItemScheduledException e)
+            {
+                return Conflict(new { code = "scheduled", error = e.Message, number = e.Number, scheduledAt = e.ScheduledAt });
             }
             catch (WorkItemTypeInvalidException e)
             {

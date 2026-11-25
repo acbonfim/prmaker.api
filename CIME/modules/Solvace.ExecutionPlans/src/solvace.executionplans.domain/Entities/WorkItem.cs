@@ -83,6 +83,7 @@ public partial class WorkItem
         SetDescription(description);
         ReplaceTasks(tasks, now);
         AddLog(null, CreatedByName, WorkItemLogKind.Created, $"Item criado ({OriginLabel(o)}) com {Tasks.Count} sub-tarefa(s).", now);
+        StampSchedules(CreatedByName, createdBy, Tasks, now);
     }
 
     public IReadOnlyList<WorkItemLink> Links
@@ -115,7 +116,10 @@ public partial class WorkItem
         SetTitle(title);
         SetDescription(description);
         if (tasks is not null)
+        {
             ReplaceTasks(tasks, now);
+            StampSchedules(actor, null, Tasks, now);
+        }
         UpdatedAt = now;
         AddLog(null, actor, WorkItemLogKind.Updated, "Item editado.", now);
     }
@@ -506,6 +510,8 @@ public partial class WorkItem
             t.Force(WorkTaskStatus.Cancelled, r ?? "Item cancelado", now);
         CancelReason = r;
         ActiveRequestId = null;
+        ScheduledAt = null;
+        Parked = false;
         SetStatus(WorkItemStatus.Cancelled, actor, r is null ? "Item cancelado." : $"Item cancelado: {r}", now);
     }
 
@@ -577,7 +583,7 @@ public partial class WorkItem
     /// sub-tarefa pela etapa nova do plano. Devolve as criadas (o número vem do banco ao salvar).
     /// </summary>
     public IReadOnlyList<WorkItemTask> AddTasks(IReadOnlyList<WorkTaskInput> inputs, long? beforeTask, string actor, DateTimeOffset now,
-        bool first = false)
+        bool first = false, Guid? actorId = null)
     {
         if (FollowsPlan)
             throw new DomainException($"O item #{Number} é do plano — a sub-tarefa a mais entra como etapa nova do plano.");
@@ -618,6 +624,7 @@ public partial class WorkItem
         }
         Fingerprint = ComputeFingerprint(Type, OrderedTasks.Select(t => (t.Kind, (IReadOnlyDictionary<string, string>)t.Params)));
         NoteAwsDeployMap();
+        StampSchedules(actor, actorId, added, now);
         Recalculate(actor, now, failedUndo: false);
         UpdatedAt = now;
         return added;
@@ -761,6 +768,8 @@ public partial class WorkItem
         else if (FollowsPlan && StartedAt is not null && OnlyPersonTurn) next = WorkItemStatus.Waiting;
         // Card 78680: só sobrou o que está pausado (ou preso a uma pausada) e ninguém executando — o item espera alguém continuar.
         else if (ActiveRequestId is null && !FollowsPlan && OnlyHeldLeft) next = WorkItemStatus.Pending;
+        // 0103: item do plano em que só sobrou o que espera um horário agendado — não está "em andamento": espera o horário.
+        else if (FollowsPlan && OnlyHeldLeft && NextTaskScheduleAt is not null) next = WorkItemStatus.Pending;
         // Card 78505 (#877): item avulso parado (sem pedido na fila) com parte feita e o resto pendente — pulou a sub-tarefa
         // em espera, acrescentou/mudou a ordem — não está "em andamento": fica pendente, com o Executar na Bancada.
         else if (live.Any(t => WorkTaskStatus.IsDone(t.Status)))

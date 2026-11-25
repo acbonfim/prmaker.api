@@ -69,7 +69,13 @@ public partial class PrmakeMcpTools(
         "horas com prmake_devops log-hours. Item com sub-tarefa sql-script ganha " +
         "sozinho as sub-tarefas do chamado (gerar o arquivo do chamado + a pessoa abre no sistema de chamados). " +
         "Analise respondida sem plano de implementacao/correcao ('so a analise por enquanto'): a pessoa pede os itens depois com " +
-        "prmake_analysis_items(card, start) — o Claude do tratamento monta o plano (start=false: deixa pausado ate o Executar do item).";
+        "prmake_analysis_items(card, start) — o Claude do tratamento monta o plano (start=false: deixa pausado ate o Executar do item). " +
+        "0103: AGENDAMENTO — espera por horario conhecido (esteira de deploy de ~2h depois do merge, pipeline manual, job que roda de " +
+        "madrugada) nunca fica em wait: agende com prmake_work_schedule (item ou sub-tarefa: set+at | park | clear | run-now; at ISO-8601, " +
+        "sem fuso = Brasilia, ou +2h30m). Sub-tarefa agendada: ela e as que dependem dela esperam; as independentes seguem; no horario o " +
+        "PRMake continua sozinho na maquina de quem agendou. Item novo ja agendado/em espera: scheduledAt/parked no prmake_work_item_create, " +
+        "prmake_tool_run e prmake_env_validation (ex.: PR mesclado → validacao no ambiente com scheduledAt +2h30m, ou parked=true se a " +
+        "pipeline e manual). Item agendado so executa antes com runNow=true (a pedido da pessoa).";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -94,6 +100,7 @@ public partial class PrmakeMcpTools(
                 s.Key, s.Title, s.Status, s.Executor, s.Kind, s.TaskKind, s.WaitingOn, reason = s.StatusReason, s.DependsOn, s.Repository,
                 // Card 78680: pausada pela pessoa (nao comece, nem as que dependem dela); posicao escolhida pela pessoa.
                 held = s.Held ? true : (bool?)null, heldBy = s.Held ? s.HeldBy : null, pinned = s.OrderPinned ? true : (bool?)null,
+                scheduledAt = s.ScheduledAt is { } sa ? ScheduleTime.Format(sa) : null,
                 // 0041: o que o resume-info mostrava — onde parou e o que estava fazendo.
                 s.Checkpoint, s.Activity,
                 links = plan.Links.Where(l => l.StepKey == s.Key).Select(l => new

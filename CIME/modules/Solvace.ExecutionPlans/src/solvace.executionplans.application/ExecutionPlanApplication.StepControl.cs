@@ -19,8 +19,12 @@ public partial class ExecutionPlanApplication
         ArgumentNullException.ThrowIfNull(request);
         var action = (request.Action ?? string.Empty).Trim().ToLowerInvariant();
         if (!WorkTaskControl.All.Contains(action))
-            throw new DomainException($"Ação inválida: '{request.Action}' (use move, pause, resume ou cancel).");
+            throw new DomainException($"Ação inválida: '{request.Action}' (use move, pause, resume, cancel ou schedule).");
         var key = ExecutionStep.NormalizeKey(stepKey);
+        // 0103: agendar = pausar até o horário (no horário o PRMake continua sozinho).
+        var at = action == WorkTaskControl.Schedule
+            ? ScheduleTime.Parse(request.At, DateTimeOffset.UtcNow) ?? throw new DomainException("Informe o horário do agendamento (at).")
+            : (DateTimeOffset?)null;
         var interrupted = new List<string>();
         var cancelled = new List<string>();
         ExecutionStep? step = null;
@@ -43,6 +47,11 @@ public partial class ExecutionPlanApplication
                     break;
                 case WorkTaskControl.Resume:
                     p.HoldStep(key, false, actor.Name, now);
+                    break;
+                case WorkTaskControl.Schedule:
+                    // O próprio Claude do tratamento agendando a etapa em que está: ele segue com as outras (não reinicia).
+                    if (current.Status == ExecutionStatus.Running && !actor.IsExecutor) interrupted.Add(key);
+                    p.ScheduleStep(key, at!.Value, actor.Name, actor.UserId, now);
                     break;
                 case WorkTaskControl.Cancel:
                     var dependents = p.DependentsOf(key);
@@ -67,7 +76,7 @@ public partial class ExecutionPlanApplication
         await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, key, cancellationToken);
         if (interrupted.Count > 0 && plan.Status == ExecutionStatus.Running)
             await RestartTreatmentAsync(plan.Id, interrupted, actor, cancellationToken);
-        else if (request.Execute != false && action is not WorkTaskControl.Pause)
+        else if (request.Execute != false && action is not (WorkTaskControl.Pause or WorkTaskControl.Schedule))
             await TriggerResumeAsync(plan, actor, ExecutionRequestSource.UserAction, cancellationToken);
         return step!.ToResponse();
     }

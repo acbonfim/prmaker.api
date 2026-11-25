@@ -17,6 +17,11 @@ public class WorkTaskInput
     public string? StepKey { get; set; }
     /// <summary>Card 78680: números (#n) das sub-tarefas do item que precisam terminar antes desta (item avulso).</summary>
     public List<long>? DependsOn { get; set; }
+    /// <summary>
+    /// 0103: já nasce agendada — pausada até este horário (ISO-8601; sem fuso = Brasília; ou relativo <c>+2h30m</c>). As
+    /// independentes seguem; esta e as que dependem dela esperam o horário.
+    /// </summary>
+    public string? ScheduledAt { get; set; }
 }
 
 /// <summary>0085: <c>POST WorkItems/card/{card}</c>.</summary>
@@ -35,6 +40,36 @@ public class CreateWorkItemRequest
     public string? PlanPhase { get; set; }
     /// <summary>Plano ao qual o item fica ligado (opcional).</summary>
     public Guid? PlanId { get; set; }
+    /// <summary>0103: item agendado — o PRMake executa sozinho neste horário (ISO-8601; sem fuso = Brasília; ou <c>+2h30m</c>).</summary>
+    public string? ScheduledAt { get; set; }
+    /// <summary>0103: item em espera sem data (opcional) — só roda quando alguém executar ou agendar.</summary>
+    public bool Parked { get; set; }
+}
+
+/// <summary>0103: <c>POST WorkItems/{number}/schedule</c> — agenda, deixa em espera sem data ou tira o agendamento do item.</summary>
+public class WorkItemScheduleRequest
+{
+    /// <summary>set (agendar para <see cref="At"/>) | park (em espera, sem data) | clear (tira; fica pendente, roda ao executar).</summary>
+    public string? Action { get; set; }
+    /// <summary>set: ISO-8601 (sem fuso = Brasília) ou relativo (<c>+2h30m</c>).</summary>
+    public string? At { get; set; }
+}
+
+public static class WorkScheduleAction
+{
+    public const string Set = "set";
+    public const string Park = "park";
+    public const string Clear = "clear";
+    /// <summary>MCP: tira o agendamento e executa agora.</summary>
+    public const string RunNow = "run-now";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Set, Park, Clear, RunNow };
+}
+
+/// <summary><c>POST WorkItems/{number}/execute</c>.</summary>
+public class ExecuteWorkItemRequest
+{
+    /// <summary>0103: executar agora mesmo agendado/em espera (tira o agendamento).</summary>
+    public bool RunNow { get; set; }
 }
 
 /// <summary>0094: <c>POST WorkItems/card/{card}/related</c> — adiciona um relatado à mão (número de item ou sub-tarefa).</summary>
@@ -125,8 +160,13 @@ public class AddWorkTasksRequest
 /// </summary>
 public class WorkTaskControlRequest
 {
-    /// <summary>move | pause | resume | cancel.</summary>
+    /// <summary>move | pause | resume | cancel | schedule (0103).</summary>
     public string? Action { get; set; }
+    /// <summary>
+    /// 0103, schedule: até quando fica pausada — no horário continua sozinha (ISO-8601; sem fuso = Brasília; ou relativo
+    /// <c>+2h30m</c>). Numa agendada, <c>pause</c> tira a data (fica pausada) e <c>resume</c> executa agora.
+    /// </summary>
+    public string? At { get; set; }
     /// <summary>move: first | last | up | down | before.</summary>
     public string? Position { get; set; }
     /// <summary>move before: número da sub-tarefa ainda não feita antes da qual ela passa.</summary>
@@ -144,7 +184,8 @@ public static class WorkTaskControl
     public const string Pause = "pause";
     public const string Resume = "resume";
     public const string Cancel = "cancel";
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Move, Pause, Resume, Cancel };
+    public const string Schedule = "schedule";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Move, Pause, Resume, Cancel, Schedule };
 
     public const string DependentsCancel = "cancel";
     public const string DependentsKeep = "keep";
