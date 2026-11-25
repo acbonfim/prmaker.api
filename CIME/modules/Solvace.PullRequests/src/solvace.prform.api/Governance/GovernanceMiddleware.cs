@@ -21,7 +21,8 @@ public sealed class GovernanceMiddleware(RequestDelegate next)
     private static readonly string[] Ignored =
     [
         "POST Usage/batch", "POST Governance/evaluate", "POST Governance/hooks/events", "POST Governance/rules/test",
-        "POST ExecutionQueue/{id}/heartbeat", "* ExecutionQueue/next", "POST ExecutionWorker/report", "POST ExecutionWorker/doctor",
+        "POST ExecutionQueue/{id}/heartbeat", "* ExecutionQueue/next", "* AwsDeployExecutor/next", "POST AwsDeployExecutor/{id}/heartbeat",
+        "* PromotionExecutor/next", "POST PromotionExecutor/items/{id}/heartbeat", "POST ExecutionWorker/report", "POST ExecutionWorker/doctor",
         "POST ExecutionPlan/{id}/logs", "* ExecutionPlan/{id}/session", "* ExecutionPlan/{id}/usage",
         "POST CaseChat/{card}/seen", "POST CaseChat/{card}/typing",
         // Mudanças da própria governança: a aplicação registra o evento com o antes/depois (sem duplicar aqui).

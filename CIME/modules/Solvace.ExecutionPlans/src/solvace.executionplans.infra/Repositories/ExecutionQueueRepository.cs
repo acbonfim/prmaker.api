@@ -99,6 +99,10 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .Where(r => r.WorkerId == workerId && Busy.Contains(r.Status))
             .ToListAsync(cancellationToken);
 
+    public Task<bool> HasReadyAwsRefreshAsync(Guid ownerUserId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        _context.AwsRefreshes.AnyAsync(r => r.RequestedByUserId == ownerUserId && r.Status == AwsRefreshStatus.Queued
+                                            && (r.NotBefore == null || r.NotBefore <= now), cancellationToken);
+
     public async Task<Dictionary<Guid, int>> CountActiveByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         (await _context.Requests.AsNoTracking()
             .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && !SideKinds.Contains(r.Kind) && Busy.Contains(r.Status))

@@ -147,6 +147,20 @@ public class AwsRefresh0100Tests
     }
 
     [Fact]
+    public void Snapshot_saved_before_the_script_exits_is_not_undone_by_heartbeat_or_a_late_failure()
+    {
+        // Card 78720: retrato gravado (PUT) → heartbeat do mesmo executor → report "failed" do script interrompido.
+        var r = New(Alex);
+        r.Claim(Alex, AlexMac, Now);
+        Assert.True(r.CompleteBySnapshot(60_000, Now.AddSeconds(57)));
+        Assert.True(r.Heartbeat(AlexMac, Now.AddSeconds(61)));   // não manda parar
+        Assert.False(r.Heartbeat(BiaMac, Now.AddSeconds(61)));   // outro executor continua de fora
+        r.Report(Alex, AlexMac, "failed", "A coleta passou de 20 min.", 61_000, Now.AddSeconds(62));
+        Assert.Equal(AwsRefreshStatus.Done, r.Status);
+        Assert.Null(r.Error);
+    }
+
+    [Fact]
     public void Deploying_snapshot_schedules_a_follow_for_the_same_requester()
     {
         var finished = New(Alex, follow: 2);
