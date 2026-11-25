@@ -28,7 +28,16 @@ public static class RealTimeServiceExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<RealTimeDeliveryHealth>();
 
-        if (section.Get<RealTimeOptions>()?.IsRelay == true)
+        var env = section.Get<RealTimeOptions>();
+        if (env?.PublishesViaPubSub == true)
+        {
+            // Hub no relay externo, eventos pelo Pub/Sub (o relay busca na assinatura): nenhuma conexão do Cloud Run ao relay.
+            services.AddSingleton<IRealTimePubSubPublisher, GoogleRealTimePubSubPublisher>();
+            services.AddSingleton<IRealTimeNotifier, PubSubRealTimeNotifier>();
+            return services;
+        }
+
+        if (env?.IsRelay == true)
         {
             // Hub no relay externo: a API só publica por HTTP e não mantém WebSocket aberto.
             services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = RelayRealTimeNotifier.RequestTimeout)

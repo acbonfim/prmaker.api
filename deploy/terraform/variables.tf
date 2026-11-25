@@ -38,6 +38,12 @@ variable "realtime_relay_url" {
   default     = "https://prformapi.runasp.net"
 }
 
+variable "realtime_pubsub_publish" {
+  description = "A API publica os eventos de tempo real no Pub/Sub (realtime.tf) em vez do POST /publish do relay. Ligar só com o relay ouvindo a assinatura (GET /health → pubSub.state = listening)."
+  type        = bool
+  default     = false
+}
+
 variable "min_instances" {
   description = "Instâncias mínimas por serviço. 0 = scale-to-zero (mais barato, com cold start)."
   type        = number

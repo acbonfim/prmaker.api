@@ -33,6 +33,20 @@ public class RealTimeOptions
     public string? RelayKey { get; set; }
 
     /// <summary>
+    /// Modo Relay pelo Pub/Sub (API): tópico onde a API publica os eventos (<c>projects/{p}/topics/{t}</c>) em vez do POST
+    /// /publish. O relay busca os eventos na assinatura — a conexão sai do MonsterASP para o Google, nunca do Cloud Run
+    /// para o MonsterASP (de parte dos IPs de saída do Cloud Run o relay não abre conexão: instância inteira sem tempo real).
+    /// Vazio => POST /publish.
+    /// </summary>
+    public string? PubSubTopic { get; set; }
+
+    /// <summary>Relay: assinatura do tópico de onde os eventos vêm (<c>projects/{p}/subscriptions/{s}</c>). Vazia => só /publish.</summary>
+    public string? PubSubSubscription { get; set; }
+
+    /// <summary>Relay: JSON da chave da conta de serviço que lê a assinatura (fora do Google não há credencial ambiente).</summary>
+    public string? PubSubCredentialsJson { get; set; }
+
+    /// <summary>
     /// Chave HMAC-SHA256 (mínimo 32 caracteres) dos tokens de conexão do navegador, compartilhada
     /// com o relay. Vazia => a API não emite token e o hub em processo fica aberto (só no dev).
     /// </summary>
@@ -48,6 +62,8 @@ public class RealTimeOptions
     public string? PublicHubUrl { get; set; }
 
     public bool IsRelay => string.Equals(Mode, RealTimeModes.Relay, StringComparison.OrdinalIgnoreCase);
+
+    public bool PublishesViaPubSub => IsRelay && !string.IsNullOrWhiteSpace(PubSubTopic);
 }
 
 public static class RealTimeModes
