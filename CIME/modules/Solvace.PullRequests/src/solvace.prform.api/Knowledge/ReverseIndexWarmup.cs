@@ -4,10 +4,10 @@ using solvace.knowledge.application.Contracts;
 namespace solvace.prform.Knowledge;
 
 /// <summary>
-/// Monta o índice da engenharia reversa em memória antes de alguém perguntar: na instância nova (deploy, escala) a primeira
-/// busca carregava ~60 mil itens e levava ~25 s (2026-11-25: a pergunta da Base logo depois do deploy esperou 25 s numa busca).
-/// Roda ao subir, a cada <see cref="Every"/> (publicação nova muda a marca e recarrega) e quando a tela da Base abre. Uma carga
-/// por vez, no próprio escopo — quem precisa espera por ela em vez de começar outra (ou cancelar no meio).
+/// Deixa a busca da engenharia reversa pronta antes de alguém perguntar. Até a 0073 isso era montar ~60 mil itens em memória
+/// (25–238 s numa instância nova em produção); com a busca no banco (0073) só o glossário (sinônimos) fica em cache — carga
+/// curta, mas ainda é a primeira consulta de cada instância. Roda ao subir, a cada <see cref="Every"/> (publicação nova muda a
+/// marca e recarrega) e quando a tela da Base abre. Uma carga por vez, no próprio escopo.
 /// </summary>
 public sealed class ReverseIndexWarmup(IServiceScopeFactory scopes, ILogger<ReverseIndexWarmup> logger) : BackgroundService
 {
@@ -40,7 +40,7 @@ public sealed class ReverseIndexWarmup(IServiceScopeFactory scopes, ILogger<Reve
             using var scope = scopes.CreateScope();
             await ReverseSearch.SynonymsAsync(scope.ServiceProvider.GetRequiredService<IKnowledgeRepository>(), CancellationToken.None);
             if (clock.ElapsedMilliseconds > 1_000)
-                logger.LogInformation("Índice da engenharia reversa carregado em {Ms} ms", clock.ElapsedMilliseconds);
+                logger.LogInformation("Glossário da busca da engenharia reversa carregado em {Ms} ms", clock.ElapsedMilliseconds);
         }
         catch (Exception e)
         {

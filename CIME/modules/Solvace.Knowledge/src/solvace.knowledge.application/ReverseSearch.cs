@@ -7,47 +7,40 @@ namespace solvace.knowledge.application;
 
 /// <summary>
 /// Busca nos itens publicados da engenharia reversa (0052): ID exato vale mais que tudo, depois título, tabelas, tags e
-/// o texto. Mesma normalização da busca da Base Solvace (sem acento/caixa, radical simples). Os itens preparados ficam em
-/// memória até o índice mudar (marca: quantidade + última atualização).
+/// o texto. Mesma normalização da busca da Base Solvace (sem acento/caixa, radical simples).
+/// 0073: o índice NÃO fica mais na memória da API (eram ~0,5 GB de heap para ~60 mil itens, remontados a cada instância fria).
+/// O banco escolhe os candidatos (itens cujo texto contém algum termo/sinônimo, ID exato, nome do glossário no título/tags) e o
+/// ranking abaixo roda só neles, um a um; só o glossário (itens GLO, pequenos) fica em cache, validado pela marca do índice.
 /// </summary>
 public static partial class ReverseSearch
 {
     private sealed record Prepared(ReverseIndexEntry Entry, string Title, string Tags, string Tables, string Body, string TitleWords, string TagWords);
 
+    /// <summary>Máximo de candidatos que o banco devolve (os que casam mais termos primeiro).</summary>
+    public const int MaxCandidates = 1000;
+
     private static readonly object Gate = new();
     private static (int Count, DateTimeOffset? Last) _stamp = (-1, null);
-    /// <summary>Itens preparados e sinônimos da mesma carga (0070: lidos juntos — antes um podia vir de outra carga).</summary>
-    private sealed record Snapshot(List<Prepared> Items, ReverseSynonyms Synonyms);
-    private static Snapshot _snapshot = new([], ReverseSynonyms.Empty);
+    private static ReverseSynonyms _synonyms = ReverseSynonyms.Empty;
 
-    /// <summary>Sinônimos do glossário publicado (0053), do mesmo cache dos itens.</summary>
+    /// <summary>Sinônimos do glossário publicado (0053): só os itens GLO, em cache até o índice mudar (marca: quantidade + última atualização).</summary>
     public static async Task<ReverseSynonyms> SynonymsAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
-    {
-        return (await EnsureAsync(repository, cancellationToken)).Synonyms;
-    }
-
-    /// <summary>Itens preparados, recarregando do banco só quando a marca muda.</summary>
-    public static async Task<IReadOnlyList<ReverseIndexEntry>> EntriesAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
-    {
-        return (await EnsureAsync(repository, cancellationToken)).Items.Select(p => p.Entry).ToList();
-    }
-
-    private static async Task<Snapshot> EnsureAsync(Contracts.IKnowledgeRepository repository, CancellationToken cancellationToken)
     {
         var stamp = await repository.GetIndexStampAsync(cancellationToken);
         lock (Gate)
-            if (stamp == _stamp) return _snapshot;
-        // 0070: uma carga por vez (quem chega depois encontra pronto) e só o começo do texto original fica no cache
-        return await HeavyReads.RunAsync(async () =>
+            if (stamp == _stamp) return _synonyms;
+        var glossary = await repository.QueryIndexAsync(new Contracts.ReverseIndexQuery { Kinds = ["GLO"], IncludeRemoved = false }, cancellationToken);
+        var synonyms = new ReverseSynonyms(glossary);
+        lock (Gate)
         {
-            lock (Gate)
-                if (stamp == _stamp) return _snapshot;
-            return await LoadAsync(repository, stamp, cancellationToken);
-        }, cancellationToken);
+            _stamp = stamp;
+            _synonyms = synonyms;
+        }
+        return synonyms;
     }
 
     /// <summary>
-    /// O que fica do texto original de cada item no cache (0070): a primeira linha + o texto já limpo, cortado em 260 —
+    /// O que fica do texto original de cada item no resultado (0070): a primeira linha + o texto já limpo, cortado em 260 —
     /// o suficiente para <see cref="Snippet"/> dar o mesmo trecho (220) que daria com o texto inteiro.
     /// </summary>
     public static string PreviewBody(string body)
@@ -60,42 +53,26 @@ public static partial class ReverseSearch
         return preview.Length < body.Length ? preview : body;
     }
 
-    private static async Task<Snapshot> LoadAsync(Contracts.IKnowledgeRepository repository, (int Count, DateTimeOffset? LastUpdate) stamp,
-        CancellationToken cancellationToken)
-    {
-        // 0070: em fluxo — cada item é preparado e o texto original solto na hora (só o trecho e o texto normalizado ficam);
-        // antes a lista com o texto inteiro de todos os itens ficava na memória junto com a cópia normalizada de cada um
-        var prepared = new List<Prepared>();
-        await foreach (var e in repository.StreamIndexEntriesAsync(cancellationToken))
-            prepared.Add(new Prepared(e.WithBody(PreviewBody(e.Body)),
-                ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
-                ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
-                ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
-                ArchitectureSearch.Normalize(e.Body),
-                ReverseSynonyms.Words(e.Title),
-                ReverseSynonyms.Words(string.Join(" | ", e.Tags.Concat(e.Synonyms)))));
-        // os sinônimos só usam módulo, tipo, título e sinônimos — não o texto
-        var synonyms = new ReverseSynonyms(prepared.Select(p => p.Entry));
-        lock (Gate)
-        {
-            _stamp = stamp;
-            _snapshot = new Snapshot(prepared, synonyms);
-            return _snapshot;
-        }
-    }
-
-    /// <summary>Esquece o cache (depois de publicar, na mesma instância).</summary>
+    /// <summary>Esquece o glossário em cache (depois de publicar, na mesma instância).</summary>
     public static void Invalidate()
     {
         lock (Gate) _stamp = (-1, null);
     }
 
+    private static Prepared Prepare(ReverseIndexEntry e) =>
+        new(e.WithBody(PreviewBody(e.Body)),
+            ArchitectureSearch.Normalize($"{e.ItemId} {e.Title}"),
+            ArchitectureSearch.Normalize(string.Join(' ', e.Tags) + " " + string.Join(' ', e.Synonyms) + " " + string.Join(' ', e.Modules)),
+            ArchitectureSearch.Normalize(string.Join(' ', e.Tables)),
+            ArchitectureSearch.Normalize(e.Body),
+            ReverseSynonyms.Words(e.Title),
+            ReverseSynonyms.Words(string.Join(" | ", e.Tags.Concat(e.Synonyms))));
+
     public static async Task<List<ReverseIndexHit>> RunAsync(Contracts.IKnowledgeRepository repository, string query,
         IReadOnlyCollection<string>? modules, IReadOnlyCollection<string>? kinds, string? docType, int limit, bool includeRemoved,
         IReadOnlyDictionary<string, string> moduleNames, CancellationToken cancellationToken)
     {
-        var snapshot = await EnsureAsync(repository, cancellationToken);
-        var (prepared, synonyms) = (snapshot.Items, snapshot.Synonyms);
+        var synonyms = await SynonymsAsync(repository, cancellationToken);
         var exactIds = IdPattern().Matches(query ?? string.Empty)
             .Select(m => ReverseItemKinds.ParseRef(m.Value)).Where(r => r is not null).Select(r => r!.Value).ToList();
         var terms = ArchitectureSearch.Terms(IdPattern().Replace(query ?? string.Empty, " "));
@@ -118,8 +95,19 @@ public static partial class ReverseSearch
                 phraseCache[module] = names = synonyms.GroupsNamedIn(module, queryWords).SelectMany(g => g).Distinct().ToArray();
             return names;
         }
-        foreach (var p in prepared)
+        // 0073: o banco escolhe os candidatos — termos e sinônimos (de qualquer módulo: o ranking confere o do módulo do item), IDs
+        // exatos e nomes do glossário citados na consulta; o resto da tabela nem sai do Postgres
+        var groups = terms.Select(t => (IReadOnlyList<string>)new[] { t }.Concat(synonyms.Alternatives("*", t)).Where(n => n.Length > 0).Distinct().ToList())
+            .Where(g => g.Count > 0).ToList();
+        var phrases = synonyms.GroupsNamedIn("*", queryWords).SelectMany(g => g).Distinct().ToList();
+        var candidates = repository.StreamSearchCandidatesAsync(new Contracts.ReverseSearchCandidates
         {
+            TermGroups = groups, Phrases = phrases, ExactIds = exactIds.Select(x => (x.Module, x.Id)).ToList(),
+            Modules = modules, Kinds = kinds, DocType = docType, IncludeRemoved = includeRemoved, Max = MaxCandidates
+        }, cancellationToken);
+        await foreach (var candidate in candidates.WithCancellation(cancellationToken))
+        {
+            var p = Prepare(candidate);
             var e = p.Entry;
             if (modules is { Count: > 0 } && !modules.Contains(e.ModuleKey)) continue;
             if (kinds is { Count: > 0 } && !kinds.Contains(e.Kind)) continue;
