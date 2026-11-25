@@ -207,6 +207,12 @@ Tipos de item: `report` (Relatorio), `duplicates` (Duplicados), `understanding` 
   "Dado/Quando/Entao"). **Bug**: `description` (impacto, ambiente/cliente) + `reproSteps` numerados com **esperado x
   obtido**, `severity` do picklist (`prmake_devops_meta(what: "fields", type: "Bug")`). `priority` 1–4, `tags` existentes
   (regra 5), `fields` = `{referenceName: valor}` (area/iteracao/responsavel validos pelo `prmake_devops_meta`).
+- **Obrigatorios do DevOps (historia #1109, E1093):** antes de gravar, `prmake_devops_meta(what: "fields", type: "User
+  Story" | "Bug")` e preencha em `fields` todo campo `required` que **nao** e `System.*`, nem somente leitura, e **nao** tem
+  `defaultValue` (ex.: `Custom.Module`, picklist), com um valor de `allowedValues`: o modulo pelo card/Base do caso. Nao
+  sabe qual? Pergunte em uma linha e deixe `draft`. Sem eles o DevOps recusa o card (`required_fields`). Historia de RCA
+  (`[RCA]` no titulo) → `Microsoft.VSTS.CMMI.RequirementType: "RCA"`. Erro `required_fields` na conversao → grave os campos
+  que ele lista na historia e converta de novo.
 - **Converter em card so quando a pessoa pedir** ("cria o card", "converte a #812"): antes, a checagem de duplicado de
   "Criar card" (passo 2); depois `prmake_epic_story_convert(number, column?, lane?)` — cria no DevOps com a integracao de
   quem pediu, o card entra no epico (`created`) e a historia vira `converted` (nao se edita mais; ajustes vao no card

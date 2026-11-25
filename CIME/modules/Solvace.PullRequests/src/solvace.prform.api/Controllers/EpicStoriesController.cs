@@ -91,6 +91,18 @@ public class EpicStoriesController(IEpicStoryApplication stories, solvace.timeli
             return Ok(ToResponse(result));
         });
 
+    /// <summary>
+    /// Card 1109 (E1093): campos obrigatórios do DevOps para o tipo da história (<c>user-story</c>|<c>bug</c>) que ele não preenche
+    /// sozinho — <c>{type, fields: [{referenceName, name, type, allowedValues, helpText}]}</c>. O formulário da história pede cada um.
+    /// </summary>
+    [HttpGet("required-fields")]
+    public Task<ActionResult<object>> RequiredFields([FromQuery] string? type, [FromServices] EpicStoryConverter converter, CancellationToken ct) =>
+        Go<object>(async () =>
+        {
+            var (devOpsType, fields) = await converter.RequiredFieldsAsync(string.IsNullOrWhiteSpace(type) ? EpicStoryType.UserStory : type, ct);
+            return Ok(new { type = devOpsType, fields });
+        });
+
     /// <summary>Resposta da conversão (REST e MCP).</summary>
     public static object ToResponse(EpicStoryConversionResult result) => new
     {
@@ -127,6 +139,11 @@ public class EpicStoriesController(IEpicStoryApplication stories, solvace.timeli
         catch (EpicStoryConflictException e)
         {
             return Conflict(new { code = e.Code, error = e.Message, message = e.Message, cardId = e.CardId });
+        }
+        catch (DevOpsRequiredFieldsException e)
+        {
+            // Card 1109: a tela pede os campos que faltam (picklist com as opções) e converte de novo.
+            return StatusCode(e.StatusCode, new { code = e.Code, message = e.Message, error = e.Message, fields = e.Fields });
         }
         catch (DevOpsActionException e)
         {

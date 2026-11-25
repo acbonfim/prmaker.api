@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using solvace.azure.application.Contract;
 using solvace.azure.application.Services;
 using solvace.azure.domain.Models;
 using solvace.executionplans.application.Contracts;
@@ -92,6 +93,7 @@ public static class DeskStoryFieldMap
     {
         var fields = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in story.Fields) fields[key] = value;
+        foreach (var (key, value) in request?.Fields ?? []) fields[key] = value;
 
         var description = new StringBuilder(story.Description?.Trim() ?? string.Empty);
         void Section(string title, string? text)
@@ -153,8 +155,21 @@ public class EpicStoryConverter(
     IEpicApplication epics,
     DevOpsDeskRunner runner,
     SkillsRulesService rules,
+    IDevOpsDeskService devops,
     ILogger<EpicStoryConverter> logger)
 {
+    /// <summary>
+    /// Card 1109 (E1093): campos que o DevOps exige no tipo da história (<c>user-story</c>|<c>bug</c>, pelo <c>DeskStoryFieldMap</c>) e
+    /// não preenche sozinho — o formulário da história e o "Converter em card" pedem cada um (ex.: <c>Custom.Module</c>, picklist).
+    /// </summary>
+    public async Task<(string DevOpsType, IReadOnlyList<DevOpsFieldInfo> Fields)> RequiredFieldsAsync(string storyType, CancellationToken ct)
+    {
+        var settings = await rules.SettingsOnlyAsync(ct);
+        settings.TryGetValue(SkillsConfigurationKeys.DeskStoryFieldMap, out var json);
+        var map = DeskStoryFieldMap.For(json, storyType);
+        return (map.Type, await devops.MissingRequiredFieldsAsync(map.Type, null, ct));
+    }
+
     public async Task<EpicStoryConversionResult> ConvertAsync(long number, ConvertEpicStoryRequest? request, ExecutionActor actor, ClaimsPrincipal user,
         string? via, CancellationToken ct)
     {

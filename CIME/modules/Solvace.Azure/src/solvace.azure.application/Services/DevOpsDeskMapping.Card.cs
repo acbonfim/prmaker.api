@@ -25,6 +25,29 @@ public static partial class DevOpsDeskMapping
         [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     };
 
+    /// <summary>
+    /// Campos obrigatórios do tipo que o pedido deixou vazios e que o DevOps não preenche sozinho: não são <c>System.*</c> (título,
+    /// estado, área e iteração o PRMake/DevOps preenchem), nem somente leitura, nem têm valor padrão (ex.: <c>Custom.Module</c>).
+    /// </summary>
+    public static IReadOnlyList<DevOpsFieldInfo> MissingRequired(IEnumerable<DevOpsFieldInfo> typeFields, IReadOnlyDictionary<string, JsonElement>? fields) =>
+        typeFields.Where(f => f.Required && !f.ReadOnly && string.IsNullOrWhiteSpace(f.DefaultValue)
+                              && !f.ReferenceName.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
+                              && !HasFieldValue(fields, f.ReferenceName))
+            .ToList();
+
+    private static bool HasFieldValue(IReadOnlyDictionary<string, JsonElement>? fields, string referenceName)
+    {
+        if (fields is null) return false;
+        var match = fields.FirstOrDefault(kv => string.Equals(kv.Key, referenceName, StringComparison.OrdinalIgnoreCase));
+        if (match.Key is null) return false;
+        return match.Value.ValueKind switch
+        {
+            JsonValueKind.Null or JsonValueKind.Undefined => false,
+            JsonValueKind.String => !string.IsNullOrWhiteSpace(match.Value.GetString()),
+            _ => true
+        };
+    }
+
     /// <summary>Imagem que a tela mostra/o modelo lê como imagem (svg fica de fora).</summary>
     public static bool IsImageName(string? name) =>
         !string.IsNullOrWhiteSpace(name) && ImageExtensions.Contains(Path.GetExtension(name.Trim()), StringComparer.OrdinalIgnoreCase);
