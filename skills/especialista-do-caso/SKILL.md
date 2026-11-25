@@ -68,6 +68,19 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
 9. **O caso pode ter mais de um card** (ex.: a melhoria do card 78505 aberta como a US 78525): voce age no outro card
    tambem — itens de trabalho, especificacao da US, Timeline, DevOps — passando `card: <outro>` na ferramenta, como quem
    pediu. O cartao da acao fica na SUA conversa ("card 78525: ..."). So o que a pessoa pediu.
+10. **Entrega refeita fica na sub-tarefa (card 78794).** Algo que uma sub-tarefa ja **concluida** entregou foi recusado ou
+   precisa mudar (script recusado pela infra/DBA, chamado corrigido, texto reescrito) e voce refaz na conversa →
+   `prmake_work_task_redo(card, taskNumber: <a concluida>, reason, title, result, files)` **na mesma vez**. Ela cria a
+   sub-tarefa nova **logo depois** da refeita, ja concluida, com o motivo, o resultado e os arquivos novos (mesmo nome:
+   a versao anterior fica como `<nome>.anterior`). A refeita mostra "Refeita na #n" e as que dependiam dela ganham o
+   aviso. **Nunca** so regrave o arquivo do plano (`prmake_file`) nem mande a versao nova so na conversa
+   (`prmake_case_file`): a pessoa e o tratamento nao veem que a entrega mudou (no 78794 os scripts novos ficaram escondidos
+   nos arquivos do card). Depois, se a etapa seguinte em espera precisa de outra acao da pessoa (ex.: devolver o script
+   novo no chamado), ajuste a instrucao dela com `prmake_step` e diga isso na resposta, citando a `#n` nova. Item avulso:
+   `prmake_work_item_reopen(redo: [n])`.
+11. **Transparente, pratico e objetivo.** Tudo o que voce gera ou muda no caso aparece **onde a pessoa olha**: na
+   sub-tarefa (resultado e arquivos), no plano ou no item, nunca so na conversa. A resposta diz em uma linha o que mudou
+   e onde (`#n`), sem a pessoa precisar procurar.
 
 ## Governanca (0098)
 
@@ -255,7 +268,8 @@ tratamento rodando, pausa → aplica → retoma sozinho (o tratamento segue lend
 | Responder pela conversa uma pergunta do plano ("responde a 2 com a opcao B") | `prmake_answer(card, question, text)`; pergunta que perdeu o sentido → `prmake_cancel_questions(card, [n], reason)` |
 | Contexto da espera (o que aparece em "Aguardando..." na discussion) | `prmake_handoff(card, text)` — **primeira pessoa**, como quem trata o card ("Vou excluir...", "Abri o chamado..."), sem citar o PRMake ("no PRMake", "conclua a etapa"); o comentario da discussion **atualiza sozinho** (o mesmo) |
 | Texto da situacao publicado na discussion ("reescreve o resumo na primeira pessoa", "tira esta frase") | `prmake_situation(card)` (le o montado e o publicado) → `prmake_situation_publish(card, markdown)` — **atualiza o mesmo comentario**, nunca cria outro. Mudou so o contexto? Prefira `prmake_handoff`. O texto ajustado vale ate a situacao mudar |
-| Arquivo do plano (script, analise, texto do chamado), link/chamado na etapa, evidencias do card | `prmake_file` / `prmake_link` / `prmake_evidence` |
+| Arquivo do plano (script, analise, texto do chamado), link/chamado na etapa, evidencias do card | `prmake_file` / `prmake_link` / `prmake_evidence` — arquivo **novo** ou de etapa ainda nao feita. Versao nova de arquivo que uma etapa **concluida** entregou (script recusado, chamado corrigido) = `prmake_work_task_redo` (regra 10) |
+| Refazer uma entrega ja concluida ("a infra recusou o script com o erro 229", "o DBA pediu outra versao", "refaz o texto do chamado") | `prmake_work_task_redo(card, taskNumber, reason, title, result, files: [{name, content, kind}])` — sub-tarefa nova concluida logo depois da refeita, com os arquivos; depois `prmake_step` na etapa em espera se a pessoa tem outra acao (ex.: "Devolva no chamado 2679 o script revisado da #n") |
 | Registrar algo no plano (decisao, achado, divergencia) | `prmake_log(card, message, kind)` |
 
 Comentario na discussion do DevOps que nao e da situacao (resumo do fechamento, orientacao ao cliente) e publicado pela
@@ -312,7 +326,8 @@ ambiente `qa`) antes. Pediu para finalizar/executar → crie e execute o item; s
   `bash $AB/mock-shot.sh <html> <png>`; suba com `bash $CASE upload <card> <png>` e cite o numero em
   `prmake_case_reply(files: [n])`.
 - **Texto (script .sql, texto de chamado .md, CSV de consulta):** `prmake_case_file` (devolve o numero) e cite em
-  `files`. Script que ALTERA dados e so arquivo para a pessoa revisar — voce nao executa.
+  `files`. Script que ALTERA dados e so arquivo para a pessoa revisar — voce nao executa. Versao nova de um arquivo que
+  uma sub-tarefa concluida entregou **nao** vai por aqui: `prmake_work_task_redo` (regra 10).
 
 ## "Investigar a fundo"
 Quando o prompt pedir para investigar a fundo, confirme no codigo/banco antes de afirmar, compare branches
@@ -329,6 +344,7 @@ confirmar e como.
 | Criar item a partir de uma ferramenta | `prmake_tool_run(card, key, answers, allowDuplicate?, duplicateReason?)` |
 | Criar item livre (nenhuma ferramenta serve) / ajustar item pendente | `prmake_work_item_create` / `prmake_work_item_update` |
 | Reabrir item avulso / sub-tarefa a mais / editar sub-tarefa nao feita / mudar a ordem (a pedido) | `prmake_work_item_reopen` / `prmake_work_item_add_task` / `prmake_work_task_update` / `prmake_work_task_move` |
+| Entrega concluida refeita (script recusado, chamado corrigido) | `prmake_work_task_redo` |
 | Pausar / continuar / cancelar uma sub-tarefa (a pedido) | `prmake_work_task_control` |
 | Executar / cancelar item (a pedido) | `prmake_work_item_execute` / `prmake_work_item_cancel` |
 | Item de validacao em ambiente (prints por ambiente) | `prmake_env_validation` |

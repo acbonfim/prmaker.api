@@ -23,6 +23,13 @@ public interface IExecutionPlanApplication
     Task<ExecutionStepResponse> AddStepAsync(Guid planId, ExecutionStepDefinition definition, string? beforeKey, ExecutionActor actor, CancellationToken cancellationToken,
         string? position = null);
     /// <summary>
+    /// Card 78794: entrega já feita que foi refeita (script recusado, chamado corrigido). A etapa nova entra logo depois da
+    /// refeita, já concluída com o resultado, e leva os arquivos novos. A versão anterior de um arquivo de mesmo nome fica
+    /// como "&lt;nome&gt;.anterior". As dependentes são avisadas, e a sub-tarefa refeita ganha "Refeita em #n" no resultado.
+    /// </summary>
+    Task<ExecutionStepResponse> RedoStepAsync(Guid planId, string redoneKey, ExecutionStepDefinition definition, string reason, string result,
+        IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken);
+    /// <summary>
     /// Card 78680: mexe numa etapa sem cancelar o plano — move (first/last/up/down/before), pausa, continua ou cancela (com as
     /// que dependem dela, se pedido). Etapa em andamento atropelada: o plano é pausado e retomado na ordem nova.
     /// </summary>

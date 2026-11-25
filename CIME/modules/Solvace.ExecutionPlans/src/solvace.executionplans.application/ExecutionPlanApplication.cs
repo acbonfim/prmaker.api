@@ -297,6 +297,79 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
         return step.ToResponse();
     }
 
+    public async Task<ExecutionStepResponse> RedoStepAsync(Guid planId, string redoneKey, ExecutionStepDefinition definition, string reason, string result,
+        IReadOnlyList<ExecutionArtifactUpload> files, ExecutionActor actor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        if (string.IsNullOrWhiteSpace(result))
+            throw new DomainException("Diga no resultado o que mudou na entrega refeita (e cite os arquivos).");
+        ExecutionStep? step = null;
+        ExecutionStep? redone = null;
+        var plan = await MutateAsync(planId, p =>
+        {
+            (step, _) = p.RedoStep(redoneKey, definition, reason, actor.Name, DateTimeOffset.UtcNow);
+            redone = p.Steps.First(s => s.Key == ExecutionStep.NormalizeKey(redoneKey));
+        }, cancellationToken, actor);
+        // Steps: o item espelho ganha a sub-tarefa nova (já concluída) e as dependentes com o aviso.
+        await NotifyAsync(plan, ExecutionPlanRealTimeEvents.Actions.Steps, step!.Key, cancellationToken);
+
+        foreach (var file in files)
+            await UploadRedoneFileAsync(plan, step, file, actor, cancellationToken);
+
+        await SetStepResultAsync(planId, step.Key, result, cancellationToken);
+        await NoteRedoneTaskAsync(plan, redone!, step, reason, actor, cancellationToken);
+        return step.ToResponse();
+    }
+
+    /// <summary>
+    /// Arquivo da entrega refeita: vai para a etapa nova. O de mesmo nome que era de outra etapa não some, porque a versão
+    /// anterior (a recusada) fica como "&lt;nome&gt;.anterior&lt;ext&gt;" na etapa de origem.
+    /// </summary>
+    private async Task UploadRedoneFileAsync(ExecutionPlan plan, ExecutionStep step, ExecutionArtifactUpload file, ExecutionActor actor,
+        CancellationToken cancellationToken)
+    {
+        var name = ExecutionArtifact.NormalizeName(file.FileName);
+        var kind = ExecutionArtifact.NormalizeKind(file.Kind, name);
+        var existing = await _repository.FindArtifactAsync(plan.Id, kind, name, cancellationToken);
+        if (existing is not null && existing.StepKey != step.Key
+            && existing.Sha256 != Convert.ToHexStringLower(SHA256.HashData(file.Data)))
+        {
+            var old = await _repository.GetArtifactContentAsync(existing.Id, cancellationToken) ?? [];
+            if (old.Length > 0)
+            {
+                var stem = Path.GetFileNameWithoutExtension(name);
+                var ext = Path.GetExtension(name);
+                var copy = $"{stem}.anterior{ext}";
+                for (var n = 2; await _repository.FindArtifactAsync(plan.Id, kind, copy, cancellationToken) is not null; n++)
+                    copy = $"{stem}.anterior-{n}{ext}";
+                await UploadArtifactAsync(plan.Id, new ExecutionArtifactUpload(copy, kind, existing.StepKey,
+                    $"Versão anterior — substituída em \"{step.Title}\"", existing.ContentType, old), actor, cancellationToken);
+            }
+        }
+        await UploadArtifactAsync(plan.Id, file with { StepKey = step.Key }, actor, cancellationToken);
+    }
+
+    /// <summary>A sub-tarefa refeita mostra no resultado onde foi refeita e por quê (o resultado antigo fica).</summary>
+    private async Task NoteRedoneTaskAsync(ExecutionPlan plan, ExecutionStep redone, ExecutionStep step, string reason, ExecutionActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (_workItems is null) return;
+        try
+        {
+            var tasks = (await _workItems.ListAsync(plan.CardNumber, cancellationToken))
+                .Where(i => i.PlanId == plan.Id).SelectMany(i => i.Tasks).ToList();
+            var number = tasks.FirstOrDefault(t => t.StepKey == step.Key)?.Number;
+            var previous = tasks.FirstOrDefault(t => t.StepKey == redone.Key)?.Result;
+            var note = $"> [!WARNING]\n> **Refeita{(number is null ? $" em \"{step.Title}\"" : $" na #{number}")}** por {actor.Name} " +
+                       $"({DateTimeOffset.UtcNow:dd/MM HH:mm} UTC): {reason.Trim()}";
+            await SetStepResultAsync(plan.Id, redone.Key, string.IsNullOrWhiteSpace(previous) ? note : $"{note}\n\n{previous}", cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not DomainException)
+        {
+            // O aviso na etapa e o log do plano já registram a entrega refeita.
+        }
+    }
+
     public async Task<ExecutionStepResponse> UpdateStepAsync(Guid planId, string stepKey, UpdateExecutionStepRequest request, ExecutionActor actor, CancellationToken cancellationToken)
     {
         // Card 78505: só o resultado — completa o de uma etapa (já concluída ou não) sem mexer no plano.

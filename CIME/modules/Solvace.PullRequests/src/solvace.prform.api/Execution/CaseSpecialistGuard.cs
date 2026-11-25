@@ -112,7 +112,7 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     public static readonly IReadOnlySet<string> ActingTools = new HashSet<string>(StringComparer.Ordinal)
     {
         "prmake_timeline", "prmake_devops", "prmake_devops_spec", "prmake_pr_open",
-        "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_work_item_reopen",
+        "prmake_work_item_create", "prmake_work_item_update", "prmake_work_item_add_task", "prmake_work_task_redo", "prmake_work_item_reopen",
         "prmake_work_task_update", "prmake_work_task_move", "prmake_work_task_control", "prmake_tool_run",
         "prmake_work_task", "prmake_work_item_cancel", "prmake_work_item_execute", "prmake_analysis_items", "prmake_env_validation", "prmake_env_reproduction",
         "prmake_work_deliverable", "prmake_work_item_evidence",

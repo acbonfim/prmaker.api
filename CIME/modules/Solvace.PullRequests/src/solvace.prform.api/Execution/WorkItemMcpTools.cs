@@ -483,6 +483,79 @@ public class WorkItemMcpTools(
         }, ct);
     });
 
+    [McpServerTool(Name = "prmake_work_task_redo")]
+    [Description("Card 78794: REFAZER UMA ENTREGA JA FEITA — script recusado pela infra/DBA, chamado ou texto corrigido depois de concluido. " +
+                 "Use SEMPRE que voce (ou a pessoa) refizer na conversa algo que uma sub-tarefa concluida entregou; nunca so regrave o arquivo " +
+                 "nem mande a versao nova so na conversa. Item espelho do plano: a sub-tarefa nova entra LOGO DEPOIS da refeita, ja " +
+                 "concluida, com o motivo, o resultado (o que mudou) e os arquivos novos (files; a versao anterior de mesmo nome fica " +
+                 "como <nome>.anterior). A refeita ganha 'Refeita na #n' no resultado. As que dependiam dela (ainda nao feitas) passam " +
+                 "a depender da nova e ganham um aviso na instrucao. Item avulso: reabra com prmake_work_item_reopen(redo: [n]). " +
+                 "Especialista do caso: so com pedido da pessoa na conversa.")]
+    public Task<string> RedoTask(string card,
+        [Description("Numero da sub-tarefa CONCLUIDA que foi refeita (#n)")] long taskNumber,
+        [Description("Por que foi refeita (ex.: 'infra recusou: erro 229 no SELECT em msdb.dbo.sysschedules; agenda 10 compartilhada')")] string reason,
+        [Description("Titulo curto da sub-tarefa nova (ex.: 'Refazer o script da agenda do job (recusado pela infra)')")] string title,
+        [Description("Resultado em markdown: o que mudou em relacao a entrega anterior, os arquivos novos e o que a pessoa faz agora")] string result,
+        [Description("Arquivos novos da entrega: [{name, content, kind?}] (ou o JSON em texto) — mesmo nome substitui e guarda a versao anterior")] JsonElement? files = null,
+        [Description("O que a sub-tarefa nova fez (opcional; padrao: o motivo)")] string? description = null,
+        [Description("Tipo da sub-tarefa (catalogo; padrao: o da refeita)")] string? kind = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
+                    ?? throw new McpException($"A sub-tarefa #{taskNumber} nao e de um item do card {c}.");
+        var redone = owner.Tasks.First(t => t.Number == taskNumber);
+        if (owner.PlanId is not { } planId || redone.StepKey is null)
+            throw new McpException($"O item #{owner.Number} e avulso — refaca reabrindo: prmake_work_item_reopen(card {c}, number {owner.Number}, " +
+                                   $"reason, redo: [{taskNumber}, <as que dependem dela>]) e, se a instrucao mudou, prmake_work_task_update.");
+        if (string.IsNullOrWhiteSpace(reason)) throw new McpException("Informe o motivo (reason).");
+        if (string.IsNullOrWhiteSpace(title)) throw new McpException("Informe o titulo da sub-tarefa nova.");
+
+        var uploads = new List<ExecutionArtifactUpload>();
+        if (AsJson(files) is { } list)
+        {
+            if (list.ValueKind != JsonValueKind.Array)
+                throw new McpException("files deve ser uma lista [{name, content, kind?}].");
+            foreach (var f in list.EnumerateArray())
+            {
+                var name = f.ValueKind == JsonValueKind.Object ? Str(f, "name") : null;
+                var content = f.ValueKind == JsonValueKind.Object ? Str(f, "content") : null;
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrEmpty(content))
+                    throw new McpException("Cada arquivo precisa de name e content.");
+                var fileName = Path.GetFileName(name.Trim().Replace('\\', '/'));
+                uploads.Add(new ExecutionArtifactUpload(fileName, Str(f, "kind"), null, null,
+                    solvace.prform.Controllers.ExecutionPlanController.ResolveContentType(fileName, "text/plain; charset=utf-8"),
+                    System.Text.Encoding.UTF8.GetBytes(content)));
+            }
+        }
+
+        var plan = await plans.GetAsync(planId, ct);
+        var definition = new ExecutionStepDefinition
+        {
+            Key = NewStepKey(title, plan.Steps.Select(s => s.Key)),
+            Title = title,
+            Description = string.IsNullOrWhiteSpace(description) ? $"Refaz a #{taskNumber} ({redone.Title}): {reason.Trim()}" : description,
+            Executor = ExecutionExecutor.Claude,
+            TaskKind = string.IsNullOrWhiteSpace(kind) ? redone.Kind : kind.Trim(),
+        };
+        return await specialist.RunAsync(c, $"Refazer a sub-tarefa #{taskNumber} do item #{owner.Number}", reason, async () =>
+        {
+            var actor = await ActorAsync(ct);
+            var step = await plans.RedoStepAsync(planId, redone.StepKey, definition, reason, result, uploads, actor, ct);
+            var item = await items.GetAsync(owner.Number, false, ct);
+            var task = item.Tasks.FirstOrDefault(t => t.StepKey == step.Key);
+            var warned = item.Tasks.Where(t => t.Status is not (WorkTaskStatus.Completed or WorkTaskStatus.Skipped or WorkTaskStatus.Cancelled) && t.Number != task?.Number
+                                               && t.Description?.Contains("**Entrega refeita:**", StringComparison.Ordinal) == true)
+                .Select(t => t.Number).ToList();
+            return (Serialize(new
+            {
+                item.Number, item.Status, step = step.Key, taskNumber = task?.Number, redone = taskNumber, warned,
+                tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Title, t.Status })
+            }), $"#{taskNumber} refeita na {(task is null ? "sub-tarefa nova" : $"#{task.Number}")} do item #{item.Number}" +
+                (warned.Count > 0 ? $"; avisadas: {string.Join(", ", warned.Select(n => $"#{n}"))}" : string.Empty));
+        }, ct);
+    });
+
     [McpServerTool(Name = "prmake_work_item_reopen")]
     [Description("Reabre um item de trabalho AVULSO concluido, cancelado ou com falha para refazer ou acrescentar trabalho. redo = " +
                  "sub-tarefas (#n) que voltam a pendente para serem refeitas (o resultado anterior fica, com o motivo no fim; arquivos e " +
