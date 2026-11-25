@@ -31,7 +31,10 @@ public static class RealTimeServiceExtensions
         if (section.Get<RealTimeOptions>()?.IsRelay == true)
         {
             // Hub no relay externo: a API só publica por HTTP e não mantém WebSocket aberto.
-            services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(3));
+            services.AddHttpClient(RelayRealTimeNotifier.HttpClientName, c => c.Timeout = RelayRealTimeNotifier.RequestTimeout)
+                .ConfigurePrimaryHttpMessageHandler(RelayRealTimeNotifier.CreateHandler)
+                // a troca de conexões fica com o PooledConnectionLifetime do handler (DNS em dia sem descartar o pool a cada 2 min)
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
             services.AddSingleton<IRealTimeNotifier, RelayRealTimeNotifier>();
             return services;
         }

@@ -23,6 +23,23 @@ public class RelayRealTimeNotifier : IRealTimeNotifier
     public const string HttpClientName = "RealTimeRelay";
     public const string RelayKeyHeader = "X-Relay-Key";
     public static readonly TimeSpan DegradedWindow = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
+    /// <summary>Conectar (TCP + TLS) ao relay; normal ~0,4 s de us-central1 até o MonsterASP.</summary>
+    public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Handler do cliente do relay. Sem <c>ConnectTimeout</c> (padrão: infinito) uma tentativa de conexão que travava — SYN
+    /// perdido ou TLS parado, depois de o relay ficar parado — prendia o pool: o .NET só abre outra tentativa quando há mais
+    /// requisições na fila do que tentativas pendentes, então cada publicação esperava a tentativa morta e estourava os 3 s,
+    /// em sequência, até o sistema desistir (~127 s no Linux) ou o handler ser trocado (2 min). 2026-11-25: 46 de 93
+    /// publicações falharam assim, em sequências de 12 a 95 s, quase sempre depois de o relay ficar parado.
+    /// </summary>
+    public static SocketsHttpHandler CreateHandler() => new()
+    {
+        ConnectTimeout = ConnectTimeout,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(90)
+    };
 
     // Mesmo formato do protocolo JSON padrão do SignalR (camelCase), para o payload chegar igual ao front.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
