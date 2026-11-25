@@ -170,6 +170,9 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.A
 // 0099: chave de épico (E123) nas rotas de card do DevOps → 404 limpo (a Mesa reaproveita componentes da Bancada).
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add<solvace.prform.api.Filters.EpicKeyCardFilter>());
 builder.Services.AddHostedService<PluginCacheHostedService>();
+// Índice da engenharia reversa pronto antes da primeira pergunta (na instância nova a busca fria levava ~25 s).
+builder.Services.AddSingleton<solvace.prform.Knowledge.ReverseIndexWarmup>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<solvace.prform.Knowledge.ReverseIndexWarmup>());
 
 // Provider de opções de tempo real: lê do plugin "Realtime Configurations" com fallback para o
 // ambiente. Registrado antes de AddRealTimeService (que usa TryAdd) para prevalecer sobre o default.

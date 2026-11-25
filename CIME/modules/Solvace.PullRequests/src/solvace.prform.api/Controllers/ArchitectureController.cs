@@ -152,8 +152,11 @@ public class ArchitectureController(IArchitectureApplication application, solvac
     [HttpGet("ask/status")]
     public async Task<ActionResult<solvace.prform.Knowledge.ArchitectureChatStatus>> AskStatus(
         [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
-        [FromServices] solvace.executionplans.application.Contracts.IExecutionQueueApplication queue, CancellationToken ct)
+        [FromServices] solvace.executionplans.application.Contracts.IExecutionQueueApplication queue,
+        [FromServices] solvace.prform.Knowledge.ReverseIndexWarmup warmup, CancellationToken ct)
     {
+        // a tela da Base abriu: o índice da busca fica pronto antes da pergunta
+        _ = warmup.WarmAsync();
         var status = await chat.GetStatusAsync(ct);
         // 0102: o Pergunte desta pessoa pode ir para o executor (Minhas integrações); a tela diz qual máquina responde.
         status.Runner = await solvace.prform.Knowledge.BaseSolvaceRunner.ResolveAsync(settings, ct);

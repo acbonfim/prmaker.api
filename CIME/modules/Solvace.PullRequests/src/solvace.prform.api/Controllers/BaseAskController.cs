@@ -26,7 +26,7 @@ public class BaseAskExecutorRequest
 [Route("api/v{version:apiVersion}/Architecture/ask/executor")]
 [Authorize]
 public class BaseAskController(IExecutionQueueApplication queue, solvace.timeline.application.Contracts.IUserRepository users,
-    ILogger<BaseAskController> logger)
+    solvace.prform.Knowledge.ReverseIndexWarmup warmup, ILogger<BaseAskController> logger)
     : ExecutionControllerBase(users)
 {
     private const string DefaultAttachmentQuestion = "O que é isso e como resolvo?";
@@ -72,9 +72,17 @@ public class BaseAskController(IExecutionQueueApplication queue, solvace.timelin
     public Task<ActionResult<BaseQuestionResponse>> Cancel([FromRoute] Guid id, CancellationToken ct) =>
         Run<BaseQuestionResponse>(async () => Ok(await queue.CancelBaseQuestionAsync(id, await GetActorAsync(ct), ct)));
 
-    /// <summary>O mesmo resultado do <c>prmake_base_search</c> com o texto da pergunta, em até <see cref="HintsBudget"/>.</summary>
+    /// <summary>
+    /// O mesmo resultado do <c>prmake_base_search</c> com o texto da pergunta, em até <see cref="HintsBudget"/>. Índice ainda
+    /// carregando (instância nova): não espera nem cancela a carga — o Claude busca quando ela terminar.
+    /// </summary>
     private async Task<string?> HintsAsync(string question, CancellationToken ct)
     {
+        if (!await warmup.WaitAsync(HintsBudget, ct))
+        {
+            logger.LogInformation("Pergunte pelo executor sem a busca adiantada (índice ainda carregando)");
+            return null;
+        }
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(HintsBudget);
         try

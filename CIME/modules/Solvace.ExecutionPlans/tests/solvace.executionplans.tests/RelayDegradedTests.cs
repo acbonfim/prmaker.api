@@ -69,28 +69,38 @@ public class RelayDegradedTests
     }
 
     [Fact]
-    public async Task With_the_relay_down_publications_stop_holding_the_request()
+    public async Task With_the_relay_down_no_request_waits_for_it_and_the_probe_runs_in_background()
     {
         var clock = new Clock(DateTimeOffset.UtcNow);
         var health = new RealTimeDeliveryHealth(clock);
         var relay = new Relay();
         var notifier = new RelayRealTimeNotifier(new Factory(relay), new Options(), NullLogger<RelayRealTimeNotifier>.Instance, health);
         health.ReportFailure();
-        Assert.True(health.TryTakeProbe()); // a sonda deste intervalo já foi usada
 
+        // 1ª publicação no modo degradado = a sonda (em segundo plano); as seguintes se perdem — nenhuma segura a requisição
         var watch = System.Diagnostics.Stopwatch.StartNew();
         await notifier.NotifyGroupAsync("execplan:BQ-1", "executionPlanUpdated");
         await notifier.NotifyGroupAsync("execplan-pending", "executionWorkersChanged");
+        await notifier.NotifyGroupAsync("execworkers:1", "executionQueueReady");
         watch.Stop();
+        Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(500), $"levou {watch.Elapsed.TotalMilliseconds:0} ms");
+        await WaitUntil(() => relay.Calls == 1);
+        Assert.Equal(1, relay.Calls);
 
-        Assert.Equal(2, relay.Calls);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2.5), $"levou {watch.Elapsed.TotalMilliseconds:0} ms");
-        Assert.True(health.IsDegraded(TimeSpan.FromMinutes(1)));
-
-        // o relay voltou: a sonda espera o tempo inteiro, passa e tira do modo degradado
+        // o relay voltou: a próxima sonda passa e tira do modo degradado
         relay.Down = false;
         clock.Now = clock.Now.AddSeconds(16);
         await notifier.NotifyGroupAsync("execplan:BQ-1", "executionPlanUpdated");
+        await WaitUntil(() => !health.IsDegraded(TimeSpan.FromMinutes(1)));
         Assert.False(health.IsDegraded(TimeSpan.FromMinutes(1)));
+
+        // e as publicações voltam a ir na hora
+        await notifier.NotifyGroupAsync("execplan:BQ-1", "executionPlanUpdated");
+        Assert.Equal(3, relay.Calls);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        for (var i = 0; i < 100 && !condition(); i++) await Task.Delay(50);
     }
 }

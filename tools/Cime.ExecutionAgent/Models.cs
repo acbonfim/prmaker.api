@@ -134,6 +134,12 @@ public sealed class ClaimResponse
     public List<ClaimFile>? Files { get; set; }
 }
 
+/// <summary>1.9.2: GET ExecutionQueue/ready.</summary>
+public sealed class QueueReady
+{
+    public bool Ready { get; set; }
+}
+
 /// <summary>0102: anexo do pedido (base64).</summary>
 public sealed class ClaimFile
 {
@@ -260,6 +266,7 @@ public sealed class AgentDescriptor
 [JsonSerializable(typeof(RealTimeInfo))]
 [JsonSerializable(typeof(DoctorRequest))]
 [JsonSerializable(typeof(ClaimResponse))]
+[JsonSerializable(typeof(QueueReady))]
 [JsonSerializable(typeof(StartRequest))]
 [JsonSerializable(typeof(HeartbeatRequest))]
 [JsonSerializable(typeof(HeartbeatResponse))]

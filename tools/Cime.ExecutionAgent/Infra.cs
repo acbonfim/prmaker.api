@@ -215,6 +215,10 @@ public sealed class PrmakeClient : IDisposable
     public async Task<RealTimeInfo?> RealTimeAsync(CancellationToken ct) =>
         await GetAsync("ExecutionWorker/realtime", AgentJson.Default.RealTimeInfo, ct);
 
+    /// <summary>1.9.2: há pedido na fila pronto para começar? (1 consulta no PRMake — com o relay fora, a cada poucos segundos)</summary>
+    public async Task<bool> ReadyAsync(CancellationToken ct) =>
+        (await GetAsync("ExecutionQueue/ready", AgentJson.Default.QueueReady, ct))?.Ready == true;
+
     /// <summary>Consulta a fila (<paramref name="waitSeconds"/> = 0: responde na hora): null = nada na fila.</summary>
     public async Task<ClaimResponse?> NextAsync(int waitSeconds, CancellationToken ct)
     {

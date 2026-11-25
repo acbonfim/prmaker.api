@@ -65,6 +65,12 @@ public interface IExecutionQueueApplication
     /// </summary>
     Task<SpecialistRequester?> GetActiveSpecialistRequesterAsync(Guid requestId, string cardNumber, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Pergunta leve do executor (1 SQL): há pedido do dono dele na fila pronto para começar? Com o relay fora o aviso de fila
+    /// não chega — o executor pergunta aqui a cada poucos segundos e só chama o next (pesado) quando há.
+    /// </summary>
+    Task<bool> IsQueueReadyAsync(Guid workerId, CancellationToken cancellationToken);
+
     // 0102: perguntas da Base Solvace pelo executor.
     /// <summary>Enfileira a pergunta na máquina de quem perguntou; sem executor online/ativo → <see cref="BaseAskUnavailableException"/>.</summary>
     Task<BaseQuestionResponse> AskBaseAsync(ExecutionActor requester, string question, bool deep, IReadOnlyList<BaseQuestionFile> files,
