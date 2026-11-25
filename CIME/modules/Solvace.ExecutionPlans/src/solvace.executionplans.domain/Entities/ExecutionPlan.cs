@@ -350,6 +350,7 @@ public class ExecutionPlan
         var t = text?.Trim();
         if (t is { Length: > MaxHandoffLength })
             throw new DomainException($"O resumo da passagem pode ter no máximo {MaxHandoffLength} caracteres.");
+        PublicVoice.Ensure(t, "O contexto da passagem");
         Handoff = string.IsNullOrEmpty(t) ? null : t;
         HandoffAt = Handoff is null ? null : now;
         HandoffBy = Handoff is null ? null : Clean(by, 200);

@@ -211,7 +211,7 @@ public class CardSituationTests
         Assert.Equal("Aguardando abrir chamado", s.Title);
         Assert.Equal("chamado-limpar", s.StepKey);
         Assert.StartsWith("**Aguardando abrir chamado**", s.Markdown);
-        Assert.Contains("Arquivos do chamado no plano: `01_limpar.sql` e `chamado-limpar.md`.", s.Markdown);
+        Assert.Contains("Arquivos do chamado: `01_limpar.sql` e `chamado-limpar.md`.", s.Markdown);
         Assert.Empty(s.UserSteps);
         Assert.DoesNotContain("você", s.Markdown, StringComparison.OrdinalIgnoreCase);
         Assert.True(CardSituationKind.Milestone(s));
@@ -252,14 +252,14 @@ public class CardSituationTests
         var plan = TicketPlan();
         var ticket = Ticket(plan, "chamado-limpar");
         plan.ApplyTicketState("chamado-limpar", [ticket], "Alex", Now, false);
-        plan.SetHandoff("**Espera:** voce abrir o chamado de limpeza.", "Claude", Now.AddHours(-3));
+        plan.SetHandoff("Preparei o script de limpeza; falta abrir o chamado.", "Claude", Now.AddHours(-3));
         var links = new List<ExecutionLink> { ticket };
 
         // Situação registrada antes de entrar no chamado (o PRMake ainda não gravou a mudança): o contexto é velho.
         Situation(plan, CardSituationKind.TicketToOpen, Now.AddHours(-4));
         var s = CardSituation.Build(plan, links, [], [], IsQa, plan.CardNumber);
         Assert.Null(s.Handoff);
-        Assert.DoesNotContain("voce abrir", s.Markdown);
+        Assert.DoesNotContain("falta abrir o chamado", s.Markdown);
 
         // Entrou no chamado depois do contexto: velho também.
         Situation(plan, CardSituationKind.Ticket, Now.AddHours(-1));
@@ -275,9 +275,86 @@ public class CardSituationTests
     [Fact]
     public void Discussion_comment_reads_as_written_by_the_person()
     {
-        var html = SituationHtml.Build("**Aguardando: Excluir os posts**\n\nFaço o que a etapa pede.", Now, CardSituation.Brasilia);
+        var html = SituationHtml.Build("**Aguardando: Excluir os posts**\n\nAssim que eu concluir isso, sigo para o fechamento do card.", Now, CardSituation.Brasilia);
 
         Assert.DoesNotContain("PRMake", html);
         Assert.DoesNotContain("automaticamente", html);
     }
+
+    // ── Resumo de espera em primeira pessoa, sem o PRMake (78794) ─────────────────────────────
+
+    private const string ScreenReason = "Depois das 07:30 UTC de 26/11 (04:30 em Brasília), clique em *Já resolvi* nesta etapa para eu conferir a geração do dia. " +
+                                        "Se você já souber que o DBA não aplicou a mudança, avise no plano e eu devolvo o chamado.";
+
+    private static ExecutionPlan WaitingCheck()
+    {
+        var plan = Correction(Step("conferir-geracao", ExecutionStepKind.Validation, ExecutionExecutor.User),
+            Step("fechar-card", ExecutionStepKind.Task, ExecutionExecutor.Claude, "conferir-geracao"));
+        plan.UpdateStep("conferir-geracao", ExecutionStatus.Waiting, ScreenReason, null, null, null, null, "claude", Now, ExecutionWaitingOn.User);
+        return plan;
+    }
+
+    [Fact]
+    public void Waiting_reason_written_for_the_screen_stays_out_of_the_discussion()
+    {
+        var plan = WaitingCheck();
+        var s = CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber);
+
+        Assert.Equal(CardSituationKind.User, s.Kind);
+        // A tela do PRMake mostra a instrução; o resumo publicado não.
+        Assert.Contains(s.UserSteps, u => u.Contains("Já resolvi"));
+        Assert.Null(s.StepNote);
+        Assert.StartsWith("**Aguardando: conferir-geracao**", s.Markdown);
+        Assert.DoesNotContain("Já resolvi", s.Markdown);
+        Assert.DoesNotContain("etapa", s.Markdown);
+        Assert.DoesNotContain("você", s.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(PublicVoice.Problems(s.Markdown));
+    }
+
+    [Fact]
+    public void Handoff_in_first_person_carries_the_wait_without_a_generic_next_step()
+    {
+        var plan = WaitingCheck();
+        plan.SetHandoff("O chamado 2679 foi resolvido pelo DBA. Depois das 04:30 (Brasília) de 26/11 vou conferir a geração do dia " +
+                        "para confirmar se a solução corrigiu o problema.", "Alex", Now);
+        var s = CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber);
+
+        Assert.Contains("**Contexto**", s.Markdown);
+        Assert.Contains("vou conferir a geração do dia", s.Markdown);
+        Assert.DoesNotContain("Próximo passo", s.Markdown);
+        Assert.Empty(PublicVoice.Problems(s.Markdown));
+    }
+
+    [Fact]
+    public void Clean_waiting_reason_is_used_when_there_is_no_handoff()
+    {
+        var plan = Correction(Step("conferir-geracao", ExecutionStepKind.Validation, ExecutionExecutor.User),
+            Step("fechar-card", ExecutionStepKind.Task, ExecutionExecutor.Claude, "conferir-geracao"));
+        plan.UpdateStep("conferir-geracao", ExecutionStatus.Waiting, "Depois das 04:30 (Brasília) de 26/11 confiro a geração do dia.",
+            null, null, null, null, "claude", Now, ExecutionWaitingOn.User);
+        var s = CardSituation.Build(plan, [], [], [], IsQa, plan.CardNumber);
+
+        Assert.Contains("confiro a geração do dia", s.Markdown);
+        Assert.Contains("**Próximo passo:**", s.Markdown);
+        Assert.Empty(PublicVoice.Problems(s.Markdown));
+    }
+
+    [Theory]
+    [InlineData("Clique em Já resolvi nesta etapa para eu conferir.")]
+    [InlineData("Se você já souber que o DBA não aplicou, avise no plano.")]
+    [InlineData("Conclua a etapa no PRMake.")]
+    [InlineData("O item de trabalho #3 está na Bancada.")]
+    public void Handoff_with_prmake_terms_is_refused(string text)
+    {
+        var plan = WaitingCheck();
+        var e = Assert.Throws<DomainException>(() => plan.SetHandoff(text, "Claude", Now));
+        Assert.Contains("primeira pessoa", e.Message);
+        Assert.Null(plan.Handoff);
+    }
+
+    [Theory]
+    [InlineData("Abri o chamado 2679 para o DBA mudar o job de 06:15 para 07:15 UTC. Aguardando o atendimento.")]
+    [InlineData("Depois das 04:30 de Brasília vou conferir novamente para confirmar se a solução de fato corrigiu o problema.")]
+    [InlineData("Aguardando o merge do PR #489; a planilha do cliente segue no anexo do card.")]
+    public void First_person_handoff_is_accepted(string text) => Assert.Empty(PublicVoice.Problems(text));
 }

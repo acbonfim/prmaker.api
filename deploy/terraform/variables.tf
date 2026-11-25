@@ -41,7 +41,8 @@ variable "realtime_relay_url" {
 variable "realtime_pubsub_publish" {
   description = "A API publica os eventos de tempo real no Pub/Sub (realtime.tf) em vez do POST /publish do relay. Ligar só com o relay ouvindo a assinatura (GET /health → pubSub.state = listening)."
   type        = bool
-  default     = false
+  # Ligado em 2026-11-25: relay ouvindo a assinatura em produção (GET /health → pubSub.state = listening).
+  default = true
 }
 
 variable "min_instances" {
