@@ -47,6 +47,12 @@ public class RealTimeOptions
     public string? PubSubCredentialsJson { get; set; }
 
     /// <summary>
+    /// Relay: endpoint do Pub/Sub na região onde a API publica (us-central1). O global leva o relay ao Google mais perto
+    /// (Europa) e cada evento atravessa regiões — às vezes 2–3 s em vez de ~60 ms. Vazio => global.
+    /// </summary>
+    public string? PubSubEndpoint { get; set; } = "us-central1-pubsub.googleapis.com:443";
+
+    /// <summary>
     /// Chave HMAC-SHA256 (mínimo 32 caracteres) dos tokens de conexão do navegador, compartilhada
     /// com o relay. Vazia => a API não emite token e o hub em processo fica aberto (só no dev).
     /// </summary>

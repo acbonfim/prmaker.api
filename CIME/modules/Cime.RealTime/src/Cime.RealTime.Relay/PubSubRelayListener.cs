@@ -47,6 +47,7 @@ public sealed class PubSubRelayListener(IOptions<RealTimeOptions> options, IHubC
                     GoogleCredential = emulator ? null : CredentialFactory.FromJson<ServiceAccountCredential>(o.PubSubCredentialsJson!).ToGoogleCredential(),
                     EmulatorDetection = emulator ? Google.Api.Gax.EmulatorDetection.EmulatorOnly : Google.Api.Gax.EmulatorDetection.ProductionOnly,
                     ClientCount = 1,
+                    Endpoint = emulator || string.IsNullOrWhiteSpace(o.PubSubEndpoint) ? null : o.PubSubEndpoint,
                     Settings = new SubscriberClient.Settings { FlowControlSettings = new Google.Api.Gax.FlowControlSettings(1_000, null) }
                 }.BuildAsync(stoppingToken);
                 await using var stop = stoppingToken.Register(() => _ = subscriber.StopAsync(new SubscriberClient.ShutdownOptions { Mode = SubscriberClient.ShutdownMode.NackImmediately, Timeout = TimeSpan.FromSeconds(5) }, CancellationToken.None));
@@ -114,6 +115,9 @@ public sealed class PubSubRelayStatus(TimeProvider time)
     private long _received;
     private long _stale;
     private double _lastAgeMs;
+    /// <summary>Idade (publicação → relay) dos últimos eventos, para p50/p95/máx no /health.</summary>
+    private readonly Queue<double> _ages = new();
+    private const int AgeWindow = 200;
 
     public void Disabled() => Set("disabled", null);
     public void Connecting() => Set("connecting", _error);
@@ -126,6 +130,8 @@ public sealed class PubSubRelayStatus(TimeProvider time)
         {
             _received++;
             _lastAgeMs = Math.Round(age.TotalMilliseconds);
+            _ages.Enqueue(_lastAgeMs);
+            if (_ages.Count > AgeWindow) _ages.Dequeue();
             _lastMessageAt = time.GetUtcNow();
         }
     }
@@ -138,7 +144,16 @@ public sealed class PubSubRelayStatus(TimeProvider time)
     public object Snapshot()
     {
         lock (_lock)
-            return new { state = _state, since = _since, error = _error, received = _received, stale = _stale, lastMessageAt = _lastMessageAt, lastAgeMs = _lastAgeMs };
+        {
+            var sorted = _ages.Order().ToArray();
+            double At(double q) => sorted.Length == 0 ? 0 : sorted[Math.Min(sorted.Length - 1, (int)(q * sorted.Length))];
+            return new
+            {
+                state = _state, since = _since, error = _error, received = _received, stale = _stale, lastMessageAt = _lastMessageAt,
+                lastAgeMs = _lastAgeMs,
+                ageMs = new { window = sorted.Length, p50 = At(0.5), p95 = At(0.95), max = sorted.Length == 0 ? 0 : sorted[^1], over1s = sorted.Count(a => a >= 1000) }
+            };
+        }
     }
 
     private void Set(string state, string? error)
