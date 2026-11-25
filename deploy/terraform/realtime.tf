@@ -15,7 +15,15 @@
 # Custo: dentro da cota grátis do Pub/Sub (10 GiB/mês; os eventos são de poucos KB).
 # -----------------------------------------------------------------------------
 resource "google_pubsub_topic" "realtime" {
-  name       = "cime-realtime"
+  name = "cime-realtime"
+
+  # Mensagens guardadas em Frankfurt, perto do relay (MonsterASP, Alemanha), que lê pelo endpoint europe-west3
+  # (RealTime:PubSubEndpoint). Guardadas nos EUA, a entrega cruzava o Atlântico: ~60 ms com picos de 2–3 s em ~1 de cada
+  # 5 eventos (endpoint global) ou ~850 ms em todos (endpoint us-central1). A travessia fica só na publicação da API.
+  message_storage_policy {
+    allowed_persistence_regions = ["europe-west3"]
+  }
+
   depends_on = [google_project_service.apis]
 }
 
