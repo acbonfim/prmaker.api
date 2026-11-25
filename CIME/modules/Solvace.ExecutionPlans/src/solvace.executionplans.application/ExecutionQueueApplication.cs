@@ -903,8 +903,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
                 ? await _queue.GetActiveSpecialistForCardAsync(request.CardNumber, cancellationToken)
                 : await _queue.GetActiveRequestForCardAsync(request.CardNumber, cancellationToken);
         }
-        await NotifyAsync(request, cancellationToken);
-        await WakeWorkersAsync(request.OwnerUserId, cancellationToken);
+        // O aviso ao executor não espera o da tela (cada um pode levar até o timeout do relay).
+        await Task.WhenAll(NotifyAsync(request, cancellationToken), WakeWorkersAsync(request.OwnerUserId, cancellationToken));
         return request;
     }
 
@@ -1207,8 +1207,7 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         if (request.Kind == ExecutionRequestKind.BaseAsk)
         {
             // 0102: a tela da pergunta ouve execplan:{chave da pergunta}; não há plano nem itens.
-            await NotifyBaseAsync(request, ExecutionPlanRealTimeEvents.Actions.Request, cancellationToken);
-            await NotifyWorkersAsync(request.OwnerUserId, cancellationToken);
+            await NotifyBaseRequestAsync(request, cancellationToken);
             return;
         }
         if (ExecutionRequestKind.IsWorkItem(request.Kind))

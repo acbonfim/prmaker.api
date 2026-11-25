@@ -67,7 +67,8 @@ public interface IExecutionQueueApplication
 
     // 0102: perguntas da Base Solvace pelo executor.
     /// <summary>Enfileira a pergunta na máquina de quem perguntou; sem executor online/ativo → <see cref="BaseAskUnavailableException"/>.</summary>
-    Task<BaseQuestionResponse> AskBaseAsync(ExecutionActor requester, string question, bool deep, IReadOnlyList<BaseQuestionFile> files, CancellationToken cancellationToken);
+    Task<BaseQuestionResponse> AskBaseAsync(ExecutionActor requester, string question, bool deep, IReadOnlyList<BaseQuestionFile> files,
+        CancellationToken cancellationToken, string? hints = null);
     Task<BaseQuestionResponse> GetBaseQuestionAsync(Guid questionId, Guid? userId, CancellationToken cancellationToken);
     Task<BaseQuestionResponse> CancelBaseQuestionAsync(Guid questionId, ExecutionActor actor, CancellationToken cancellationToken);
     Task<BaseQuestion> SaveBaseAnswerAsync(Guid requestId, Guid questionId, string answerJson, CancellationToken cancellationToken);

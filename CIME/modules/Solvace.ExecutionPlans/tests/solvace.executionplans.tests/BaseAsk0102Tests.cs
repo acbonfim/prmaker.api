@@ -170,6 +170,33 @@ public class BaseAsk0102Tests
         Assert.Contains("Quem pode aprovar uma ação?", prompt);
     }
 
+    [Fact]
+    public void Search_done_by_the_server_goes_in_the_prompt_and_the_claude_skips_it()
+    {
+        var hints = "Engenharia reversa (2):\n- revamp-actionplan#RN-031 [Regra] Concluir plano de ação";
+        var q = new BaseQuestion(Alex, "Alex Carlos", "O que acontece quando um plano de ação é concluído?", false, null, DateTimeOffset.UtcNow, hints);
+
+        var prompt = ExecutionQueueApplication.BaseAskPrompt(q, []);
+
+        Assert.Contains("BUSCA JA FEITA", prompt);
+        Assert.Contains("revamp-actionplan#RN-031", prompt);
+        Assert.Contains("DIRETO ao prmake_base_get", prompt);
+        Assert.DoesNotContain("BUSCA JA FEITA", ExecutionQueueApplication.BaseAskPrompt(
+            new BaseQuestion(Alex, "Alex Carlos", "Outra pergunta?", false, null, DateTimeOffset.UtcNow), []));
+    }
+
+    [Fact]
+    public async Task Creating_the_question_does_not_run_the_wait_diagnosis()
+    {
+        var (app, queue) = Create(Machine(Alex));
+
+        await app.AskBaseAsync(AlexOnScreen, "Como transfiro um usuário?", false, [], CancellationToken.None);
+
+        // só a leitura das máquinas de quem perguntou (o diagnóstico de espera fica para o GET)
+        Assert.Equal(0, queue.Calls(nameof(IExecutionQueueRepository.CountActiveByWorkerAsync)));
+        Assert.Equal(0, queue.Calls(nameof(IExecutionQueueRepository.GetQueuedForOwnerAsync)));
+    }
+
     private class FakeQueue : DispatchProxy
     {
         public List<ExecutionWorker> Workers { get; private set; } = [];
@@ -192,9 +219,13 @@ public class BaseAsk0102Tests
                                 && r.Status is ExecutionRequestStatus.Claimed or ExecutionRequestStatus.Running)
                 .GroupBy(r => r.WorkerId!.Value).ToDictionary(g => g.Key, g => g.Count());
 
+        private readonly Dictionary<string, int> _calls = [];
+        public int Calls(string method) => _calls.GetValueOrDefault(method);
+
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
-            switch (method!.Name)
+            _calls[method!.Name] = _calls.GetValueOrDefault(method.Name) + 1;
+            switch (method.Name)
             {
                 case nameof(IExecutionQueueRepository.AddRequest):
                     Requests.Add((ExecutionRequest)args![0]!);

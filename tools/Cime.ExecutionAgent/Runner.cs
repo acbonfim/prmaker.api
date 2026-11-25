@@ -100,7 +100,7 @@ public sealed class Runner(AgentConfig config)
                 failures = 0;
                 if (claim is null)
                 {
-                    await WaitWakeAsync(_relay.Connected ? IdleWithRelay : NextPollEvery, stopping);
+                    await WaitWakeAsync(IdleWait(_relay.Connected, _state), stopping);
                     continue;
                 }
                 StartJob(client, claim, stopping);
@@ -334,6 +334,14 @@ public sealed class Runner(AgentConfig config)
             await Delay(interval(), ct);
         }
     }
+
+    /// <summary>
+    /// Espera com a fila vazia. 1.9.1: com o relay conectado mas o PRMake avisando que ele está falhando
+    /// (<c>reportEverySeconds</c>), o aviso de "tem pedido" pode não chegar — a pergunta da Base ficou 71 s na fila (2026-11-25):
+    /// consulta a cada <see cref="NextPollEvery"/>, como sem relay.
+    /// </summary>
+    public static TimeSpan IdleWait(bool relayConnected, WorkerState state) =>
+        relayConnected && state.ReportEverySeconds is not > 0 ? IdleWithRelay : NextPollEvery;
 
     /// <summary>Intervalo entre consultas da fila quando está vazia e o relay de tempo real não está conectado.</summary>
     private static readonly TimeSpan NextPollEvery = TimeSpan.FromSeconds(10);

@@ -32,7 +32,7 @@ public partial class ExecutionQueueApplication
     public static bool SupportsBaseAsk(ExecutionWorker worker) => !IsOlder(worker.AgentVersion, BaseAskAgentVersion);
 
     public async Task<BaseQuestionResponse> AskBaseAsync(ExecutionActor requester, string question, bool deep, IReadOnlyList<BaseQuestionFile> files,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? hints = null)
     {
         if (requester.UserId is not { } owner || owner == Guid.Empty)
             throw new ExecutionForbiddenException("Usuário não identificado.");
@@ -48,15 +48,15 @@ public partial class ExecutionQueueApplication
                 : "Nenhum dos seus executores está online e ativo — ligue uma máquina ou responda pela IA do servidor.");
         _queue.ClearTracking();
 
-        var q = new BaseQuestion(owner, requester.Name, question, deep, files, now);
+        var q = new BaseQuestion(owner, requester.Name, question, deep, files, now, hints);
         var request = new ExecutionRequest(q.Key, ExecutionRequestKind.BaseAsk, ExecutionRequestSource.Base, owner, requester.Name,
             owner, requester.Name, null, null, null, null, false, now);
         if (deep) request.MarkDeep(now);
         q.AttachRequest(request.Id);
         _queue.AddBaseQuestion(q);
         var saved = await AddRequestAsync(request, cancellationToken) ?? request;
-        await UpdateWaitReasonsAsync(owner, now, cancellationToken);
-        return await BaseQuestionResponseAsync(q, saved, cancellationToken);
+        // Acabou de conferir que há máquina pronta: sem o diagnóstico de espera (7 SQL) — o GET seguinte diagnostica.
+        return await BaseQuestionResponseAsync(q, saved, cancellationToken, diagnose: false);
     }
 
     public async Task<BaseQuestionResponse> GetBaseQuestionAsync(Guid questionId, Guid? userId, CancellationToken cancellationToken)
@@ -113,9 +113,10 @@ public partial class ExecutionQueueApplication
         return q;
     }
 
-    private async Task<BaseQuestionResponse> BaseQuestionResponseAsync(BaseQuestion q, ExecutionRequest r, CancellationToken cancellationToken)
+    private async Task<BaseQuestionResponse> BaseQuestionResponseAsync(BaseQuestion q, ExecutionRequest r, CancellationToken cancellationToken,
+        bool diagnose = true)
     {
-        var request = await RespondAsync(r, cancellationToken);
+        var request = diagnose ? await RespondAsync(r, cancellationToken) : r.ToResponse();
         var status = q.IsAnswered ? ExecutionRequestStatus.Done : r.Status == ExecutionRequestStatus.Done ? ExecutionRequestStatus.Failed : r.Status;
         string? error = status switch
         {
@@ -194,10 +195,20 @@ public partial class ExecutionQueueApplication
             foreach (var f in files) sb.AppendLine($"- {f.Name} ({f.MediaType})");
             sb.AppendLine("Use o texto de erro, o nome da tela/menu/botao e o modulo que aparecem neles como termos de busca.");
         }
+        if (q.Hints is { } hints)
+            sb.AppendLine()
+                .AppendLine("BUSCA JA FEITA pelo PRMake com o texto da pergunta (mesmo resultado do prmake_base_search):")
+                .AppendLine("<<<")
+                .AppendLine(hints)
+                .AppendLine(">>>");
         sb.AppendLine()
             .AppendLine("Como fazer:")
-            .AppendLine("1. prmake_base_search com os termos como a pessoa chama a coisa na tela e sinonimos (planta = unidade = site; pt e en). " +
-                        "Ate 3 buscas, mudando os termos se a primeira nao achar.")
+            .AppendLine(q.Hints is not null
+                ? "1. Se a busca acima trouxe o assunto, va DIRETO ao prmake_base_get nos refs que respondem (nao repita essa busca). " +
+                  "Se nao trouxe, prmake_base_search com outros termos — como a pessoa chama a coisa na tela e sinonimos " +
+                  "(planta = unidade = site; pt e en), ate 2 buscas."
+                : "1. prmake_base_search com os termos como a pessoa chama a coisa na tela e sinonimos (planta = unidade = site; pt e en). " +
+                  "Ate 3 buscas, mudando os termos se a primeira nao achar.")
             .AppendLine("2. prmake_base_get nos itens que respondem (varios refs numa chamada so). Siga uma referencia citada no texto so se ela " +
                         "for necessaria para responder (ex.: o perfil que pode, a tela do passo).")
             .AppendLine(q.Deep
@@ -222,6 +233,11 @@ public partial class ExecutionQueueApplication
             .AppendLine("Nao grave nada alem do prmake_base_answer. (Executor do PRMake, sem terminal: responda e encerre.)");
         return sb.ToString();
     }
+
+    /// <summary>Aviso da pergunta e da tela das máquinas juntos (cada aviso ao relay pode levar até o timeout).</summary>
+    private Task NotifyBaseRequestAsync(ExecutionRequest request, CancellationToken cancellationToken) =>
+        Task.WhenAll(NotifyBaseAsync(request, ExecutionPlanRealTimeEvents.Actions.Request, cancellationToken),
+            NotifyWorkersAsync(request.OwnerUserId, cancellationToken));
 
     private async Task NotifyBaseAsync(ExecutionRequest request, string action, CancellationToken cancellationToken)
     {

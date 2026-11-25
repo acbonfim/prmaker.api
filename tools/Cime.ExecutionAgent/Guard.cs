@@ -69,6 +69,34 @@ public static class ClaudeSettings
         return target;
     }
 
+    /// <summary>
+    /// 0102: perfil da pergunta da Base Solvace — só ler (anexos e, a fundo, o código) e o MCP do PRMake com o token da
+    /// pergunta. Sem hooks: o guard é de Bash (não há Bash) e o de governança custava uma chamada à API em cada ferramenta.
+    /// </summary>
+    public static string EnsureBaseAsk()
+    {
+        Directory.CreateDirectory(Paths.Root);
+        var target = Paths.BaseAskClaudeSettings;
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        {
+            w.WriteStartObject();
+            w.WriteStartObject("permissions");
+            w.WriteStartArray("allow");
+            foreach (var a in new[] { "Read", "Grep", "Glob", "mcp__prmake" }) w.WriteStringValue(a);
+            w.WriteEndArray();
+            w.WriteStartArray("deny");
+            foreach (var d in new[] { "Read(~/.claude/prmake-token.txt)", "Read(~/.claude/solvace-env-credentials.json)" }) w.WriteStringValue(d);
+            w.WriteEndArray();
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        var json = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+        if (!File.Exists(target) || File.ReadAllText(target) != json)
+            File.WriteAllText(target, json);
+        return target;
+    }
+
     private static void HookGroup(Utf8JsonWriter w, string? matcher, string command, int? timeoutSeconds)
     {
         w.WriteStartObject();

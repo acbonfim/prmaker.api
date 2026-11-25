@@ -50,3 +50,45 @@ public class BaseAskFilesTests
         Assert.True(new JobRunner(new AgentConfig(), null!, claim).IsBaseAsk);
     }
 }
+
+/// <summary>1.9.1: pergunta da Base mais rápida — Claude enxuto e fila consultada mais cedo com o relay falhando.</summary>
+[Collection("env")]
+public class BaseAskFastTests
+{
+    [Fact]
+    public void Question_runs_lean_without_the_person_settings_skills_or_extra_tools()
+    {
+        var quick = JobRunner.BaseAskArgs(false, "/tmp/s.json");
+        Assert.Equal("project", quick[quick.IndexOf("--setting-sources") + 1]);
+        Assert.Equal("Read", quick[quick.IndexOf("--tools") + 1]);
+        Assert.Contains("--disable-slash-commands", quick);
+        Assert.Contains("prmake_base_answer", quick[quick.IndexOf("--system-prompt") + 1]);
+        Assert.Equal("Read,Grep,Glob", JobRunner.BaseAskArgs(true, "/tmp/s.json")[quick.IndexOf("--tools") + 1]);
+    }
+
+    [Fact]
+    public void Base_profile_has_no_hooks()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "prmake-agent-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("PRMAKE_AGENT_HOME", home);
+        try
+        {
+            var json = File.ReadAllText(ClaudeSettings.EnsureBaseAsk());
+            Assert.DoesNotContain("hooks", json);
+            Assert.Contains("mcp__prmake", json);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PRMAKE_AGENT_HOME", null);
+            try { Directory.Delete(home, true); } catch { /* temporário */ }
+        }
+    }
+
+    [Fact]
+    public void Relay_failing_makes_the_executor_poll_the_queue()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(10), Runner.IdleWait(true, new WorkerState()));
+        Assert.Equal(TimeSpan.FromSeconds(10), Runner.IdleWait(true, new WorkerState { ReportEverySeconds = 15 }));
+        Assert.Equal(TimeSpan.FromSeconds(10), Runner.IdleWait(false, new WorkerState()));
+    }
+}

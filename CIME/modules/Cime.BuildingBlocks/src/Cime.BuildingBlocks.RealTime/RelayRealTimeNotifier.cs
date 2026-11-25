@@ -13,11 +13,17 @@ namespace Cime.BuildingBlocks.RealTime;
 /// requests, trabalho em segundo plano após a resposta fica estrangulado. O timeout curto do
 /// HttpClient limita o atraso. O token de cancelamento do chamador é ignorado de propósito: se o
 /// usuário fechar a aba logo após salvar, os outros clientes ainda devem ser avisados.
+/// Relay falhando (a última publicação falhou há menos de <see cref="DegradedWindow"/>): cada publicação espera só
+/// <see cref="DegradedTimeout"/> — antes cada falha segurava a requisição 3 s (o pedido do executor chegou a 13 s, a
+/// pergunta da Base a 11 s) —, menos uma sonda a cada <see cref="RealTimeDeliveryHealth.ProbeEvery"/>, que espera o
+/// tempo inteiro e tira do modo degradado quando passa.
 /// </remarks>
 public class RelayRealTimeNotifier : IRealTimeNotifier
 {
     public const string HttpClientName = "RealTimeRelay";
     public const string RelayKeyHeader = "X-Relay-Key";
+    public static readonly TimeSpan DegradedWindow = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan DegradedTimeout = TimeSpan.FromMilliseconds(750);
 
     // Mesmo formato do protocolo JSON padrão do SignalR (camelCase), para o payload chegar igual ao front.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -51,6 +57,9 @@ public class RelayRealTimeNotifier : IRealTimeNotifier
             return;
         }
 
+        var degraded = _health?.IsDegraded(DegradedWindow) == true && !_health.TryTakeProbe();
+        using var limit = new CancellationTokenSource();
+        if (degraded) limit.CancelAfter(DegradedTimeout);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{options.RelayUrl.TrimEnd('/')}/publish");
@@ -58,13 +67,22 @@ public class RelayRealTimeNotifier : IRealTimeNotifier
                 request.Headers.Add(RelayKeyHeader, options.RelayKey);
             request.Content = JsonContent.Create(new RelayPublishRequest(group, eventName, payload), options: JsonOptions);
 
-            using var response = await _httpClientFactory.CreateClient(HttpClientName).SendAsync(request);
-            if (!response.IsSuccessStatusCode)
+            using var response = await _httpClientFactory.CreateClient(HttpClientName).SendAsync(request, limit.Token);
+            if (response.IsSuccessStatusCode)
+                _health?.ReportSuccess();
+            else
             {
                 _health?.ReportFailure();
                 _logger.LogWarning("RealTime relay respondeu {Status} ao publicar {Event} (grupo {Group})",
                     (int)response.StatusCode, eventName, group);
             }
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            // modo degradado: o relay não respondeu no tempo curto — o evento se perde (as telas também consultam)
+            _health?.ReportFailure();
+            _logger.LogWarning("Relay de tempo real instável: {Event} (grupo {Group}) descartado depois de {Ms} ms", eventName, group,
+                (int)DegradedTimeout.TotalMilliseconds);
         }
         catch (Exception ex)
         {
