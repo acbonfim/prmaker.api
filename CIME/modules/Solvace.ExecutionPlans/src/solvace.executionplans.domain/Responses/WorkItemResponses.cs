@@ -43,6 +43,16 @@ public class WorkItemResponse
     /// citou <c>#n</c> da sub-tarefa recebe o item dono e sabe qual sub-tarefa destacar.
     /// </summary>
     public long? MatchedTaskNumber { get; set; }
+    /// <summary>0103: item agendado — executa sozinho neste horário (UTC).</summary>
+    public DateTimeOffset? ScheduledAt { get; set; }
+    /// <summary>0103: quem agendou (ou deixou em espera).</summary>
+    public string? ScheduledBy { get; set; }
+    /// <summary>0103: em espera sem data (opcional — só roda quando alguém executar ou agendar).</summary>
+    public bool Parked { get; set; }
+    /// <summary>0103: próximo horário das sub-tarefas agendadas ainda não feitas (null = nenhuma).</summary>
+    public DateTimeOffset? NextScheduledAt { get; set; }
+    /// <summary>0103: por que o item não pode ser agendado agora (null = pode).</summary>
+    public string? ScheduleBlock { get; set; }
 
     public static WorkItemResponse From(WorkItem item, string? planPhase = null, string? activity = null) => new()
     {
@@ -75,6 +85,11 @@ public class WorkItemResponse
         Activity = activity,
         Fingerprint = item.Fingerprint,
         Tasks = item.Tasks.OrderBy(t => t.Order).Select(t => WorkTaskResponse.From(t, item)).ToList(),
+        ScheduledAt = item.ScheduledAt,
+        ScheduledBy = item.AwaitsSchedule ? item.ScheduledBy : null,
+        Parked = item.Parked,
+        NextScheduledAt = item.NextTaskScheduleAt,
+        ScheduleBlock = item.ScheduleBlock,
     };
 }
 
@@ -111,6 +126,8 @@ public class WorkTaskResponse
     /// <summary>Card 78680: pausada pela pessoa.</summary>
     public bool Held { get; set; }
     public string? HeldBy { get; set; }
+    /// <summary>0103: agendada — pausada até este horário (UTC); no horário continua sozinha.</summary>
+    public DateTimeOffset? ScheduledAt { get; set; }
     /// <summary>Card 78680: dependências, quem depende dela e o que dá para fazer agora (mover/pausar/cancelar) e por quê não.</summary>
     public WorkTaskControls? Controls { get; set; }
 
@@ -136,6 +153,7 @@ public class WorkTaskResponse
         Links = WorkTaskTicket.Read(task) is { } t ? [t] : [],
         Held = task.Held,
         HeldBy = task.HeldBy,
+        ScheduledAt = task.Held ? task.ScheduledAt : null,
         Controls = item?.Controls(task),
     };
 }

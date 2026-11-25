@@ -47,6 +47,13 @@ public partial class WorkItemTask
     /// </summary>
     public bool Held { get; private set; }
     public string? HeldBy { get; private set; }
+    /// <summary>
+    /// 0103: agendada — fica pausada (<see cref="Held"/>) até este horário (UTC); no horário o PRMake continua sozinho e
+    /// retoma o item. Null = pausa sem data (ou não pausada).
+    /// </summary>
+    public DateTimeOffset? ScheduledAt { get; private set; }
+    /// <summary>0103: quem agendou — o pedido do horário vai para a máquina dela.</summary>
+    public Guid? ScheduledById { get; private set; }
     private List<long>? _dependsOn = [];
     /// <summary>
     /// Card 78680: números das sub-tarefas do item que precisam terminar antes desta (jsonb). Item espelho: as dependências
@@ -64,6 +71,20 @@ public partial class WorkItemTask
         StepKey = string.IsNullOrWhiteSpace(input.StepKey) ? null : ExecutionStep.NormalizeKey(input.StepKey);
         UpdatedAt = now;
         Reshape(order, input);
+        // 0103: sub-tarefa que já nasce agendada (quem cria carimba o autor — WorkItem.StampSchedules).
+        if (ScheduleTime.Parse(input.ScheduledAt, now) is { } at)
+        {
+            Held = true;
+            ScheduledAt = at;
+        }
+    }
+
+    /// <summary>0103: autor da pausa/agendamento que veio na criação (sem autor ainda).</summary>
+    internal void StampSchedule(string actor, Guid? actorId)
+    {
+        if (!Held || HeldBy is not null) return;
+        HeldBy = WorkItem.Clean(actor, 200);
+        ScheduledById ??= actorId;
     }
 
     public Dictionary<string, string> Params
@@ -136,6 +157,21 @@ public partial class WorkItemTask
         if (Held == held) return false;
         Held = held;
         HeldBy = held ? WorkItem.Clean(by, 200) : null;
+        if (!held)
+        {
+            ScheduledAt = null;
+            ScheduledById = null;
+        }
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>0103: horário em que a pausa acaba sozinha (null = pausa sem data). Devolve se mudou.</summary>
+    internal bool SetSchedule(DateTimeOffset? at, Guid? by, DateTimeOffset now)
+    {
+        if (ScheduledAt == at && (at is null || ScheduledById == by)) return false;
+        ScheduledAt = at;
+        ScheduledById = at is null ? null : by;
         UpdatedAt = now;
         return true;
     }

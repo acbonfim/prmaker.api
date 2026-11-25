@@ -70,6 +70,10 @@ public partial class ExecutionStep
     /// </summary>
     public bool Held { get; private set; }
     public string? HeldBy { get; private set; }
+    /// <summary>0103: agendada — pausada até este horário (UTC); no horário o PRMake continua sozinho e retoma o plano.</summary>
+    public DateTimeOffset? ScheduledAt { get; private set; }
+    /// <summary>0103: quem agendou — a retomada do horário vai para a máquina dela.</summary>
+    public Guid? ScheduledById { get; private set; }
 
     /// <summary>
     /// Card 78680: a pessoa escolheu a posição desta etapa (mudou a ordem / acrescentou no início) — ao refinar as etapas a
@@ -213,6 +217,21 @@ public partial class ExecutionStep
         if (Held == held) return false;
         Held = held;
         HeldBy = held ? Truncate((by ?? string.Empty).Trim(), 200) : null;
+        if (!held)
+        {
+            ScheduledAt = null;
+            ScheduledById = null;
+        }
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>0103: horário em que a pausa acaba sozinha (null = pausa sem data). Devolve se mudou.</summary>
+    internal bool SetSchedule(DateTimeOffset? at, Guid? by, DateTimeOffset now)
+    {
+        if (ScheduledAt == at && (at is null || ScheduledById == by)) return false;
+        ScheduledAt = at;
+        ScheduledById = at is null ? null : by;
         UpdatedAt = now;
         return true;
     }

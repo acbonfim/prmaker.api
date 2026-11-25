@@ -156,6 +156,8 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Held).HasDefaultValue(false);
             entity.Property(e => e.HeldBy).HasMaxLength(200);
             entity.Property(e => e.OrderPinned).HasDefaultValue(false);
+            // 0103: agendada (pausada até o horário).
+            entity.HasIndex(e => e.ScheduledAt).HasFilter("\"ScheduledAt\" IS NOT NULL");
 
             entity.HasIndex(e => new { e.PlanId, e.Key }).IsUnique();
         });
@@ -520,11 +522,17 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.CancelReason).HasMaxLength(WorkItem.MaxReasonLength);
             entity.Property(e => e.LinksJson).HasColumnName("Links").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb");
             entity.Property(e => e.AwsDeployMapApplied).HasDefaultValue(false);
+            // 0103: agendamento do item.
+            entity.Property(e => e.ScheduledBy).HasMaxLength(200);
+            entity.Property(e => e.Parked).HasDefaultValue(false);
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.Links);
             entity.Ignore(e => e.Editable);
             entity.Ignore(e => e.OrderedTasks);
             entity.Ignore(e => e.TasksToUndo);
+            entity.Ignore(e => e.AwaitsSchedule);
+            entity.Ignore(e => e.NextTaskScheduleAt);
+            entity.Ignore(e => e.ScheduleBlock);
 
             entity.HasMany(e => e.Tasks).WithOne().HasForeignKey(t => t.WorkItemId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(e => e.Logs).WithOne().HasForeignKey(l => l.WorkItemId).OnDelete(DeleteBehavior.Cascade);
@@ -533,6 +541,7 @@ public class ExecutionPlanContext : DbContext
             entity.HasIndex(e => e.CardNumber);
             entity.HasIndex(e => e.PlanId);
             entity.HasIndex(e => new { e.CardNumber, e.Fingerprint });
+            entity.HasIndex(e => e.ScheduledAt).HasFilter("\"ScheduledAt\" IS NOT NULL");
         });
 
         modelBuilder.Entity<WorkItemTask>(entity =>
@@ -561,6 +570,7 @@ public class ExecutionPlanContext : DbContext
 
             entity.HasIndex(e => e.Number).IsUnique();
             entity.HasIndex(e => new { e.WorkItemId, e.Order });
+            entity.HasIndex(e => e.ScheduledAt).HasFilter("\"ScheduledAt\" IS NOT NULL");
         });
 
         modelBuilder.Entity<WorkItemLog>(entity =>

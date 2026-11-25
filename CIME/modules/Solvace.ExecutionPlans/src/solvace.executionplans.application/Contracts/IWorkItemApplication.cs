@@ -54,7 +54,15 @@ public interface IWorkItemApplication
     /// <summary>Chamado na Bancada: status do chamado da sub-tarefa (resolvido conclui; fechado volta para a pessoa).</summary>
     Task<WorkItemResponse> UpdateTicketAsync(long taskNumber, WorkTaskTicketStatusRequest req, ExecutionActor actor, CancellationToken ct);
     /// <summary>Plano ligado → retoma o plano (fila main); avulso → <see cref="IWorkItemQueue.EnqueueAsync"/>.</summary>
-    Task<WorkItemResponse> ExecuteAsync(long number, ExecutionActor actor, CancellationToken ct);
+    /// <summary>Executa o item. 0103: agendado/em espera só com <paramref name="runNow"/> (tira o agendamento).</summary>
+    Task<WorkItemResponse> ExecuteAsync(long number, ExecutionActor actor, CancellationToken ct, bool runNow = false);
+    /// <summary>0103: agenda (set), deixa em espera sem data (park), tira o agendamento (clear) ou executa agora (run-now) o item.</summary>
+    Task<WorkItemResponse> ScheduleAsync(long number, WorkItemScheduleRequest req, ExecutionActor actor, CancellationToken ct);
+    /// <summary>
+    /// 0103: tique do agendamento (sinais de vida dos executores, no máximo a cada 20 s por instância): itens e sub-tarefas
+    /// cujo horário chegou começam, com o pedido na máquina de quem agendou. Devolve quantos foram liberados.
+    /// </summary>
+    Task<int> ReleaseDueSchedulesAsync(CancellationToken ct, bool force = false);
     Task<WorkItemResponse> CancelAsync(long number, bool undo, string? reason, ExecutionActor actor, CancellationToken ct);
     /// <summary>Desfaz item já cancelado/concluído/falho (pedido <c>work-item-undo</c>).</summary>
     Task<WorkItemResponse> UndoAsync(long number, ExecutionActor actor, CancellationToken ct);
@@ -180,6 +188,11 @@ public interface IWorkItemRepository
     Task<List<WorkItemLiveWorker>> GetLiveWorkersAsync(Guid ownerUserId, CancellationToken cancellationToken);
     /// <summary>Fase dos planos informados (id → analysis|correction).</summary>
     Task<Dictionary<Guid, string>> GetPlanPhasesAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancellationToken);
+    /// <summary>
+    /// 0103: números dos itens agendados cujo horário chegou (pendentes/com falha) e das sub-tarefas agendadas vencidas (pausadas,
+    /// pendentes, de item aberto) — os mais antigos primeiro.
+    /// </summary>
+    Task<(List<long> Items, List<long> Tasks)> GetDueSchedulesAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken);
     /// <summary>Salva. Conflito de concorrência → <see cref="ExecutionPlanConcurrencyException"/>.</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
     /// <summary>Solta só os itens/sub-tarefas/registros rastreados (o plano e a fila no mesmo contexto ficam).</summary>

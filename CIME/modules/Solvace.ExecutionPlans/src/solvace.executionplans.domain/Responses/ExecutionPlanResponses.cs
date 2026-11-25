@@ -250,6 +250,8 @@ public class ExecutionStepResponse
     /// <summary>Card 78680: pausada pela pessoa (não começa, nem as que dependem dela).</summary>
     public bool Held { get; set; }
     public string? HeldBy { get; set; }
+    /// <summary>0103: agendada — pausada até este horário (UTC); no horário continua sozinha.</summary>
+    public DateTimeOffset? ScheduledAt { get; set; }
     /// <summary>Card 78680: a pessoa escolheu a posição (a skill não a tira do lugar ao refinar).</summary>
     public bool OrderPinned { get; set; }
 }
@@ -560,6 +562,7 @@ public static class ExecutionPlanMappings
         DependsOn = step.DependsOn.ToList(),
         Held = step.Held,
         HeldBy = step.HeldBy,
+        ScheduledAt = step.Held ? step.ScheduledAt : null,
         OrderPinned = step.OrderPinned
     };
 

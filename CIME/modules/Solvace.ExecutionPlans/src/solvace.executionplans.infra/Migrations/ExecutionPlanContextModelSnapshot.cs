@@ -1815,6 +1815,12 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTimeOffset?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ScheduledById")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1848,6 +1854,9 @@ namespace solvace.executionplans.infra.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ScheduledAt")
+                        .HasFilter("\"ScheduledAt\" IS NOT NULL");
 
                     b.HasIndex("PlanId", "Key")
                         .IsUnique();
@@ -2128,7 +2137,22 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<bool>("Parked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<Guid?>("PlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ScheduledBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ScheduledById")
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("StartedAt")
@@ -2170,6 +2194,9 @@ namespace solvace.executionplans.infra.Migrations
                         .IsUnique();
 
                     b.HasIndex("PlanId");
+
+                    b.HasIndex("ScheduledAt")
+                        .HasFilter("\"ScheduledAt\" IS NOT NULL");
 
                     b.HasIndex("CardNumber", "Fingerprint");
 
@@ -2510,6 +2537,12 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<string>("Result")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ScheduledById")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2541,6 +2574,9 @@ namespace solvace.executionplans.infra.Migrations
 
                     b.HasIndex("Number")
                         .IsUnique();
+
+                    b.HasIndex("ScheduledAt")
+                        .HasFilter("\"ScheduledAt\" IS NOT NULL");
 
                     b.HasIndex("WorkItemId", "Order");
 

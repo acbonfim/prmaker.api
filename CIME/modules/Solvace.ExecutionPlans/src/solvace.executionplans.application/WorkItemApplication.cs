@@ -14,7 +14,7 @@ namespace solvace.executionplans.application;
 /// e a retomada (<see cref="IExecutionResumeTrigger"/>) são resolvidos sob demanda — eles também chamam esta classe
 /// (sincronizar o plano, anexar o pedido), e a injeção direta fecharia um ciclo na DI.
 /// </summary>
-public class WorkItemApplication : IWorkItemApplication
+public partial class WorkItemApplication : IWorkItemApplication
 {
     private const int ConcurrencyRetries = 4;
     private const int MaxLogs = 500;
@@ -351,6 +351,11 @@ public class WorkItemApplication : IWorkItemApplication
         var now = DateTimeOffset.UtcNow;
         var item = new WorkItem(cardNumber, type, req.Title, req.Description, o, req.TemplateKey, planId, tasks,
             actor.UserId, actor.Name, now);
+        // 0103: item que já nasce agendado (ou em espera sem data).
+        if (ScheduleTime.Parse(req.ScheduledAt, now) is { } at)
+            item.Schedule(at, false, actor.Name, actor.UserId, now);
+        else if (req.Parked)
+            item.Schedule(null, true, actor.Name, actor.UserId, now);
 
         var existing = await _items.FindDuplicateAsync(cardNumber, item.Fingerprint, null, ct);
         if (existing is not null)
@@ -366,7 +371,8 @@ public class WorkItemApplication : IWorkItemApplication
         _items.Add(item);
         await _items.SaveChangesAsync(ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Created, null, ct);
-        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado ({OriginText(item.Origin)}): {item.Title} — {item.Tasks.Count} sub-tarefa(s).", actor, ct);
+        await TimelineAsync(item, $"Item de trabalho **#{item.Number}** criado ({OriginText(item.Origin)}): {item.Title} — {item.Tasks.Count} sub-tarefa(s)." +
+                                  ScheduleSuffix(item), actor, ct);
         await CaptureItemRefAsync(cardNumber, item.Number, req.Description, (req.Tasks ?? []).Select(t => t.Description), actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
@@ -407,7 +413,7 @@ public class WorkItemApplication : IWorkItemApplication
             : $" — refazer {string.Join(", ", reopened.OrderBy(t => t.Order).Select(t => $"#{t.Number}"))}";
         var why = string.IsNullOrWhiteSpace(req.Reason) ? "." : $": {req.Reason.Trim()}";
         await TimelineAsync(item, $"Item de trabalho **#{item.Number}** reaberto por {actor.Name}{redo}{why}", actor, ct);
-        if (req.Execute)
+        if (req.Execute && !item.AwaitsSchedule)
             return await ExecuteAsync(item.Number, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
@@ -421,10 +427,11 @@ public class WorkItemApplication : IWorkItemApplication
         // 0100: sub-tarefa nova de código num item que ainda não teve o mapa do deploy na AWS leva ele junto.
         var item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
             i => i.AddTasks(WorkItemAwsDeployRule.ApplyToAdded(i, tasks), req.Before, actor.Name, DateTimeOffset.UtcNow,
-                first: string.Equals(req.Position?.Trim(), TaskPosition.First, StringComparison.OrdinalIgnoreCase)), ct);
+                first: string.Equals(req.Position?.Trim(), TaskPosition.First, StringComparison.OrdinalIgnoreCase), actorId: actor.UserId), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Updated, null, ct);
         await CaptureItemRefAsync(item.CardNumber, item.Number, null, tasks.Select(t => t.Description), actor, ct);
-        if (req.Execute)
+        // 0103: item agendado/em espera não começa antes da hora (só "executar agora").
+        if (req.Execute && !item.AwaitsSchedule && item.NextTask is not null)
             return await ExecuteAsync(item.Number, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
@@ -459,6 +466,10 @@ public class WorkItemApplication : IWorkItemApplication
                     ?? throw new ExecutionPlanNotFoundException($"Sub-tarefa #{taskNumber} não encontrada.");
         var task = owner.Tasks.First(t => t.Number == taskNumber);
         var position = action == WorkTaskControl.Move ? TaskPosition.Normalize(req.Position, req.Before is not null) : null;
+        // 0103: agendar = pausar até o horário.
+        var at = action == WorkTaskControl.Schedule
+            ? ScheduleTime.Parse(req.At, DateTimeOffset.UtcNow) ?? throw new DomainException("Informe o horário do agendamento (at).")
+            : (DateTimeOffset?)null;
 
         // Sub-tarefa espelho: o plano é a fonte — a etapa muda e o item acompanha pela sincronização.
         if (owner.PlanId is { } planId && task.StepKey is { } stepKey && owner.MirrorsPlan)
@@ -471,12 +482,13 @@ public class WorkItemApplication : IWorkItemApplication
             await PlanApp.ControlStepAsync(planId, stepKey, new WorkTaskControlRequest
             {
                 Action = action, Position = position, Reason = req.Reason, Dependents = req.Dependents, Execute = req.Execute,
+                At = at?.ToString("O"),
             }, beforeKey, actor, ct);
             _items.DetachWorkItems();
             await SyncFromPlanAsync(planId, ct);
             _items.DetachWorkItems();
             var mirror = await GetAsync(owner.Number, false, ct);
-            await TimelineAsync(owner, ControlText(owner.Number, taskNumber, task.Title, action, position, req), actor, ct);
+            await TimelineAsync(owner, ControlText(owner.Number, taskNumber, task.Title, action, position, req, false, at, task.ScheduledAt), actor, ct);
             return mirror;
         }
 
@@ -497,6 +509,7 @@ public class WorkItemApplication : IWorkItemApplication
                 case WorkTaskControl.Pause: i.HoldTask(taskNumber, true, req.Reason, actor.Name, now); break;
                 case WorkTaskControl.Resume: i.HoldTask(taskNumber, false, req.Reason, actor.Name, now); break;
                 case WorkTaskControl.Cancel: i.CancelTask(taskNumber, req.Reason, mode == WorkTaskControl.DependentsCancel, actor.Name, now); break;
+                case WorkTaskControl.Schedule: i.ScheduleTask(taskNumber, at!.Value, actor.Name, actor.UserId, now); break;
             }
         }
         WorkItem item;
@@ -509,7 +522,7 @@ public class WorkItemApplication : IWorkItemApplication
         catch (WorkTaskInterruptRequiredException)
         {
             _items.DetachWorkItems();
-            await CancelRequestAsync(owner.Id, actor, ct, $"Parado para {(action == WorkTaskControl.Move ? "mudar a ordem" : action == WorkTaskControl.Pause ? "pausar" : "cancelar")} " +
+            await CancelRequestAsync(owner.Id, actor, ct, $"Parado para {action switch { WorkTaskControl.Move => "mudar a ordem", WorkTaskControl.Pause => "pausar", WorkTaskControl.Schedule => "agendar", _ => "cancelar" }} " +
                                                          $"a sub-tarefa #{taskNumber} — {actor.Name} (retoma na ordem nova)");
             _items.DetachWorkItems();
             item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number, i =>
@@ -522,22 +535,26 @@ public class WorkItemApplication : IWorkItemApplication
         }
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, taskNumber, ct);
         await AfterStatusChangeAsync(item, before, actor, ct);
-        await TimelineAsync(item, ControlText(item.Number, taskNumber, task.Title, action, position, req, interrupted), actor, ct);
+        await TimelineAsync(item, ControlText(item.Number, taskNumber, task.Title, action, position, req, interrupted, at, task.ScheduledAt), actor, ct);
 
         // Retoma: quem parou a execução, ou "Continuar" num item que já tinha começado (pedido explícito vale sempre).
+        // 0103: item agendado/em espera não começa antes da hora.
         var execute = req.Execute ?? (interrupted || action == WorkTaskControl.Resume && item.StartedAt is not null);
-        if (execute && item.ActiveRequestId is null && !WorkItemStatus.IsClosed(item.Status) && item.NextTask is not null)
+        if (execute && !item.AwaitsSchedule && item.ActiveRequestId is null && !WorkItemStatus.IsClosed(item.Status) && item.NextTask is not null)
             return await ExecuteAsync(item.Number, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
     }
 
     private static string ControlText(long item, long task, string title, string action, string? position, WorkTaskControlRequest req,
-        bool interrupted = false)
+        bool interrupted = false, DateTimeOffset? at = null, DateTimeOffset? wasScheduled = null)
     {
         var what = action switch
         {
             WorkTaskControl.Move => $"movida {TaskPosition.Label(position!, req.Before is { } b ? $"#{b}" : null)}",
+            WorkTaskControl.Schedule => $"agendada para {ScheduleTime.Format(at!.Value)}",
+            WorkTaskControl.Pause when wasScheduled is not null => "sem agendamento (fica pausada)",
             WorkTaskControl.Pause => "pausada",
+            WorkTaskControl.Resume when wasScheduled is not null => $"liberada (estava agendada para {ScheduleTime.Format(wasScheduled.Value)})",
             WorkTaskControl.Resume => "continua",
             _ => req.Dependents?.Trim().ToLowerInvariant() == WorkTaskControl.DependentsCancel ? "cancelada (com as que dependiam dela)" : "cancelada",
         };
@@ -615,6 +632,8 @@ public class WorkItemApplication : IWorkItemApplication
         item = await MutateAsync(() => _items.GetByTaskNumberAsync(taskNumber, ct), item.Number,
             i => i.ResolveWaitingTask(taskNumber, note, actor.Name, DateTimeOffset.UtcNow), ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Task, taskNumber, ct);
+        if (item.AwaitsSchedule)
+            return (await ToResponsesAsync([item], ct))[0];
         return await ExecuteAsync(item.Number, actor, ct);
     }
 
@@ -740,11 +759,31 @@ public class WorkItemApplication : IWorkItemApplication
 
     // ================================================================ executar / cancelar / desfazer
 
-    public async Task<WorkItemResponse> ExecuteAsync(long number, ExecutionActor actor, CancellationToken ct)
+    public async Task<WorkItemResponse> ExecuteAsync(long number, ExecutionActor actor, CancellationToken ct, bool runNow = false)
     {
         var item = await _items.GetByNumberAsync(number, ct) ?? throw NotFound(number);
         if (WorkItemStatus.IsClosed(item.Status) || item.Status == WorkItemStatus.Reverting)
             throw new DomainException($"O item #{item.Number} está {item.Status} — não dá para executar. Crie um novo a partir dele.");
+        // 0103: agendado/em espera só roda pelo "executar agora" (ou no horário) — tira o agendamento antes.
+        if (item.AwaitsSchedule)
+        {
+            if (!runNow)
+                throw new WorkItemScheduledException(item.Number, item.ScheduledAt);
+            item = await MutateAsync(() => _items.GetByNumberAsync(number, ct), number,
+                i => i.ClearSchedule(actor.Name, i.ScheduledAt is { } s
+                    ? $"Executado agora por {actor.Name} (estava agendado para {ScheduleTime.Format(s)})."
+                    : $"Executado por {actor.Name} (estava em espera, sem data).", DateTimeOffset.UtcNow), ct);
+        }
+        // 0103: "executar agora" com só sub-tarefa agendada por fazer — libera as agendadas (as dependentes seguem junto).
+        if (runNow && item.OnlyHeldLeft && item.NextTaskScheduleAt is not null)
+        {
+            var scheduled = item.OrderedTasks.Where(t => !WorkItem.IsSettled(t) && t.Held && t.ScheduledAt is not null).Select(t => t.Number).ToList();
+            WorkItemResponse? last = null;
+            foreach (var n in scheduled)
+                last = await ControlTaskAsync(n, new WorkTaskControlRequest { Action = WorkTaskControl.Resume, Reason = "executar agora", Execute = true }, actor, ct);
+            _items.DetachWorkItems();
+            return last ?? await GetAsync(number, false, ct);
+        }
         if (item.Tasks.Count == 0)
             throw new DomainException($"O item #{item.Number} não tem sub-tarefas.");
         // Item reaberto sem nada a refazer: sem sub-tarefa aberta o executor não teria o que fazer (e o item cairia em falha).
@@ -752,7 +791,9 @@ public class WorkItemApplication : IWorkItemApplication
             throw new DomainException($"O item #{item.Number} não tem sub-tarefa pendente — acrescente uma ou reabra informando quais refazer.");
         // Card 78680: só sobrou sub-tarefa pausada — o executor não teria o que fazer.
         if (item.PlanId is null && item.OnlyHeldLeft)
-            throw new DomainException($"O item #{item.Number} só tem sub-tarefa pausada por fazer — continue uma delas (as que dependem dela seguem junto).");
+            throw new DomainException(item.NextTaskScheduleAt is { } next
+                ? $"O item #{item.Number} só tem sub-tarefa agendada por fazer (a próxima em {ScheduleTime.Format(next)}) — ela começa sozinha no horário; para antecipar, use \"executar agora\"."
+                : $"O item #{item.Number} só tem sub-tarefa pausada por fazer — continue uma delas (as que dependem dela seguem junto).");
 
         Guid? requestId = null;
         if (item.PlanId is { } planId)
@@ -1080,7 +1121,7 @@ public class WorkItemApplication : IWorkItemApplication
                 // 0096: etapa ajustada no lugar (especialista/tratamento) — a sub-tarefa pendente acompanha o texto.
                 item.SyncStepText(step.Key, step.Title, step.Description, now);
                 // Card 78680: pausa e dependências da etapa.
-                item.SyncStepControl(step.Key, step.Held, step.HeldBy, step.DependsOn, now);
+                item.SyncStepControl(step.Key, step.Held, step.HeldBy, step.DependsOn, now, step.ScheduledAt, step.ScheduledById);
             }
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
         }

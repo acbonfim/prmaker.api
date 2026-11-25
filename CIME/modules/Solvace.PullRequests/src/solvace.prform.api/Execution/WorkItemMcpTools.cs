@@ -114,15 +114,19 @@ public class WorkItemMcpTools(
                  "ou mande allowDuplicate=true com duplicateReason. Se uma ferramenta (prmake_tools) serve, prefira prmake_tool_run. tasks = lista " +
                  "[{ title, kind (branch|cherry-pick|code|pr|pr-review|devops-state|devops-action|pr-text|sql-query|sql-script|validation|comment|card-brief|" +
                  "manual|ticket|notify), description?, executor? (claude|user), params? {repository, branch, source, target, " +
-                 "from, commits, state, ...} }] (lista ou o JSON dela em texto). Origem: especialista (token do caso) ou a fase do plano aberto.")]
+                 "from, commits, state, ...}, scheduledAt? } ] (lista ou o JSON dela em texto). Origem: especialista (token do caso) ou a fase do plano aberto. " +
+                 "0103: scheduledAt no item = so comeca no horario (sozinho); parked = em espera sem data (opcional, a pessoa decide); " +
+                 "scheduledAt numa sub-tarefa = ela (e as que dependem dela) espera o horario, as independentes seguem.")]
     public Task<string> Create(string card, string title,
-        [Description("Sub-tarefas em ordem: [{title, kind, description?, executor?, params?}] (lista ou JSON em texto)")] JsonElement tasks,
+        [Description("Sub-tarefas em ordem: [{title, kind, description?, executor?, params?, scheduledAt?}] (lista ou JSON em texto)")] JsonElement tasks,
         string? description = null,
         [Description("Tipo do item (WorkItemTypes: task, pull-request, review, adjustment, closing, data, ticket, text, fix, implementation, analysis; padrao: o do modelo ou task). Nunca bug/user-story (sao do card no DevOps).")] string? type = null,
         [Description("Modelo de origem (catalogo GET WorkItems/catalog), se veio de um")] string? templateKey = null,
         [Description("analysis | correction — fase do plano que criou (padrao: a do plano aberto)")] string? planPhase = null,
         [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
         string? duplicateReason = null,
+        [Description("0103: agenda o item — o PRMake executa sozinho neste horario, na maquina de quem agendou (ISO-8601 com fuso; sem fuso = Brasilia; ou relativo \"+2h30m\", \"+90m\", \"+1d\"). Use quando ja se sabe que e preciso esperar (esteira de deploy de ~2h, job que roda de madrugada)")] string? scheduledAt = null,
+        [Description("0103: true = item opcional em espera, sem data — so roda quando a pessoa decidir (executar agora ou agendar)")] bool parked = false,
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
@@ -130,7 +134,8 @@ public class WorkItemMcpTools(
         var request = new CreateWorkItemRequest
         {
             Title = title, Description = description, Type = type, TemplateKey = templateKey, Tasks = ParseTasks(tasks),
-            AllowDuplicate = allowDuplicate, DuplicateReason = duplicateReason, PlanPhase = phase
+            AllowDuplicate = allowDuplicate, DuplicateReason = duplicateReason, PlanPhase = phase,
+            ScheduledAt = scheduledAt, Parked = parked,
         };
         // 0087: item rico — código citado com fotografia (popover) e sub-tarefas de código dizendo onde e por quê.
         if (await citations.CheckWorkAsync(c, new[] { request.Description }.Concat(request.Tasks.Select(t => t.Description)),
@@ -144,8 +149,9 @@ public class WorkItemMcpTools(
                 return (Serialize(new
                 {
                     created.Number, created.Title, created.Status, created.Origin, created.Fingerprint,
-                    tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title })
-                }), $"item #{created.Number} criado com {created.Tasks.Count} sub-tarefa(s)");
+                    created.ScheduledAt, created.Parked, schedule = ScheduleNote(created),
+                    tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.ScheduledAt })
+                }), $"item #{created.Number} criado com {created.Tasks.Count} sub-tarefa(s){ScheduleTail(created)}");
             }, ct);
         }
         catch (WorkItemDuplicateException d)
@@ -204,6 +210,8 @@ public class WorkItemMcpTools(
         [Description("Titulo do item (opcional; padrao: o da ferramenta)")] string? title = null,
         [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
         string? duplicateReason = null,
+        [Description("0103: agenda o item — o PRMake executa sozinho neste horario, na maquina de quem agendou (ISO-8601 com fuso; sem fuso = Brasilia; ou relativo \"+2h30m\", \"+90m\", \"+1d\"). Use quando ja se sabe que e preciso esperar (esteira de deploy de ~2h, job que roda de madrugada)")] string? scheduledAt = null,
+        [Description("0103: true = item opcional em espera, sem data — so roda quando a pessoa decidir (executar agora ou agendar)")] bool parked = false,
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
@@ -223,6 +231,8 @@ public class WorkItemMcpTools(
         {
             throw new McpException(e.Missing.Count > 0 ? $"{e.Message} Faltando: {string.Join(", ", e.Missing)}." : e.Message, e);
         }
+        request.ScheduledAt = scheduledAt;
+        request.Parked = parked;
         var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
         try
         {
@@ -232,8 +242,9 @@ public class WorkItemMcpTools(
                 return (Serialize(new
                 {
                     created.Number, created.Type, created.Title, created.Status, created.Origin, created.TemplateKey, created.Fingerprint,
+                    created.ScheduledAt, created.Parked, schedule = ScheduleNote(created),
                     tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
-                }), $"item #{created.Number} \"{created.Title}\" criado com {created.Tasks.Count} sub-tarefa(s)");
+                }), $"item #{created.Number} \"{created.Title}\" criado com {created.Tasks.Count} sub-tarefa(s){ScheduleTail(created)}");
             }, ct);
         }
         catch (WorkItemDuplicateException d)
@@ -255,7 +266,8 @@ public class WorkItemMcpTools(
                  "(arquivo do item) e so o publica na discussion do card com discussion=\"sim\". environments = chaves de ValidationEnvironments (dev, qa, " +
                  "sandboxefeso, sandboxrt, performancetest, demo, gerdau, mondelez...) ou URL/nome de outro ambiente, separados por virgula; " +
                  "vazio = os sugeridos para o tipo do card. DEMO e producao: so navegar e consultar. Mesma checagem de duplicidade do " +
-                 "prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa).")]
+                 "prmake_tool_run. execute=true poe o item na fila do executor (so com pedido da pessoa). 0103: depois do merge, a esteira " +
+                 "leva tempo — crie a validacao com scheduledAt (ex.: \"+2h30m\") ou parked=true (em espera, sem data, a pessoa decide).")]
     public Task<string> EnvValidation(string card,
         [Description("Ambientes separados por virgula (ex.: \"dev, qa, mondelez\"); vazio = os sugeridos")] string? environments = null,
         [Description("Sigla da planta (ex.: COR) — o Claude troca para ela na tela; o admin da planta so entra se nao houver outro usuario com senha na maquina")] string? plant = null,
@@ -268,12 +280,14 @@ public class WorkItemMcpTools(
         [Description("true = ja coloca na fila do executor")] bool execute = false,
         [Description("Cria mesmo havendo item igual — exige duplicateReason")] bool allowDuplicate = false,
         string? duplicateReason = null,
+        [Description("0103: agenda o item — o PRMake executa sozinho neste horario, na maquina de quem agendou (ISO-8601 com fuso; sem fuso = Brasilia; ou relativo \"+2h30m\", \"+90m\", \"+1d\"). Use quando ja se sabe que e preciso esperar (esteira de deploy de ~2h, job que roda de madrugada)")] string? scheduledAt = null,
+        [Description("0103: true = item opcional em espera, sem data — so roda quando a pessoa decidir (executar agora ou agendar)")] bool parked = false,
         CancellationToken ct = default) => Safe(() => CreateEnvItemAsync(card, EnvValidationTemplate, WorkTaskKind.EnvValidation,
         new Dictionary<string, string?>
         {
             ["environments"] = environments, ["plant"] = plant, ["user"] = user, ["scenario"] = scenario, ["discussion"] = YesNo(discussion)
         },
-        expected, title, execute, allowDuplicate, duplicateReason, "validacao em ambiente", ct));
+        expected, title, execute, allowDuplicate, duplicateReason, "validacao em ambiente", ct, scheduledAt, parked));
 
     /// <summary>Resposta sim/não das ferramentas (opções "não"/"sim" do modelo); outro valor ou vazio = o padrão do modelo.</summary>
     public static string? YesNo(string? value) => value?.Trim().ToLowerInvariant() switch
@@ -310,7 +324,8 @@ public class WorkItemMcpTools(
 
     /// <summary>0092/0093: item de validação/reprodução pela ferramenta (uma sub-tarefa por ambiente), com execução opcional.</summary>
     private async Task<string> CreateEnvItemAsync(string card, string templateKey, string kind, IReadOnlyDictionary<string, string?> given,
-        string? expected, string? title, bool execute, bool allowDuplicate, string? duplicateReason, string what, CancellationToken ct)
+        string? expected, string? title, bool execute, bool allowDuplicate, string? duplicateReason, string what, CancellationToken ct,
+        string? scheduledAt = null, bool parked = false)
     {
         var c = RequireCard(card);
         var answers = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -336,6 +351,8 @@ public class WorkItemMcpTools(
         if (!string.IsNullOrWhiteSpace(expected))
             foreach (var t in request.Tasks.Where(t => t.Kind == kind))
                 (t.Params ??= [])["expected"] = expected.Trim();
+        request.ScheduledAt = scheduledAt;
+        request.Parked = parked;
         var origin = CaseClaims.SpecialistOf(User) is not null ? WorkItemOrigin.Specialist : WorkItemOrigin.Template;
         try
         {
@@ -344,13 +361,16 @@ public class WorkItemMcpTools(
                 var actor = await ActorAsync(ct);
                 var created = await items.CreateAsync(c, request, origin, actor, ct);
                 var status = created.Status;
+                // 0103: agendado/em espera não entra na fila agora (começa no horário ou quando a pessoa decidir).
+                execute &= created.ScheduledAt is null && !created.Parked;
                 if (execute)
                     status = (await items.ExecuteAsync(created.Number, actor, ct)).Status;
                 return (Serialize(new
                 {
                     created.Number, created.Type, created.Title, status, created.Origin, created.TemplateKey, created.Fingerprint,
+                    created.ScheduledAt, created.Parked, schedule = ScheduleNote(created),
                     tasks = created.Tasks.OrderBy(t => t.Order).Select(t => new { t.Number, t.Order, t.Kind, t.Title, t.Params })
-                }), $"item de {what} #{created.Number} criado com {created.Tasks.Count(t => t.Kind == kind)} ambiente(s){(execute ? " e na fila do executor" : string.Empty)}");
+                }), $"item de {what} #{created.Number} criado com {created.Tasks.Count(t => t.Kind == kind)} ambiente(s){(execute ? " e na fila do executor" : string.Empty)}{ScheduleTail(created)}");
             }, ct);
         }
         catch (WorkItemDuplicateException d)
@@ -406,7 +426,8 @@ public class WorkItemMcpTools(
                  "'before', chave de etapa ainda nao terminada); o Claude do tratamento a faz antes de seguir. Item AVULSO aberto " +
                  "(pendente, em espera ou com falha, mesmo ja comecado): a sub-tarefa entra no fim (ou antes da sub-tarefa ainda nao " +
                  "feita 'before' = #n — em espera/com falha, ela volta a pendente e roda depois da nova). Item avulso concluido/cancelado: reabra antes com prmake_work_item_reopen. execute=true ja executa " +
-                 "(retoma o plano / poe o item na fila). Especialista do caso: so com pedido da pessoa na conversa.")]
+                 "(retoma o plano / poe o item na fila). Especialista do caso: so com pedido da pessoa na conversa. 0103: scheduledAt = a " +
+                 "sub-tarefa nasce agendada (so comeca no horario; as que dependem dela esperam junto, as independentes seguem).")]
     public Task<string> AddTask(string card, [Description("Numero do item (#n)")] long number,
         [Description("Titulo curto da sub-tarefa (o que fazer)")] string title,
         [Description("O que fazer e para que (objetivo, fontes, o que confirmar, evidencias exigidas) — o Claude que executa segue este texto")] string description,
@@ -416,6 +437,7 @@ public class WorkItemMcpTools(
         [Description("Item avulso: claude (padrao) ou user")] string? executor = null,
         [Description("Item avulso: parametros da sub-tarefa {repository, branch, environment, steps, expected, ...} (objeto ou JSON em texto)")] JsonElement? @params = null,
         [Description("Executar agora (a pessoa pediu para ja fazer)")] bool execute = false,
+        [Description("0103: a sub-tarefa so comeca neste horario (ISO-8601; sem fuso = Brasilia; ou relativo \"+2h30m\")")] string? scheduledAt = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
@@ -438,7 +460,7 @@ public class WorkItemMcpTools(
             var input = new WorkTaskInput
             {
                 Title = title, Description = text, Kind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim(),
-                Executor = executor, Params = AsObject(@params) is { } po ? ToStringMap(po) : null
+                Executor = executor, Params = AsObject(@params) is { } po ? ToStringMap(po) : null, ScheduledAt = scheduledAt,
             };
             if (await citations.CheckWorkAsync(c, [input.Description], [(input.Title, input.Kind, input.Description)], ct) is { } incomplete)
                 throw new McpException(incomplete);
@@ -472,6 +494,9 @@ public class WorkItemMcpTools(
             var step = await plans.AddStepAsync(planId, definition, before, actor, ct, position);
             var item = await items.GetAsync(number, false, ct);
             var task = item.Tasks.FirstOrDefault(t => t.StepKey == step.Key);
+            // 0103: etapa nova já agendada (pausada até o horário).
+            if (!string.IsNullOrWhiteSpace(scheduledAt) && task is not null)
+                item = await items.ControlTaskAsync(task.Number, new WorkTaskControlRequest { Action = WorkTaskControl.Schedule, At = scheduledAt }, actor, ct);
             if (execute)
                 item = await items.ExecuteAsync(number, actor, ct);
             return (Serialize(new
@@ -654,19 +679,21 @@ public class WorkItemMcpTools(
                  "item se ja tinha comecado) ou cancel (so ela; se outras dependem dela, informe dependents: cancel = cancela junto, " +
                  "keep = seguem sem ela). Se o Claude estava nela, a execucao para e recomeca na ordem nova. As regras do que pode e " +
                  "por que nao (dependencias) aparecem em prmake_work_item → tasks[].controls. Especialista do caso: so com pedido da " +
-                 "pessoa na conversa.")]
+                 "pessoa na conversa. 0103: schedule + at = agenda (pausada ate o horario; no horario continua sozinha) — para agendar " +
+                 "use de preferencia prmake_work_schedule.")]
     public Task<string> ControlTask(string card, [Description("Numero da sub-tarefa (#n)")] long taskNumber,
-        [Description("move | pause | resume | cancel")] string action,
+        [Description("move | pause | resume | cancel | schedule")] string action,
         [Description("move: first | last | up | down | before")] string? position = null,
         [Description("move before: numero (#n) da sub-tarefa ainda nao feita antes da qual ela passa")] long? before = null,
         [Description("Motivo (vai para o item e a Timeline)")] string? reason = null,
         [Description("cancel com dependentes: cancel (cancela junto) | keep (seguem sem ela)")] string? dependents = null,
         [Description("Retomar a execucao depois (padrao: so se parou a execucao ou ao continuar item ja comecado)")] bool? execute = null,
+        [Description("schedule: horario (ISO-8601; sem fuso = Brasilia; ou relativo \"+2h30m\")")] string? at = null,
         CancellationToken ct = default) =>
-        Control(card, taskNumber, action, position, before, reason, dependents, execute, ct);
+        Control(card, taskNumber, action, position, before, reason, dependents, execute, ct, at);
 
     private Task<string> Control(string card, long taskNumber, string action, string? position, long? before, string? reason,
-        string? dependents, bool? execute, CancellationToken ct) => Safe(async () =>
+        string? dependents, bool? execute, CancellationToken ct, string? at = null) => Safe(async () =>
     {
         var c = RequireCard(card);
         var owner = (await items.ListAsync(c, ct)).FirstOrDefault(i => i.Tasks.Any(t => t.Number == taskNumber))
@@ -682,21 +709,22 @@ public class WorkItemMcpTools(
             WorkTaskControl.Pause => $"pausar a #{taskNumber}",
             WorkTaskControl.Resume => $"continuar a #{taskNumber}",
             WorkTaskControl.Cancel => $"cancelar a #{taskNumber}{(dependents?.Trim().ToLowerInvariant() == WorkTaskControl.DependentsCancel ? " e as que dependem dela" : string.Empty)}",
-            _ => throw new McpException("action: move | pause | resume | cancel."),
+            WorkTaskControl.Schedule => $"agendar a #{taskNumber} para {(ScheduleTime.Parse(at, DateTimeOffset.UtcNow) is { } when ? ScheduleTime.Format(when) : throw new McpException("schedule: informe at (horario)."))}",
+            _ => throw new McpException("action: move | pause | resume | cancel | schedule."),
         };
         var title = verb == WorkTaskControl.Move ? $"Mudar a ordem no item #{owner.Number}" : $"Sub-tarefa do item #{owner.Number}";
         return await specialist.RunAsync(c, title, why is null ? what : $"{what} — {why}", async () =>
         {
             var item = await items.ControlTaskAsync(taskNumber, new WorkTaskControlRequest
             {
-                Action = verb, Position = position, Before = before, Reason = why, Dependents = dependents, Execute = execute,
+                Action = verb, Position = position, Before = before, Reason = why, Dependents = dependents, Execute = execute, At = at,
             }, await ActorAsync(ct), ct);
             return (Serialize(new
             {
                 item.Number, item.Status,
                 tasks = item.Tasks.OrderBy(t => t.Order).Select(t => new
                 {
-                    t.Number, t.Order, t.Kind, t.Title, t.Status, held = t.Held ? true : (bool?)null,
+                    t.Number, t.Order, t.Kind, t.Title, t.Status, held = t.Held ? true : (bool?)null, t.ScheduledAt,
                     dependsOn = t.Controls is { DependsOn.Count: > 0 } d ? d.DependsOn : null,
                 })
             }), $"{what}{(item.Status is WorkItemStatus.Queued or WorkItemStatus.Running ? " — execucao segue na ordem nova" : string.Empty)}");
@@ -747,19 +775,86 @@ public class WorkItemMcpTools(
     [McpServerTool(Name = "prmake_work_item_execute")]
     [Description("Executa um item de trabalho do card (o mesmo play da Bancada): item avulso entra na fila do executor do dono; " +
                  "item ligado ao plano retoma o plano. Item cancelado/concluido nao executa (crie outro). Especialista do caso: so " +
-                 "com pedido da pessoa na conversa.")]
-    public Task<string> Execute(string card, [Description("Numero do item (#n)")] long number, CancellationToken ct = default) => Safe(async () =>
+                 "com pedido da pessoa na conversa. 0103: item agendado/em espera (ou so com sub-tarefa agendada por fazer) so roda com " +
+                 "runNow=true — use so quando a pessoa pediu para executar agora (tira o agendamento).")]
+    public Task<string> Execute(string card, [Description("Numero do item (#n)")] long number,
+        [Description("0103: executar agora mesmo agendado/em espera (so a pedido da pessoa)")] bool runNow = false,
+        CancellationToken ct = default) => Safe(async () =>
     {
         var c = RequireCard(card);
         var current = await items.GetAsync(number, false, ct);
         EnsureSameCard(current, c);
-        return await specialist.RunAsync(c, $"Executar o item de trabalho #{number}", current.Title, async () =>
+        return await specialist.RunAsync(c, $"Executar o item de trabalho #{number}{(runNow ? " agora" : string.Empty)}", current.Title, async () =>
         {
-            var item = await items.ExecuteAsync(number, await ActorAsync(ct), ct);
+            var item = await items.ExecuteAsync(number, await ActorAsync(ct), ct, runNow);
             return (Serialize(new { item.Number, item.Title, item.Status, item.PlanId }),
                 item.PlanId is null ? $"item #{item.Number} na fila do executor" : $"item #{item.Number}: plano retomado");
         }, ct);
     });
+
+    [McpServerTool(Name = "prmake_work_schedule")]
+    [Description("0103: AGENDAMENTO de item de trabalho ou de sub-tarefa (number = #n do item OU da sub-tarefa). action: set (+ at) = so " +
+                 "comeca no horario — o PRMake executa sozinho, na maquina de quem agendou; park = em espera, sem data (item: opcional, a " +
+                 "pessoa decide; sub-tarefa: pausada sem data); clear = tira o agendamento (item: fica pendente, roda ao executar; " +
+                 "sub-tarefa: continua agora no fluxo); run-now = tira o agendamento e executa agora. Sub-tarefa agendada: ela e as que " +
+                 "dependem dela (direta ou indiretamente) esperam o horario; as independentes seguem. Use quando ja se sabe que e preciso " +
+                 "esperar um horario (esteira de deploy de ~2h depois do merge, pipeline manual, job que roda de madrugada) — nunca deixe " +
+                 "uma sub-tarefa em 'wait' so para esperar um horario conhecido. Item do plano agenda pela sub-tarefa. at = ISO-8601 com " +
+                 "fuso (sem fuso = Brasilia) ou relativo (+2h30m, +90m, +1d), ate 60 dias. Especialista do caso: a pedido da pessoa ou " +
+                 "quando a espera e certa (avise na conversa).")]
+    public Task<string> Schedule(string card, [Description("Numero do item ou da sub-tarefa (#n)")] long number,
+        [Description("set | park | clear | run-now")] string action,
+        [Description("set: horario (ISO-8601 com fuso; sem fuso = Brasilia; ou relativo +2h30m)")] string? at = null,
+        [Description("Motivo (vai para o historico e a Timeline)")] string? reason = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        var verb = (action ?? string.Empty).Trim().ToLowerInvariant();
+        if (!WorkScheduleAction.All.Contains(verb))
+            throw new McpException("action: set | park | clear | run-now.");
+        var list = await items.ListAsync(c, ct);
+        var item = list.FirstOrDefault(i => i.Number == number);
+        var owner = item ?? list.FirstOrDefault(i => i.Tasks.Any(t => t.Number == number))
+                    ?? throw new McpException($"#{number} nao e item nem sub-tarefa do card {c}.");
+        if (item is null)
+        {
+            // Sub-tarefa: agendar = pausar até o horário; park = pausa sem data; clear/run-now = continuar agora.
+            var task = owner.Tasks.First(t => t.Number == number);
+            var control = verb switch
+            {
+                WorkScheduleAction.Set => WorkTaskControl.Schedule,
+                WorkScheduleAction.Park => WorkTaskControl.Pause,
+                _ => WorkTaskControl.Resume,
+            };
+            if (control == WorkTaskControl.Resume && !task.Held)
+                throw new McpException($"A sub-tarefa #{number} nao esta agendada nem pausada.");
+            return await Control(card, number, control, null, null, reason, null, verb == WorkScheduleAction.RunNow ? true : null, ct, at);
+        }
+
+        var what = verb switch
+        {
+            WorkScheduleAction.Set => $"agendar o item #{number} para {(ScheduleTime.Parse(at, DateTimeOffset.UtcNow) is { } when ? ScheduleTime.Format(when) : throw new McpException("set: informe at (horario)."))}",
+            WorkScheduleAction.Park => $"deixar o item #{number} em espera, sem data",
+            WorkScheduleAction.Clear => $"tirar o agendamento do item #{number}",
+            _ => $"executar agora o item #{number}",
+        };
+        var why = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (specialist.Via is { } via) why = why is null ? via : $"{why} ({via})";
+        return await specialist.RunAsync(c, $"Agendamento do item #{number}", why is null ? what : $"{what} — {why}", async () =>
+        {
+            var result = await items.ScheduleAsync(number, new WorkItemScheduleRequest { Action = verb, At = at }, await ActorAsync(ct), ct);
+            return (Serialize(new { result.Number, result.Title, result.Status, result.ScheduledAt, result.Parked, schedule = ScheduleNote(result) }), what);
+        }, ct);
+    });
+
+    /// <summary>0103: o agendamento do item em texto (Brasília) para o Claude repassar à pessoa.</summary>
+    private static string? ScheduleNote(WorkItemResponse item) =>
+        item.ScheduledAt is { } at ? $"agendado para {ScheduleTime.Format(at)} — executa sozinho no horario (maquina de quem agendou)"
+        : item.Parked ? "em espera, sem data — a pessoa decide quando executar (ou agenda)"
+        : item.NextScheduledAt is { } next ? $"sub-tarefa agendada para {ScheduleTime.Format(next)}"
+        : null;
+
+    private static string ScheduleTail(WorkItemResponse item) => ScheduleNote(item) is { } note ? $" ({note})" : string.Empty;
 
     [McpServerTool(Name = "prmake_analysis_items")]
     [Description("Cria os itens de trabalho a partir da analise ja respondida que terminou sem plano de implementacao/correcao (ex.: a " +
@@ -825,7 +920,10 @@ public class WorkItemMcpTools(
                                                                            && !t.Held && t.Controls?.WaitsForHeld is null) is { } n
                     ? new { n.Number, n.Title, n.Kind, n.Status }
                     : null,
-                held = item.Tasks.Where(t => t.Held).Select(t => t.Number).ToList() is { Count: > 0 } h ? h : null
+                held = item.Tasks.Where(t => t.Held).Select(t => t.Number).ToList() is { Count: > 0 } h ? h : null,
+                // 0103: agendadas — começam sozinhas no horário (não espere por elas nesta sessão).
+                scheduled = item.Tasks.Where(t => t.ScheduledAt is not null).Select(t => new { t.Number, at = ScheduleTime.Format(t.ScheduledAt!.Value) }).ToList()
+                    is { Count: > 0 } sc ? sc : null,
             }), $"sub-tarefa #{taskNumber}: {task?.Status ?? verb}");
         }, ct);
     });
@@ -950,7 +1048,8 @@ public class WorkItemMcpTools(
                 Kind = Str(t, "kind"),
                 Executor = Str(t, "executor"),
                 StepKey = Str(t, "stepKey"),
-                Params = StringMap(t, "params")
+                Params = StringMap(t, "params"),
+                ScheduledAt = Str(t, "scheduledAt"),
             });
         }
         return list;
