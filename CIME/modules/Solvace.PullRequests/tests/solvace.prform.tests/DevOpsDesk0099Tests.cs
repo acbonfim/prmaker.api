@@ -337,6 +337,86 @@ public class DevOpsDesk0099Tests
         Assert.Equal(3, item.Rev);
     }
 
+    private const string CardRulesJson = """
+        {"rules": {
+          "fill": [
+            { "name": "Bloqueado", "isEnabled": "true", "filter": "[System.Tags] contains 'BLOCK'",
+              "clauses": [ { "fieldName": "System.Tags", "index": 1, "logicalOperator": "", "operator": "CONTAINS", "value": "BLOCK" } ],
+              "settings": { "background-color": "#C9B3E0", "title-color": "#000000" } },
+            { "name": "Desligada", "isEnabled": "false",
+              "clauses": [ { "fieldName": "System.State", "index": 1, "logicalOperator": "", "operator": "=", "value": "Active" } ],
+              "settings": { "background-color": "#000000" } },
+            { "name": "Crítico", "isEnabled": "true",
+              "clauses": [ { "fieldName": "Microsoft.VSTS.Common.Severity", "index": 1, "logicalOperator": "", "operator": "=", "value": "1 - Critical" } ],
+              "settings": { "background-color": "#F4A6A6" } },
+            { "name": "Alto", "isEnabled": "true",
+              "clauses": [
+                { "fieldName": "Microsoft.VSTS.Common.Severity", "index": 1, "logicalOperator": "", "operator": "=", "value": "2 - High" },
+                { "fieldName": "System.WorkItemType", "index": 2, "logicalOperator": "And", "operator": "=", "value": "Bug" },
+                { "fieldName": "Microsoft.VSTS.Common.Priority", "index": 3, "logicalOperator": "Or", "operator": "<=", "value": "0" } ],
+              "settings": { "background-color": "FFFBE88A" } },
+            { "name": "Meu", "isEnabled": "true",
+              "clauses": [ { "fieldName": "System.AssignedTo", "index": 1, "logicalOperator": "", "operator": "=", "value": "@Me" } ],
+              "settings": { "background-color": "#00FF00" } }
+          ],
+          "tagStyle": [
+            { "name": "BLOCK", "isEnabled": "true", "settings": { "background-color": "#E0262E", "color": "#FFFFFF" } },
+            { "name": "velha", "isEnabled": "false", "settings": { "background-color": "#000000", "color": "#FFFFFF" } }
+          ]
+        }}
+        """;
+
+    [Fact]
+    public void Estilos_do_board_pintam_o_card_como_o_DevOps()
+    {
+        var config = Board();
+        var before = config.ConfigHash;
+        using (var doc = JsonDocument.Parse(CardRulesJson))
+            DevOpsDeskMapping.ApplyCardRules(config, doc.RootElement);
+
+        Assert.Equal(["Bloqueado", "Crítico", "Alto", "Meu"], config.CardRules.Select(r => r.Name));
+        Assert.Equal("#FBE88A", config.CardRules[2].Background); // ARGB sem # → #RGB
+        Assert.Equal([new DevOpsTagStyle("BLOCK", "#E0262E", "#FFFFFF")], config.TagStyles);
+        Assert.NotEqual(before, config.ConfigHash);
+        Assert.Contains("Microsoft.VSTS.Common.Severity", DevOpsDeskMapping.BoardItemFields(config));
+
+        DevOpsBoardItem Card(string fields)
+        {
+            using var doc = JsonDocument.Parse("""{"id": 1, "rev": 1, "fields": {""" + fields + "}}");
+            return DevOpsDeskMapping.ParseBoardItem(doc.RootElement, config);
+        }
+
+        // BLOCK vem antes da severidade (a regra de cima vence) e a tag compara inteira, sem caixa.
+        var blocked = Card("""
+            "System.WorkItemType": "Bug", "System.State": "Active", "System.Tags": "CAB; block",
+            "Microsoft.VSTS.Common.Severity": "1 - Critical"
+            """);
+        Assert.Equal("#C9B3E0", blocked.CardColor);
+        Assert.Equal("#000000", blocked.TitleColor);
+        Assert.Equal("#F4A6A6", Card("""
+            "System.WorkItemType": "Bug", "System.State": "Active", "System.Tags": "BLOCKED", "Microsoft.VSTS.Common.Severity": "1 - Critical"
+            """).CardColor);
+        Assert.Equal("#FBE88A", Card("""
+            "System.WorkItemType": "Bug", "System.State": "New", "Microsoft.VSTS.Common.Severity": "2 - High"
+            """).CardColor);
+        // AND antes de OR: High sem ser Bug não pinta; prioridade 0 pinta sozinha.
+        Assert.Null(Card("""
+            "System.WorkItemType": "User Story", "System.State": "New", "Microsoft.VSTS.Common.Severity": "2 - High", "Microsoft.VSTS.Common.Priority": 2
+            """).CardColor);
+        Assert.Equal("#FBE88A", Card("""
+            "System.WorkItemType": "User Story", "System.State": "New", "Microsoft.VSTS.Common.Priority": 0
+            """).CardColor);
+        // Regra desligada e macro (@Me) não pintam.
+        Assert.Null(Card("""
+            "System.WorkItemType": "Bug", "System.State": "Active", "System.AssignedTo": {"displayName": "Ana", "uniqueName": "ana@x.com"}
+            """).CardColor);
+
+        var plain = DevOpsDeskMapping.WithoutCardRules(config);
+        Assert.Empty(plain.CardRules);
+        Assert.Single(plain.TagStyles);
+        Assert.Equal(4, config.CardRules.Count);
+    }
+
     [Fact]
     public void Card_com_relacoes()
     {

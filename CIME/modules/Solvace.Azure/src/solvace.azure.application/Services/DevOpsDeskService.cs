@@ -405,7 +405,19 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
             var backlog = await BacklogAsync(team, ct);
             using var doc = await GetAsync($"{TeamApi(team)}/work/boards/{Uri.EscapeDataString(board)}?api-version={Api}",
                 $"O DevOps não devolveu o board {board} de {team}", ct);
-            return DevOpsDeskMapping.ParseBoard(doc.RootElement, team, colors, backlog.OrderField);
+            var config = DevOpsDeskMapping.ParseBoard(doc.RootElement, team, colors, backlog.OrderField);
+            try
+            {
+                // Cores dos cards e das tags (Styles / Tag colors do board): sem acesso, o board segue sem elas.
+                using var rules = await GetAsync($"{TeamApi(team)}/work/boards/{Uri.EscapeDataString(board)}/cardrulesettings?api-version={Api}",
+                    $"O DevOps não devolveu os estilos do board {board} de {team}", ct);
+                DevOpsDeskMapping.ApplyCardRules(config, rules.RootElement);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested && e is DevOpsDeskException or HttpRequestException or JsonException)
+            {
+                // Board sem estilos.
+            }
+            return config;
         });
 
     // ---------------------------------------------------------------- board e consultas
@@ -438,7 +450,17 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                 ids.AddRange(await WiqlAsync(closed, Math.Min(top, 50), cancellationToken));
         }
 
-        var items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
+        List<JsonElement> items;
+        try
+        {
+            items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
+        }
+        catch (DevOpsDeskException e) when (e.StatusCode == 400 && config.CardRules.Count > 0)
+        {
+            // Regra de estilo com campo que o projeto não tem mais: lê o board sem os estilos.
+            config = DevOpsDeskMapping.WithoutCardRules(config);
+            items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
+        }
         var cards = items.Select(i => DevOpsDeskMapping.ParseBoardItem(i, config)).ToList();
         if (saved.IsEmpty)
             return new DevOpsBoardItemsResponse(config.ConfigHash, cards);

@@ -48,9 +48,21 @@ public sealed record DevOpsBoardFields(string? Column, string? Lane, string? Don
 /// <summary>Tipo de work item que aparece no board, com a cor.</summary>
 public sealed record DevOpsBoardType(string Name, string? Color);
 
+/// <summary>Condição de uma regra de estilo do board (<c>[campo] operador valor</c>, ligada à anterior por AND/OR).</summary>
+public sealed record DevOpsCardRuleClause(string Field, string Operator, string Value, string LogicalOperator);
+
+/// <summary>
+/// Regra de estilo do card ("Styles" nas configurações do board do DevOps): o primeiro que bate pinta o card com
+/// <c>Background</c> e o título com <c>TitleColor</c>. Só as habilitadas, na ordem do board.
+/// </summary>
+public sealed record DevOpsCardStyleRule(string Name, IReadOnlyList<DevOpsCardRuleClause> Clauses, string? Background, string? TitleColor);
+
+/// <summary>Cor de uma tag no board ("Tag colors" nas configurações do board do DevOps).</summary>
+public sealed record DevOpsTagStyle(string Name, string? Background, string? Color);
+
 /// <summary>
 /// Configuração do board lida do DevOps. <c>ConfigHash</c> = hash estável do JSON normalizado (colunas, lanes, campos,
-/// tipos, campo de ordem): mudou ⇒ a tela redesenha.
+/// tipos, campo de ordem, estilos): mudou ⇒ a tela redesenha.
 /// </summary>
 public sealed class DevOpsBoardConfig
 {
@@ -63,6 +75,8 @@ public sealed class DevOpsBoardConfig
     public DevOpsBoardFields Fields { get; set; } = new(null, null, null);
     public List<DevOpsBoardType> Types { get; set; } = [];
     public string? OrderField { get; set; }
+    public List<DevOpsCardStyleRule> CardRules { get; set; } = [];
+    public List<DevOpsTagStyle> TagStyles { get; set; } = [];
 }
 
 /// <summary>Pessoa de um campo identidade (responsável).</summary>
@@ -85,6 +99,9 @@ public sealed class DevOpsBoardItem
     public int? Priority { get; set; }
     public int? ParentId { get; set; }
     public DateTimeOffset? ChangedDate { get; set; }
+    /// <summary>Cor de fundo da primeira regra de estilo do board que bate (null = sem regra).</summary>
+    public string? CardColor { get; set; }
+    public string? TitleColor { get; set; }
 }
 
 /// <summary><c>POST DevOps/board/items</c>. <c>Scope</c> epic = só os cards do épico (<c>Ids</c> resolvidos pelo host).</summary>

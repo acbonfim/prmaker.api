@@ -265,10 +265,159 @@ public static partial class DevOpsDeskMapping
             l = config.Lanes.Select(l => new { l.Id, l.Name, l.IsDefault }),
             f = new[] { config.Fields.Column, config.Fields.Lane, config.Fields.Done },
             t = config.Types.Select(t => new[] { t.Name, t.Color }),
-            o = config.OrderField
+            o = config.OrderField,
+            r = config.CardRules.Select(r => new
+            {
+                r.Name, r.Background, r.TitleColor,
+                c = r.Clauses.Select(c => new[] { c.Field, c.Operator, c.Value, c.LogicalOperator })
+            }),
+            g = config.TagStyles.Select(s => new[] { s.Name, s.Background, s.Color })
         };
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(normalized)));
         return Convert.ToHexString(bytes)[..16].ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// <c>work/boards/{id}/cardrulesettings</c> → regras de estilo (<c>rules.fill</c>: só as habilitadas e com condição, na
+    /// ordem do board) e cores das tags (<c>rules.tagStyle</c>); recalcula o <c>ConfigHash</c>.
+    /// </summary>
+    public static void ApplyCardRules(DevOpsBoardConfig config, JsonElement settings)
+    {
+        config.CardRules.Clear();
+        config.TagStyles.Clear();
+        if (Prop(settings, "rules") is { ValueKind: JsonValueKind.Object } rules)
+        {
+            if (Prop(rules, "fill") is { ValueKind: JsonValueKind.Array } fill)
+                foreach (var rule in fill.EnumerateArray().Where(Enabled))
+                {
+                    var clauses = Prop(rule, "clauses") is { ValueKind: JsonValueKind.Array } cs
+                        ? cs.EnumerateArray()
+                            .OrderBy(c => Prop(c, "index") is { ValueKind: JsonValueKind.Number } i && i.TryGetInt32(out var n) ? n : 0)
+                            .Select(c => new DevOpsCardRuleClause(Str(c, "fieldName") ?? string.Empty, Str(c, "operator") ?? string.Empty,
+                                ValueText(Prop(c, "value") ?? default) ?? string.Empty, Str(c, "logicalOperator") ?? string.Empty))
+                            .Where(c => c.Field.Length > 0 && c.Operator.Length > 0)
+                            .ToList()
+                        : [];
+                    var style = Prop(rule, "settings") ?? default;
+                    if (clauses.Count > 0)
+                        config.CardRules.Add(new DevOpsCardStyleRule(Str(rule, "name") ?? string.Empty, clauses,
+                            Color(Str(style, "background-color")), Color(Str(style, "title-color"))));
+                }
+            if (Prop(rules, "tagStyle") is { ValueKind: JsonValueKind.Array } tags)
+                foreach (var tag in tags.EnumerateArray().Where(Enabled))
+                {
+                    var style = Prop(tag, "settings") ?? default;
+                    if (Str(tag, "name") is { Length: > 0 } name)
+                        config.TagStyles.Add(new DevOpsTagStyle(name, Color(Str(style, "background-color")), Color(Str(style, "color"))));
+                }
+        }
+        config.ConfigHash = ComputeConfigHash(config);
+
+        static bool Enabled(JsonElement e) => Prop(e, "isEnabled") is not { } v
+            || v.ValueKind == JsonValueKind.True
+            || (v.ValueKind == JsonValueKind.String && string.Equals(v.GetString(), "true", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Cópia do board sem as regras de estilo dos cards (a do cache fica intacta; as cores das tags ficam).</summary>
+    public static DevOpsBoardConfig WithoutCardRules(DevOpsBoardConfig config) => new()
+    {
+        Team = config.Team, Board = config.Board, BoardId = config.BoardId, ConfigHash = config.ConfigHash, Columns = config.Columns,
+        Lanes = config.Lanes, Fields = config.Fields, Types = config.Types, OrderField = config.OrderField, TagStyles = config.TagStyles
+    };
+
+    /// <summary>Primeira regra de estilo que o card atende (como o DevOps: a de cima vence) — null se nenhuma.</summary>
+    public static DevOpsCardStyleRule? MatchCardRule(IReadOnlyDictionary<string, JsonElement> fields, DevOpsBoardConfig config) =>
+        config.CardRules.FirstOrDefault(r => RuleMatches(fields, r));
+
+    /// <summary>Condições ligadas por AND/OR com a precedência do WIQL (AND antes de OR).</summary>
+    private static bool RuleMatches(IReadOnlyDictionary<string, JsonElement> fields, DevOpsCardStyleRule rule)
+    {
+        var anyGroup = false;
+        var group = true;
+        for (var i = 0; i < rule.Clauses.Count; i++)
+        {
+            var clause = rule.Clauses[i];
+            if (i > 0 && string.Equals(clause.LogicalOperator.Trim(), "or", StringComparison.OrdinalIgnoreCase))
+            {
+                anyGroup |= group;
+                group = true;
+            }
+            group &= ClauseMatches(fields, clause);
+        }
+        return anyGroup || group;
+    }
+
+    private static bool ClauseMatches(IReadOnlyDictionary<string, JsonElement> fields, DevOpsCardRuleClause clause)
+    {
+        var value = clause.Value.Trim();
+        // Macros (@Me, @Today…) dependem de quem olha/quando: a regra não se aplica aqui.
+        if (value.StartsWith('@')) return false;
+        var op = new string(clause.Operator.Where(ch => !char.IsWhiteSpace(ch) && ch != '_').ToArray()).ToLowerInvariant();
+        var isTags = string.Equals(clause.Field, FieldTags, StringComparison.OrdinalIgnoreCase);
+        var texts = ClauseTexts(fields, clause.Field, isTags);
+        bool Eq(string v) => v.Length == 0 ? texts.Count == 0 : texts.Any(t => SameValue(t, v));
+        bool Has(string v) => isTags ? texts.Any(t => string.Equals(t, v, StringComparison.OrdinalIgnoreCase))
+            : texts.Any(t => t.Contains(v, StringComparison.OrdinalIgnoreCase));
+        bool Under(string v) => texts.Any(t => string.Equals(t, v, StringComparison.OrdinalIgnoreCase)
+                                               || t.StartsWith(v.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+        IEnumerable<string> List() => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(v => v.Trim('\'', '"'));
+        return op switch
+        {
+            "=" or "==" => Eq(value),
+            "<>" or "!=" => !Eq(value),
+            ">" or "<" or ">=" or "<=" => texts.Count > 0 && Compare(texts[0], value) is { } cmp
+                                          && op switch { ">" => cmp > 0, "<" => cmp < 0, ">=" => cmp >= 0, _ => cmp <= 0 },
+            "contains" or "containswords" => Has(value),
+            "notcontains" or "doesnotcontain" or "notcontainswords" or "doesnotcontainwords" => !Has(value),
+            "in" => List().Any(Eq),
+            "notin" => !List().Any(Eq),
+            "under" => Under(value),
+            "notunder" => !Under(value),
+            "isempty" => texts.Count == 0,
+            "isnotempty" => texts.Count > 0,
+            _ => false
+        };
+    }
+
+    /// <summary>Textos do campo para comparar: tags uma a uma; identidade pelo nome, e-mail e "nome &lt;e-mail&gt;".</summary>
+    private static List<string> ClauseTexts(IReadOnlyDictionary<string, JsonElement> fields, string field, bool isTags)
+    {
+        if (!fields.TryGetValue(field, out var v) || IsNull(v)) return [];
+        if (isTags) return SplitTags(ValueText(v));
+        if (v.ValueKind == JsonValueKind.Object)
+        {
+            var name = Str(v, "displayName");
+            var unique = Str(v, "uniqueName");
+            return new[] { name, unique, name is not null && unique is not null ? $"{name} <{unique}>" : null }
+                .OfType<string>().Where(t => t.Length > 0).ToList();
+        }
+        return ValueText(v) is { Length: > 0 } text ? [text] : [];
+    }
+
+    private static bool SameValue(string a, string b) =>
+        Compare(a, b) is { } cmp ? cmp == 0 : string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Número com número, data com data; texto não compara (null).</summary>
+    private static int? Compare(string a, string b)
+    {
+        if (double.TryParse(a, NumberStyles.Float, CultureInfo.InvariantCulture, out var na)
+            && double.TryParse(b, NumberStyles.Float, CultureInfo.InvariantCulture, out var nb))
+            return na.CompareTo(nb);
+        if (DateTimeOffset.TryParse(a, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var da)
+            && DateTimeOffset.TryParse(b, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var db))
+            return da.CompareTo(db);
+        return null;
+    }
+
+    /// <summary>Propriedade ignorando a caixa (o DevOps varia entre <c>tagStyle</c>/<c>TagStyle</c>).</summary>
+    private static JsonElement? Prop(JsonElement e, string name)
+    {
+        if (e.ValueKind != JsonValueKind.Object) return null;
+        foreach (var p in e.EnumerateObject())
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                return p.Value;
+        return null;
     }
 
     /// <summary>Coluna pelo nome ou id (ignora caixa).</summary>
@@ -615,6 +764,7 @@ public static partial class DevOpsDeskMapping
         var state = FieldText(fields, FieldState) ?? string.Empty;
         var column = ColumnOf(fields, type, state, config);
         var lane = config.Fields.Lane is { } lf ? FieldText(fields, lf) : null;
+        var style = MatchCardRule(fields, config);
         return new DevOpsBoardItem
         {
             Id = workItem.TryGetProperty("id", out var id) && id.TryGetInt32(out var idv) ? idv : 0,
@@ -631,7 +781,9 @@ public static partial class DevOpsDeskMapping
             Priority = fields.TryGetValue(FieldPriority, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var pv) ? pv : null,
             ParentId = fields.TryGetValue(FieldParent, out var pa) && pa.ValueKind == JsonValueKind.Number && pa.TryGetInt32(out var pav) ? pav : null,
             ChangedDate = fields.TryGetValue(FieldChangedDate, out var cd) && cd.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(cd.GetString(),
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out var cdv) ? cdv : null
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var cdv) ? cdv : null,
+            CardColor = style?.Background,
+            TitleColor = style?.TitleColor
         };
     }
 
@@ -651,7 +803,8 @@ public static partial class DevOpsDeskMapping
     public static List<string> BoardItemFields(DevOpsBoardConfig config)
     {
         var fields = new List<string> { FieldId, FieldType, FieldTitle, FieldState, FieldAssignedTo, FieldTags, FieldPriority, FieldParent, FieldChangedDate };
-        foreach (var f in new[] { config.Fields.Column, config.Fields.Lane, config.Fields.Done, config.OrderField })
+        foreach (var f in new[] { config.Fields.Column, config.Fields.Lane, config.Fields.Done, config.OrderField }
+                     .Concat(config.CardRules.SelectMany(r => r.Clauses.Select(c => c.Field))))
             if (!string.IsNullOrEmpty(f) && !fields.Contains(f, StringComparer.OrdinalIgnoreCase))
                 fields.Add(f);
         return fields;
