@@ -569,6 +569,62 @@ public class ExecutionPlan
     }
 
     /// <summary>
+    /// Card 78794: uma entrega já feita foi refeita (script recusado pela infra, chamado corrigido). A etapa nova entra
+    /// logo depois da refeita, já concluída e dependendo dela. As ainda não terminadas que dependiam da refeita passam a
+    /// depender também da nova e ganham um aviso no começo da instrução, para que o tratamento e a pessoa saibam que a
+    /// entrega mudou. Sem dependentes declarados, o aviso vai para as não terminadas que vêm depois. Devolve a etapa
+    /// nova e as avisadas.
+    /// </summary>
+    public (ExecutionStep Step, IReadOnlyList<ExecutionStep> Warned) RedoStep(string redoneKey, ExecutionStepDefinition definition,
+        string reason, string actor, DateTimeOffset now)
+    {
+        EnsureNotCancelled();
+        if (IsFinished)
+            throw new DomainException("O plano já terminou — refaça a entrega num item de trabalho avulso.");
+        var redone = RequireStep(redoneKey);
+        if (redone.Status != ExecutionStatus.Completed)
+            throw new DomainException($"A etapa '{redone.Key}' ainda não foi concluída ({redone.Status}) — ajuste a instrução dela em vez de refazer.");
+        var why = reason?.Trim();
+        if (string.IsNullOrEmpty(why))
+            throw new DomainException("Diga por que a entrega foi refeita (ex.: o script foi recusado pela infra com o erro 229).");
+        var key = ExecutionStep.NormalizeKey(definition.Key);
+        if (FindStep(key) is not null)
+            throw new DomainException($"Já existe a etapa '{key}' no plano — escolha outra chave.");
+
+        var ordered = Steps.OrderBy(s => s.Order).ToList();
+        var dependents = DependentsOf(redone.Key);
+        var warned = dependents.Count > 0
+            ? dependents
+            : ordered.Skip(ordered.IndexOf(redone) + 1).Where(s => !StepSettled(s)).ToList();
+
+        var step = new ExecutionStep(Id, key, 0, definition.Title, definition.Description, now);
+        step.SetShape(definition.Executor, definition.Kind, definition.Repository, [redone.Key], definition.TaskKind);
+        step.OrderPinned = true;
+        ordered.Insert(ordered.IndexOf(redone) + 1, step);
+        Steps.Add(step);
+        step.ChangeStatus(ExecutionStatus.Running, null, actor, now);
+        step.ChangeStatus(ExecutionStatus.Completed, $"Refaz '{redone.Title}': {why}", actor, now);
+
+        var warning = $"> [!WARNING]\n> **Entrega refeita:** \"{redone.Title}\" foi refeita em \"{step.Title}\" ({why}). " +
+                      "Use o resultado e os arquivos da etapa nova.";
+        foreach (var s in warned)
+        {
+            if (s.DependsOn.Contains(redone.Key))
+                s.SetShape(null, null, null, s.DependsOn.Append(step.Key));
+            var text = string.IsNullOrWhiteSpace(s.Description) ? warning : $"{warning}\n\n{s.Description}";
+            if (text.Length <= ExecutionStep.MaxTextLength)
+                s.SetDescription(text);
+            s.Touch(now);
+        }
+
+        var order = 0;
+        foreach (var s in ordered)
+            s.Order = order += 10;
+        Touch(now, fromExecutor: false);
+        return (step, warned);
+    }
+
+    /// <summary>
     /// Atualização de uma etapa pela skill. Etapa desconhecida é criada no fim (a skill nunca perde
     /// um envio por ter esquecido de declarar a etapa antes).
     /// </summary>
