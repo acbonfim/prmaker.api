@@ -224,11 +224,39 @@ public sealed class DevOpsMoveCardRequest
     public int? NextId { get; set; }
 }
 
-/// <summary><c>POST DevOps/workitems/{id}/comment</c> (markdown → HTML).</summary>
+/// <summary>
+/// <c>POST DevOps/workitems/{id}/comment</c> (markdown → HTML). Ajustes 3 da 0099: <c>#123</c> vira menção de card do DevOps e
+/// cada <c>@Nome</c> de <see cref="Mentions"/> vira menção da pessoa (notifica no DevOps).
+/// </summary>
 public sealed class DevOpsCommentRequest
 {
     public string Text { get; set; } = string.Empty;
+    public List<DevOpsMention>? Mentions { get; set; }
 }
+
+/// <summary>Pessoa mencionada no comentário (<c>@DisplayName</c> no texto). <c>Id</c>: GUID da identidade, quando a tela tem.</summary>
+public sealed class DevOpsMention
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public string? UniqueName { get; set; }
+    public string? Id { get; set; }
+}
+
+/// <summary>Comentário da discussion do card (HTML do DevOps).</summary>
+public sealed record DevOpsComment(int Id, string Html, DevOpsPersonInfo? Author, DateTimeOffset? CreatedDate, DateTimeOffset? ModifiedDate, bool Edited);
+
+/// <summary><c>GET DevOps/workitems/{id}/comments</c>: mais novos primeiro; <c>Count</c> = total no DevOps.</summary>
+public sealed record DevOpsCommentsResponse(int Count, IReadOnlyList<DevOpsComment> Comments);
+
+/// <summary>
+/// <c>GET DevOps/workitems/{id}/attachments</c>: anexos do card e imagens/arquivos colados nos campos e na discussion. <c>Id</c> = GUID
+/// do anexo no DevOps (minúsculo); <c>Source</c> = anexo | campo | discussion.
+/// </summary>
+public sealed record DevOpsAttachmentInfo(string Id, string Name, string Url, string Source, string? SourceDetail, DateTimeOffset? At, long? Size,
+    string? Comment, bool IsImage);
+
+/// <summary>Conteúdo de um anexo baixado com a integração de quem pede (<c>TooLarge</c>: passou do limite, sem bytes).</summary>
+public sealed record DevOpsAttachmentContent(byte[] Data, string ContentType, string Name, bool TooLarge, long? Size);
 
 /// <summary>
 /// Resultado de uma gravação: o card como ficou, o resumo legível (Timeline, cartão do especialista) e a ação do tempo real

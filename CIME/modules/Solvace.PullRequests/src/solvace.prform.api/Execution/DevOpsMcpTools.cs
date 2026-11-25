@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using solvace.azure.application.Contract;
 using solvace.azure.application.Services;
@@ -176,6 +177,98 @@ public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner 
         });
     });
 
+    [McpServerTool(Name = "prmake_devops_card_comments", ReadOnly = true)]
+    [Description("Discussion (comentarios) de um card do DevOps, mais novos primeiro: autor, data e o texto (HTML virou texto; imagem = [imagem] — " +
+                 "abra com prmake_devops_card_attachment). Use quando a pergunta depender do que foi conversado no card.")]
+    public Task<string> CardComments(int id, [Description("Quantos (padrao 30, max 200)")] int? top = null, CancellationToken ct = default) => Safe(async () =>
+    {
+        var result = await devops.GetCommentsAsync(id, Math.Clamp(top ?? 30, 1, 200), ct);
+        if (result.Comments.Count == 0) return $"Card #{id}: sem comentarios na discussion.";
+        var sb = new System.Text.StringBuilder($"Card #{id}: {result.Count} comentario(s){(result.Count > result.Comments.Count ? $" (mostrando {result.Comments.Count})" : "")}, mais novos primeiro:\n");
+        foreach (var c in result.Comments)
+            sb.Append("\n— ").Append(c.Author?.DisplayName ?? "?").Append(" · ")
+                .Append(c.CreatedDate?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "?")
+                .Append(c.Edited ? " (editado)" : "").Append('\n')
+                .Append(DevOpsDeskMapping.HtmlToText(c.Html)).Append('\n');
+        return sb.ToString().TrimEnd();
+    });
+
+    [McpServerTool(Name = "prmake_devops_card_attachments", ReadOnly = true)]
+    [Description("Anexos de um card do DevOps — os anexados e as imagens/arquivos colados na descricao, nos campos (Repro Steps...) e na discussion — " +
+                 "numerados (#n) com a origem e o tamanho. Abra os que importam com prmake_devops_card_attachment(id, \"#n\") (ex.: bug com print).")]
+    public Task<string> CardAttachments(int id, CancellationToken ct = default) => Safe(async () =>
+    {
+        var list = await devops.GetAttachmentsAsync(id, ct);
+        if (list.Count == 0) return $"Card #{id}: nenhum anexo (nem imagem na descricao/campos/discussion).";
+        var sb = new System.Text.StringBuilder($"Card #{id}: {list.Count} anexo(s):");
+        for (var i = 0; i < list.Count; i++)
+        {
+            var a = list[i];
+            sb.Append($"\n#{i + 1} {a.Name} — {a.Source}{(a.SourceDetail is null ? "" : $" ({a.SourceDetail})")}");
+            if (a.Size is { } size) sb.Append($" · {FormatSize(size)}");
+            if (a.IsImage) sb.Append(" · imagem");
+            if (!string.IsNullOrWhiteSpace(a.Comment)) sb.Append($" · \"{Short(a.Comment)}\"");
+        }
+        return sb.ToString();
+    });
+
+    [McpServerTool(Name = "prmake_devops_card_attachment", ReadOnly = true)]
+    [Description("Abre um anexo de um card do DevOps (lista em prmake_devops_card_attachments): imagem volta como imagem, texto como texto; " +
+                 "binario (zip, video, office) so avisa. reference = '#2', '2' ou o nome do arquivo.")]
+    public Task<CallToolResult> CardAttachment(int id, [Description("'#2', '2' ou o nome (print.png)")] string reference, CancellationToken ct = default) => Safe(async () =>
+    {
+        var list = await devops.GetAttachmentsAsync(id, ct);
+        var found = ResolveAttachment(list, reference);
+        if (found is null)
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = $"Anexo '{reference}' nao encontrado no card #{id}. Anexos: " +
+                    (list.Count == 0 ? "nenhum" : string.Join(", ", list.Select((a, i) => $"#{i + 1} {a.Name}"))) }]
+            };
+        var file = await devops.DownloadAttachmentAsync(Guid.Parse(found.Id), found.Name, MaxAttachmentBytes, ct);
+        var header = new TextContentBlock { Text = $"{found.Name} ({file.ContentType}, {(file.Size is { } s ? FormatSize(s) : "?")}) — {found.Source}{(found.SourceDetail is null ? "" : $" ({found.SourceDetail})")}" };
+        if (file.TooLarge)
+            return new CallToolResult { Content = [header, new TextContentBlock { Text = "Anexo grande demais para abrir aqui (> 10 MB): peca para a pessoa abrir no DevOps." }] };
+        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !file.ContentType.Contains("svg", StringComparison.OrdinalIgnoreCase))
+            return new CallToolResult { Content = [header, ImageContentBlock.FromBytes(file.Data, file.ContentType)] };
+        if (LooksLikeText(file.ContentType, file.Data))
+        {
+            var text = System.Text.Encoding.UTF8.GetString(file.Data);
+            if (text.Length > 60_000) text = text[..60_000] + "\n... (cortado)";
+            return new CallToolResult { Content = [header, new TextContentBlock { Text = text }] };
+        }
+        return new CallToolResult
+        {
+            Content = [header, new TextContentBlock { Text = "Arquivo binario (nao da para ler aqui): peca para a pessoa abrir no DevOps se o conteudo importar." }]
+        };
+    });
+
+    /// <summary>Limite do anexo aberto pelo modelo.</summary>
+    private const long MaxAttachmentBytes = 10L * 1024 * 1024;
+
+    /// <summary>'#2' / '2' (posição na lista) ou o nome (igual, depois contém).</summary>
+    public static DevOpsAttachmentInfo? ResolveAttachment(IReadOnlyList<DevOpsAttachmentInfo> list, string? reference)
+    {
+        var r = reference?.Trim() ?? string.Empty;
+        if (r.Length == 0) return null;
+        if (int.TryParse(r.TrimStart('#'), NumberStyles.None, CultureInfo.InvariantCulture, out var n))
+            return n >= 1 && n <= list.Count ? list[n - 1] : null;
+        return list.FirstOrDefault(a => string.Equals(a.Name, r, StringComparison.OrdinalIgnoreCase))
+               ?? list.FirstOrDefault(a => a.Name.Contains(r, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool LooksLikeText(string contentType, byte[] data) =>
+        contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+        || contentType.Contains("json", StringComparison.OrdinalIgnoreCase)
+        || contentType.Contains("xml", StringComparison.OrdinalIgnoreCase)
+        || (data.Length < 2_000_000 && !data.Take(4096).Contains((byte)0));
+
+    private static string FormatSize(long bytes) =>
+        bytes < 1024 ? $"{bytes} B"
+        : bytes < 1024 * 1024 ? string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0.#} KB")
+        : string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0 / 1024.0:0.#} MB");
+
     [McpServerTool(Name = "prmake_devops_card_create", Destructive = true)]
     [Description("Cria um card no DevOps (confira duplicado com prmake_devops_query antes). type = tipo do projeto (prmake_devops_meta types); " +
                  "fields = {referenceName: valor} (picklist: um allowedValue de prmake_devops_meta fields; area/iteracao no formato do campo; " +
@@ -322,7 +415,7 @@ public partial class DevOpsMcpTools(IDevOpsDeskService devops, DevOpsDeskRunner 
 
     private static string Serialize(object value) => JsonSerializer.Serialize(value, Json);
 
-    private static async Task<string> Safe(Func<Task<string>> body)
+    private static async Task<T> Safe<T>(Func<Task<T>> body)
     {
         try
         {

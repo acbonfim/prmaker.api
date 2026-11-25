@@ -129,10 +129,51 @@ public class DevOpsController(IDevOpsDeskService devops, DevOpsDeskRunner runner
     public Task<IActionResult> Move(int id, [FromBody] DevOpsMoveCardRequest request, CancellationToken ct) =>
         Run(async () => (await runner.MoveAsync(id, request, User, ct)).Card);
 
-    /// <summary>Comentário na discussion (markdown → HTML).</summary>
+    /// <summary>Comentário na discussion (markdown → HTML; <c>#123</c> e <c>@Nome</c> das <c>mentions</c> viram menções do DevOps).</summary>
     [HttpPost("workitems/{id:int}/comment")]
     public Task<IActionResult> Comment(int id, [FromBody] DevOpsCommentRequest request, CancellationToken ct) =>
-        Run(async () => new { id, commentId = await runner.CommentAsync(id, request.Text, User, ct) });
+        Run(async () => new { id, commentId = await runner.CommentAsync(id, request.Text, User, ct, mentions: request.Mentions) });
+
+    /// <summary>Ajustes 3: discussion do card, mais novos primeiro (até 200).</summary>
+    [HttpGet("workitems/{id:int}/comments")]
+    public Task<IActionResult> Comments(int id, [FromQuery] int? top, CancellationToken ct) =>
+        Run(() => devops.GetCommentsAsync(id, top ?? 200, ct));
+
+    /// <summary>Ajustes 3: anexos do card e imagens/arquivos colados nos campos e na discussion.</summary>
+    [HttpGet("workitems/{id:int}/attachments")]
+    public Task<IActionResult> Attachments(int id, CancellationToken ct) => Run(() => devops.GetAttachmentsAsync(id, ct));
+
+    /// <summary>Limite do anexo servido pela Mesa (o resto, abrir no DevOps).</summary>
+    public const long MaxAttachmentBytes = 25L * 1024 * 1024;
+
+    /// <summary>Ajustes 3: conteúdo de um anexo pelo GUID (inline; <c>download=true</c> baixa com o nome). Passou de 25 MB → 413.</summary>
+    [HttpGet("workitems/{id:int}/attachments/{attachmentId:guid}")]
+    public async Task<IActionResult> AttachmentContent(int id, Guid attachmentId, [FromQuery] string? name, [FromQuery] bool download = false,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var file = await devops.DownloadAttachmentAsync(attachmentId, name, MaxAttachmentBytes, ct);
+            if (file.TooLarge)
+                return StatusCode(StatusCodes.Status413PayloadTooLarge, new
+                {
+                    code = "too_large",
+                    message = $"O anexo {file.Name} passa de 25 MB — abra no DevOps.",
+                    error = $"O anexo {file.Name} passa de 25 MB — abra no DevOps."
+                });
+            Response.Headers.CacheControl = "private, max-age=600";
+            if (download) return File(file.Data, file.ContentType, file.Name);
+            var disposition = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("inline");
+            disposition.SetHttpFileName(file.Name);
+            Response.Headers.ContentDisposition = disposition.ToString();
+            return File(file.Data, file.ContentType);
+        }
+        catch (DevOpsActionException e)
+        {
+            var code = e is DevOpsDeskException desk ? desk.Code : "devops_error";
+            return StatusCode(e.StatusCode, new { code, message = e.Message, error = e.Message });
+        }
+    }
 
     // ---------------------------------------------------------------- utilidades
 

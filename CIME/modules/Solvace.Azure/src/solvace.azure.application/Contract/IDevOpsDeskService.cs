@@ -66,6 +66,24 @@ public interface IDevOpsDeskService
     /// <summary>Move de coluna (estado mapeado do tipo), done, lane e ordem (vizinhos).</summary>
     Task<DevOpsCardWriteResult> MoveCardAsync(int id, DevOpsMoveCardRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Comentário novo na discussion (markdown → HTML); devolve o id do comentário.</summary>
+    /// <summary>Comentário novo na discussion (markdown → HTML, <c>#123</c> vira menção de card); devolve o id do comentário.</summary>
     Task<int> CommentAsync(int id, string markdown, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ajustes 3 da 0099: comentário com menções — <c>#123</c> (card) e o <c>@Nome</c> de cada <paramref name="mentions"/> (pessoa; o GUID
+    /// vem do <c>Id</c> ou da busca de identidades pelo login — sem GUID fica texto). Devolve o id do comentário.
+    /// </summary>
+    Task<int> CommentAsync(int id, string markdown, IReadOnlyList<DevOpsMention>? mentions, CancellationToken cancellationToken = default);
+
+    /// <summary>Ajustes 3 da 0099: discussion do card, mais novos primeiro (até <paramref name="top"/>, máx. 200), sem os excluídos.</summary>
+    Task<DevOpsCommentsResponse> GetCommentsAsync(int id, int top = 200, CancellationToken cancellationToken = default);
+
+    /// <summary>Ajustes 3 da 0099: anexos do card e imagens/arquivos colados nos campos e na discussion (leitor das evidências da 0076).</summary>
+    Task<IReadOnlyList<DevOpsAttachmentInfo>> GetAttachmentsAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ajustes 3 da 0099: bytes de um anexo pelo GUID (só o GUID entra na URL), até <paramref name="maxBytes"/> (passou: <c>TooLarge</c>).
+    /// Content-Type do DevOps; <c>application/octet-stream</c> vira o do nome.
+    /// </summary>
+    Task<DevOpsAttachmentContent> DownloadAttachmentAsync(Guid attachmentId, string? name, long maxBytes, CancellationToken cancellationToken = default);
 }
