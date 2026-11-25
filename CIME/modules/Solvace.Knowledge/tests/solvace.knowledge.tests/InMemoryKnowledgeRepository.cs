@@ -5,7 +5,7 @@ using solvace.knowledge.domain.Responses;
 namespace solvace.knowledge.tests;
 
 /// <summary>Repositório em memória para os testes da aplicação (Base Solvace e engenharia reversa).</summary>
-public class InMemoryKnowledgeRepository : IKnowledgeRepository
+public sealed class InMemoryKnowledgeRepository : IKnowledgeRepository
 {
     private readonly List<ArchitectureProject> _projects = [];
     private readonly List<ArchitectureSuggestion> _suggestions = [];

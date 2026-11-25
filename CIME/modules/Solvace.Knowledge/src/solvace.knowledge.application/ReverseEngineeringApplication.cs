@@ -385,9 +385,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         }
         await repository.SaveChangesAsync(cancellationToken);
 
-        // 0073: só os IDs dos outros documentos do módulo (sem texto) e os itens relacionados — nada de ler o índice inteiro
-        var otherDocs = await repository.QueryIndexAsync(new ReverseIndexQuery
-            { Modules = [project.Key], NotDocType = type.Key, IncludeRemoved = false, ExcludeKinds = ["GAP"] }, cancellationToken);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var lastChanges = (await repository.GetRevisionHeadsAsync(project.Key, type.Key, null, cancellationToken))
             .FirstOrDefault(r => r.ReviewNote is not null && r.Status is ReverseRevisionStatus.Changes or ReverseRevisionStatus.Discarded or ReverseRevisionStatus.Review);
         return new ReverseSessionResponse
@@ -401,8 +399,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             Suggestions = (await repository.GetSuggestionsAsync(ArchitectureSuggestionStatus.Pending, cancellationToken))
                 .Where(x => x.ProjectKey == project.Key && ForDocument(x, type)).Take(40).Select(ToSuggestion).ToList(),
             ReviewNote = revision.ReviewNote ?? lastChanges?.ReviewNote,
-            OtherDocIds = OtherDocIds(otherDocs, project.Key, type.Key),
-            Related = await RenderRelatedAsync(project, all, cancellationToken),
+            OtherDocIds = OtherDocIds(entries, project.Key, type.Key),
+            Related = RenderRelated(project, all, entries),
             ExistingSections = project.Sections.Where(x => x.IsForLlm && !x.Key.StartsWith(ReverseDocTypes.SectionPrefix, StringComparison.Ordinal))
                 .OrderBy(x => x.Order)
                 .Select(x => new ArchitectureSectionSummaryResponse { Id = x.Id, Key = x.Key, Title = x.Title, Order = x.Order, Version = x.Version, Length = x.Length })
@@ -443,22 +441,21 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     /// Itens dos módulos ligados a este (dependências e quem o usa): integrações, endpoints, eventos e tabelas — e os itens
     /// de outros módulos que citam este. Texto enxuto: uma linha por item.
     /// </summary>
-    private async Task<string> RenderRelatedAsync(ArchitectureProject project, List<ArchitectureProject> all, CancellationToken cancellationToken)
+    private static string RenderRelated(ArchitectureProject project, List<ArchitectureProject> all, IReadOnlyList<ReverseIndexEntry> entries)
     {
         var related = project.Relations.Select(r => r.Target)
             .Concat(all.Where(p => p.Relations.Any(r => r.Target == project.Key)).Select(p => p.Key))
             .Where(k => k != project.Key).Distinct().ToHashSet();
-        // 0073: no banco — só os INT/API/EVT/DB dos módulos ligados e os itens de fora que citam este (sem texto)
-        var linked = related.Count == 0 ? [] : await repository.QueryIndexAsync(new ReverseIndexQuery
-            { Modules = related.ToArray(), Kinds = ["INT", "API", "EVT", "DB"], IncludeRemoved = false }, cancellationToken);
-        var citing = await repository.GetIndexCitingModuleAsync(project.Key, 120, cancellationToken);
         var sb = new StringBuilder();
         var lines = 0;
-        foreach (var e in linked.OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId))
+        foreach (var e in entries.Where(e => !e.Removed && related.Contains(e.ModuleKey) && e.Kind is "INT" or "API" or "EVT" or "DB")
+                     .OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId))
         {
             if (lines++ >= 250) { sb.AppendLine("… (mais itens: prmake_base_search)"); break; }
             sb.AppendLine($"- {e.Ref} [{e.Kind}] {e.Title}{(e.Tables.Count > 0 ? " · " + string.Join(", ", e.Tables.Take(4)) : "")}");
         }
+        var citing = entries.Where(e => !e.Removed && e.ModuleKey != project.Key
+                                        && (e.Modules.Contains(project.Key) || e.Refs.Any(r => r.StartsWith(project.Key + "#", StringComparison.Ordinal)))).ToList();
         if (citing.Count > 0)
         {
             sb.AppendLine().AppendLine($"Itens de outros módulos que citam {project.Key}:");
@@ -648,8 +645,8 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var glossary = items.Where(i => i.Kind == "GLO" && !i.Removed).SelectMany(i => new[] { i.Title }.Concat(i.Synonyms)).ToList();
         if (glossary.Count > 0)
         {
-            var others = await repository.QueryIndexAsync(new ReverseIndexQuery
-                { Modules = [project.Key], Kinds = ["GLO"], NotDocType = type.Key, IncludeRemoved = false }, cancellationToken);
+            var others = (await ReverseSearch.EntriesAsync(repository, cancellationToken))
+                .Where(e => e.ModuleKey == project.Key && e.DocType != type.Key);
             module.SuggestTerms(glossary.Concat(ReverseSynonyms.TermsOf(others, project.Key)), project.Keywords);
         }
         await repository.SaveChangesAsync(cancellationToken);
@@ -893,13 +890,12 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var doc = string.IsNullOrWhiteSpace(docType) ? null : ReverseDocTypes.Get(docType).Key;
         if (string.IsNullOrWhiteSpace(query))
         {
-            // Sem termos: lista o índice filtrado (ex.: todas as regras de um módulo) — no banco, só as linhas pedidas.
-            var listed = await repository.QueryIndexAsync(new ReverseIndexQuery
-            {
-                Modules = normalizedModules, Kinds = normalizedKinds, DocType = doc, IncludeRemoved = includeRemoved, StaleOnly = staleOnly,
-                Body = ReverseBodyMode.Preview, Limit = Math.Clamp(limit, 1, 2000)
-            }, cancellationToken);
-            return listed.Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
+            // Sem termos: lista o índice filtrado (ex.: todas as regras de um módulo).
+            var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
+            return entries.Where(e => (normalizedModules is not { Count: > 0 } || normalizedModules.Contains(e.ModuleKey))
+                                      && (normalizedKinds is not { Count: > 0 } || normalizedKinds.Contains(e.Kind))
+                                      && (doc is null || e.DocType == doc) && (includeRemoved || !e.Removed) && (!staleOnly || e.StaleSince is not null))
+                .Take(Math.Clamp(limit, 1, 2000)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
         }
         var hits = await ReverseSearch.RunAsync(repository, query, normalizedModules, normalizedKinds, doc, limit, includeRemoved, names, cancellationToken);
         return staleOnly ? hits.Where(h => h.Stale is not null).ToList() : hits;
@@ -907,27 +903,31 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
 
     public async Task<List<ReverseItemResponse>> GetItemsAsync(IReadOnlyCollection<string> refs, string? defaultModule, CancellationToken cancellationToken)
     {
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var names = await ModuleNamesAsync(cancellationToken);
         var module = string.IsNullOrWhiteSpace(defaultModule) ? null : ArchitectureProject.NormalizeKey(defaultModule);
         var result = new List<ReverseItemResponse>();
+        var bodies = new Dictionary<Guid, string>();
         foreach (var raw in refs.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct().Take(20))
         {
             var parsed = ReverseItemKinds.ParseRef(raw) ?? throw new DomainException($"Referência inválida: '{raw}' (use <módulo>#RN-012).");
             var target = parsed.Module ?? module;
-            // 0073: o item completo (texto e evidências) vem do banco, só o pedido
-            var matches = await repository.FindIndexItemsAsync(parsed.Id, target, ReverseBodyMode.Complete, cancellationToken);
+            var matches = entries.Where(e => e.ItemId == parsed.Id && (target is null || e.ModuleKey == target)).ToList();
             if (matches.Count == 0) throw new KnowledgeNotFoundException($"Item {(target is null ? "" : target + "#")}{parsed.Id} não encontrado no índice publicado.");
             if (matches.Count > 1 && target is null)
                 throw new DomainException($"{parsed.Id} existe em {matches.Count} módulos ({string.Join(", ", matches.Select(m => m.ModuleKey).Take(8))}) — use <módulo>#{parsed.Id}.");
             var e = matches[0];
             var hit = ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body));
-            var referrers = await repository.GetIndexReferrersAsync(e.ModuleKey, e.ItemId, 40, cancellationToken);
+            // 0070: o cache da busca guarda só o começo do texto — o texto inteiro do item vem do banco
+            if (!bodies.ContainsKey(e.Id))
+                foreach (var (id, body) in await repository.GetIndexBodiesAsync([e.Id], cancellationToken)) bodies[id] = body;
             result.Add(new ReverseItemResponse
             {
                 Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
                 KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
-                Removed = hit.Removed, Stale = hit.Stale, Body = e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
-                ReferencedBy = referrers.Select(x => x.Ref).ToList(),
+                Removed = hit.Removed, Stale = hit.Stale, Body = bodies.GetValueOrDefault(e.Id) ?? e.Body, Refs = e.Refs, Evidence = e.Evidence, SectionVersion = e.SectionVersion,
+                ReferencedBy = entries.Where(x => x.Id != e.Id && (x.Refs.Contains(e.Ref) || (x.ModuleKey == e.ModuleKey && x.Refs.Contains(e.ItemId))))
+                    .Select(x => x.Ref).Take(40).ToList(),
                 Traps = (await repository.GetTrapsAsync(e.ModuleKey, cancellationToken))
                     .Where(t => t.Items.Contains(e.ItemId) || t.Items.Contains(e.Ref)).Select(ReverseTrapResponse.From).ToList()
             });
@@ -941,55 +941,31 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         // 0074/0097: o "Pergunte" de quem não pode ler (sem autenticação) não recebe texto da engenharia reversa.
         if (!CanRead) return [];
         var names = await ModuleNamesAsync(cancellationToken);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         // duas buscas: as palavras da pergunta e os termos da IA (sinônimos, nomes técnicos) — fundidas pela posição
         // 0097: o índice técnico (inventário do código) fica fora do Pergunte — o público é leigo
         static List<ReverseIndexHit> NotTechnical(List<ReverseIndexHit> hits) => hits.Where(h => h.DocType != ReverseDocTypes.Technical).ToList();
         var byQuestion = NotTechnical(await ReverseSearch.RunAsync(repository, question, null, null, null, 40, false, names, cancellationToken));
         var byTerms = terms.Count == 0 ? [] : NotTechnical(await ReverseSearch.RunAsync(repository, string.Join(' ', terms), null, null, null, 40, false, names, cancellationToken));
-        var fused = ReverseAnswerContext.Fuse(byQuestion, byTerms);
-        // 0073: o Pick só olha os itens achados, os que eles citam e (segundo salto) os que os fluxos citados citam — carrega essas
-        // referências no banco, sem texto, em vez de ter o índice inteiro
-        var entries = (await LoadCitedAsync(fused.Keys, cancellationToken)).Where(e => e.DocType != ReverseDocTypes.Technical).ToList();
-        var (picked, _) = ReverseAnswerContext.Pick(fused, entries, intent, boostModules, limit, maxRelated);
+        var (picked, _) = ReverseAnswerContext.Pick(ReverseAnswerContext.Fuse(byQuestion, byTerms), entries.Where(e => e.DocType != ReverseDocTypes.Technical).ToList(),
+            intent, boostModules, limit, maxRelated);
         if (picked.Count == 0) return [];
-        // o texto de todos os itens escolhidos vem numa única consulta
+        // o cache da busca guarda só o começo do texto: o texto de todos os itens vem numa única consulta
         var bodies = await repository.GetIndexBodiesAsync(picked.Select(p => p.Entry.Id).ToList(), cancellationToken);
         return picked.Select(p =>
         {
             var e = p.Entry;
             var doc = ReverseDocTypes.All.FirstOrDefault(d => d.Key == e.DocType);
-            var text = bodies.GetValueOrDefault(e.Id) ?? e.Body;
-            var hit = ReverseSearch.ToHit(e, names, Math.Round(p.Score, 4), ReverseSearch.Snippet(text));
+            var hit = ReverseSearch.ToHit(e, names, Math.Round(p.Score, 4), ReverseSearch.Snippet(e.Body));
             return new ReverseAnswerItem
             {
                 Ref = hit.Ref, ModuleKey = hit.ModuleKey, ModuleName = hit.ModuleName, DocType = hit.DocType, ItemId = hit.ItemId, Kind = hit.Kind,
                 KindLabel = hit.KindLabel, Title = hit.Title, Snippet = hit.Snippet, Tags = hit.Tags, Tables = hit.Tables, Modules = hit.Modules,
                 Score = hit.Score, Via = p.Via,
-                Body = ReverseAnswerContext.CutBody(text, bodyChars),
+                Body = ReverseAnswerContext.CutBody(bodies.GetValueOrDefault(e.Id) ?? e.Body, bodyChars),
                 SectionKey = doc?.SectionKey ?? ReverseDocTypes.SectionPrefix + e.DocType, DocTitle = doc?.Title ?? e.DocType, Audience = doc?.Audience ?? "llm"
             };
         }).ToList();
-    }
-
-    /// <summary>
-    /// 0073: os itens de <paramref name="refs"/> (<c>módulo#ID</c>), os que eles citam e, de novo, os que os fluxos (UC/TELA/TUT/FAQ/FLX)
-    /// entre esses citam — o que <see cref="ReverseAnswerContext.Pick"/> consulta. Sem texto: o texto dos escolhidos vem depois.
-    /// </summary>
-    private async Task<List<ReverseIndexEntry>> LoadCitedAsync(IEnumerable<string> refs, CancellationToken cancellationToken)
-    {
-        var loaded = new Dictionary<string, ReverseIndexEntry>(StringComparer.Ordinal);
-        async Task<List<ReverseIndexEntry>> Load(IEnumerable<string> keys)
-        {
-            var need = keys.Where(k => !loaded.ContainsKey(k)).Distinct(StringComparer.Ordinal).ToList();
-            var found = need.Count == 0 ? [] : await repository.GetIndexItemsByRefsAsync(need, ReverseBodyMode.None, cancellationToken);
-            foreach (var e in found) loaded.TryAdd(e.Ref, e);
-            return found;
-        }
-        static IEnumerable<string> Cited(ReverseIndexEntry e) => e.Refs.Select(r => r.Contains('#') ? r : $"{e.ModuleKey}#{r}");
-        var first = await Load(refs);
-        var second = await Load(first.SelectMany(Cited));
-        await Load(second.Where(e => e.Kind is "UC" or "TELA" or "TUT" or "FAQ" or "FLX").SelectMany(Cited));
-        return loaded.Values.ToList();
     }
 
     /// <summary>
@@ -1000,11 +976,19 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
     {
         var value = (term ?? string.Empty).Trim();
         if (value.Length < 2) throw new DomainException("Informe uma tabela (TB_…), um item (módulo#RN-012), um módulo ou um termo.");
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var names = await ModuleNamesAsync(cancellationToken);
         var parsed = ReverseItemKinds.ParseRef(value);
-        // 0073: no banco (listas jsonb com índice GIN), só os itens que citam o valor
-        var hits = await repository.GetIndexImpactAsync(value, parsed, Math.Clamp(limit, 1, 500), cancellationToken);
-        return hits.Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
+        var lower = value.ToLowerInvariant();
+        var upper = value.ToUpperInvariant();
+        IEnumerable<ReverseIndexEntry> hits = parsed is { } p
+            ? entries.Where(e => e.Refs.Contains(p.Module is null ? p.Id : $"{p.Module}#{p.Id}")
+                                 || (p.Module is not null && e.ModuleKey == p.Module && e.Refs.Contains(p.Id)))
+            : entries.Where(e => e.Tables.Contains(upper) || e.Modules.Contains(lower)
+                                 || e.Refs.Any(r => r.StartsWith(lower + "#", StringComparison.Ordinal))
+                                 || e.Tags.Any(t => t.Equals(value, StringComparison.OrdinalIgnoreCase)));
+        return hits.Where(e => !e.Removed).OrderBy(e => e.ModuleKey).ThenBy(e => e.Kind).ThenBy(e => e.ItemId)
+            .Take(Math.Clamp(limit, 1, 500)).Select(e => ReverseSearch.ToHit(e, names, 0, ReverseSearch.Snippet(e.Body))).ToList();
     }
 
     private Task<Dictionary<string, string>> ModuleNamesAsync(CancellationToken cancellationToken) => repository.GetProjectNamesAsync(cancellationToken);
@@ -1021,6 +1005,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
         var s = await settingsProvider.GetAsync(cancellationToken);
         var all = await repository.GetProjectHeadsAsync(cancellationToken);
         var reverseModules = await repository.GetReverseModulesAsync(cancellationToken);
+        var entries = await ReverseSearch.EntriesAsync(repository, cancellationToken);
         var names = all.ToDictionary(p => p.Key, p => p.DisplayName ?? p.Name);
         // 0097: campo Module genérico ("All", "Todos", "Geral", "N/A"…) não casa com nada — o histórico e o texto decidem
         var genericField = ReverseCardHistory.IsGenericField(moduleField);
@@ -1033,9 +1018,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             : ReverseCardHistory.Find(query, (await repository.GetCardHistoryAsync(HistorySize, cancellationToken)).Select(ReverseCardSample.From), card?.Trim());
         history = history with { Modules = history.Modules.Where(m => moduleKeys0.Contains(m.Module)).ToList() };
 
-        var withRe = await repository.GetIndexModuleKeysAsync(cancellationToken);
-        // itens (sem removidos) por módulo, contados no banco (a marca do índice já está em cache) — antes vinha da lista inteira
-        var itemCounts = (await repository.CountIndexItemsAsync(null, cancellationToken)).GroupBy(c => c.ModuleKey).ToDictionary(g => g.Key, g => g.Sum(c => c.Count));
+        var withRe = entries.Where(e => !e.Removed).Select(e => e.ModuleKey).ToHashSet();
         if (matched.Count == 0 && !history.IsEmpty)
             matched = history.Modules.Take(2).Select(m => m.Module).ToList();       // sem casamento: o histórico vem antes do texto
         else if (matched.Count == 0 && !string.IsNullOrWhiteSpace(query))
@@ -1079,7 +1062,7 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
                 .Select(t => $"{t.Key} v{p.Sections.First(x => x.Key == t.SectionKey).Version}").ToList();
             var state = IsComplete(p) ? "COMPLETA" : published.Count > 0 ? "parcial" : "não publicada";
             sb.AppendLine($"Módulo: {p.Key} ({names[p.Key]}) — engenharia reversa {state}" + (published.Count > 0 ? $": {string.Join(", ", published)}" : "")
-                          + (withRe.Contains(p.Key) ? $" · {itemCounts.GetValueOrDefault(p.Key)} itens" : ""));
+                          + (withRe.Contains(p.Key) ? $" · {entries.Count(e => e.ModuleKey == p.Key && !e.Removed)} itens" : ""));
             var pair = all.Where(x => x.Key != p.Key && x.BusinessArea is not null && x.BusinessArea == p.BusinessArea && ModuleKinds.Contains(x.Kind)).Select(x => x.Key).ToList();
             if (pair.Count > 0) sb.AppendLine($"  par/mesma área: {string.Join(", ", pair)}");
             var superseded = ReverseSupersession.Compute(p, s, reverseModules.FirstOrDefault(m => m.Key == p.Key));
@@ -1115,11 +1098,12 @@ public partial class ReverseEngineeringApplication(IKnowledgeRepository reposito
             var budget = 5000;
             sb.AppendLine("Texto dos primeiros:");
             // 0070: o cache da busca guarda só o trecho — o texto dos itens vem do banco
-            var first = await repository.GetIndexItemsByRefsAsync(hits.Take(3).Select(h => h.Ref).ToList(), ReverseBodyMode.Full, cancellationToken);
+            var first = hits.Take(3).Select(h => entries.First(e => e.Ref == h.Ref)).ToList();
+            var bodies = await repository.GetIndexBodiesAsync(first.Select(e => e.Id).ToList(), cancellationToken);
             foreach (var h in hits.Take(3))
             {
                 var entry = first.First(e => e.Ref == h.Ref);
-                var body = entry.Body;
+                var body = bodies.GetValueOrDefault(entry.Id) ?? entry.Body;
                 if (body.Length > 1800) body = body[..1800] + "\n…(prmake_base_get para o resto)";
                 if (budget - body.Length < 0) break;
                 budget -= body.Length;
