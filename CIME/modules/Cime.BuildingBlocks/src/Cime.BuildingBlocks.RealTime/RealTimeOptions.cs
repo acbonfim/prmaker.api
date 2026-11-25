@@ -47,10 +47,11 @@ public class RealTimeOptions
     public string? PubSubCredentialsJson { get; set; }
 
     /// <summary>
-    /// Relay: endpoint do Pub/Sub na região onde a API publica (us-central1). O global leva o relay ao Google mais perto
-    /// (Europa) e cada evento atravessa regiões — às vezes 2–3 s em vez de ~60 ms. Vazio => global.
+    /// Relay: endpoint do Pub/Sub na região onde o tópico guarda as mensagens (europe-west3, Frankfurt — perto do MonsterASP;
+    /// ver deploy/terraform/realtime.tf). 2026-11-25: endpoint global (Europa, mensagens nos EUA) dava ~60 ms com picos de
+    /// 2–3 s em ~1 de cada 5 eventos; o de us-central1, ~850 ms em todos. Vazio => global.
     /// </summary>
-    public string? PubSubEndpoint { get; set; } = "us-central1-pubsub.googleapis.com:443";
+    public string? PubSubEndpoint { get; set; } = "europe-west3-pubsub.googleapis.com:443";
 
     /// <summary>
     /// Chave HMAC-SHA256 (mínimo 32 caracteres) dos tokens de conexão do navegador, compartilhada
