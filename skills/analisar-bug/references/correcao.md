@@ -300,7 +300,21 @@ Regras:
   "Abri o chamado de limpeza...", "Vou conferir...") e no formato de status — a espera e
   "Aguardando abrir chamado", "Aguardando o atendimento do chamado", "Aguardando o merge do PR #489", "Aguardando
   validacao em QA"; **nunca** "voce", "quem trata o card", "falta voce abrir...", "conclua a etapa", "no PRMake" nem
-  instrucoes de tela do PRMake — o comentario parece escrito pela pessoa.
+  instrucoes de tela do PRMake — o comentario parece escrito pela pessoa. O PRMake **recusa** o contexto com esses termos
+  (PRMake, "Ja resolvi", "nesta etapa", "no plano", Bancada, sub-tarefa, "clique", "voce"...) — reescreva e grave de novo.
+- **Espera do meu lado tambem tem contexto (78794)**: etapa/sub-tarefa em espera que eu (quem trata o card) faco depois —
+  conferir a execucao de um job no dia seguinte, validar depois do deploy, esperar outra area — tambem grava
+  `prmake_handoff` na hora. O motivo da espera (`block`/`wait`/`StatusReason`) e texto da **tela** ("clique em *Ja resolvi*
+  para eu conferir") e **nao** vai para a discussion; quem conta a espera ao DevOps e o contexto. Diga **o que ja fiz**, **o
+  que esta pendente e de quem** (eu, o chamado X, a area Y) e **quando e o que vou conferir**, com data/hora de Brasilia —
+  ex.: "O DBA resolveu o chamado 2679 (job de Ogden de 06:15 para 07:15 UTC). Conferi em 25/11 as 16:13: a geracao de hoje
+  ainda saiu as 06:15, entao a troca vale a partir da proxima execucao. **Depois das 04:30 de 26/11 vou conferir de novo**
+  para confirmar se a solucao de fato corrigiu o problema (hora 07:15 e Opening Date com o dia local); confirmado, fecho o
+  card. Risco: se o monitor de abertura rodar antes das 07:15 UTC, ele grava erro e bloqueia as aberturas — confiro isso
+  tambem." Nada de "consulta 5 do script" ou nome de arquivo do plano: diga o que a consulta mostra.
+- **Contexto sempre atual**: a cada conferencia ou mudanca (conferi e ainda nao rodou, chamado voltou, area respondeu,
+  nova data), **reescreva** o `prmake_handoff` com o que mudou e a proxima conferencia — o comentario da discussion
+  acompanha sozinho. Nunca deixe no card uma data de conferencia que ja passou.
 - Sem nada pronto do seu lado (so aguardando merge/chamado/usuario): resuma o que falta, **deixe o vigia
   (`watch`) rodando em segundo plano** e encerre a vez — ele te acorda quando algo mudar e voce segue sozinho.
   O PRMake acompanha os PRs no GitHub (e mostra na tela sem cliques); o plano de correcao **conclui sozinho**
