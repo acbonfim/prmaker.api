@@ -18,7 +18,8 @@ locals {
       session_affinity = false
       # 1 GiB: com a Base Solvace (~29 milhões de caracteres) o cache da busca + a remontagem numa instância nova
       # estouravam 512 MiB e a instância reiniciava em loop (buscas de 50–80 s).
-      memory = "1Gi"
+      # 2 GiB (aplicado em 2026-10-27, revisão 00137): OOM com 1 GiB no cache da busca da engenharia reversa (~0,5 GB).
+      memory = "2Gi"
       env = {
         ASPNETCORE_ENVIRONMENT = "Production"
         RealTime__Mode         = "Relay"
@@ -285,6 +286,9 @@ resource "google_cloud_run_v2_service" "services" {
           memory = each.value.memory
         }
         cpu_idle = true
+        # CPU extra só enquanto a instância sobe: com cpu_idle a API só tem CPU durante requisições e o índice da
+        # engenharia reversa (ReverseIndexWarmup) levou 63 s para carregar numa instância nova (2026-11-25).
+        startup_cpu_boost = true
       }
 
       volume_mounts {
