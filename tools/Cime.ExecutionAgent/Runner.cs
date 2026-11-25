@@ -82,9 +82,11 @@ public sealed class Runner(AgentConfig config)
             // dos itens de trabalho (vagas próprias, padrão 2). O PRMake só entrega o que cabe em alguma pista livre.
             var specialists = _jobs.Values.Count(j => j.Job.IsSpecialist);
             var workItems = _jobs.Values.Count(j => j.Job.IsWorkItem);
-            var mainFull = _jobs.Count - specialists - workItems >= Math.Max(1, _state.MaxConcurrency);
+            // 0102: perguntas da Base Solvace — vagas próprias (alguém espera na tela).
+            var baseAsks = _jobs.Values.Count(j => j.Job.IsBaseAsk);
+            var mainFull = _jobs.Count - specialists - workItems - baseAsks >= Math.Max(1, _state.MaxConcurrency);
             var workItemsFull = workItems >= Math.Max(1, _state.WorkItemSlots);
-            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots && workItemsFull))
+            if (_state.Status != "active" || (mainFull && specialists >= SpecialistSlots && workItemsFull && baseAsks >= BaseAskSlots))
             {
                 await Delay(TimeSpan.FromSeconds(5), stopping);
                 continue;
@@ -131,6 +133,8 @@ public sealed class Runner(AgentConfig config)
 
     /// <summary>0080: respostas do especialista ao mesmo tempo (o PRMake confere a mesma regra).</summary>
     private const int SpecialistSlots = 2;
+    /// <summary>0102: perguntas da Base ao mesmo tempo (o PRMake confere a mesma regra).</summary>
+    private const int BaseAskSlots = 2;
 
     private void StartJob(PrmakeClient client, ClaimResponse claim, CancellationToken stopping)
     {

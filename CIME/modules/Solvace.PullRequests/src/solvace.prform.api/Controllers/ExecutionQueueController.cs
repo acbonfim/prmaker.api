@@ -128,7 +128,7 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
     [HttpGet("next")]
     public Task<ActionResult<ExecutionClaimResponse>> Next([FromQuery] int wait,
         [FromServices] solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings,
-        [FromServices] CaseTokenIssuer caseTokens,
+        [FromServices] CaseTokenIssuer caseTokens, [FromServices] BaseAskTokenIssuer baseTokens,
         [FromServices] ILogger<ExecutionQueueController> logger, CancellationToken ct) =>
         Run<ExecutionClaimResponse>(async () =>
         {
@@ -144,9 +144,41 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
                 claim.Model = await ModelForAsync(claim.Request.Deep ? DeepSpecialistPhase : ExecutionQueueApplication.SpecialistPhase, settings, logger, ct);
                 return Ok(claim);
             }
+            if (claim.Request.Kind == ExecutionRequestKind.BaseAsk)
+            {
+                // 0102: pergunta da Base Solvace — token só das ferramentas da Base, modelo básico com pouco esforço.
+                (claim.Model, claim.Effort) = await BaseAskModelAsync(claim.Request.Deep, settings, logger, ct);
+                claim.CaseToken = baseTokens.Issue(User, claim.Request.Id, claim.Model);
+                return Ok(claim);
+            }
             claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);
             return Ok(claim);
         });
+
+    /// <summary>0102: efforts que o Claude Code aceita em <c>--effort</c>.</summary>
+    public static readonly IReadOnlySet<string> Efforts = new HashSet<string>(StringComparer.Ordinal) { "low", "medium", "high", "xhigh", "max" };
+
+    /// <summary>0102: modelo e esforço das perguntas da Base pelo executor ("Skills Configurations"; padrão sonnet, low / a fundo medium).</summary>
+    private static async Task<(string? Model, string? Effort)> BaseAskModelAsync(bool deep,
+        solvace.prform.application.UserIntegrations.IPluginConfigurationResolver settings, ILogger logger, CancellationToken ct)
+    {
+        string model = "sonnet", effort = deep ? "medium" : "low";
+        try
+        {
+            var config = await settings.GetEffectiveConfigurationAsync(solvace.prform.Skills.SkillsConfigurationKeys.PluginName, ct);
+            model = solvace.prform.domain.Extensions.PluginConfigurationExtensions
+                .GetConfigurationValueOrDefault(config, solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorModel, model).Trim();
+            effort = solvace.prform.domain.Extensions.PluginConfigurationExtensions
+                .GetConfigurationValueOrDefault(config, deep ? solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorDeepEffort
+                    : solvace.prform.Skills.SkillsConfigurationKeys.BaseAskExecutorEffort, effort).Trim().ToLowerInvariant();
+        }
+        catch (Exception e) when (e is InvalidOperationException or solvace.prform.application.UserIntegrations.PersonalIntegrationRequiredException)
+        {
+            logger.LogWarning(e, "Sem a configuração do modelo das perguntas da Base — vão os padrões (sonnet, {Effort})", effort);
+        }
+        var validModel = model.Length is > 0 and <= 100 && model.All(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '_' or '[' or ']') ? model : null;
+        return (validModel, Efforts.Contains(effort) ? effort : null);
+    }
 
     /// <summary>
     /// 0047: modelo da fase pela "Skills Configurations" (ExecutorAnalysisModel / ExecutorCorrectionModel). Sem a

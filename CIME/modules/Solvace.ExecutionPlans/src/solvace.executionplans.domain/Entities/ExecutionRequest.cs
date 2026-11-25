@@ -37,7 +37,13 @@ public static class ExecutionRequestKind
     /// <summary>0085: desfazer um item de trabalho (sub-tarefas concluídas em ordem reversa).</summary>
     public const string WorkItemUndo = "work-item-undo";
 
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume, Specialist, WorkItem, WorkItemUndo };
+    /// <summary>
+    /// 0102: pergunta à Base Solvace respondida pelo Claude Code da máquina de quem perguntou (em vez do provedor de IA do
+    /// servidor) — pista própria, card = chave da pergunta (<see cref="BaseQuestion.Key"/>).
+    /// </summary>
+    public const string BaseAsk = "base-ask";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Analyze, Resume, Specialist, WorkItem, WorkItemUndo, BaseAsk };
 
     /// <summary>0085: pedido de item de trabalho (executar ou desfazer).</summary>
     public static bool IsWorkItem(string? kind) => kind is WorkItem or WorkItemUndo;
@@ -50,9 +56,15 @@ public static class ExecutionLane
     public const string Specialist = "specialist";
     /// <summary>0085: itens de trabalho (executar/desfazer) — vagas próprias por máquina, um pedido ativo por item.</summary>
     public const string WorkItem = "work-item";
+    /// <summary>0102: perguntas da Base Solvace — vagas próprias por máquina (alguém está esperando na tela).</summary>
+    public const string Base = "base";
 
-    public static string Of(string kind) =>
-        kind == ExecutionRequestKind.Specialist ? Specialist : ExecutionRequestKind.IsWorkItem(kind) ? WorkItem : Main;
+    public static string Of(string kind) => kind switch
+    {
+        ExecutionRequestKind.Specialist => Specialist,
+        ExecutionRequestKind.BaseAsk => Base,
+        _ => ExecutionRequestKind.IsWorkItem(kind) ? WorkItem : Main
+    };
 }
 
 /// <summary>De onde veio o pedido.</summary>
@@ -74,6 +86,8 @@ public static class ExecutionRequestSource
     public const string CaseProposal = "case-proposal";
     /// <summary>Card 77988: "Criar itens da análise" — a fase de entrega monta o plano (o item de trabalho) da análise concluída.</summary>
     public const string Delivery = "delivery";
+    /// <summary>0102: pergunta na Base Solvace (Pergunte) com o executor escolhido em "Minhas integrações".</summary>
+    public const string Base = "base";
 }
 
 /// <summary>

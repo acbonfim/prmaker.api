@@ -244,7 +244,7 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         }, cancellationToken);
         await TouchWorkerAsync(workerId, now, cancellationToken);
         if (activityChanged) await NotifyActivityAsync(r, cancellationToken);
-        if (r.Kind == ExecutionRequestKind.Specialist || (ExecutionRequestKind.IsWorkItem(r.Kind) && r.PlanId is null))
+        if (r.Kind is ExecutionRequestKind.Specialist or ExecutionRequestKind.BaseAsk || (ExecutionRequestKind.IsWorkItem(r.Kind) && r.PlanId is null))
             return new ExecutionHeartbeatResponse { Action = "continue", RequestStatus = r.Status };
 
         var plan = await FindPlanAsync(r, cancellationToken);
@@ -300,6 +300,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         if (r.Status == ExecutionRequestStatus.Queued) await WakeWorkersAsync(r.OwnerUserId, cancellationToken);
         if (r.Kind == ExecutionRequestKind.Specialist && r.IsFinished)
             await AfterSpecialistAsync(r, request, now, cancellationToken);
+        if (r.Kind == ExecutionRequestKind.BaseAsk && r.IsFinished)
+            await AfterBaseAskAsync(r, cancellationToken);
         await AttachWorkItemAsync(r, cancellationToken);
         return r.ToResponse();
     }
@@ -599,7 +601,10 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         var workItemFree = SupportsWorkItems(worker)
                            && (await _queue.CountActiveWorkItemsByWorkerAsync(worker.OwnerUserId, cancellationToken)).GetValueOrDefault(worker.Id)
                            < (await OptionsAsync(cancellationToken)).WorkItemSlots;
-        if (!mainFree && !specialistFree && !workItemFree)
+        // 0102: perguntas da Base Solvace — vagas próprias (BaseAskSlots), só executor que conhece a pista.
+        var baseFree = SupportsBaseAsk(worker)
+                       && (await _queue.CountActiveBaseAsksByWorkerAsync(worker.OwnerUserId, cancellationToken)).GetValueOrDefault(worker.Id) < BaseAskSlots;
+        if (!mainFree && !specialistFree && !workItemFree && !baseFree)
             return ([], null, 0);
 
         var queued = await _queue.GetQueuedForOwnerAsync(worker.OwnerUserId, cancellationToken);
@@ -607,15 +612,16 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         {
             ExecutionLane.Specialist => specialistFree,
             ExecutionLane.WorkItem => workItemFree,
+            ExecutionLane.Base => baseFree,
             _ => mainFree
         }).ToList();
         if (queued.Count == 0)
             return ([], null, 0);
         var (budget, spent) = await BudgetAsync(worker.OwnerUserId, now, cancellationToken);
         var overBudget = budget is { } b && spent >= b;
-        // Respostas do especialista primeiro: são curtas e alguém está esperando na conversa.
+        // Respostas do especialista e perguntas da Base primeiro: são curtas e alguém está esperando na tela.
         return (queued.Where(r => r.CanBeClaimedBy(worker, now) && (!overBudget || r.Force))
-            .OrderBy(r => r.Kind == ExecutionRequestKind.Specialist ? 0 : 1).ToList(), budget, spent);
+            .OrderBy(r => r.Kind is ExecutionRequestKind.Specialist or ExecutionRequestKind.BaseAsk ? 0 : 1).ToList(), budget, spent);
     }
 
     private async Task<ExecutionClaimResponse?> TryClaimAsync(ExecutionWorker worker, DateTimeOffset now, CancellationToken cancellationToken)
@@ -623,11 +629,13 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         var (claimable, budget, spent) = await ClaimableAsync(worker, now, cancellationToken);
         foreach (var request in claimable)
         {
-            var (phase, newSession) = request.Kind == ExecutionRequestKind.Specialist
-                ? (SpecialistPhase, false)
-                : ExecutionRequestKind.IsWorkItem(request.Kind)
-                    ? (WorkItemPhase, false)
-                    : await PhaseOfAsync(request, cancellationToken);
+            var (phase, newSession) = request.Kind switch
+            {
+                ExecutionRequestKind.Specialist => (SpecialistPhase, false),
+                ExecutionRequestKind.BaseAsk => (request.Deep ? BaseAskDeepPhase : BaseAskPhase, false),
+                _ when ExecutionRequestKind.IsWorkItem(request.Kind) => (WorkItemPhase, false),
+                _ => await PhaseOfAsync(request, cancellationToken)
+            };
             request.Claim(worker, now, phase);
             if (newSession)
                 request.StartInNewSession(now);
@@ -641,6 +649,20 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
                 return null;
             }
             await NotifyAsync(request, cancellationToken);
+            if (request.Kind == ExecutionRequestKind.BaseAsk)
+            {
+                // 0102: sessão nova sempre, prompt da pergunta e os anexos dela.
+                var (prompt, files) = await BaseAskPromptAsync(request, cancellationToken);
+                return new ExecutionClaimResponse
+                {
+                    Request = request.ToResponse(),
+                    ResumePrompt = prompt,
+                    FreshPrompt = prompt,
+                    RemainingBudgetUsd = budget is { } baseLimit && !request.Force ? Math.Max(0, baseLimit - spent) : null,
+                    Phase = phase,
+                    Files = files
+                };
+            }
             await AttachWorkItemAsync(request, cancellationToken);
             // 0085: item de trabalho com prompt próprio (sessão nova sempre); análise de User Story pela analisar-us.
             var skill = ExecutionRequestKind.IsWorkItem(request.Kind) || request.Kind == ExecutionRequestKind.Specialist
@@ -727,7 +749,8 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
     }
 
     private record WaitContext(List<ExecutionWorker> Workers, Dictionary<Guid, int> Busy, decimal? Budget, decimal Spent, string? LatestAgentVersion = null,
-        Dictionary<Guid, int>? SpecialistBusy = null, Dictionary<Guid, int>? WorkItemBusy = null, int WorkItemSlots = ExecutionQueueOptions.DefaultWorkItemSlots);
+        Dictionary<Guid, int>? SpecialistBusy = null, Dictionary<Guid, int>? WorkItemBusy = null, int WorkItemSlots = ExecutionQueueOptions.DefaultWorkItemSlots,
+        Dictionary<Guid, int>? BaseBusy = null);
 
     private async Task<WaitContext> WaitContextAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -736,8 +759,9 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
         var specialistBusy = await _queue.CountActiveSpecialistsByWorkerAsync(owner, cancellationToken);
         var workItemBusy = await _queue.CountActiveWorkItemsByWorkerAsync(owner, cancellationToken);
         var (budget, spent) = await BudgetAsync(owner, now, cancellationToken);
+        var baseBusy = await _queue.CountActiveBaseAsksByWorkerAsync(owner, cancellationToken);
         return new WaitContext(workers, busy, budget, spent, _agentInfo?.LatestVersion, specialistBusy, workItemBusy,
-            (await OptionsAsync(cancellationToken)).WorkItemSlots);
+            (await OptionsAsync(cancellationToken)).WorkItemSlots, baseBusy);
     }
 
     /// <summary>(código, texto) do motivo de espera; (null, null) = vai começar assim que um executor perguntar.</summary>
@@ -776,6 +800,16 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
                 return ("updating", $"O Especialista do caso precisa do executor {SpecialistAgentVersion} ou mais novo — ele se atualiza sozinho em até 1 minuto");
             if (able.All(w => (ctx.SpecialistBusy?.GetValueOrDefault(w.Id) ?? 0) >= SpecialistSlots))
                 return ("busy", "O especialista está respondendo em outros cards — esta resposta vem em seguida");
+            return (null, null);
+        }
+        if (r.Kind == ExecutionRequestKind.BaseAsk)
+        {
+            // 0102: pista das perguntas — só executor que a conhece, até BaseAskSlots por máquina.
+            var able = active.Where(SupportsBaseAsk).ToList();
+            if (able.Count == 0)
+                return ("updating", $"Perguntas pelo executor precisam da versão {BaseAskAgentVersion} ou mais nova — ele se atualiza sozinho em até 1 minuto");
+            if (able.All(w => (ctx.BaseBusy?.GetValueOrDefault(w.Id) ?? 0) >= BaseAskSlots))
+                return ("busy", "Sua máquina está respondendo outras perguntas — esta vem em seguida");
             return (null, null);
         }
         if (ExecutionRequestKind.IsWorkItem(r.Kind))
@@ -1170,6 +1204,13 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
 
     private async Task NotifyAsync(ExecutionRequest request, CancellationToken cancellationToken)
     {
+        if (request.Kind == ExecutionRequestKind.BaseAsk)
+        {
+            // 0102: a tela da pergunta ouve execplan:{chave da pergunta}; não há plano nem itens.
+            await NotifyBaseAsync(request, ExecutionPlanRealTimeEvents.Actions.Request, cancellationToken);
+            await NotifyWorkersAsync(request.OwnerUserId, cancellationToken);
+            return;
+        }
         if (ExecutionRequestKind.IsWorkItem(request.Kind))
         {
             // 0085: a tela do item ouve o workItemsUpdated (o item avisa ao receber o pedido); aqui só a tela das máquinas.
@@ -1205,6 +1246,11 @@ public partial class ExecutionQueueApplication : IExecutionQueueApplication, IEx
     /// <summary>0050: atividade nova — a tela atualiza a linha "agora" com o payload (sem refazer o GET).</summary>
     private async Task NotifyActivityAsync(ExecutionRequest request, CancellationToken cancellationToken)
     {
+        if (request.Kind == ExecutionRequestKind.BaseAsk)
+        {
+            await NotifyBaseAsync(request, ExecutionPlanRealTimeEvents.Actions.Activity, cancellationToken);
+            return;
+        }
         if (ExecutionRequestKind.IsWorkItem(request.Kind))
         {
             await NotifyWorkItemActivityAsync(request, cancellationToken);

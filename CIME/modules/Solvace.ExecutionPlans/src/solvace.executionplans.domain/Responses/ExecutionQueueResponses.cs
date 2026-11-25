@@ -197,6 +197,10 @@ public class ExecutionClaimResponse
     public string? CaseToken { get; set; }
     /// <summary>0085: número do item de trabalho (pedidos work-item/work-item-undo) — o executor limpa os worktrees do item no fim.</summary>
     public long? WorkItemNumber { get; set; }
+    /// <summary>0102: esforço do Claude Code (<c>--effort</c>: low | medium | high | xhigh | max); null = o padrão da máquina.</summary>
+    public string? Effort { get; set; }
+    /// <summary>0102: anexos da pergunta da Base Solvace — o executor grava na pasta do pedido (<c>PRMAKE_FILES_DIR</c>).</summary>
+    public List<BaseQuestionFile>? Files { get; set; }
 }
 
 public class ExecutionHeartbeatResponse
@@ -360,4 +364,30 @@ public static class ExecutionQueueResponseExtensions
             return null;
         }
     }
+}
+
+/// <summary>0102: pergunta à Base Solvace respondida pelo executor — andamento (do pedido) e a resposta.</summary>
+public class BaseQuestionResponse
+{
+    public Guid Id { get; set; }
+    /// <summary>Chave da pergunta na fila: a tela ouve <c>execplan:{Key}</c>.</summary>
+    public string Key { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+    public bool Deep { get; set; }
+    public bool HasFiles { get; set; }
+    /// <summary>queued | claimed | running | done | failed | cancelled | expired (done sem resposta vira failed).</summary>
+    public string Status { get; set; } = ExecutionRequestStatus.Queued;
+    public Guid RequestId { get; set; }
+    public string? WaitReason { get; set; }
+    public string? WaitCode { get; set; }
+    public string? WorkerName { get; set; }
+    public ExecutionActivityResponse? Activity { get; set; }
+    /// <summary>JSON do <c>ArchitectureAskResponse</c> (o mesmo formato do Pergunte pelo provedor).</summary>
+    public JsonElement? Answer { get; set; }
+    public string? Error { get; set; }
+    public string? Model { get; set; }
+    public decimal? CostUsd { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? AnsweredAt { get; set; }
 }

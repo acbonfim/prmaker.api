@@ -152,6 +152,16 @@ public static class PluginSettingsCatalog
         new("haiku", "Haiku (o mais rápido)")
     ];
 
+    /// <summary>0102: <c>--effort</c> do Claude Code.</summary>
+    private static readonly SettingOption[] ClaudeCodeEfforts =
+    [
+        new("low", "Baixo (mais rápido)"),
+        new("medium", "Médio"),
+        new("high", "Alto"),
+        new("xhigh", "Muito alto"),
+        new("max", "Máximo")
+    ];
+
     private static readonly SettingColumn[] StepColumns =
     [
         new("key", "Chave", SettingTypes.Text, Required: true, Width: "sm"),
@@ -373,6 +383,16 @@ public static class PluginSettingsCatalog
             Label = "Especialista do caso: respostas rápidas", Options = ClaudeCodeModels, AllowCustom = true, Default = "sonnet" },
         new() { Section = "executor", Group = "modelos", Plugin = Skills, Key = SkillsConfigurationKeys.SpecialistDeepModel, Type = SettingTypes.Enum, ReadBy = Api,
             Label = "Especialista do caso: investigar a fundo", Options = ClaudeCodeModels, AllowCustom = true, Default = "opus" },
+        // 0102: perguntas da Base Solvace pelo executor (quem escolheu "Executor" em Minhas integrações).
+        new() { Section = "executor", Group = "modelos", Plugin = Skills, Key = SkillsConfigurationKeys.BaseAskExecutorModel, Type = SettingTypes.Enum, ReadBy = Api,
+            Label = "Perguntas da Base Solvace: modelo", Help = "Modelo do Claude Code no Pergunte da Base Solvace pelo executor. Um modelo básico basta — ele só consulta a Base.",
+            Options = ClaudeCodeModels, AllowCustom = true, Default = "sonnet" },
+        new() { Section = "executor", Group = "modelos", Plugin = Skills, Key = SkillsConfigurationKeys.BaseAskExecutorEffort, Type = SettingTypes.Enum, ReadBy = Api,
+            Label = "Perguntas da Base Solvace: esforço", Help = "Quanto o Claude pensa antes de responder (--effort). Baixo = mais rápido.",
+            Options = ClaudeCodeEfforts, Default = "low" },
+        new() { Section = "executor", Group = "modelos", Plugin = Skills, Key = SkillsConfigurationKeys.BaseAskExecutorDeepEffort, Type = SettingTypes.Enum, ReadBy = Api,
+            Label = "Perguntas da Base Solvace: esforço ao analisar a fundo", Help = "\"Analisar a fundo\" lê mais itens e pode confirmar no código da máquina.",
+            Options = ClaudeCodeEfforts, Default = "medium" },
         new() { Section = "executor", Group = "execucao", Plugin = Skills, Key = SkillsConfigurationKeys.ExecutorCorrectionNewSession, Type = SettingTypes.Bool, ReadBy = Api,
             Label = "Correção numa sessão nova", Help = "A correção abre uma sessão nova do Claude, só com o resumo da análise, em vez de continuar a sessão da análise.",
             Default = Bool(ExecutionQueueOptions.Default.CorrectionInNewSession) },
@@ -453,6 +473,11 @@ public static class PluginSettingsCatalog
         new() { Section = "ia", Group = "provedor", Plugin = Ai, Key = "Provider", Type = SettingTypes.Enum, ReadBy = Api,
             Label = "Provedor de IA", Help = "Provedor usado nas ações de IA do servidor (PR, resumo, Pergunte, chat). A configuração dele fica no grupo do provedor.",
             Options = [new("Claude", "Claude"), new("Gemini", "Gemini"), new("OpenAI", "OpenAI"), new("Copilot", "Copilot")] },
+        new() { Section = "ia", Group = "provedor", Plugin = Ai, Key = BaseSolvaceRunner.Key, Type = SettingTypes.Enum, ReadBy = Api,
+            Label = "Perguntas da Base Solvace",
+            Help = "Quem responde o Pergunte e o \"Analisar a fundo\" da Base Solvace: o provedor de IA do servidor (cobra a chave de API) ou o executor — o Claude Code da sua máquina (assinatura), mais preciso. Cada pessoa escolhe em Minhas integrações.",
+            Options = [new(BaseSolvaceRunner.Provider, "Provedor de IA (servidor)"), new(BaseSolvaceRunner.Executor, "Executor (Claude Code na sua máquina)")],
+            Default = BaseSolvaceRunner.Provider },
 
         new() { Section = "ia", Group = "claude", Plugin = Claude, Key = "ApiKey", Type = SettingTypes.Secret, ReadBy = Api,
             Label = "Chave da API da Anthropic", Help = "platform.claude.com → API keys (sk-ant-…). As ações de IA são cobradas nesta chave; em uso pessoal, cada pessoa usa a sua." },

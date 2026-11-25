@@ -27,7 +27,7 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
     // 0080: as consultas "do card" são da pista principal (análise/correção) — o especialista tem as dele.
     private const string Specialist = ExecutionRequestKind.Specialist;
     /// <summary>0085: kinds fora da pista principal (especialista e itens de trabalho) — não contam no "um pedido ativo por card".</summary>
-    private static readonly string[] SideKinds = [ExecutionRequestKind.Specialist, ExecutionRequestKind.WorkItem, ExecutionRequestKind.WorkItemUndo];
+    private static readonly string[] SideKinds = [ExecutionRequestKind.Specialist, ExecutionRequestKind.WorkItem, ExecutionRequestKind.WorkItemUndo, ExecutionRequestKind.BaseAsk];
     private static readonly string[] WorkItemKinds = [ExecutionRequestKind.WorkItem, ExecutionRequestKind.WorkItemUndo];
 
     public Task<ExecutionRequest?> GetActiveRequestForCardAsync(string cardNumber, CancellationToken cancellationToken) =>
@@ -118,6 +118,22 @@ public class ExecutionQueueRepository : IExecutionQueueRepository
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken))
         .ToDictionary(x => x.Key, x => x.Count);
+
+    public async Task<Dictionary<Guid, int>> CountActiveBaseAsksByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        (await _context.Requests.AsNoTracking()
+            .Where(r => r.OwnerUserId == ownerUserId && r.WorkerId != null && r.Kind == ExecutionRequestKind.BaseAsk && Busy.Contains(r.Status))
+            .GroupBy(r => r.WorkerId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken))
+        .ToDictionary(x => x.Key, x => x.Count);
+
+    public void AddBaseQuestion(BaseQuestion question) => _context.BaseQuestions.Add(question);
+
+    public Task<BaseQuestion?> GetBaseQuestionAsync(Guid id, CancellationToken cancellationToken) =>
+        _context.BaseQuestions.FirstOrDefaultAsync(q => q.Id == id, cancellationToken);
+
+    public Task<BaseQuestion?> GetBaseQuestionByRequestAsync(Guid requestId, CancellationToken cancellationToken) =>
+        _context.BaseQuestions.FirstOrDefaultAsync(q => q.RequestId == requestId, cancellationToken);
 
     public async Task<Dictionary<Guid, int>> CountActiveWorkItemsByWorkerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         (await _context.Requests.AsNoTracking()
