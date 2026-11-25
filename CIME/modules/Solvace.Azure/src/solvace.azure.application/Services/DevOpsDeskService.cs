@@ -741,10 +741,25 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
     {
         if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
         await EnsureConfigAsync(cancellationToken);
-        using var doc = await GetAsync($"{ProjectApi}/wit/workItems/{id}/updates?$top=500&api-version={Api}",
-            $"O DevOps não devolveu o histórico do card {id}", cancellationToken);
-        return DevOpsDeskMapping.ParseHistory(doc.RootElement);
+        // O DevOps aceita no máximo $top=200 em /updates: lê em páginas ($skip) até a última.
+        var entries = new List<DevOpsHistoryEntry>();
+        for (var page = 0; page < HistoryMaxPages; page++)
+        {
+            using var doc = await GetAsync(
+                $"{ProjectApi}/wit/workItems/{id}/updates?$top={HistoryPageSize}&$skip={page * HistoryPageSize}&api-version={Api}",
+                $"O DevOps não devolveu o histórico do card {id}", cancellationToken);
+            var count = DevOpsDeskMapping.HistoryPageCount(doc.RootElement);
+            entries.AddRange(DevOpsDeskMapping.ParseHistory(doc.RootElement));
+            if (count < HistoryPageSize) break;
+        }
+        return entries.OrderByDescending(e => e.Rev).ToList();
     }
+
+    /// <summary>Limite do DevOps para <c>$top</c> em <c>…/updates</c>.</summary>
+    internal const int HistoryPageSize = 200;
+
+    /// <summary>Páginas lidas no máximo (2.000 revisões).</summary>
+    private const int HistoryMaxPages = 10;
 
     /// <summary>Times varridos no máximo para achar o board de um card (o da área vem primeiro).</summary>
     private const int MaxTeamsForCardBoard = 60;

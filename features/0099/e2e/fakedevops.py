@@ -197,7 +197,11 @@ class H(http.server.BaseHTTPRequestHandler):
                 mm = re.match(r"^workItems/(\d+)/updates$", rest, re.I)
                 if mm:
                     i = int(mm.group(1))
-                    return self.send(200, {"count": len(UPD.get(i, [])), "value": UPD.get(i, [])})
+                    top = int(q.get("$top", ["200"])[0]); skip = int(q.get("$skip", ["0"])[0])
+                    if top > 200:  # como o DevOps real
+                        return self.send(400, {"message": "A query parameter specified in the request URI is outside the permissible range: $top"})
+                    page = UPD.get(i, [])[skip:skip + top]
+                    return self.send(200, {"count": len(page), "value": page})
                 mm = re.match(r"^workItems/(\d+)/comments$", rest, re.I)
                 if mm:
                     i = int(mm.group(1)); lst = COMMENTS.setdefault(i, [])
