@@ -11,9 +11,11 @@ namespace solvace.executionplans.application;
 /// <summary>
 /// 0099: épicos da Mesa de gestão. Os itens, a conversa do especialista, os arquivos e os relatados do épico são os mesmos da
 /// Bancada, pela chave <see cref="EpicKey"/> (<c>E{número}</c>) no lugar do número do card. Tempo real: <c>epicsUpdated</c>
-/// no grupo <c>epics</c> (sinal; a tela refaz o GET).
+/// no grupo <c>epics</c> (sinal; a tela refaz o GET). Ao criar, o especialista já abre a conversa do épico com a apresentação
+/// (<see cref="WelcomeText"/>).
 /// </summary>
-public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, IEpicStoryRepository? stories = null) : IEpicApplication
+public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, IEpicStoryRepository? stories = null,
+    ICaseChatRepository? cases = null) : IEpicApplication
 {
     private const int ListLimit = 300;
     private const int Retries = 4;
@@ -98,7 +100,9 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
         epics.Add(epic);
         await epics.SaveChangesAsync(ct);
         await NotifyAsync(epic.Number, ExecutionPlanRealTimeEvents.EpicActions.Created, ct);
-        return await ResponseAsync(epic, ct);
+        var response = await ResponseAsync(epic, ct);
+        await WelcomeAsync(epic, response, ct);
+        return response;
     }
 
     public async Task<EpicResponse> UpdateAsync(long number, SaveEpicRequest req, ExecutionActor actor, CancellationToken ct)
@@ -229,6 +233,113 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
                 await NotifyAsync(n, ExecutionPlanRealTimeEvents.EpicActions.Cards, ct);
             return changed.Count;
         }
+    }
+
+    // ================================================================ apresentação do especialista
+
+    /// <summary>
+    /// Primeira mensagem da conversa do épico: o especialista se apresenta com o estado do épico e o que sabe fazer (texto
+    /// montado aqui, sem IA). Best-effort — falha não desfaz o épico; conversa que já tem mensagem não ganha outra.
+    /// </summary>
+    private async Task WelcomeAsync(Epic epic, EpicResponse response, CancellationToken ct)
+    {
+        if (cases is null) return;
+        var key = EpicKey.Of(epic.Number);
+        var text = WelcomeText(epic, response.Counts, stories: 0); // épico recém-criado: nenhuma história ainda
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                cases.ClearTracking();
+                if (await cases.GetMaxMessageNumberAsync(key, ct) > 0) return;
+                var now = DateTimeOffset.UtcNow;
+                cases.AddMessage(new CaseMessage(key, 1, CaseAuthorKind.Specialist, null, CaseChatApplication.SpecialistName,
+                    CaseMessageKind.Text, text, false, now));
+                if (await cases.GetChatAsync(key, ct) is null)
+                    cases.AddChat(new CaseChat(key, now));
+                await cases.SaveChangesAsync(ct);
+                await TryAsync(() => realTime.NotifyGroupAsync(ExecutionPlanRealTimeEvents.Group(key), ExecutionPlanRealTimeEvents.EventCaseUpdated,
+                    new { cardNumber = key, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number = 1 }, ct));
+                return;
+            }
+            catch (CaseNumberConflictException) when (attempt < Retries)
+            {
+                await Task.Delay(Random.Shared.Next(10, 40) * attempt, ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Apresentação do especialista do épico: quem é, como está o épico, o board e o que pode fazer — curta e direta.</summary>
+    public static string WelcomeText(Epic epic, EpicCounts? counts, int stories)
+    {
+        var cards = counts?.Cards ?? epic.Cards.Count;
+        var items = counts?.Items ?? 0;
+        var sb = new StringBuilder();
+        sb.AppendLine($"Olá! Sou o especialista do épico #{epic.Number} — {epic.Title}.");
+        sb.AppendLine();
+
+        var numbers = $"{Plural(cards, "card", "cards")}, {Plural(items, "item de trabalho", "itens de trabalho")} e {Plural(stories, "história", "histórias")}";
+        var status = StatusText(epic.Status);
+        var empty = cards == 0 && items == 0 && stories == 0;
+        var state = empty ? $"O épico está {status}, mas ainda vazio: {numbers}." : $"O épico está {status}, com {numbers}.";
+        sb.AppendLine($"{state} {BoardText(epic)}");
+        sb.AppendLine();
+        sb.AppendLine("Posso, por exemplo:");
+        sb.AppendLine();
+        sb.AppendLine("* listar ou consultar cards no DevOps, ou ver o board do time;");
+        sb.AppendLine("* criar, editar ou mover cards, e adicioná-los ao épico;");
+        sb.AppendLine("* escrever histórias e bugs no épico e convertê-los em card;");
+        sb.AppendLine("* fazer a triagem em lote dos cards novos, com sugestão de área, prioridade e tags;");
+        sb.AppendLine("* apontar cards parados por coluna e a saúde do board;");
+        sb.AppendLine("* gerar relatório de bugs, procurar duplicados ou fazer RCA em PDF;");
+        sb.AppendLine(cards == 0
+            ? "* acompanhar as entregas (PRs e ambientes) quando houver cards no épico."
+            : "* acompanhar as entregas (PRs e ambientes) dos cards do épico.");
+        sb.AppendLine();
+        sb.Append(HasBoard(epic)
+            ? "O que você quer ver primeiro? Se for o board do time, posso começar por ele."
+            : "O que você quer ver primeiro? Se quiser, começo definindo o board do time do épico.");
+        return sb.ToString();
+    }
+
+    private static bool HasBoard(Epic epic) => !string.IsNullOrWhiteSpace(epic.DevOpsTeam);
+
+    private static string BoardText(Epic epic)
+    {
+        if (!HasBoard(epic))
+            return "Ainda não há board preferido — me diga o time do DevOps (ou defina no épico).";
+        var board = string.IsNullOrWhiteSpace(epic.DevOpsBoard) ? epic.DevOpsTeam!.Trim() : $"{epic.DevOpsTeam!.Trim()} / {epic.DevOpsBoard.Trim()}";
+        var f = epic.BoardFilters;
+        if (!f.HasAny()) return $"O board preferido é {board}.";
+        var parts = new List<string>();
+        if (f.Lanes.Count > 0) parts.Add($"nas lanes {JoinAnd(f.Lanes.Select(l => l.Length == 0 ? "(padrão)" : l))}");
+        if (f.Types.Count > 0) parts.Add($"nos tipos {JoinAnd(f.Types)}");
+        if (f.States.Count > 0) parts.Add($"nos estados {JoinAnd(f.States)}");
+        if (f.AssignedTo.Count > 0) parts.Add($"do responsável {JoinAnd(f.AssignedTo.Select(a => a == "__unassigned__" ? "(sem responsável)" : a))}");
+        if (f.Tags.Count > 0) parts.Add($"com as tags {JoinAnd(f.Tags)}");
+        if (!string.IsNullOrWhiteSpace(f.Text)) parts.Add($"com o texto \"{f.Text.Trim()}\"");
+        if (f.HiddenColumns.Count > 0) parts.Add($"sem as colunas {JoinAnd(f.HiddenColumns)}");
+        return $"O board preferido é {board}, com filtro salvo {JoinAnd(parts)}.";
+    }
+
+    private static string StatusText(string status) => status switch
+    {
+        EpicStatus.Paused => "pausado",
+        EpicStatus.Done => "concluído",
+        EpicStatus.Archived => "arquivado",
+        _ => "ativo"
+    };
+
+    private static string Plural(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
+
+    private static string JoinAnd(IEnumerable<string> values)
+    {
+        var list = values.ToList();
+        return list.Count <= 1 ? string.Join(string.Empty, list) : $"{string.Join(", ", list.Take(list.Count - 1))} e {list[^1]}";
     }
 
     // ================================================================ internos
