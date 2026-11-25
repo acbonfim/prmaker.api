@@ -81,6 +81,15 @@ public interface IDevOpsDeskService
     /// <summary>Ajustes 3 da 0099: anexos do card e imagens/arquivos colados nos campos e na discussion (leitor das evidências da 0076).</summary>
     Task<IReadOnlyList<DevOpsAttachmentInfo>> GetAttachmentsAsync(int id, CancellationToken cancellationToken = default);
 
+    /// <summary>0099 (modal único): histórico do card — revisões legíveis, mais novas primeiro.</summary>
+    Task<IReadOnlyList<DevOpsHistoryEntry>> GetHistoryAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 0099 (modal único): time/board em que o card aparece — pelo campo <c>WEF_…_Kanban.Column</c> ativo do card, procurando
+    /// primeiro o time da área do card. Sem board: nulos.
+    /// </summary>
+    Task<DevOpsCardBoardRef> GetCardBoardAsync(int id, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Ajustes 3 da 0099: bytes de um anexo pelo GUID (só o GUID entra na URL), até <paramref name="maxBytes"/> (passou: <c>TooLarge</c>).
     /// Content-Type do DevOps; <c>application/octet-stream</c> vira o do nome.

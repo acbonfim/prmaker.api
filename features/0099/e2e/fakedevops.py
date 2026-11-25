@@ -3,6 +3,9 @@ import http.server, json, re, sys, threading, urllib.parse
 from datetime import datetime, timezone
 LOCK = threading.Lock(); LOG = []
 COL, LANE, DONE = "WEF_AAA_Kanban.Column", "WEF_AAA_Kanban.Lane", "WEF_AAA_Kanban.Column.Done"
+MARK = "WEF_AAA_System.ExtensionMarker"  # board do time do card (modal único: GET workitems/{id}/board)
+ADMIN = {"displayName": "Admin Teste", "uniqueName": "admin@solvace.com", "id": "u9"}
+UPD = {}  # histórico por card (GET workItems/{id}/updates)
 P = "Solvace Product Improvement"; AREA = P + "\\Mesa"
 TYPES = [{"name": "Bug", "color": "CC293D", "icon": {"id": "icon_insect", "url": ""}, "description": "Bug", "isDisabled": False},
          {"name": "User Story", "color": "009CCC", "icon": {"id": "icon_book", "url": ""}, "description": "US", "isDisabled": False},
@@ -24,11 +27,13 @@ def mk(type_, title, state, col, lane=None, done=False, tags=(), who=None, rank=
     f = {"System.Id": i, "System.WorkItemType": type_, "System.Title": title, "System.State": state, "System.AreaPath": AREA,
          "System.IterationPath": P + "\\Sprint 1", "System.TeamProject": P, "System.CreatedDate": now(), "System.ChangedDate": now(),
          "System.Tags": "; ".join(tags), COL: col, LANE: lane or "", DONE: done, "System.BoardColumn": col, "System.BoardColumnDone": done,
-         "System.BoardLane": lane or "", "Microsoft.VSTS.Common.StackRank": rank, "Microsoft.VSTS.Common.Priority": 2,
+         "System.BoardLane": lane or "", MARK: True, "Microsoft.VSTS.Common.StackRank": rank, "Microsoft.VSTS.Common.Priority": 2,
          "Microsoft.VSTS.Common.Severity": "3 - Medium" if type_ == "Bug" else None}
     if who: f["System.AssignedTo"] = {"displayName": who["displayName"], "uniqueName": who["uniqueName"], "id": who["id"], "imageUrl": ""}
     if parent: f["System.Parent"] = parent
     ITEMS[i] = {"id": i, "rev": 1, "fields": {k: v for k, v in f.items() if v is not None}, "relations": []}
+    UPD[i] = [{"id": 1, "rev": 1, "revisedBy": ADMIN, "revisedDate": "9999-01-01T00:00:00Z",
+               "fields": {k: {"newValue": v} for k, v in ITEMS[i]["fields"].items()}}]
     return i
 mk("Bug", "Erro ao salvar checklist offline", "New", "New", tags=["cliente-gerdau"], who=PEOPLE[0], rank=10)
 mk("Bug", "Lentidão no dashboard de KPIs", "Active", "Active", tags=["performance"], who=PEOPLE[1], rank=20)
@@ -53,6 +58,20 @@ COMMENTS = {90001: [
     {"id": 2, "text": f'<div>Print do erro:</div><img src="{ATT_URL(ATT3, "tela.png")}">', "createdBy": {"displayName": "Daniel Strinta", "uniqueName": "daniel@solvace.com", "id": "u2"},
      "createdDate": "2026-11-22T09:30:00Z", "modifiedDate": "2026-11-22T09:31:00Z"}]}
 ITEMS[90001]["fields"]["System.CommentCount"] = 2
+# Modal único: PDF anexado (o DevOps manda octet-stream — o PRMake põe o tipo pelo nome) e histórico com troca de estado.
+ATT4 = "11111111-aaaa-4bbb-8ccc-000000000004"
+ATTS[ATT4] = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
+              b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj "
+              b"4 0 obj<</Length 44>>stream\nBT /F1 18 Tf 40 70 Td (Manual PRMake) Tj ET\nendstream endobj "
+              b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
+ITEMS[90001]["relations"].append({"rel": "AttachedFile", "url": f"https://dev.azure.com/solvacelabs/p1/_apis/wit/attachments/{ATT4}",
+                                   "attributes": {"name": "manual.pdf", "resourceSize": len(ATTS[ATT4]), "resourceCreatedDate": "2026-11-21T10:00:00Z"}})
+UPD[90001].append({"id": 2, "rev": 2, "revisedBy": {"displayName": "Bruno Ferreira", "uniqueName": "bruno@solvace.com", "id": "u1"},
+    "fields": {"System.State": {"oldValue": "Active", "newValue": "New"}, "System.ChangedDate": {"oldValue": now(), "newValue": "2026-11-22T14:00:00Z"},
+               "Microsoft.VSTS.Common.Priority": {"oldValue": 3, "newValue": 2}, "System.History": {"newValue": "<div>Voltou para New: falta reproduzir no iOS.</div>"}},
+    "relations": {"added": [{"rel": "System.LinkTypes.Related", "url": "https://dev.azure.com/solvacelabs/_apis/wit/workItems/90004", "attributes": {}}]}})
+UPD[90001][0]["fields"]["System.State"] = {"newValue": "Active"}
+ITEMS[90001]["rev"] = 2
 FIELDS = [("System.Title", "Title", "string", False), ("System.State", "State", "string", False), ("System.AssignedTo", "Assigned To", "string", False),
           ("System.AreaPath", "Area Path", "treePath", False), ("System.IterationPath", "Iteration Path", "treePath", False),
           ("System.Tags", "Tags", "plainText", False), ("System.Description", "Description", "html", False),
@@ -75,6 +94,7 @@ def view(it, fields=None):
     return {"id": it["id"], "rev": it["rev"], "fields": f, "relations": it["relations"],
             "url": f"https://dev.azure.com/solvacelabs/_apis/wit/workItems/{it['id']}"}
 def apply_patch(it, ops):
+    before = dict(it["fields"]); added = []
     for op in ops:
         path = op.get("path", ""); val = op.get("value")
         if path.startswith("/fields/"):
@@ -91,11 +111,17 @@ def apply_patch(it, ops):
             if ref == DONE: it["fields"]["System.BoardColumnDone"] = bool(val)
             if ref == LANE: it["fields"]["System.BoardLane"] = val or ""
         elif path == "/relations/-":
-            it["relations"].append(val)
+            it["relations"].append(val); added.append(val)
             m = re.search(r"/(\d+)$", val.get("url", ""))
             if m and val.get("rel") == "System.LinkTypes.Hierarchy-Reverse": it["fields"]["System.Parent"] = int(m.group(1))
         elif path == "/rev": pass
     it["rev"] += 1; it["fields"]["System.ChangedDate"] = now()
+    ch = {k: {"oldValue": before.get(k), "newValue": v} for k, v in it["fields"].items() if before.get(k) != v}
+    for k in before:
+        if k not in it["fields"]: ch[k] = {"oldValue": before[k]}
+    upd = {"id": it["rev"], "rev": it["rev"], "revisedBy": ADMIN, "fields": ch}
+    if added: upd["relations"] = {"added": added}
+    UPD.setdefault(it["id"], []).append(upd)
 class H(http.server.BaseHTTPRequestHandler):
     def send(self, code, obj):
         b = json.dumps(obj).encode(); self.send_response(code); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
@@ -168,6 +194,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 if rest == "workitemsbatch":
                     b = self.body() or {}
                     return self.send(200, {"count": 0, "value": [view(ITEMS[i], b.get("fields")) for i in b.get("ids", []) if i in ITEMS]})
+                mm = re.match(r"^workItems/(\d+)/updates$", rest, re.I)
+                if mm:
+                    i = int(mm.group(1))
+                    return self.send(200, {"count": len(UPD.get(i, [])), "value": UPD.get(i, [])})
                 mm = re.match(r"^workItems/(\d+)/comments$", rest, re.I)
                 if mm:
                     i = int(mm.group(1)); lst = COMMENTS.setdefault(i, [])

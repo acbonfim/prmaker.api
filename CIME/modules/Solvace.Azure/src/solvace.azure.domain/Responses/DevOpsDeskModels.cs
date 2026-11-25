@@ -255,6 +255,25 @@ public sealed record DevOpsCommentsResponse(int Count, IReadOnlyList<DevOpsComme
 public sealed record DevOpsAttachmentInfo(string Id, string Name, string Url, string Source, string? SourceDetail, DateTimeOffset? At, long? Size,
     string? Comment, bool IsImage);
 
+/// <summary>Campo alterado numa revisão do card (valores como texto; HTML como o DevOps guardou).</summary>
+public sealed record DevOpsHistoryChange(string Field, string? OldValue, string? NewValue);
+
+/// <summary>Link incluído/removido numa revisão (<c>Id</c> quando é outro card).</summary>
+public sealed record DevOpsHistoryLink(string Rel, int? Id, string Url, string? Name);
+
+/// <summary>
+/// <c>GET DevOps/workitems/{id}/history</c>: uma revisão do card — quem, quando, campos antes → depois, links e o comentário
+/// feito junto. <c>Created</c> = a revisão 1 (criação do card).
+/// </summary>
+public sealed record DevOpsHistoryEntry(int Rev, DevOpsPersonInfo? By, DateTimeOffset? Date, bool Created, IReadOnlyList<DevOpsHistoryChange> Changes,
+    IReadOnlyList<DevOpsHistoryLink> LinksAdded, IReadOnlyList<DevOpsHistoryLink> LinksRemoved, string? Comment);
+
+/// <summary>
+/// <c>GET DevOps/workitems/{id}/board</c>: board em que o card aparece (o do time dono do card, pelo campo <c>WEF_…</c> ativo).
+/// Sem board: <c>Team</c>/<c>Board</c> nulos.
+/// </summary>
+public sealed record DevOpsCardBoardRef(string? Team, string? Board);
+
 /// <summary>Conteúdo de um anexo baixado com a integração de quem pede (<c>TooLarge</c>: passou do limite, sem bytes).</summary>
 public sealed record DevOpsAttachmentContent(byte[] Data, string ContentType, string Name, bool TooLarge, long? Size);
 
