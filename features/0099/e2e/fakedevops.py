@@ -36,6 +36,23 @@ mk("User Story", "Exportar relatório de anomalias em PDF", "Active", "Active", 
 mk("Bug", "Botão salvar duplicado na tela de auditoria", "New", "New", lane="Expedite", tags=["ux", "regressao"], rank=40)
 mk("User Story", "Filtro por planta no relatório", "Resolved", "Dev Test in QA", who=PEOPLE[0], rank=50)
 mk("Bug", "Erro ao salvar checklist sem internet", "Closed", "Closed", tags=["cliente-gerdau"], rank=60)
+# Ajustes 3: anexos (PNG 1x1 vermelho), imagem colada nos Repro Steps e discussion com imagem.
+import base64 as _b64
+PNG = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+ATT1, ATT2, ATT3 = "11111111-aaaa-4bbb-8ccc-000000000001", "11111111-aaaa-4bbb-8ccc-000000000002", "11111111-aaaa-4bbb-8ccc-000000000003"
+ATT_URL = lambda g, n: f"https://dev.azure.com/solvacelabs/p1/_apis/wit/attachments/{g}?fileName={n}"
+ITEMS[90001]["fields"]["Microsoft.VSTS.TCM.ReproSteps"] = f'<div>1. Abrir o checklist offline</div><div>2. Salvar</div><div><img src="{ATT_URL(ATT2, "print-erro.png")}"></div>'
+ITEMS[90001]["fields"]["System.Description"] = "<p>Checklist offline não salva. Cliente Gerdau.</p>"
+ITEMS[90001]["relations"] += [{"rel": "AttachedFile", "url": f"https://dev.azure.com/solvacelabs/p1/_apis/wit/attachments/{ATT1}",
+                               "attributes": {"name": "log-app.txt", "resourceSize": 42, "resourceCreatedDate": "2026-11-20T10:00:00Z", "comment": "log do app"}},
+                              {"rel": "System.LinkTypes.Related", "url": "https://dev.azure.com/solvacelabs/_apis/wit/workItems/90004", "attributes": {}}]
+ATTS = {ATT1: b"2026-11-20 erro: offline queue full\nfim\n", ATT2: PNG, ATT3: PNG}
+COMMENTS = {90001: [
+    {"id": 1, "text": "<div>Consegui reproduzir no Android.</div>", "createdBy": {"displayName": "Bruno Ferreira", "uniqueName": "bruno@solvace.com", "id": "u1"},
+     "createdDate": "2026-11-21T12:00:00Z", "modifiedDate": "2026-11-21T12:00:00Z"},
+    {"id": 2, "text": f'<div>Print do erro:</div><img src="{ATT_URL(ATT3, "tela.png")}">', "createdBy": {"displayName": "Daniel Strinta", "uniqueName": "daniel@solvace.com", "id": "u2"},
+     "createdDate": "2026-11-22T09:30:00Z", "modifiedDate": "2026-11-22T09:31:00Z"}]}
+ITEMS[90001]["fields"]["System.CommentCount"] = 2
 FIELDS = [("System.Title", "Title", "string", False), ("System.State", "State", "string", False), ("System.AssignedTo", "Assigned To", "string", False),
           ("System.AreaPath", "Area Path", "treePath", False), ("System.IterationPath", "Iteration Path", "treePath", False),
           ("System.Tags", "Tags", "plainText", False), ("System.Description", "Description", "html", False),
@@ -116,6 +133,16 @@ class H(http.server.BaseHTTPRequestHandler):
                     for i in ids: ITEMS[int(i)]["fields"]["Microsoft.VSTS.Common.StackRank"] = r
                     LOG[-1]["body"] = b
                     return self.send(200, {"value": [{"id": int(i), "order": r} for i in ids]})
+            m = re.match(r"^/solvacelabs/(?:[^/]+/)?_apis/wit/attachments/([0-9a-f-]{36})$", path, re.I)
+            if m:
+                data = ATTS.get(m.group(1).lower())
+                if data is None: return self.send(404, {"message": "attachment not found"})
+                ct = "image/png" if data[:4] == b"\x89PNG" else "application/octet-stream"
+                self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data); return
+            if re.match(r"^/solvacelabs/_apis/identities$", path):
+                term = (q.get("filterValue", [""])[0] or "").lower()
+                return self.send(200, {"value": [{"id": f"0000000{p['id'][1:]}-0000-0000-0000-00000000000{p['id'][1:]}", "providerDisplayName": p["displayName"],
+                    "properties": {"Account": {"$value": p["uniqueName"]}}, "isActive": True} for p in PEOPLE if term in p["uniqueName"].lower() or term in p["displayName"].lower()]})
             m = re.match(r"^/solvacelabs/([^/]+)/_apis/wit/(.*)$", path)
             if m:
                 rest = m.group(2)
@@ -142,7 +169,16 @@ class H(http.server.BaseHTTPRequestHandler):
                     b = self.body() or {}
                     return self.send(200, {"count": 0, "value": [view(ITEMS[i], b.get("fields")) for i in b.get("ids", []) if i in ITEMS]})
                 mm = re.match(r"^workItems/(\d+)/comments$", rest, re.I)
-                if mm: LOG[-1]["body"] = self.body(); return self.send(200, {"id": 7, "text": "ok"})
+                if mm:
+                    i = int(mm.group(1)); lst = COMMENTS.setdefault(i, [])
+                    if method == "GET":
+                        out = sorted(lst, key=lambda c: c["createdDate"], reverse=q.get("order", ["asc"])[0] == "desc")
+                        return self.send(200, {"totalCount": len(lst), "count": len(lst), "comments": out})
+                    b = self.body() or {}; LOG[-1]["body"] = b
+                    c = {"id": 100 + len(lst), "text": b.get("text", ""), "createdBy": {"displayName": "Admin Teste", "uniqueName": "admin@solvace.com", "id": "u9"},
+                         "createdDate": now(), "modifiedDate": now()}
+                    lst.append(c); ITEMS[i]["fields"]["System.CommentCount"] = len(lst)
+                    return self.send(200, c)
                 mm = re.match(r"^workitems/\$(.+)$", rest)
                 if mm and method == "POST":
                     ops = self.body() or []; t = mm.group(1)
