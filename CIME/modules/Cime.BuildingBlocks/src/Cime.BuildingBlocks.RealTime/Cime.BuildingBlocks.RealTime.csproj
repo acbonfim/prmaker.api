@@ -11,4 +11,8 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Google.Cloud.PubSub.V1" Version="3.40.0" />
+    </ItemGroup>
+
 </Project>

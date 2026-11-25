@@ -1,14 +1,14 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Cime.BuildingBlocks.RealTime;
+using Cime.RealTime.Relay;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
 
 // Relay de tempo real (feature 0013). Hospeda o hub SignalR fora da API: no Cloud Run, WebSocket
-// aberto na API mantém a instância cobrando 24 h. A API publica aqui por HTTP (POST /publish) e o
-// navegador conecta em /ws com o token de curta duração emitido pela API (GET RealTime/connection).
+// aberto na API mantém a instância cobrando 24 h. A API publica no Pub/Sub e o relay busca na assinatura
+// (PubSubRelayListener); o POST /publish fica para o dev e o rollback. O navegador conecta em /ws com o
+// token de curta duração emitido pela API (GET RealTime/connection).
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +18,10 @@ var requireToken = !string.IsNullOrWhiteSpace(options.TokenSigningKey);
 builder.Services.AddSignalR();
 // Presença ao vivo (0079): em memória aqui no relay, sem custo no Cloud Run.
 builder.Services.AddRealTimePresence();
+// Eventos da API pelo Pub/Sub: o relay busca na assinatura (a API não precisa alcançar o MonsterASP).
+builder.Services.Configure<RealTimeOptions>(builder.Configuration.GetSection(RealTimeOptions.SectionName));
+builder.Services.AddSingleton<PubSubRelayStatus>();
+builder.Services.AddHostedService<PubSubRelayListener>();
 
 if (requireToken)
 {
@@ -69,7 +73,7 @@ var hub = app.MapHub<RealTimeHub>(options.HubPath);
 if (requireToken)
     hub.RequireAuthorization();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+app.MapGet("/health", (PubSubRelayStatus pubSub) => Results.Ok(new { status = "ok", time = DateTime.UtcNow, pubSub = pubSub.Snapshot() }));
 
 app.MapPost("/publish", (HttpRequest request, RelayPublishMessage message, IHubContext<RealTimeHub> hubContext, ILogger<RealTimeHub> logger) =>
 {
@@ -78,32 +82,13 @@ app.MapPost("/publish", (HttpRequest request, RelayPublishMessage message, IHubC
     if (string.IsNullOrWhiteSpace(message.Event))
         return Results.BadRequest(new { message = "event obrigatório" });
 
-    // JsonElement é repassado como está: o front recebe o mesmo JSON que a API serializou.
-    object?[] args = message.Payload is { } payload ? [payload.Clone()] : [null];
-    var clients = string.IsNullOrWhiteSpace(message.Group) ? hubContext.Clients.All : hubContext.Clients.Group(message.Group);
     // Responde já e entrega em segundo plano: o envio espera cada conexão do grupo, e uma lenta (aba suspensa, rede
     // ruim) segurava o POST além dos 3 s da API — o aviso se perdia e a requisição da API ficava 3 s mais lenta.
-    _ = DeliverAsync(clients, message.Group, message.Event, args, logger);
+    RelayDelivery.Deliver(hubContext, message, logger);
     return Results.Accepted();
 });
 
 app.Run();
-
-static async Task DeliverAsync(IClientProxy clients, string? group, string eventName, object?[] args, ILogger logger)
-{
-    var started = Stopwatch.GetTimestamp();
-    try
-    {
-        await clients.SendCoreAsync(eventName, args);
-        var elapsed = Stopwatch.GetElapsedTime(started);
-        if (elapsed >= TimeSpan.FromSeconds(1))
-            logger.LogWarning("Entrega lenta de {Event} (grupo {Group}): {Elapsed} ms", eventName, group ?? "todos", (long)elapsed.TotalMilliseconds);
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Falha ao entregar {Event} (grupo {Group})", eventName, group ?? "todos");
-    }
-}
 
 static bool IsRelayKeyValid(HttpRequest request, string? expected)
 {
@@ -111,6 +96,3 @@ static bool IsRelayKeyValid(HttpRequest request, string? expected)
     var provided = request.Headers[RelayRealTimeNotifier.RelayKeyHeader].ToString();
     return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(expected));
 }
-
-/// <summary>Corpo do POST /publish (espelha <see cref="RelayPublishRequest"/> da API).</summary>
-internal record RelayPublishMessage(string? Group, string Event, JsonElement? Payload);

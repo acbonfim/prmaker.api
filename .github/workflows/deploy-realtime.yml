@@ -9,8 +9,13 @@ name: Deploy realtime relay (MonsterASP)
 #   REALTIME_RELAY_KEY, REALTIME_TOKEN_SIGNING_KEY    — os MESMOS valores dos secrets
 #                                                      realtime-relay-key / realtime-token-signing-key
 #                                                      do Secret Manager (Cloud Run)
-# Variable (opcional): REALTIME_ALLOWED_ORIGINS — origens separadas por vírgula
-#                      (padrão https://app.softhouse.app.br).
+#   REALTIME_PUBSUB_CREDENTIALS                       — chave da conta cime-realtime-relay (base64, como sai de
+#                                                      `terraform output -raw realtime_relay_pubsub_key`): o relay
+#                                                      busca os eventos da API na assinatura do Pub/Sub. Sem ela,
+#                                                      só pelo POST /publish (ver deploy/README.md).
+# Variables (opcionais): REALTIME_ALLOWED_ORIGINS — origens separadas por vírgula
+#                        (padrão https://app.softhouse.app.br);
+#                        REALTIME_PUBSUB_SUBSCRIPTION (padrão projects/cime-prod/subscriptions/cime-realtime-relay).
 
 on:
   push:
@@ -47,13 +52,22 @@ jobs:
           RELAY_KEY: ${{ secrets.REALTIME_RELAY_KEY }}
           TOKEN_KEY: ${{ secrets.REALTIME_TOKEN_SIGNING_KEY }}
           ORIGINS: ${{ vars.REALTIME_ALLOWED_ORIGINS }}
+          PUBSUB_KEY: ${{ secrets.REALTIME_PUBSUB_CREDENTIALS }}
+          PUBSUB_SUBSCRIPTION: ${{ vars.REALTIME_PUBSUB_SUBSCRIPTION }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RELAY_KEY) -or [string]::IsNullOrWhiteSpace($env:TOKEN_KEY)) {
             throw "Configure os secrets REALTIME_RELAY_KEY e REALTIME_TOKEN_SIGNING_KEY."
           }
           if ($env:TOKEN_KEY.Length -lt 32) { throw "REALTIME_TOKEN_SIGNING_KEY precisa de 32+ caracteres." }
           $origins = if ([string]::IsNullOrWhiteSpace($env:ORIGINS)) { @('https://app.softhouse.app.br') } else { $env:ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
-          $config = @{ RealTime = @{ RelayKey = $env:RELAY_KEY; TokenSigningKey = $env:TOKEN_KEY; AllowedOrigins = @($origins) } }
+          $realtime = @{ RelayKey = $env:RELAY_KEY; TokenSigningKey = $env:TOKEN_KEY; AllowedOrigins = @($origins) }
+          if ([string]::IsNullOrWhiteSpace($env:PUBSUB_KEY)) {
+            Write-Warning "REALTIME_PUBSUB_CREDENTIALS vazio: o relay só recebe pelo POST /publish."
+          } else {
+            $realtime.PubSubCredentialsJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:PUBSUB_KEY.Trim()))
+            $realtime.PubSubSubscription = if ([string]::IsNullOrWhiteSpace($env:PUBSUB_SUBSCRIPTION)) { 'projects/cime-prod/subscriptions/cime-realtime-relay' } else { $env:PUBSUB_SUBSCRIPTION.Trim() }
+          }
+          $config = @{ RealTime = $realtime }
           $config | ConvertTo-Json -Depth 5 | Set-Content -Path publish/appsettings.Production.json -Encoding utf8
 
       - name: Deploy no MonsterASP (Web Deploy)

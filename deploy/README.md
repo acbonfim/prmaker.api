@@ -95,6 +95,32 @@ cime-pullrequest ──POST /publish (X-Relay-Key)──▶ relay ──▶ grup
 - **Rollback**: `RealTime__Mode = InProcess` e, na `cime-pullrequest`, `max_instances = 1`,
   `timeout = 3600`, `session_affinity = true` (hub volta para a API, com o custo de antes).
 
+### Tempo real pelo Pub/Sub (2026-11-25)
+
+De parte dos IPs de saída do Cloud Run o relay **não abre conexão TCP** (o `POST /publish` estoura o tempo de
+conexão). Cada instância sai por um IP e fica assim a vida inteira: em 2026-11-25, 7 de 11 instâncias tiveram 100%
+de falha e as outras 0% — a tela ficava "na fila" até o F5. A API passou a publicar no **Pub/Sub** e o relay busca
+os eventos na assinatura; a conexão sai do MonsterASP para o Google, nunca o contrário:
+
+```
+cime-pullrequest ──publish──▶ Pub/Sub cime-realtime ◀──streaming pull── relay ──▶ grupo
+```
+
+- **Terraform** (`realtime.tf`): tópico `cime-realtime`, assinatura `cime-realtime-relay` (retém 10 min; o relay
+  descarta evento com mais de 30 s), publisher = conta de runtime, conta `cime-realtime-relay` (só lê a
+  assinatura) e a chave dela. A API publica no tópico com `realtime_pubsub_publish = true`
+  (env `RealTime__PubSubTopic`); sem isso, `POST /publish` como antes.
+- **Relay**: `PubSubRelayListener` (reconecta sozinho); `GET /health` mostra `pubSub.state` (`listening`,
+  `connecting`, `error`, `disabled`), recebidos, descartados por idade e a idade do último evento.
+- **Implantação** (nessa ordem):
+  1. `terraform apply` (com `realtime_pubsub_publish = false`, o padrão);
+  2. `terraform output -raw realtime_relay_pubsub_key | gh secret set REALTIME_PUBSUB_CREDENTIALS -R acbonfim/prmaker.api`
+     e rodar o `deploy-realtime.yml` (workflow_dispatch);
+  3. `curl https://prformapi.runasp.net/health` → `pubSub.state = "listening"`;
+  4. `terraform apply -var realtime_pubsub_publish=true` (e o padrão da variável vira `true` no repositório).
+- **Rollback**: `realtime_pubsub_publish = false` — a API volta ao `POST /publish`, que o relay continua aceitando.
+- **Custo**: dentro da cota grátis do Pub/Sub (10 GiB/mês).
+
 ## Autenticação no PostgreSQL (feature 0014) — virada e rollback (histórico: concluída em 2026-09-26)
 
 A Cime.Auth e a leitura de usuários da API principal (`AuthenticationContext`) usam PostgreSQL

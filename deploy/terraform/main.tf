@@ -20,11 +20,12 @@ locals {
       # estouravam 512 MiB e a instância reiniciava em loop (buscas de 50–80 s).
       # 2 GiB (aplicado em 2026-10-27, revisão 00137): OOM com 1 GiB no cache da busca da engenharia reversa (~0,5 GB).
       memory = "2Gi"
-      env = {
+      # Tempo real pelo Pub/Sub (realtime.tf): com o tópico, a API publica nele em vez do POST /publish do relay.
+      env = merge({
         ASPNETCORE_ENVIRONMENT = "Production"
         RealTime__Mode         = "Relay"
         RealTime__RelayUrl     = var.realtime_relay_url
-      }
+      }, var.realtime_pubsub_publish ? { RealTime__PubSubTopic = google_pubsub_topic.realtime.id } : {})
       secret_env = {
         "ConnectionStrings__DefaultConnection"        = "mysql-default-connection"
         "ConnectionStrings__AuthenticationConnection" = "sqlserver-auth-connection"
@@ -39,8 +40,8 @@ locals {
         # ao realtime-apikey. Na B1: grants por secret (moved/removed) antes de tirar as envs.
         "ConnectionStrings__AuthDatabase" = "postgres-auth-connection"
         "RealTime__ApiKey"                = "realtime-apikey"
-        "RealTime__RelayKey"        = "realtime-relay-key"
-        "RealTime__TokenSigningKey" = "realtime-token-signing-key"
+        "RealTime__RelayKey"              = "realtime-relay-key"
+        "RealTime__TokenSigningKey"       = "realtime-token-signing-key"
         # Módulos prform/vacations/timeline no PostgreSQL (feature 0015). A DefaultConnection (MySQL)
         # fica até a limpeza (0016): é o que a revisão anterior lê num rollback.
         "ConnectionStrings__PrformDatabase" = "postgres-prform-connection"
@@ -138,6 +139,7 @@ resource "google_project_service" "apis" {
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "pubsub.googleapis.com",
   ])
   service            = each.value
   disable_on_destroy = false
@@ -250,8 +252,8 @@ resource "google_cloud_run_v2_service" "services" {
   ingress             = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.runtime.email
-    timeout         = "${each.value.timeout_seconds}s"
+    service_account  = google_service_account.runtime.email
+    timeout          = "${each.value.timeout_seconds}s"
     session_affinity = each.value.session_affinity
 
     scaling {

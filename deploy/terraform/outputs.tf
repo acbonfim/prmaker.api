@@ -17,3 +17,14 @@ output "service_urls" {
   description = "URLs públicas dos serviços Cloud Run."
   value       = { for k, s in google_cloud_run_v2_service.services : k => s.uri }
 }
+
+output "realtime_relay_pubsub_key" {
+  description = "Chave (JSON em base64) da conta do relay para ler a assinatura do Pub/Sub: valor do secret REALTIME_PUBSUB_CREDENTIALS do GitHub."
+  value       = google_service_account_key.realtime_relay.private_key
+  sensitive   = true
+}
+
+output "realtime_pubsub_subscription" {
+  description = "Assinatura que o relay lê (RealTime:PubSubSubscription)."
+  value       = google_pubsub_subscription.realtime_relay.id
+}

@@ -42,6 +42,7 @@ public class PluginRealTimeOptionsProvider : IRealTimeOptionsProvider
             Mode = _envOptions.Mode,
             RelayUrl = _envOptions.RelayUrl,
             RelayKey = _envOptions.RelayKey,
+            PubSubTopic = _envOptions.PubSubTopic,
             TokenSigningKey = _envOptions.TokenSigningKey,
             TokenLifetimeMinutes = _envOptions.TokenLifetimeMinutes,
             PublicHubUrl = _envOptions.PublicHubUrl
