@@ -202,7 +202,9 @@ expected?)` — padrao: `dev` e `qa` quando ha PR para eles, `sandboxefeso`/`san
 homologacao, e o **cliente especifico** da US (producao ou sandbox do cliente, com a planta, quando a US e de um
 cliente — `bash ~/.claude/skills/validar-ambiente/scripts/env.sh resolve <cliente>`); ambiente pedido pela pessoa entra
 tambem. `scenario` = os criterios de aceite como roteiro (CA → passo → esperado). Fica pendente: roda quando a
-implementacao estiver no ambiente (skill `validar-ambiente`: login, prints e evidencias na sub-tarefa).
+implementacao estiver no ambiente (skill `validar-ambiente`: login, prints e evidencias na sub-tarefa). Criado depois do
+merge (0103): `scheduledAt: "+2h30m"` (o tempo da esteira) para rodar sozinho, ou `parked: true` quando a esteira e
+manual/hora incerta (a pessoa decide se e quando).
 
 **8. Executar** — como a analisar-bug (`$REF correcao 8`): `control` entre etapas, worktree do card, PRs com
 `open-pr`, espera com `prmake_handoff` (primeira pessoa, como quem trata o card; espera como status: "Aguardando abrir chamado"), nova rodada no mesmo plano se a validacao falhar (`$REF correcao 8b`). Plano
@@ -216,6 +218,11 @@ entra pendente antes da etapa em que voce parou. Ao ser retomado, faca-a primeir
 solucao, atualize a analise e as perguntas abertas. Ao refinar as etapas, mantenha as `pedido-*`.
 **Ordem, pausa e cancelamento pela pessoa (card 78680):** siga a ordem **atual** do `prmake_plan` (a proxima e a primeira
 etapa pronta); nao comece etapa `held` (pausada) nem as que dependem dela; etapa `pinned` fica onde a pessoa pos.
+**Agendamento (0103):** etapa que espera uma **hora conhecida** (esteira ~2 h depois do merge, job da madrugada) → nao a
+deixe em espera so pela hora: `prmake_work_schedule(card, <#n da sub-tarefa>, "set", at: "+2h30m" | "<ISO com offset>")`
+(sem offset = Brasilia), diga quando roda e siga com as independentes; etapa agendada (`scheduledAt` no `prmake_plan`) e as
+dependentes nao se comecam — na hora o PRMake retoma. Depois do merge confirmado, o item de validacao dos ambientes das
+branches mescladas nasce com `scheduledAt` (tempo da esteira) ou `parked: true` (esteira manual/hora incerta).
 
 ## Referencias da analisar-bug — `bash $REF <arquivo> <secao>` (so a secao, so na hora)
 | Quando | Comando |

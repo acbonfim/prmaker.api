@@ -74,9 +74,11 @@ public partial class WorkItem
 
     /// <summary>
     /// Agenda a sub-tarefa: pausada até <paramref name="at"/> (no horário continua sozinha). Em andamento só com o executor
-    /// parado (quem chama interrompe); em espera/com falha volta a pendente. Item espelho agenda pela etapa do plano.
+    /// parado (quem chama interrompe) — a não ser que o próprio executor agende a sub-tarefa que está fazendo
+    /// (<paramref name="byExecutor"/>: ele segue com as independentes e encerra); em espera/com falha volta a pendente. Item
+    /// espelho agenda pela etapa do plano.
     /// </summary>
-    public WorkItemTask ScheduleTask(long taskNumber, DateTimeOffset at, string actor, Guid? actorId, DateTimeOffset now)
+    public WorkItemTask ScheduleTask(long taskNumber, DateTimeOffset at, string actor, Guid? actorId, DateTimeOffset now, bool byExecutor = false)
     {
         EnsureAdjustable();
         var task = FindTask(taskNumber);
@@ -87,7 +89,7 @@ public partial class WorkItem
         var when = ScheduleTime.Validate(at, now);
         if (!task.Held)
         {
-            EnsureNotRunningLive(task, "agendar");
+            if (!byExecutor) EnsureNotRunningLive(task, "agendar");
             if (task.Status is WorkTaskStatus.Running or WorkTaskStatus.Waiting or WorkTaskStatus.Failed)
                 task.BackToPending(actor, $"Agendada para {ScheduleTime.Format(when)}", now);
             task.SetHeld(true, actor, now);

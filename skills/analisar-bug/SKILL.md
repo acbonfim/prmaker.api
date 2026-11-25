@@ -132,6 +132,7 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
 | **regras do card** (0085: fluxo, base, nome de branch por destino, padroes) · **itens de trabalho** (listar, criar entrega separada) | `prmake_rules(card)` · `prmake_work_items(card)` · `prmake_work_item(card, n)` · `prmake_work_item_create(card, ..., planPhase: "correction")` | `rules` (cache `dados/regras.md`) · `work-items [n]` |
+| **agendar** etapa/sub-tarefa ou item para uma hora conhecida (0103) · validacao pos-merge agendada/em espera sem data | `prmake_work_schedule(card, number, set\|park\|clear\|run-now, at?)` · `prmake_env_validation(..., scheduledAt? \| parked?)` | — |
 
 **Sempre pelo script** (arquivos locais, git, custo): `contexto` (inicio), `sync`/`upload`, `branches`, `worktree`,
 `pr-text`/`save-pr-text`/`open-pr`, `watch`/`wait` (fora do executor) e `status <card> completed|failed` ao concluir o
@@ -376,6 +377,15 @@ mantenha as `pedido-*` (o PRMake nao as apaga por omissao).
 pausar (`held`) ou cancelar uma etapa. Siga sempre a ordem **atual** do `prmake_plan`: a proxima e a primeira etapa
 pendente pronta. **Nao comece etapa `held`** nem as que dependem dela (o PRMake recusa); sem outra pronta, encerre a vez.
 Etapa com `pinned` foi posta no lugar pela pessoa — ao refinar (`prmake_steps`) nao a tire de la (o PRMake a mantem).
+
+**Agendamento (0103):** etapa que precisa esperar uma **hora conhecida** (esteira ~2 h depois do merge, pipeline manual
+com hora marcada, job da madrugada — card 78794 #1080: conferir depois das 04:30 de Brasilia) → **nao a deixe em espera
+so pela hora**: agende a sub-tarefa da etapa, `prmake_work_schedule(card, <#n>, "set", at: "+2h30m" | "<ISO com offset>")`
+(sem offset = Brasilia; ate 60 dias), diga em uma linha quando roda e siga com as independentes. Etapa agendada
+(`scheduledAt` no `prmake_plan`) e as que dependem dela nao se comecam; na hora o PRMake libera e retoma o plano. **Depois
+dos PRs abertos e do merge confirmado**, crie a validacao nos ambientes das branches mescladas (development, qa...) como
+item separado: `prmake_env_validation(card, environments, scheduledAt: "+2h30m")` (tempo da esteira) ou, esteira manual/
+hora incerta, `parked: true` (a pessoa decide se e quando roda) — sempre conferindo `prmake_work_items` antes.
 
 ## Referencias — `bash $REF <arquivo> <secao>` (so a secao, so na fase)
 | Quando | Comando |

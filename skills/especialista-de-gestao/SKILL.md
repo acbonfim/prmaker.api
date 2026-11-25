@@ -128,6 +128,7 @@ Detalhes comuns com o especialista do caso — leia **so a secao** quando precis
 | Relatorio, duplicados, entendimento, RCA, PDF, planejamento | secao "Itens de trabalho de gestao" |
 | PDF de um markdown que ja esta num item | `prmake_work_item_files(card: "E<n>", number, file: "<nome.md>")` → `prmake_pdf(card: "E<n>", item, name, markdown, title?, task?)` (grava nos arquivos do item). Documento ainda por escrever → item com sub-tarefa `pdf` |
 | Executar / reabrir / cancelar item, sub-tarefa a mais | como no especialista do caso (`sed` acima), com `card: "E<n>"` |
+| Agendar item ou sub-tarefa (0103: "roda o relatorio segunda 8h", "deixa para quando eu decidir", "muda a hora", "tira o agendamento", "roda agora") | `prmake_work_schedule(card: "E<n>", number, set\|park\|clear\|run-now, at?, reason?)` — `at` ISO com offset (sem offset = Brasilia) ou `+2h`/`+1d`, ate 60 dias; roda sozinho na hora, na maquina de quem agendou. Ja nasce agendado: `scheduledAt`/`parked` no `prmake_work_item_create`/`prmake_tool_run`. Item agendado so roda antes com `prmake_work_item_execute(..., runNow: true)` a pedido. Espera certa de hora conhecida → pode agendar voce mesmo, dizendo na conversa |
 
 ## Criar card (sempre nesta ordem)
 1. **Tipo e campos**: `prmake_devops_meta(what: "types")` (tipo valido) e `prmake_devops_meta(what: "fields", type)` —

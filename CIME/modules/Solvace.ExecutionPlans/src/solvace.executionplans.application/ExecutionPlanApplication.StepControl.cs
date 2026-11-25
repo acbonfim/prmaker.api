@@ -49,7 +49,8 @@ public partial class ExecutionPlanApplication
                     p.HoldStep(key, false, actor.Name, now);
                     break;
                 case WorkTaskControl.Schedule:
-                    if (current.Status == ExecutionStatus.Running) interrupted.Add(key);
+                    // O próprio Claude do tratamento agendando a etapa em que está: ele segue com as outras (não reinicia).
+                    if (current.Status == ExecutionStatus.Running && !actor.IsExecutor) interrupted.Add(key);
                     p.ScheduleStep(key, at!.Value, actor.Name, actor.UserId, now);
                     break;
                 case WorkTaskControl.Cancel:

@@ -54,6 +54,14 @@ Rodada 5: o `especialista-do-caso` **executa** as acoes que a pessoa pede (Timel
 criar/cancelar/executar item) com a integracao de quem pediu — nunca o plano; item com `sql-script` ganha sozinho as
 sub-tarefas do chamado (o `executar-item-de-trabalho` grava o chamado completo com `prmake_work_item_file`, kind `ticket`).
 
+**Agendamento (0103)**: item ou sub-tarefa pode esperar uma hora (`prmake_work_schedule(card, number, set|park|clear|run-now,
+at?)`; `at` ISO com offset — sem offset = Brasilia — ou `+2h30m`/`+1d`, ate 60 dias). Na hora o PRMake roda sozinho, na
+maquina de quem agendou; sub-tarefa agendada segura so ela e as dependentes (vale no espelho do plano: `scheduledAt` na
+etapa). `prmake_work_item_create`/`prmake_tool_run`/`prmake_env_validation` aceitam `scheduledAt`/`parked`;
+`prmake_work_item_execute` recusa item agendado sem `runNow`. Regra das skills: espera de **hora conhecida** (esteira depois
+do merge, job da madrugada) vira agendamento, nunca `wait`; validacao pos-merge nasce agendada (`+2h30m`) ou em espera sem
+data (`parked`). O executor nunca comeca nem espera a agendada. Na Bancada: relogio lilas.
+
 **Mesa de gestao (0099)**: itens de trabalho de um **epico** usam a chave `E<numero>` como card (mesma numeracao `#n` de
 itens e sub-tarefas). A `executar-item-de-trabalho` roda o item e, nos kinds de gestao, segue a `tarefas-de-gestao` (sem
 branch/PR/estado de card no epico); a conversa da Mesa roda a `especialista-de-gestao`. Toda gravacao no DevOps passa pelo

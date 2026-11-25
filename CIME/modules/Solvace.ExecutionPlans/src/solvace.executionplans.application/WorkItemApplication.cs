@@ -509,7 +509,7 @@ public partial class WorkItemApplication : IWorkItemApplication
                 case WorkTaskControl.Pause: i.HoldTask(taskNumber, true, req.Reason, actor.Name, now); break;
                 case WorkTaskControl.Resume: i.HoldTask(taskNumber, false, req.Reason, actor.Name, now); break;
                 case WorkTaskControl.Cancel: i.CancelTask(taskNumber, req.Reason, mode == WorkTaskControl.DependentsCancel, actor.Name, now); break;
-                case WorkTaskControl.Schedule: i.ScheduleTask(taskNumber, at!.Value, actor.Name, actor.UserId, now); break;
+                case WorkTaskControl.Schedule: i.ScheduleTask(taskNumber, at!.Value, actor.Name, actor.UserId, now, actor.IsExecutor); break;
             }
         }
         WorkItem item;

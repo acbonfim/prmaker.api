@@ -78,8 +78,11 @@ descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/
    pessoa precisa fazer ou valide num ambiente de teste (dev/qa/sandbox do cliente).
 3. **Valide o que esta no ambiente.** Antes, confira que a mudanca chegou la (PR do destino do ambiente mesclado e
    publicado: dev ← `development`/`-dev`, qa ← `qa`/`-qa`, sandboxefeso/sandboxrt ← `release-version`/`hotfix-version`,
-   producao ← `master`; `prmake_case_context`/`prmake_card`/`prmake_work_items`). Nao chegou → `wait` dizendo qual
-   PR/deploy falta e **encerre a vez** (o executor retoma quando a pessoa agir).
+   producao ← `master`; `prmake_case_context`/`prmake_card`/`prmake_work_items`). Nao chegou → **PR ja mesclado, so
+   falta a esteira** (0103): agende a nova tentativa, `prmake_work_schedule(card, taskNumber, "set", at: "+1h")` (ou a
+   hora conhecida da esteira), diga no resultado quando roda e **encerre a vez** — nada de `wait` so pela hora nem de
+   falhar; PR ainda aberto/deploy manual sem hora → `wait` dizendo qual PR/deploy falta e encerre (o executor retoma
+   quando a pessoa agir).
 4. Banco **somente leitura** (`sql-query.sh` so SELECT). Nada de comentario em codigo, commit ou PR aqui.
 5. **Prints sem dado sensivel alem do necessario**: nada de tela de senha, token, dados pessoais que nao provem a
    validacao. Prefira a tela com o resultado (mensagem de sucesso, registro na lista, valor calculado).
@@ -208,6 +211,11 @@ producao do cliente do bug (Bug) ou de um cliente especifico (US). A pessoa tamb
 - Na tela: Ferramentas → **Validar em ambiente**, ou `/validar-em-ambiente` na conversa do Especialista.
 O item nasce pendente; roda quando a pessoa (ou o especialista, a pedido) clica em **Executar**. Cada sub-tarefa roda
 este fluxo; prints e relatorio ficam na sub-tarefa (galeria "Evidencias").
+**Depois do merge (0103)**: a validacao dos ambientes das branches mescladas nasce **agendada** —
+`prmake_env_validation(..., scheduledAt: "+2h30m")` (tempo da esteira; ISO com offset tambem vale, sem offset = Brasilia)
+roda sozinha na hora, na maquina de quem agendou — ou **em espera sem data** (`parked: true`) quando a esteira e manual ou
+a hora e incerta (a pessoa decide se e quando roda ou agenda; na Bancada, relogio lilas). Item agendado so roda antes com
+`prmake_work_item_execute(..., runNow: true)`, a pedido.
 
 ## Exemplo — card 77434, "validar em QA e na producao da Mondelez (planta COR)"
 1. `prmake_env_validation(card: "77434", environments: "qa, mondelez", plant: "COR", scenario: "Abrir o 5W2H do plano 12 e

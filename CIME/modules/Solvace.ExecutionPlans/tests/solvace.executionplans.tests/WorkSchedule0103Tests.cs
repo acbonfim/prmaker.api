@@ -109,6 +109,23 @@ public class WorkSchedule0103Tests
     }
 
     [Fact]
+    public void Executor_scheduling_its_own_running_task_is_not_an_interruption()
+    {
+        var item = Loose(T("Conferir a geração"), T("Avisar o time"));
+        item.MarkQueued(Guid.NewGuid(), "Alex", Now);
+        item.ApplyTaskAction(2001, WorkTaskAction.Start, null, null, null, "claude", Now);
+
+        // A pessoa (tela/especialista) precisaria parar a execução antes...
+        Assert.Throws<WorkTaskInterruptRequiredException>(() => item.ScheduleTask(2001, At, "Alex", Alex, Now));
+        // ...o Claude que está nela agenda e segue com a independente.
+        item.ScheduleTask(2001, At, "Claude", Alex, Now, byExecutor: true);
+
+        Assert.Equal(WorkTaskStatus.Pending, Task(item, 2001).Status);
+        Assert.Equal(At, Task(item, 2001).ScheduledAt);
+        Assert.Equal(2002, item.NextTask!.Number);
+    }
+
+    [Fact]
     public void Pause_on_scheduled_removes_the_date_and_resume_releases_it()
     {
         var item = Loose(T("Validar"));
