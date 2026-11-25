@@ -18,7 +18,7 @@ namespace solvace.prform.infra.Migrations
 {"BaseSolvaceRunner": "provider"}
 """;
         private const string AIFieldSettings = """
-{"BaseSolvaceRunner": {"Label": "Perguntas da Base Solvace", "Optional": true, "UseGlobalDefault": true, "Suggestions": ["provider", "executor"], "Help": "Quem responde o Pergunte da Base Solvace: provider = o provedor de IA do servidor (cobra a sua chave de API); executor = o Claude Code da sua máquina (assinatura), mais preciso. Precisa do executor online."}}
+{"BaseSolvaceRunner": {"Label": "Perguntas da Base Solvace", "Optional": true, "UseGlobalDefault": true, "Suggestions": ["provider", "executor"], "Help": "Quem responde o Pergunte da Base Solvace. Provedor de IA: no servidor, cobra a sua chave de API. Executor: o Claude Code da sua máquina (assinatura), mais preciso — precisa do executor online."}}
 """;
         private const string SkillsOptions = """
 {"BaseAskExecutorModel": "sonnet", "BaseAskExecutorEffort": "low", "BaseAskExecutorDeepEffort": "medium"}

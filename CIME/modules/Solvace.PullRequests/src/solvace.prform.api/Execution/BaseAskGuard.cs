@@ -14,6 +14,8 @@ namespace solvace.prform.Execution;
 public static class BaseAskClaims
 {
     public const string Request = "baseAskRequest";
+    /// <summary>Modelo do Claude Code no pedido (vai na resposta: o selo "Claude Code · sonnet").</summary>
+    public const string Model = "baseAskModel";
 
     public static Guid? RequestOf(ClaimsPrincipal? user) =>
         Guid.TryParse(user?.FindFirst(Request)?.Value, out var id) ? id : null;
@@ -40,10 +42,10 @@ public class BaseAskTokenIssuer(IConfiguration configuration)
         JwtRegisteredClaimNames.Jti, JwtRegisteredClaimNames.Exp, JwtRegisteredClaimNames.Nbf, JwtRegisteredClaimNames.Iat,
         JwtRegisteredClaimNames.Aud, JwtRegisteredClaimNames.Iss, ExecutorClaims.WorkerId, ExecutorClaims.CredentialId,
         CaseClaims.Card, CaseClaims.Request, CaseClaims.RequestedById, CaseClaims.RequestedByName, CaseClaims.OwnerExternalId,
-        BaseAskClaims.Request
+        BaseAskClaims.Request, BaseAskClaims.Model
     };
 
-    public string Issue(ClaimsPrincipal worker, Guid requestId)
+    public string Issue(ClaimsPrincipal worker, Guid requestId, string? model = null)
     {
         var secret = configuration["Auth:Secret"];
         if (string.IsNullOrEmpty(secret))
@@ -53,6 +55,7 @@ public class BaseAskTokenIssuer(IConfiguration configuration)
             .Select(c => new Claim(c.Type, c.Value))
             .ToList();
         claims.Add(new Claim(BaseAskClaims.Request, requestId.ToString()));
+        if (!string.IsNullOrWhiteSpace(model)) claims.Add(new Claim(BaseAskClaims.Model, model));
         claims.Add(new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
         var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(secret));
         var token = new JwtSecurityToken(claims: claims, expires: DateTime.UtcNow.AddHours(1),

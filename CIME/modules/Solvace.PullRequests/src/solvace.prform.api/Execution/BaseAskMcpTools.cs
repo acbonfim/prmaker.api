@@ -36,7 +36,7 @@ public partial class BaseAskMcpTools(IExecutionQueueApplication queue, IReverseE
         [Description("Resposta em markdown, em portugues")] string answer,
         [Description("answered | partial | not-found")] string coverage,
         [Description("operacao | regra | tecnica | outra")] string? kind = null,
-        [Description("Itens usados, separados por virgula (modulo#RN-012, ART-21), ate 6")] string? refs = null,
+        [Description("Fontes usadas, separadas por virgula, ate 6: itens (modulo#RN-012), artigos (ART-21) ou secoes (projeto/secao § titulo)")] string? refs = null,
         CancellationToken ct = default)
     {
         if (BaseAskClaims.RequestOf(http.HttpContext?.User) is not { } requestId)
@@ -58,6 +58,7 @@ public partial class BaseAskMcpTools(IExecutionQueueApplication queue, IReverseE
             Answer = text,
             AiUsed = true,
             Provider = ProviderName,
+            Model = http.HttpContext?.User.FindFirst(BaseAskClaims.Model)?.Value,
             Kind = ArchitectureQuestionKind.Normalize(kind),
             Coverage = ArchitectureCoverage.Normalize(coverage),
             Results = await HitsAsync(refs, ct)
@@ -85,8 +86,14 @@ public partial class BaseAskMcpTools(IExecutionQueueApplication queue, IReverseE
         var list = (refs ?? string.Empty).Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxResults * 2).ToList();
         var items = new List<string>();
+        var projects = new Dictionary<string, ArchitectureProjectResponse?>(StringComparer.OrdinalIgnoreCase);
         foreach (var raw in list)
         {
+            if (SectionRef().Match(raw) is { Success: true } sec)
+            {
+                if (await SectionHitAsync(sec, projects, ct) is { } hit) hits.Add(hit);
+                continue;
+            }
             if (Article().Match(raw) is { Success: true } art)
             {
                 try
@@ -122,6 +129,29 @@ public partial class BaseAskMcpTools(IExecutionQueueApplication queue, IReverseE
         return hits.Take(MaxResults).ToList();
     }
 
+    /// <summary>Seção citada (<c>projeto/secao</c>, opcional <c>§ título</c>): abre a seção no trecho. Só títulos — nada do conteúdo.</summary>
+    private async Task<ArchitectureSearchHit?> SectionHitAsync(Match m, Dictionary<string, ArchitectureProjectResponse?> projects, CancellationToken ct)
+    {
+        var key = m.Groups["project"].Value;
+        if (!projects.TryGetValue(key, out var project))
+        {
+            try { project = await architecture.GetProjectAsync(key, ct); }
+            catch (Exception e) when (e is KnowledgeNotFoundException or DomainException) { project = null; }
+            projects[key] = project;
+        }
+        // o espelho mostra "020-modulos"; a chave da seção é "modulos"
+        var sectionKey = Regex.Replace(m.Groups["section"].Value, @"^\d{3}-", "");
+        var section = project?.Sections.FirstOrDefault(s => string.Equals(s.Key, sectionKey, StringComparison.OrdinalIgnoreCase));
+        if (project is null || section is null) return null;
+        var name = project.DisplayName ?? project.Name;
+        return new ArchitectureSearchHit
+        {
+            Type = "section", ProjectKey = project.Key, ProjectName = name, SectionKey = section.Key, SectionTitle = section.Title,
+            Audience = section.Audience, Title = $"{name} — {section.Title}",
+            Heading = m.Groups["heading"].Success ? m.Groups["heading"].Value.Trim() : null, Snippet = string.Empty, Matched = [], Reason = "Seção da Base Solvace"
+        };
+    }
+
     private static ArchitectureSearchHit ItemHit(ReverseItemResponse item)
     {
         var doc = ReverseDocTypes.ByKey.TryGetValue(item.DocType, out var d) ? d : null;
@@ -155,4 +185,7 @@ public partial class BaseAskMcpTools(IExecutionQueueApplication queue, IReverseE
 
     [GeneratedRegex(@"^ART-(\d+)$", RegexOptions.IgnoreCase)]
     private static partial Regex Article();
+
+    [GeneratedRegex(@"^(?<project>[a-z0-9][a-z0-9._-]*)/(?<section>[a-z0-9][a-z0-9._-]*)(?:\s*§\s*(?<heading>.+))?$", RegexOptions.IgnoreCase)]
+    private static partial Regex SectionRef();
 }

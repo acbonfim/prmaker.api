@@ -206,7 +206,7 @@ public partial class ExecutionQueueApplication
                 : "3. Seja rapido: no maximo umas 6 chamadas no total. Nao leia codigo.")
             .AppendLine("4. Responda com prmake_base_answer (UMA vez) e encerre:")
             .AppendLine($"   question=\"{q.Id}\", answer=markdown, coverage=answered|partial|not-found, kind=operacao|regra|tecnica|outra, " +
-                        "refs=\"modulo#ID, ...\" (os itens que voce usou, do mais util para o menos util, ate 6; ART-n para artigos).")
+                        "refs=\"...\" (as fontes que voce usou, da mais util para a menos util, ate 6: modulo#RN-012, ART-21 ou projeto/secao § titulo).")
             .AppendLine()
             .AppendLine("A resposta (answer) e para quem USA o sistema (QA, suporte, gestor, consultor) — nao programa:")
             .AppendLine("- Pergunta de COMO FAZER: titulos em negrito **Resumo** (1-2 frases), **Quem pode**, **Antes de comecar**, **Passo a passo** " +

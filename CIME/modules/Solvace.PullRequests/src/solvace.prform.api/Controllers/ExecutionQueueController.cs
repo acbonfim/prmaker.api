@@ -147,8 +147,8 @@ public class ExecutionQueueController(IExecutionQueueApplication queue, solvace.
             if (claim.Request.Kind == ExecutionRequestKind.BaseAsk)
             {
                 // 0102: pergunta da Base Solvace — token só das ferramentas da Base, modelo básico com pouco esforço.
-                claim.CaseToken = baseTokens.Issue(User, claim.Request.Id);
                 (claim.Model, claim.Effort) = await BaseAskModelAsync(claim.Request.Deep, settings, logger, ct);
+                claim.CaseToken = baseTokens.Issue(User, claim.Request.Id, claim.Model);
                 return Ok(claim);
             }
             claim.Model = await ModelForAsync(claim.Phase, settings, logger, ct);

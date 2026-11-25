@@ -100,7 +100,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
     /// </summary>
     public static readonly IReadOnlySet<string> TreatmentOnlyTools = new HashSet<string>(StringComparer.Ordinal)
     {
-        "prmake_correction", "prmake_steps", "prmake_ask", "prmake_block", "prmake_checkpoint", "prmake_control", "prmake_notes"
+        "prmake_correction", "prmake_steps", "prmake_ask", "prmake_block", "prmake_checkpoint", "prmake_control", "prmake_notes",
+        // 0102: resposta da pergunta da Base Solvace pelo executor — só com o token da pergunta.
+        "prmake_base_answer"
     };
 
     /// <summary>
