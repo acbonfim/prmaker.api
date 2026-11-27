@@ -85,12 +85,15 @@ public partial class ExecutionPlanApplication
 
         var merged = new List<ExecutionLink>();
         var failedCi = new List<ExecutionLink>();
+        // 0106: PRs que passaram a ter "changes requested" (ninguém pedia antes) — viram o item "Atender o review".
+        var reviewRequested = new List<(ExecutionLink Link, string? HeadSha, int Count)>();
         var changed = false;
         var checksChanged = false;
         var plan = await MutateAsync(planId, async p =>
         {
             merged.Clear();
             failedCi.Clear();
+            reviewRequested.Clear();
             changed = false;
             checksChanged = false;
             var links = await _repository.GetLinksAsync(p.Id, cancellationToken);
@@ -140,8 +143,13 @@ public partial class ExecutionPlanApplication
                             if (newFailure) failedCi.Add(link);
                         }
                         // 0075: aprovações e revisores pendentes (vêm na mesma consulta do CI).
+                        var hadChangesRequested = (link.ChangesRequested ?? 0) > 0;
                         if (link.ChangeReviews(ci.Approvals, ci.ChangesRequested, ci.ReviewersPending))
+                        {
                             checksChanged = true;
+                            if (!hadChangesRequested && ci.ChangesRequested > 0)
+                                reviewRequested.Add((link, ci.HeadSha, ci.ChangesRequested));
+                        }
                     }
                 }
 
@@ -164,6 +172,20 @@ public partial class ExecutionPlanApplication
 
         if (changed || checksChanged)
             await NotifyAsync(plan, domain.RealTime.ExecutionPlanRealTimeEvents.Actions.Link, null, cancellationToken);
+        // 0106: pedido de mudanças novo → item "Atender o review do PR" + aviso na conversa + sinal de erro.
+        if (reviewRequested.Count > 0 && _reviews is { } reviews)
+            foreach (var (link, sha, count) in reviewRequested)
+            {
+                try
+                {
+                    await reviews.ChangesRequestedAsync(new PullRequestChangesRequested(plan.CardNumber, plan.Id, plan.CreatedByUserId,
+                        link.Repository ?? string.Empty, link.PullRequestNumber ?? 0, link.Url, link.TargetBranch, sha, count), cancellationToken);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // Best-effort: o selo "Mudanças pedidas" já aparece no PR.
+                }
+            }
         // CI verde/pendente só atualiza a tela; falhou → o Claude volta para corrigir.
         if (failedCi.Count > 0)
             await TriggerResumeAsync(plan, SystemActor, ExecutionRequestSource.Checks, cancellationToken);

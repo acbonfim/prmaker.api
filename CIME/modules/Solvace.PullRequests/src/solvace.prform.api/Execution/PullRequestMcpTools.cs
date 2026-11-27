@@ -5,6 +5,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using solvace.executionplans.application.Contracts;
 using solvace.github.application.Contract;
+using solvace.github.domain.Responses;
 using solvace.prform.application.UserIntegrations;
 using solvace.prform.domain.Entities;
 using solvace.prform.domain.Requests;
@@ -97,6 +98,144 @@ public class PullRequestMcpTools(
             return (response, $"PR #{pr.Number}{(pr.AlreadyExisted ? " (já existia)" : string.Empty)}: {pr.Url}" + (warning is null ? string.Empty : $" — atenção: {warning}"));
         }, ct);
     });
+
+    [McpServerTool(Name = "prmake_pr_reviews", ReadOnly = true)]
+    [Description("0106: le o REVIEW de um PR do card no GitHub (os repositorios dos cards ficam no GitHub): quem pediu mudancas, as revisoes com o " +
+                 "texto, os comentarios nas linhas agrupados por conversa (com id, arquivo:linha, se a linha e CODIGO NOVO do PR, se ficou " +
+                 "desatualizado e o trecho) e os comentarios da conversa. Use para avaliar um pedido de mudancas (request changes): avalie so os " +
+                 "pontos em codigo novo do PR; o resto e seguimento. Responda depois com prmake_pr_review_reply.")]
+    public Task<string> Reviews(string card,
+        [Description("Numero do PR")] int number,
+        [Description("Repositorio (ex.: edv-solvace); padrao: o do card")] string? repository = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var (c, repo) = await TargetAsync(card, repository, ct);
+        var github = services.GetRequiredService<IGitHubService>();
+        var r = await github.GetPullRequestReviewsAsync(repo, number, ct);
+        if (r.Error is { } error) throw new McpException(error);
+        CheckCard(c, r.Head, number);
+        return ReviewsMarkdown(r);
+    });
+
+    [McpServerTool(Name = "prmake_pr_review_reply", Destructive = true)]
+    [Description("0106: responde no PR do card (GitHub) — commentId = o comentario de linha que voce responde (a resposta entra na mesma conversa); " +
+                 "sem commentId = comentario na conversa do PR. Use ao terminar os ajustes de um pedido de mudancas: um por ponto, dizendo o que " +
+                 "mudou e o commit, ou por que nao mudou. Nunca aprova nem mescla. Especialista do caso: so a pedido da pessoa.")]
+    public Task<string> ReviewReply(string card,
+        [Description("Numero do PR")] int number,
+        [Description("Texto (markdown)")] string body,
+        [Description("Id do comentario de linha respondido (de prmake_pr_reviews)")] long? commentId = null,
+        [Description("Repositorio; padrao: o do card")] string? repository = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(body)) throw new McpException("Informe o texto da resposta.");
+        var (c, repo) = await TargetAsync(card, repository, ct);
+        var github = services.GetRequiredService<IGitHubService>();
+        var pr = await github.GetPullRequestReviewsAsync(repo, number, ct);
+        if (pr.Error is { } error) throw new McpException(error);
+        CheckCard(c, pr.Head, number);
+        if (commentId is { } id && pr.Comments.All(x => x.Id != id))
+            throw new McpException($"O comentario {id} nao e deste PR — use os ids de prmake_pr_reviews.");
+        var text = specialist.Mark(body.Trim());
+        return await specialist.RunAsync(c, commentId is null ? $"Comentar no PR #{number}" : $"Responder o comentario {commentId} do PR #{number}", null, async () =>
+        {
+            var url = commentId is { } cid
+                ? await github.ReplyToReviewCommentAsync(repo, number, cid, text, ct)
+                : await github.CommentOnPullRequestAsync(repo, number, text, ct);
+            return (JsonSerializer.Serialize(new { pr = number, repository = repo, commentId, url }, Json), $"resposta no PR #{number}: {url}");
+        }, ct);
+    });
+
+    [McpServerTool(Name = "prmake_pr_request_review", Destructive = true)]
+    [Description("0106: pede nova revisao no PR do card (GitHub) depois de atender o pedido de mudancas. reviewers vazio = quem pediu mudancas (de " +
+                 "prmake_pr_reviews); time = '@slug'. Especialista do caso: so a pedido da pessoa.")]
+    public Task<string> RequestReview(string card,
+        [Description("Numero do PR")] int number,
+        [Description("Logins (ou @time); vazio = quem pediu mudancas")] string[]? reviewers = null,
+        [Description("Repositorio; padrao: o do card")] string? repository = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var (c, repo) = await TargetAsync(card, repository, ct);
+        var github = services.GetRequiredService<IGitHubService>();
+        var pr = await github.GetPullRequestReviewsAsync(repo, number, ct);
+        if (pr.Error is { } error) throw new McpException(error);
+        CheckCard(c, pr.Head, number);
+        var who = (reviewers is { Length: > 0 } ? reviewers.ToList() : pr.ChangesRequestedBy)
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (who.Count == 0) throw new McpException("Ninguem pediu mudancas neste PR — informe reviewers.");
+        return await specialist.RunAsync(c, $"Pedir nova revisao no PR #{number}", string.Join(", ", who), async () =>
+        {
+            await github.RequestReviewAsync(repo, number, who, ct);
+            return (JsonSerializer.Serialize(new { pr = number, repository = repo, reviewers = who }, Json),
+                $"nova revisao pedida no PR #{number} a {string.Join(", ", who)}");
+        }, ct);
+    });
+
+    /// <summary>Markdown curto do review: quem pediu mudanças, revisões, conversas nas linhas (raiz + respostas) e a conversa do PR.</summary>
+    public static string ReviewsMarkdown(PullRequestReviewsResponse r)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"# PR #{r.Number} {r.Repository} ({r.Head} -> {r.Base}) — {r.State}");
+        if (r.Title is { Length: > 0 }) sb.AppendLine(r.Title);
+        if (r.Url is { Length: > 0 }) sb.AppendLine(r.Url);
+        sb.AppendLine(r.ChangesRequestedBy.Count > 0
+            ? $"**Mudancas pedidas por:** {string.Join(", ", r.ChangesRequestedBy)}"
+            : "Nenhum pedido de mudancas valendo.");
+        var reviews = r.Reviews.Where(x => x.State != "commented" || !string.IsNullOrWhiteSpace(x.Body)).ToList();
+        if (reviews.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Revisoes");
+            foreach (var x in reviews)
+                sb.AppendLine($"- {x.User} · {x.State} · {x.SubmittedAt:dd/MM HH:mm}{(string.IsNullOrWhiteSpace(x.Body) ? string.Empty : $": {OneLine(x.Body!)}")}");
+        }
+        var roots = r.Comments.Where(x => x.InReplyTo is null).ToList();
+        if (roots.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Comentarios nas linhas (id · arquivo:linha · codigo)");
+            foreach (var root in roots)
+            {
+                var where = root.OnNewCode ? "codigo NOVO do PR" : "codigo que o PR nao mudou (contexto)";
+                if (root.Outdated) where += ", desatualizado (o codigo mudou depois)";
+                sb.AppendLine($"- **{root.Id}** · `{root.Path}:{root.Line}` · {where} · {root.User}: {OneLine(root.Body)}");
+                if (root.Snippet is { Length: > 0 } snippet)
+                    sb.AppendLine("  ```diff").AppendLine("  " + snippet.Replace("\n", "\n  ")).AppendLine("  ```");
+                foreach (var reply in r.Comments.Where(x => x.InReplyTo == root.Id))
+                    sb.AppendLine($"  - resposta {reply.Id} · {reply.User}: {OneLine(reply.Body)}");
+            }
+        }
+        if (r.Conversation.Count > 0)
+        {
+            sb.AppendLine().AppendLine("## Conversa do PR");
+            foreach (var x in r.Conversation.TakeLast(15))
+                sb.AppendLine($"- {x.Id} · {x.User} · {x.CreatedAt:dd/MM HH:mm}: {OneLine(x.Body)}");
+        }
+        return sb.ToString();
+    }
+
+    private static string OneLine(string text)
+    {
+        var t = text.Replace("\r", string.Empty).Replace('\n', ' ').Trim();
+        return t.Length <= 600 ? t : t[..600] + "…";
+    }
+
+    /// <summary>Card e repositório: o informado ou o do card (PRs/plano; senão o padrão das regras).</summary>
+    private async Task<(string Card, string Repository)> TargetAsync(string card, string? repository, CancellationToken ct)
+    {
+        var c = SkillsRulesService.NormalizeCard(card);
+        if (c.Length == 0) throw new McpException("Informe o card.");
+        if (!string.IsNullOrWhiteSpace(repository)) return (c, repository.Trim());
+        var repos = services.GetService<WorkItemToolsService>() is { } tools ? await tools.CardRepositoriesAsync(c, ct) : [];
+        var repo = repos.FirstOrDefault() ?? (await rules.GetAsync(c, ct)).DefaultRepository;
+        if (string.IsNullOrWhiteSpace(repo)) throw new McpException("Informe o repositorio (repository).");
+        return (c, repo);
+    }
+
+    /// <summary>Só PR do card: a branch de origem leva o número do card (hotfix/79047-qa, feature/77988-rv).</summary>
+    private static void CheckCard(string card, string? head, int number)
+    {
+        if (string.IsNullOrWhiteSpace(head) || !System.Text.RegularExpressions.Regex.IsMatch(head, $@"(^|[/_-]){card}($|[/_-])"))
+            throw new McpException($"O PR #{number} ({head ?? "sem branch"}) nao e do card {card} — so PRs das branches do card.");
+    }
 
     /// <summary><c>PrTitlePattern</c> com <c>{card}</c>, <c>{TARGET}</c> (maiúsculas) e <c>{target}</c> — o mesmo do <c>prmake-plan.sh</c>.</summary>
     public static string DefaultTitle(string? pattern, string card, string target)

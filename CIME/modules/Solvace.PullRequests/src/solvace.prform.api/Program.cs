@@ -59,6 +59,8 @@ builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
 // 0106: sinais de erro (cancelado logo depois, refeito, reaberto para refazer, pedido de mudanças) → lições da governança.
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.ILessonSignalSink, solvace.prform.Governance.LessonSignalSink>();
+// 0106: PR do plano com pedido de mudanças novo → item "Atender o review do PR" + aviso na conversa + sinal.
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPullRequestReviewHandler, solvace.prform.Execution.PullRequestReviewHandler>();
 // 0085 r4: ferramentas (modelos) do card — catálogo, from-template, prmake_tools/prmake_tool_run — e os tipos de item.
 builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());

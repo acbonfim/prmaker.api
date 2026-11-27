@@ -860,6 +860,25 @@ public class WorkItemMcpTools(
 
     private static string ScheduleTail(WorkItemResponse item) => ScheduleNote(item) is { } note ? $" ({note})" : string.Empty;
 
+    [McpServerTool(Name = "prmake_analysis_start")]
+    [Description("0106: inicia a ANALISE INICIAL do padrao do card (bug -> analisar-bug; User Story -> analisar-us) — o mesmo botao 'Analisar " +
+                 "bug/US' da Bancada: o Claude do tratamento abre o plano de analise (Base Solvace, codigo, causa raiz, perguntas e proposta) na " +
+                 "maquina de quem pediu, partindo do que o card ja tem. Use sempre que a pessoa pedir a analise inicial — nunca monte um item de " +
+                 "analise a mao. note = o que a pessoa quer que a analise considere. Recusa se a analise ja estiver em andamento.")]
+    public Task<string> AnalysisStart(string card,
+        [Description("O que a pessoa pediu para considerar (opcional; entra no prompt da analise)")] string? note = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        return await specialist.RunAsync(c, "Iniciar a analise inicial do card", note, async () =>
+        {
+            var request = await queue.CreateAsync(new CreateExecutionRequestRequest { CardNumber = c, Kind = "analyze", Note = note },
+                await ActorAsync(ct), ExecutionRequestSource.Button, ct);
+            return (Serialize(new { request.Id, request.Status, kind = "analyze" }),
+                "analise inicial pedida: o Claude do tratamento abre o plano de analise na maquina de quem pediu");
+        }, ct);
+    });
+
     [McpServerTool(Name = "prmake_analysis_items")]
     [Description("Cria os itens de trabalho a partir da analise ja respondida que terminou sem plano de implementacao/correcao (ex.: a " +
                  "pessoa respondeu 'so a analise por enquanto'): o mesmo botao 'Criar itens da analise' da Bancada — o Claude do tratamento " +

@@ -19,6 +19,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
     private readonly IExecutionPlanRepository _repository;
     private readonly ILessonSignalSink? _signals;
+    private readonly IPullRequestReviewHandler? _reviews;
     private readonly IRealTimeNotifier _realTimeNotifier;
     private readonly IExecutionPullRequestSource _pullRequests;
     private readonly IExecutionTimelineWriter _timeline;
@@ -32,9 +33,10 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
         IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null,
-        IWorkItemApplication? workItems = null, ILessonSignalSink? signals = null)
+        IWorkItemApplication? workItems = null, ILessonSignalSink? signals = null, IPullRequestReviewHandler? reviews = null)
     {
         _signals = signals;
+        _reviews = reviews;
         _workItems = workItems;
         _devOps = devOps;
         _evidence = evidence;

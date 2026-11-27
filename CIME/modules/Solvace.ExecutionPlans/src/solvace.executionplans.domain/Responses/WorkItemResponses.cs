@@ -171,6 +171,8 @@ public class WorkTaskLinkResponse
     public string? Status { get; set; }
     /// <summary>CI do PR aberto: pending | success | failure.</summary>
     public string? ChecksStatus { get; set; }
+    /// <summary>0106: quantas pessoas estão pedindo mudanças no PR aberto (null = nenhuma).</summary>
+    public int? ChangesRequested { get; set; }
 
     public static WorkTaskLinkResponse From(ExecutionLink link) => new()
     {
@@ -180,6 +182,7 @@ public class WorkTaskLinkResponse
         Url = link.Url,
         Status = link.Status,
         ChecksStatus = link.ChecksStatus,
+        ChangesRequested = link.Status == "open" && link.ChangesRequested is > 0 ? link.ChangesRequested : null,
     };
 }
 

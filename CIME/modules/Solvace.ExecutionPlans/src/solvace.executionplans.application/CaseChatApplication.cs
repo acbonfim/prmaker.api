@@ -873,6 +873,9 @@ public class CaseChatApplication(
         return message;
     }
 
+    /// <summary>0106: aviso do PRMake na conversa do caso (ex.: PR do card recebeu pedido de mudanças).</summary>
+    public Task PostSystemAsync(string card, string text, CancellationToken cancellationToken) => SystemMessageAsync(card, text, cancellationToken);
+
     private async Task SystemMessageAsync(string card, string text, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;

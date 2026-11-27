@@ -32,4 +32,10 @@ public interface IGitHubService
     Task<bool> BranchExistsAsync(string repository, string branch, CancellationToken cancellationToken = default);
     /// <summary>0074: commits de <paramref name="head"/> que não estão em <paramref name="base"/> (sem merges); null se alguma das refs não existe.</summary>
     Task<BranchDeltaResponse?> GetBranchDeltaAsync(string repository, string @base, string head, CancellationToken cancellationToken = default);
+
+    // 0106: review do PR (pedido de mudanças): ler, responder comentário, comentar na conversa e pedir nova revisão.
+    Task<PullRequestReviewsResponse> GetPullRequestReviewsAsync(string repository, int number, CancellationToken cancellationToken = default);
+    Task<string?> ReplyToReviewCommentAsync(string repository, int number, long commentId, string body, CancellationToken cancellationToken = default);
+    Task<string?> CommentOnPullRequestAsync(string repository, int number, string body, CancellationToken cancellationToken = default);
+    Task RequestReviewAsync(string repository, int number, IReadOnlyCollection<string> reviewers, CancellationToken cancellationToken = default);
 }
