@@ -18,6 +18,7 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     private const int ConcurrencyRetries = 8;
 
     private readonly IExecutionPlanRepository _repository;
+    private readonly ILessonSignalSink? _signals;
     private readonly IRealTimeNotifier _realTimeNotifier;
     private readonly IExecutionPullRequestSource _pullRequests;
     private readonly IExecutionTimelineWriter _timeline;
@@ -31,8 +32,9 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
     public ExecutionPlanApplication(IExecutionPlanRepository repository, IRealTimeNotifier realTimeNotifier,
         IExecutionPullRequestSource pullRequests, IExecutionTimelineWriter timeline, IExecutionCardRegistrar? cards = null,
         IExecutionResumeTrigger? resumeTrigger = null, IExecutionCardDevOps? devOps = null, IExecutionCardEvidenceSource? evidence = null,
-        IWorkItemApplication? workItems = null)
+        IWorkItemApplication? workItems = null, ILessonSignalSink? signals = null)
     {
+        _signals = signals;
         _workItems = workItems;
         _devOps = devOps;
         _evidence = evidence;
@@ -318,6 +320,19 @@ public partial class ExecutionPlanApplication : IExecutionPlanApplication
 
         await SetStepResultAsync(planId, step.Key, result, cancellationToken);
         await NoteRedoneTaskAsync(plan, redone!, step, reason, actor, cancellationToken);
+        // 0106: entrega refeita (script recusado, texto reescrito) — sinal de erro para virar lição.
+        if (_signals is { } signals)
+        {
+            try
+            {
+                await signals.SignalAsync(plan.CardNumber, LessonSignals.TaskRedo, $"{planId:N}:{step.Key}",
+                    $"Entrega da etapa \"{redone!.Title}\" refeita por {actor.Name}: {reason.Trim()}", $"etapa {redone.Key}", cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Best-effort.
+            }
+        }
         return step.ToResponse();
     }
 

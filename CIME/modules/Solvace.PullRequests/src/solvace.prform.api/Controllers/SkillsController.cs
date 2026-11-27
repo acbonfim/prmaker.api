@@ -83,7 +83,7 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
     /// </summary>
     [HttpGet("rules")]
     public async Task<ActionResult> Rules([FromQuery] string? card, [FromQuery] string? format, [FromQuery] string? repository,
-        [FromServices] SkillsRulesService rules, [FromServices] WorkItemToolsService tools,
+        [FromQuery] string? skill, [FromServices] SkillsRulesService rules, [FromServices] WorkItemToolsService tools,
         [FromServices] solvace.prform.Execution.DeskProfileService profile, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(SkillsRulesService.NormalizeCard(card)))
@@ -92,7 +92,9 @@ public class SkillsController(SkillsCatalog catalog, IConfiguration configuratio
         var cardRepositories = await tools.CardRepositoriesAsync(r.Card, cancellationToken);
         var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, cancellationToken))
                        + await rules.GovernanceMarkdownAsync(cancellationToken)
-                       + await rules.StandardsMarkdownAsync(r.Card, cardRepositories, cancellationToken);
+                       + await rules.StandardsMarkdownAsync(r.Card, cardRepositories, cancellationToken)
+                       // 0106: lições aprendidas (?skill= filtra) e sinais de erro abertos do card.
+                       + await rules.LessonsMarkdownAsync(skill, r.Card, SkillsRulesService.RulesLessons, cancellationToken);
         // 0099 (ajustes 2): no épico, o perfil de quem pede (persona PO/gestor de problemas ou dev).
         if (SkillsRulesService.IsEpic(r))
             markdown += await profile.MarkdownAsync(User, cancellationToken);

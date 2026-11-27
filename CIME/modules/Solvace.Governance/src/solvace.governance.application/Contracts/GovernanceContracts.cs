@@ -28,6 +28,15 @@ public interface IGovernanceRepository
     Task<GovernanceStandardDraft?> GetDraftAsync(Guid id, CancellationToken ct = default);
     void AddDraft(GovernanceStandardDraft draft);
 
+    // 0106: lições aprendidas e sinais de erro.
+    Task<List<GovernanceLesson>> GetLessonsAsync(CancellationToken ct = default);
+    Task<GovernanceLesson?> GetLessonAsync(long id, CancellationToken ct = default);
+    void AddLesson(GovernanceLesson lesson);
+    Task<List<GovernanceLessonSignal>> GetSignalsAsync(string? card, string? status, int take, CancellationToken ct = default);
+    Task<GovernanceLessonSignal?> GetSignalAsync(long id, CancellationToken ct = default);
+    Task<bool> SignalKeyExistsAsync(string key, CancellationToken ct = default);
+    void AddSignal(GovernanceLessonSignal signal);
+
     void AddEvents(IEnumerable<GovernanceEvent> events);
     Task<(int Total, List<GovernanceEvent> Items)> QueryEventsAsync(GovernanceEventFilter filter, CancellationToken ct = default);
     Task<int> PurgeEventsAsync(DateTimeOffset before, CancellationToken ct = default);

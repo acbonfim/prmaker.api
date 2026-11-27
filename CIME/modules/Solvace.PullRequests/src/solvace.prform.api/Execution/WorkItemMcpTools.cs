@@ -46,12 +46,16 @@ public class WorkItemMcpTools(
     [Description("Regras do PRMake calculadas para o card (markdown): tipo (Bug/US) e o que muda, fluxo pela area, branch principal, " +
                  "NOME DE BRANCH POR DESTINO (ex.: release-version -> hotfix/<card>-rv), PRs do fluxo por tipo de repositorio, padroes de " +
                  "commit/titulo, branches/destinos POR REPOSITORIO DO CARD (revamp-backend nao tem QA), promocao e regras fixas (nunca mesclar, toda gravacao pelo PRMake, itens sem duplicar). Use antes de propor " +
-                 "ou criar branch/PR/item — nunca invente nome de branch.")]
-    public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
+                 "ou criar branch/PR/item — nunca invente nome de branch. 0106: traz tambem as LICOES APRENDIDAS (erros que ja aconteceram — " +
+                 "aplique) e os sinais de erro abertos do card (transforme em licao com prmake_lesson_record).")]
+    public Task<string> Rules(string card,
+        [Description("0106: sua skill (ex.: executar-item-de-trabalho, analisar-bug) — filtra as licoes; vazio = todas")] string? skill = null,
+        CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
         var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct)
-                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct);
+                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct)
+                       + await rules.LessonsMarkdownAsync(skill, r.Card, SkillsRulesService.RulesLessons, ct);
         // 0099 (ajustes 2): no épico, o perfil de quem pede (o item de gestão roda na máquina de quem agiu).
         if (SkillsRulesService.IsEpic(r) && http.HttpContext?.User is { } user)
             markdown += await profile.MarkdownAsync(user, ct);

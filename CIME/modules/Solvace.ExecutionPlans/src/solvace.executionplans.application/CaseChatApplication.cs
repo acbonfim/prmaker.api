@@ -696,6 +696,10 @@ public class CaseChatApplication(
                 ? "Regras completas em prmake_rules (card " + card + ")."
                 : "Nunca invente nome de branch, base ou destino: use estas regras (completas em prmake_rules).");
         }
+        // 0106: lições aprendidas do especialista e sinais de erro abertos deste card (vira lição na mesma vez).
+        if (rules is not null && await rules.LessonsMarkdownAsync(epic ? "especialista-de-gestao" : "especialista-do-caso", card, 15, cancellationToken)
+                is { Length: > 0 } lessonsText)
+            sb.Append(lessonsText);
         if (workItems is not null)
         {
             sb.AppendLine().AppendLine("## Itens de trabalho");

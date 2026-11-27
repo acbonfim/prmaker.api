@@ -20,6 +20,8 @@ public class GovernanceContext : DbContext
     public DbSet<GovernanceSettings> Settings { get; set; }
     public DbSet<GovernanceStandard> Standards { get; set; }
     public DbSet<GovernanceStandardDraft> StandardDrafts { get; set; }
+    public DbSet<GovernanceLesson> Lessons { get; set; }
+    public DbSet<GovernanceLessonSignal> LessonSignals { get; set; }
 
     public const string Schema = "governance";
 
@@ -124,6 +126,45 @@ public class GovernanceContext : DbContext
             e.Property(x => x.Items).HasColumnType("jsonb").HasConversion(JsonConverter<List<StandardDraftItem>>(), JsonComparer<List<StandardDraftItem>>());
             e.Property(x => x.CreatedBy).HasMaxLength(200).IsRequired();
             e.Property(x => x.AppliedBy).HasMaxLength(200);
+        });
+
+        // 0106: lições aprendidas e sinais de erro.
+        modelBuilder.Entity<GovernanceLesson>(e =>
+        {
+            e.ToTable("GovernanceLessons");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityAlwaysColumn();
+            e.Property(x => x.Scope).HasColumnType("jsonb").HasConversion(JsonConverter<List<string>>(), JsonComparer<List<string>>());
+            e.Property(x => x.Trigger).HasMaxLength(GovernanceLesson.MaxTrigger).IsRequired();
+            e.Property(x => x.Text).HasMaxLength(GovernanceLesson.MaxText).IsRequired();
+            e.Property(x => x.Why).HasMaxLength(GovernanceLesson.MaxWhy).IsRequired();
+            e.Property(x => x.Sources).HasColumnType("jsonb").HasConversion(JsonConverter<List<LessonSource>>(), JsonComparer<List<LessonSource>>());
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Origin).HasMaxLength(20).IsRequired();
+            e.Property(x => x.CreatedBy).HasMaxLength(200).IsRequired();
+            e.Property(x => x.UpdatedBy).HasMaxLength(200);
+            e.Property(x => x.RetiredReason).HasMaxLength(500);
+            e.Ignore(x => x.Code);
+            e.Ignore(x => x.SimilarityText);
+            e.HasIndex(x => new { x.Status, x.Hits });
+        });
+
+        modelBuilder.Entity<GovernanceLessonSignal>(e =>
+        {
+            e.ToTable("GovernanceLessonSignals");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityAlwaysColumn();
+            e.Property(x => x.Card).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Key).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.Key).IsUnique();
+            e.Property(x => x.Text).HasMaxLength(GovernanceLessonSignal.MaxText).IsRequired();
+            e.Property(x => x.Ref).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Resolution).HasMaxLength(500);
+            e.Property(x => x.ResolvedBy).HasMaxLength(200);
+            e.Ignore(x => x.Code);
+            e.HasIndex(x => new { x.Card, x.Status });
         });
 
         modelBuilder.Entity<GovernanceSettings>(e =>

@@ -55,6 +55,29 @@ public class GovernanceRepository(GovernanceContext db) : IGovernanceRepository
 
     public void AddDraft(GovernanceStandardDraft draft) => db.StandardDrafts.Add(draft);
 
+    public Task<List<GovernanceLesson>> GetLessonsAsync(CancellationToken ct = default) =>
+        db.Lessons.OrderByDescending(x => x.Hits).ThenByDescending(x => x.LastSeenAt).ToListAsync(ct);
+
+    public Task<GovernanceLesson?> GetLessonAsync(long id, CancellationToken ct = default) =>
+        db.Lessons.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public void AddLesson(GovernanceLesson lesson) => db.Lessons.Add(lesson);
+
+    public Task<List<GovernanceLessonSignal>> GetSignalsAsync(string? card, string? status, int take, CancellationToken ct = default)
+    {
+        var q = db.LessonSignals.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(card)) q = q.Where(x => x.Card == card);
+        if (!string.IsNullOrWhiteSpace(status)) q = q.Where(x => x.Status == status);
+        return q.OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(take, 1, 500)).ToListAsync(ct);
+    }
+
+    public Task<GovernanceLessonSignal?> GetSignalAsync(long id, CancellationToken ct = default) =>
+        db.LessonSignals.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public Task<bool> SignalKeyExistsAsync(string key, CancellationToken ct = default) => db.LessonSignals.AnyAsync(x => x.Key == key, ct);
+
+    public void AddSignal(GovernanceLessonSignal signal) => db.LessonSignals.Add(signal);
+
     public void AddEvents(IEnumerable<GovernanceEvent> events) => db.Events.AddRange(events);
 
     public async Task<(int Total, List<GovernanceEvent> Items)> QueryEventsAsync(GovernanceEventFilter f, CancellationToken ct = default)
