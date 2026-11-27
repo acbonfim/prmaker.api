@@ -231,24 +231,65 @@ def pipeline_dto(doc):
     return dto
 
 
+def build_tier(pr):
+    """Tier de um projeto do CodeBuild: variável ENV/STAGE; sem ela, o sufixo do nome do projeto
+    (edv-solvace-users-prod) ou do buildspec (buildspec-workspace-prod.yml). Card 78560: as esteiras de produção do
+    edv-solvace-apps não têm sufixo no nome (edv-solvace-users, edv-solvace-workspace) nem ENV no CodeBuild."""
+    for v in (pr.get("environment") or {}).get("environmentVariables") or []:
+        if v.get("name", "").upper() in ("ENV", "STAGE", "ENVIRONMENT") and v.get("type", "PLAINTEXT") == "PLAINTEXT":
+            val = (v.get("value") or "").lower()
+            if val in TIERS:
+                return val
+    spec = os.path.basename(str((pr.get("source") or {}).get("buildspec") or "")).lower()
+    for s in (pr.get("name") or "").lower().rsplit("-", 1)[-1:] + re.findall(r"-([a-z]+)\.ya?ml$", spec):
+        if s in TIERS:
+            return s
+    return None
+
+
 def fill_codebuild_tiers(aws, dtos):
-    """Pipeline sem tier no nome: variável ENV/STAGE do CodeBuild (batch-get-projects, 100 por chamada)."""
+    """Pipeline sem tier no nome: tier do CodeBuild (build_tier; batch-get-projects, 100 por chamada)."""
     want = sorted({b for d in dtos if not d["tier"] for b in d["_builds"][:2]})
     env_of = {}
     for i in range(0, len(want), 100):
         out = aws.call("codebuild", "batch-get-projects", "--names", *want[i:i + 100]) or {}
         for pr in out.get("projects", []):
-            for v in (pr.get("environment") or {}).get("environmentVariables") or []:
-                if v.get("name", "").upper() in ("ENV", "STAGE", "ENVIRONMENT") and v.get("type", "PLAINTEXT") == "PLAINTEXT":
-                    val = (v.get("value") or "").lower()
-                    if val in TIERS:
-                        env_of[pr["name"]] = val
+            t = build_tier(pr)
+            if t:
+                env_of[pr["name"]] = t
     for d in dtos:
         if not d["tier"]:
             for b in d["_builds"]:
                 if b in env_of:
                     d["codebuildEnv"] = env_of[b]
                     break
+
+
+def retier(aws, pipes, save=True):
+    """Esteiras do índice ainda sem tier (indexadas antes do build_tier): relê a definição, classifica e corrige o índice
+    — o índice é incremental e só relê o que mudou na AWS."""
+    todo = [p for p in pipes if not p.get("tier") and not p.get("codebuildEnv") and not p.get("_retried")
+            and "/" not in ((p.get("repositories") or [{}])[0].get("branch") or "")]  # branch de trabalho: env_targets ignora
+    if not todo:
+        return
+    dtos = [pipeline_dto(d) for d in pmap(lambda p: aws.call("codepipeline", "get-pipeline", "--name", p["name"]), todo, workers=16) if d]
+    fill_codebuild_tiers(aws, dtos)
+    by_name = {d["name"]: d for d in dtos}
+    fixed = []
+    for p in todo:
+        p["_retried"] = True
+        d = by_name.get(p["name"])
+        if d and (d["tier"] or d["codebuildEnv"]):
+            p["tier"], p["codebuildEnv"] = d["tier"], d["codebuildEnv"]
+            fixed.append(clean_dto(d))
+    if fixed:
+        log(f"índice: {len(fixed)} esteiras sem tier classificadas pelo CodeBuild")
+        try:
+            if save:
+                api("POST", "AwsDeploy/pipelines/index", {"account": ACCOUNT, "region": aws.region, "upserts": fixed,
+                                                          "removed": [], "full": False})
+        except RuntimeError as e:
+            log(f"índice não corrigido (a coleta segue com o tier certo): {e}")
 
 
 def clean_dto(d):
@@ -730,7 +771,8 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
             first_ours = ours[-1]["startedAt"] if ours else None
             # falhou antes da 1ª execução com o nosso código (ou nem passou nas 50 últimas) → não é nosso
             broken_before_us = bool(first_ours and broken_since < first_ours) or \
-                (len(streak) == len(hist) and any(not (r.get("sha") and repo.contains(r["sha"])) for r in streak))
+                (len(streak) == len(hist) and any(not (r.get("sha") and repo.contains(r["sha"])) for r in streak)) or \
+                (not latest_has and in_branch)  # 78560: falha e nem rodou desde que o nosso código chegou na branch
     if deployed and newer:
         newest_in_run = bool(latest and latest.get("sha")) and repo.contains_all(latest["sha"], [c["sha"] for c in newer])
         verdict = "deploying" if newest_in_run and st == "InProgress" else \
@@ -739,7 +781,7 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
         verdict = "partial"
     elif deployed:
         verdict = "deployed"
-    elif latest_has and st == "Failed" and broken_before_us:
+    elif (latest_has or in_branch) and st == "Failed" and broken_before_us:
         verdict = "broken"
     elif not in_branch and not latest_has:
         verdict = "absent"
@@ -775,6 +817,21 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
 def ddmm(v):
     d = parse_iso(v)
     return d.astimezone(dt.timezone(dt.timedelta(hours=-3))).strftime("%d/%m") if d else "?"
+
+
+def dedupe_apps(results):
+    """Mesmo app no mesmo ambiente por duas esteiras (edv-solvace-authentication e edv-solvace-authentication-prod):
+    vale a que rodou por último. Esteiras do legado (Elastic Beanstalk) ficam como estão."""
+    best = {}
+    for r in results:
+        if r.get("action"):
+            continue
+        k = (r["repository"], r.get("app") or r["name"])
+        if k not in best or (r.get("lastRunAt") or "") > (best[k].get("lastRunAt") or ""):
+            best[k] = r
+    keep = [r for r in results if r.get("action") or best.get((r["repository"], r.get("app") or r["name"])) is r]
+    kept = {id(r) for r in keep}
+    return keep, sorted(r["name"] for r in results if id(r) not in kept)
 
 
 def env_summary(pipes):
@@ -968,6 +1025,7 @@ def collect(args):
         full = name if "/" in name else f"electradv/{name}"
         pipes = local_pipelines(args.index_dir, full) if args.index_dir else \
             api("GET", "AwsDeploy/pipelines?repository=" + urllib.parse.quote(full)) or []
+        retier(aws, pipes, save=not (args.index_dir or args.dry_run))
         path = repo_path(full)
         kind, kind_label = repo_kind(full)
         info = {"repository": full, "kind": kind, "kindLabel": kind_label, "localPath": bool(path), "fetchedAt": None, "commits": [], "files": 0,
@@ -1018,6 +1076,10 @@ def collect(args):
         if stale:
             snap["warnings"].append(f"{e['label']}: ignoradas por estarem paradas há mais de {STALE_DAYS} dias: "
                                     + ", ".join(sorted({r['name'] for r in stale})[:10]))
+        live, dups = dedupe_apps(live)
+        if dups:
+            snap["notes"].append(f"{e['label']}: mais de uma esteira publica o mesmo app — vale a que rodou por último; "
+                                 "ignoradas: " + ", ".join(dups[:10]))
         for r in live:
             r.pop("stale", None)
         # Esteira principal: a que publica no Elastic Beanstalk do host (legado). Havendo uma do repositório, as outras

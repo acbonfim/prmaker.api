@@ -54,10 +54,17 @@ citam o card (ou informe `--repo <nome>`). A sub-tarefa automatica so entra em i
    novas/alteradas (pelo `updated`); as removidas saem. A 1ª carga (~1.100 pipelines) leva ~6 min, depois segundos.
 2. **Ambiente → esteiras**: o host do ambiente no CloudFront diz o *tier* (origens S3 `<app>-<tier>`: devsp→dev,
    qa→qa, sandboxefeso→rc, sandboxrt→rt, clientes→prod) e o Elastic Beanstalk do legado. Esteira com deploy no
-   Elastic Beanstalk do host é a **principal** do legado; sem isso vale o tier (sufixo do nome ou `ENV` do CodeBuild).
-   Esteira de branch de trabalho (`sre/…`, `perf/…`) e parada há mais de 120 dias fica de fora (aviso).
+   Elastic Beanstalk do host é a **principal** do legado; sem isso vale o tier (sufixo do nome da esteira; senão
+   `ENV` do CodeBuild, sufixo do projeto do CodeBuild ou do buildspec). Card 78560: em produção as esteiras do
+   edv-solvace-apps não têm sufixo (`edv-solvace-users`, `edv-solvace-workspace` → projeto `edv-solvace-users-prod`,
+   `buildspec-workspace-prod.yml`); esteira do índice sem tier é reclassificada na coleta e o índice corrigido.
+   Esteira de branch de trabalho (`sre/…`, `perf/…`) e parada há mais de 120 dias fica de fora (aviso). Duas
+   esteiras do mesmo app no mesmo ambiente (`edv-solvace-authentication` e `…-prod`): vale a que rodou por último.
+   Esteira falhando que nem rodou desde que o nosso código chegou na branch = quebrada antes do nosso código.
 3. **Esteiras do card** = repositório do card **e** algum arquivo alterado casa com o `filePaths` do gatilho
-   (edv-solvace-apps é monorepo: mudar `lib-shared-*` afeta todos os apps).
+   (edv-solvace-apps é monorepo com um app Angular por pasta em `projects/`: cada app tem bucket S3 próprio atrás do
+   CloudFront do host e uma esteira por ambiente; em produção elas rodam juntas na liberação. Mudar `lib-shared-*`
+   afeta todos os apps).
 4. **Nosso código** = commits do card (SHAs registrados nas entregas/PRs + commits que citam o card, ex. `AB#78720`)
    conferidos no git local: está na branch da esteira? está no commit implantado (último sucesso da esteira ou da
    ação de deploy do ambiente)?
