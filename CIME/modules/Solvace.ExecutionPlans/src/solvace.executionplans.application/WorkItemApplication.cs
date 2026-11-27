@@ -1155,8 +1155,8 @@ public partial class WorkItemApplication : IWorkItemApplication
                 item.SyncStepKind(step.Key, StepTaskKind(step), ServerKinds(step), now);
                 // 0096: etapa ajustada no lugar (especialista/tratamento) — a sub-tarefa pendente acompanha o texto.
                 item.SyncStepText(step.Key, step.Title, step.Description, now);
-                // Card 78680: pausa e dependências da etapa.
-                item.SyncStepControl(step.Key, step.Held, step.HeldBy, step.DependsOn, now, step.ScheduledAt, step.ScheduledById);
+                // Card 78680: pausa e dependências da etapa (79047: também as etapas postas na frente dela).
+                item.SyncStepControl(step.Key, step.Held, step.HeldBy, plan.EffectiveDependsOn(step), now, step.ScheduledAt, step.ScheduledById);
             }
             item.SyncStep(step.Key, step.Status, step.StatusReason, actor, now);
         }

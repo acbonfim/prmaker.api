@@ -43,6 +43,8 @@ public static class AwsVerdict
     public const string Waiting = "waiting";
     public const string Absent = "absent";
     public const string Deployed = "deployed";
+    /// <summary>Card 79047: uma versão anterior do nosso código está lá; o ajuste mais recente (PR aberto) ainda não.</summary>
+    public const string Partial = "partial";
     public const string NotApplicable = "not-applicable";
     public const string Unknown = "unknown";
     /// <summary>Esteira que já falhava antes do nosso código chegar — não conta contra o card.</summary>
