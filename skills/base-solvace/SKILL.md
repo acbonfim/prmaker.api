@@ -10,7 +10,18 @@ Scripts (`$KB`, `$KC`, `$ARCH` abaixo):
 KB=~/.claude/skills/base-solvace/scripts/kb.sh      # espelho local: sync | index [termos] [--full] | show <projeto> [secao] | find <termo> | status | agendar
 KC=~/.claude/skills/base-solvace/scripts/kc.sh      # Knowledge Center: search <termos> | article <n> | sync [--full] | check
 ARCH=~/.claude/skills/base-solvace/scripts/arch.sh  # publicar (admin): list | project | section | get | stale | guia | lacunas | resolver; learn <card> (todos)
+MLG=~/.claude/skills/base-solvace/scripts/mlg.sh    # Multilingual (0107): search "<texto>" | exists "<termo>" | check --repo <wt> [--base origin/<b>]
 ```
+
+## Termos do Multilingual (0107) — texto que o usuario final le
+Mensagem, rotulo, aviso ou e-mail novo/alterado usa um termo **ja cadastrado** no Multilingual do produto (aprovado pelo
+time do produto); termo novo so com a aprovacao dele. `bash $MLG search "<o que a tela precisa dizer>"` (PT ou EN; entende
+sinonimos como site/planta, sala/room, acesso/permissao) lista os termos parecidos com EN/ES e se a traducao foi revisada;
+`exists` confere um termo exato (pontuacao conta: "Acesso negado" nao e "Acesso negado."); `check` acha os termos das
+chamadas `GetLanguageBy*(..., "termo")` nas linhas novas do diff e diz os nao cadastrados (exit 1) com sugestoes. Somente
+leitura; credencial so na maquina (`~/.claude/multilingual-credentials.json`, bloco `prod`, ou o Multilingual de dev em
+`~/.claude/postgres-credentials-dev.json`). Sem acesso (exit 3/4): diga que **nao conferiu** — o grep do codigo nao prova
+que o termo esta cadastrado.
 
 ## Engenharia reversa por modulo (0052) — consulte PRIMEIRO
 Modulos com engenharia reversa publicada (documentos `re-funcional`, `re-arquitetura`, `re-uiux`, `re-visao`,

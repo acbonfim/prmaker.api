@@ -14,6 +14,8 @@ public interface ICaseChatRepository
     /// <summary>Mensagem rastreada.</summary>
     Task<CaseMessage?> GetMessageAsync(string cardNumber, Guid id, CancellationToken cancellationToken);
     Task<CaseMessage?> GetMessageByNumberAsync(string cardNumber, int number, CancellationToken cancellationToken);
+    /// <summary>0107: mensagens com escolha (rastreadas, as mais novas) — para fechar as abertas quando chega outra.</summary>
+    Task<List<CaseMessage>> GetChoiceMessagesAsync(string cardNumber, int limit, CancellationToken cancellationToken);
     /// <summary>Mensagens (sem as apagadas), em ordem crescente; <paramref name="afterNumber"/> exclusivo; as últimas <paramref name="limit"/>.</summary>
     Task<List<CaseMessage>> GetMessagesAsync(string cardNumber, int? afterNumber, int limit, CancellationToken cancellationToken);
     /// <summary>0090 (<c>/clear</c>): marca como apagadas todas as mensagens até <paramref name="lastNumber"/> (em massa).</summary>

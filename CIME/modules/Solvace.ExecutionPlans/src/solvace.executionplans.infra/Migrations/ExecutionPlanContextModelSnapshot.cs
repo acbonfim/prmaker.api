@@ -478,6 +478,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("ChoiceJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("Choice");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

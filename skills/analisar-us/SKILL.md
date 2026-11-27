@@ -27,6 +27,7 @@ PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh    # o mesmo da analis
 REF=~/.claude/skills/analisar-bug/scripts/ref.sh              # referencias da analisar-bug por SECAO
 KB=~/.claude/skills/base-solvace/scripts/kb.sh
 KC=~/.claude/skills/base-solvace/scripts/kc.sh
+MLG=~/.claude/skills/base-solvace/scripts/mlg.sh   # Multilingual (0107): search "<texto>" | exists "<termo>" | check --repo <wt>
 ```
 
 ## Vale tudo o que vale na analisar-bug
@@ -51,6 +52,13 @@ regra fixa); sinal de erro aberto → licao com `signal` ou `prmake_lesson_signa
 "changes requested" (PRs no GitHub, `prmake_pr_reviews`) → o PRMake cria o item `atender-review-pr`; **nao trate o review
 solto no plano**. Destino com PR ja mesclado e commits novos → a **mesma** branch do destino pela regra
 (`feature/<card>-dev`...) + PR novo.
+
+**Texto que o usuario final le = termo do Multilingual (0107, card 79047)**: como na `analisar-bug` (regra de mesmo
+nome) — a US que cria ou muda mensagem, rotulo, aviso, e-mail ou texto de tela ja sai da analise com os **termos
+existentes** sugeridos (`bash $MLG search "<o que a tela precisa dizer>"`, exatamente como cadastrados, com o EN), numa
+tabela "Texto na tela → termo sugerido (EN)" e como opcoes na pergunta da solucao; nenhum cabe → texto novo para
+**aprovacao do time do produto**; na implementacao, `bash $MLG check --repo "$WT" --base origin/<base>` antes do commit.
+Sem acesso ao Multilingual: diga que nao conferiu (o grep do codigo nao prova o cadastro).
 
 **Resultado de cada etapa (card 78505)**: como na `analisar-bug` (regra "Toda etapa conclui com RESULTADO"), toda
 etapa conclui com `prmake_advance(..., result)` / `advance ... --result r.md` — o markdown rico que a pessoa ve na

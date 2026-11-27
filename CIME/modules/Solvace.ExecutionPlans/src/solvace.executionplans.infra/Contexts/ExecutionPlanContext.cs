@@ -426,6 +426,9 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.Mentions).HasColumnType("jsonb");
             entity.Property(e => e.Steps).HasColumnType("jsonb");
             entity.Property(e => e.Model).HasMaxLength(ExecutionModelUsage.MaxModelLength);
+            // 0107: escolha clicável do especialista.
+            entity.Property(e => e.ChoiceJson).HasColumnName("Choice").HasColumnType("jsonb");
+            entity.Ignore(e => e.Choice);
             entity.Ignore(e => e.IsDeleted);
             entity.Ignore(e => e.FromSpecialist);
             entity.Ignore(e => e.FromPerson);

@@ -21,6 +21,7 @@ PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh    # plano de execucao
 REF=~/.claude/skills/analisar-bug/scripts/ref.sh              # referencias por SECAO: ref.sh [arquivo] [secao]
 KB=~/.claude/skills/base-solvace/scripts/kb.sh               # Base Solvace: index [termos] | show <projeto> [secao] | find <termo>
 KC=~/.claude/skills/base-solvace/scripts/kc.sh               # Knowledge Center: search <termos> | article <n>
+MLG=~/.claude/skills/base-solvace/scripts/mlg.sh             # Multilingual (0107): search "<texto>" | exists "<termo>" | check --repo <wt>
 ```
 
 ## Economia de tokens (vale para todo o fluxo)
@@ -175,6 +176,17 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Orientacao ao cliente = resumo PT/EN do fechamento**: o resumo nao tecnico publicado na discussion ja e a
   orientacao (com o passo a passo). Nao crie etapa `orientar-cliente` nem `validar-cliente` depois do fechamento — o
   plano conclui no `fechar-card`. Detalhes: `$REF correcao 7`.
+- **Texto que o usuario final le = termo do Multilingual (0107, card 79047)**: solucao que cria ou muda mensagem,
+  rotulo, aviso, e-mail ou texto de tela → **ja na analise** (`montar-analise`/`propor-solucoes`) rode
+  `bash $MLG search "<o que a tela precisa dizer>"` (PT ou EN) e proponha **termos que ja existem**, exatamente como
+  cadastrados (pontuacao inclusive: "Acesso negado" nao e "Acesso negado."), com o EN ao lado. Prefira o termo que diz
+  o **motivo** ("...pois ele pertence a uma planta diferente da sua") ao generico ("Acesso negado"). Na pergunta das
+  solucoes os termos viram as opcoes (`label` = o termo); na analise, uma tabela "Texto na tela → termo sugerido (EN)".
+  Nenhum termo cabe → diga isso, sugira o texto novo e que ele precisa da **aprovacao do time do produto** (nao abra
+  chamado de dados por conta propria). Nunca concatene texto fixo ao termo nem crie termo com `{0}`. Na correcao, antes
+  do commit: `bash $MLG check --repo "$WT" --base origin/<base>` — `NAO CADASTRADO` → troque pelo sugerido (o mesmo
+  sentido) ou `ask`. Sem credencial/VPN (exit 3/4): diga na analise que **nao conferiu** o Multilingual e pergunte — o
+  grep do codigo nao prova que o termo esta cadastrado (no 79047 "Acesso negado." estava no codigo e nao no Multilingual).
 - **Arquivos do card sempre no plano (0046/0049), cada um na sua fase (0050)**: todo script, analise e **texto do
   chamado** que o usuario precisa ver vai para os arquivos do plano — **no plano da fase certa**:
   - **Analise** (`phase: "analysis"`): so as **consultas somente leitura** que levaram ao problema

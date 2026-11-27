@@ -27,6 +27,26 @@ public class CaseReplyRequest
     public int? ReplyTo { get; set; }
     /// <summary>Arquivos que ele subiu antes (números) e entram nesta mensagem.</summary>
     public List<int>? Files { get; set; }
+    /// <summary>0107: escolha clicável (botões, escolha única, checklist ou lista suspensa).</summary>
+    public CaseChoiceRequest? Choice { get; set; }
+}
+
+/// <summary>0107: o que o especialista oferece para a pessoa clicar.</summary>
+public class CaseChoiceRequest
+{
+    /// <summary>buttons (padrão) | single | multi | select.</summary>
+    public string? Mode { get; set; }
+    public string? Question { get; set; }
+    public List<CaseChoiceOption>? Options { get; set; }
+    public bool AllowOther { get; set; }
+    public string? OtherLabel { get; set; }
+}
+
+/// <summary>0107: resposta da pessoa a uma escolha (ids das opções e/ou o texto da outra resposta).</summary>
+public class CaseChoiceAnswerRequest
+{
+    public List<string>? Selected { get; set; }
+    public string? Other { get; set; }
 }
 
 public class CasePointRequest

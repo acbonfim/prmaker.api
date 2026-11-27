@@ -27,6 +27,12 @@ public class CaseChatRepository(ExecutionPlanContext context) : ICaseChatReposit
     public Task<CaseMessage?> GetMessageByNumberAsync(string cardNumber, int number, CancellationToken cancellationToken) =>
         context.CaseMessages.AsNoTracking().FirstOrDefaultAsync(m => m.CardNumber == cardNumber && m.Number == number && m.DeletedAt == null, cancellationToken);
 
+    public Task<List<CaseMessage>> GetChoiceMessagesAsync(string cardNumber, int limit, CancellationToken cancellationToken) =>
+        context.CaseMessages
+            .Where(m => m.CardNumber == cardNumber && m.DeletedAt == null && m.ChoiceJson != null)
+            .OrderByDescending(m => m.Number).Take(Math.Clamp(limit, 1, 100))
+            .ToListAsync(cancellationToken);
+
     public async Task<List<CaseMessage>> GetMessagesAsync(string cardNumber, int? afterNumber, int limit, CancellationToken cancellationToken)
     {
         var query = context.CaseMessages.AsNoTracking().Where(m => m.CardNumber == cardNumber && m.DeletedAt == null);

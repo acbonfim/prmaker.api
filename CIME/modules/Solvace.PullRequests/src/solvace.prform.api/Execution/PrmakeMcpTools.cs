@@ -84,7 +84,11 @@ public partial class PrmakeMcpTools(
         "GITHUB — leia com prmake_pr_reviews (so os pontos em codigo NOVO do PR entram; o resto e seguimento), ajuste, leve aos PRs do card " +
         "(PR aberto: mesma branch, o PR se atualiza; PR ja mesclado: cherry-pick na MESMA branch do destino + PR novo dela com prmake_pr_open) " +
         "e responda cada comentario (prmake_pr_review_reply) pedindo nova revisao (prmake_pr_request_review). O PRMake cria sozinho o item " +
-        "'Atender o review do PR' (ferramenta atender-review-pr) quando o PR recebe o pedido.";
+        "'Atender o review do PR' (ferramenta atender-review-pr) quando o PR recebe o pedido. " +
+        "0107: na conversa do caso, opcoes e 'posso seguir?' vao como ESCOLHA CLICAVEL (prmake_case_reply com choice: botoes com o que vai " +
+        "acontecer, escolha unica, checklist ou lista) — a resposta clicada (choiceAnswer) e a decisao da pessoa. Texto que o usuario final " +
+        "le (mensagem, rotulo, aviso, e-mail) usa termo JA CADASTRADO no Multilingual (base-solvace/scripts/mlg.sh search|exists|check); " +
+        "termo novo so com aprovacao do time do produto.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

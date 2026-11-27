@@ -57,6 +57,12 @@ public class CaseChatController(CaseChatApplication chat, IExecutionQueueApplica
             return NoContent();
         });
 
+    /// <summary>0107: a pessoa responde clicando na escolha do especialista (vira mensagem dela e chama o especialista).</summary>
+    [HttpPost("{card}/messages/{id:guid}/choice")]
+    public Task<ActionResult<CaseMessageResponse>> AnswerChoice([FromRoute] string card, [FromRoute] Guid id, [FromBody] CaseChoiceAnswerRequest request,
+        CancellationToken ct) =>
+        Run<CaseMessageResponse>(async () => Ok(await chat.AnswerChoiceAsync(card, id, request, await ActorAsync(ct), ct)));
+
     /// <summary>"Levar para o plano": a mensagem vira um comentário-instrução no plano atual.</summary>
     [HttpPost("{card}/messages/{id:guid}/to-plan")]
     public Task<ActionResult<ExecutionNoteResponse>> ToPlan([FromRoute] string card, [FromRoute] Guid id, [FromBody] EditCaseMessageRequest? request, CancellationToken ct) =>

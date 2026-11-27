@@ -15,6 +15,7 @@ branches, PR, DevOps, testes). Token: env `PRMAKE_TOKEN` ou `~/.claude/prmake-to
 ```bash
 PLAN=~/.claude/skills/analisar-bug/scripts/prmake-plan.sh   # rules · work-items · branches · worktree · open-pr --item · devops · test
 REPOS=~/.claude/skills/analisar-bug/scripts/revamp-repos.sh # where <repo> · master <repo>
+MLG=~/.claude/skills/base-solvace/scripts/mlg.sh             # Multilingual (0107): search "<texto>" | exists "<termo>" | check --repo <wt>
 CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dados/regras.md, dados/card-resumo.txt)
 ```
 
@@ -65,6 +66,14 @@ CARD_DIR=~/.prmake/cards/<card>                             # cache do card (dad
    aprovar PR, senha, banco so leitura) nem a governanca.
 9. **Timeline so a pedido.** So publique na Timeline o que a sub-tarefa pede (`comment`/`notify`, ou `params.timeline` =
    `sim`); vazio/`nao` → nao publique (card 79047: a revisao publicou sem ninguem pedir).
+10. **Texto que o usuario final le = termo do Multilingual (0107, card 79047).** Sub-tarefa `code`/`pr-update` que poe ou
+   muda mensagem, rotulo, aviso ou e-mail: use um termo **ja cadastrado** (`bash $MLG search "<o que a tela precisa
+   dizer>"` — exatamente como esta, pontuacao inclusive) e prefira o que diz o motivo ao generico; nada de texto fixo
+   concatenado ao termo nem termo novo com `{0}`. **Antes do commit**: `bash $MLG check --repo "$WT" --base
+   origin/<base>` — `NAO CADASTRADO` → troque pelo termo sugerido de mesmo sentido e diga no `result` (tabela "texto →
+   termo (EN)"); nenhum serve → `wait` com o texto proposto para a aprovacao do time do produto. A descricao da
+   sub-tarefa ja traz o termo escolhido pela pessoa? Use-o como esta. Sem acesso ao Multilingual (exit 3/4): diga no
+   `result` que nao conferiu — grep no codigo nao prova o cadastro.
 
 ## Governanca (0098)
 
@@ -170,7 +179,7 @@ Push sempre explicito: `git -C "$WT" push -u origin <branch>` (o worktree nasce 
 |---|---|---|---|
 | `branch` | Nome pela regra (param conferido com `branches`/`rules`). `git -C <pasta> fetch origin`; ja existe no origin (`git ls-remote --heads origin <branch>`)? → so siga se foi criada **por este item** (retomada: `output` desta sub-tarefa); senao **nao reaproveite** (regra do PRMake): `wait` dizendo de onde ela veio (PR/item do card) e o que a pessoa decide. Nao existe → `WT=$(bash $PLAN worktree <card> <repo> <branch> <from> --item <n>)` e `git -C "$WT" push -u origin <branch>` | `{branch, from, created}` | criada pelo item: `delete-branch {repo, branch}`; ja existia: `none` |
 | `cherry-pick` | No worktree da branch: `git cherry-pick -x <shas>` (shas dos params, ou os commits da branch de origem: `git log --format=%H --reverse origin/<base>..origin/<source>`). Conflito: resolva mantendo a intencao, `--continue`, avise no `result`; nao conseguiu → `git cherry-pick --abort` e `fail`. **Push so com o cherry-pick concluido** (`! git -C "$WT" rev-parse -q --verify CHERRY_PICK_HEAD && git -C "$WT" push -u origin <branch>`) | `{branch, commits:[novos shas]}` | `revert-commit {repo, branch, sha:"<sha1 sha2>", createdByItem:"true\|false"}` |
-| `code` | Mudanca descrita na sub-tarefa, so no escopo dela, **sem comentarios no codigo**; testes so do que mudou (`bash $PLAN test <card> "$WT"`; .NET: um `dotnet build` + `dotnet test --no-build --filter`); commit no `CommitMessagePattern` (linha `commit=` do `branches`); `git -C "$WT" push -u origin <branch>` | `{branch, commit}` | `revert-commit {repo, branch, sha, createdByItem}` |
+| `code` | Mudanca descrita na sub-tarefa, so no escopo dela, **sem comentarios no codigo**; texto para o usuario → termo do Multilingual + `bash $MLG check` antes do commit (regra 10); testes so do que mudou (`bash $PLAN test <card> "$WT"`; .NET: um `dotnet build` + `dotnet test --no-build --filter`); commit no `CommitMessagePattern` (linha `commit=` do `branches`); `git -C "$WT" push -u origin <branch>` | `{branch, commit}` | `revert-commit {repo, branch, sha, createdByItem}` |
 | `pr` | Descricao: reaproveite a do card se servir; senao `bash $PLAN pr-text <card> <repo> <branch>` e gere `desc.md` como a `gerar-prmake` (sem RCA para US). Abrir: `prmake_pr_open(card, repo, branch, target, title?, description: <desc.md>)` ou `bash $PLAN open-pr <card> <repo> <branch> <target> ["titulo"] <desc.md> --item <n>` (sem titulo = `PrTitlePattern`). Os dois devolvem o JSON `{output, undo}` pronto — use-o. **Nunca mescle** | `{pr, number, repository, branch, target}` | `close-pr {repo, number}` (PR que ja existia: `none`) |
 | `devops-state` | `prmake_card` → anote o estado atual (`from`). Mova so pelo PRMake: estado de uma acao configurada → `prmake_devops(card, action)` / `bash $PLAN devops <card> dev-test-in-qa\|test-in-production\|ready-for-qa`; outro estado valido do tipo (a lista do editor vem de `GET Azure/card/<card>/states`) → `prmake_devops(card, "set-state", state: "<estado>")`. `ready-for-qa` so se a sub-tarefa foi pedida pela pessoa (item criado/executado por ela) — senao `wait` pedindo a autorizacao. Estado fora da lista → `fail` com os estados validos que a API devolver | `{from, to, action}` | `devops-state {from, action:"<acao que volta, se houver>"}` |
 | `sql-script` | **Nunca executa escrita.** Consulte so leitura se precisar (`sql-query.sh`), escreva o script com rollback e a consulta de validacao em `$CARD_DIR/scripts/<nn>_<card>_<nome>.sql` (rollback em arquivo: `99_<card>_rollback_<nome>.sql` — o numero do card vai sempre no nome, ex.: `99_78262_rollback_ligar-sso-otronnier.sql`), confira nos padroes (`prmake_standards_check`, secao "Padroes (0101)"), grave como arquivo do item (`prmake_work_item_file(card, number, "<nn>_<card>_<nome>.sql", script, kind: "script", taskNumber)`) e cole no `result` (bloco ```sql). Quem roda e o chamado: o item com script sempre tem as sub-tarefas `ticket` logo depois (o PRMake acrescenta se faltarem) | `{file, rollback:"true"}` | `none` (nada executado) |
