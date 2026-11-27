@@ -131,7 +131,8 @@ Elas chegam "adiadas": carregue as que vai usar **uma vez, no inicio**, num unic
 | **fotografia do codigo citado** (0075: popover com codigo real, diff e notas) · ajustar why/notas | `prmake_code_ref(card, reference, ...)` (so ajuste) | **`coderef`** (le o arquivo local — sempre por ele) |
 | configuracao · card do DevOps · mover o card | `prmake_config` · `prmake_devops_config` · `prmake_card(card)` · `prmake_devops(card, action)` | `settings` · `devops <card> config` · `devops` |
 | Timeline | `prmake_timeline(card, markdown)` | skill `prmake-timeline` |
-| **regras do card** (0085: fluxo, base, nome de branch por destino, padroes) · **itens de trabalho** (listar, criar entrega separada) | `prmake_rules(card)` · `prmake_work_items(card)` · `prmake_work_item(card, n)` · `prmake_work_item_create(card, ..., planPhase: "correction")` | `rules` (cache `dados/regras.md`) · `work-items [n]` |
+| **regras do card** (0085: fluxo, base, nome de branch por destino, padroes) · **itens de trabalho** (listar, criar entrega separada) | `prmake_rules(card, skill: "analisar-bug")` · `prmake_work_items(card)` · `prmake_work_item(card, n)` · `prmake_work_item_create(card, ..., planPhase: "correction")` | `rules <card> --skill analisar-bug` (cache `dados/regras.md`) · `work-items [n]` |
+| **review do PR** (0106, GitHub) · **licao aprendida** | `prmake_pr_reviews(card, number)` · `prmake_lesson_record(...)` / `prmake_lesson_signal_dismiss(signal, reason)` | — |
 | **agendar** etapa/sub-tarefa ou item para uma hora conhecida (0103) · validacao pos-merge agendada/em espera sem data | `prmake_work_schedule(card, number, set\|park\|clear\|run-now, at?)` · `prmake_env_validation(..., scheduledAt? \| parked?)` | — |
 
 **Sempre pelo script** (arquivos locais, git, custo): `contexto` (inicio), `sync`/`upload`, `branches`, `worktree`,
@@ -269,6 +270,20 @@ plano (envia o custo da sessao). Depois de `prmake_correction`, se for usar o sc
 - **Item da analise (ajustes 0085)**: ao criar o plano de analise o servidor ja cria o item "Analise inicial do bug
   #<card>" (sub-tarefas = etapas, sincronizadas sozinhas) — **nao crie outro item manualmente** para a analise; ao fim,
   o plano de correcao gera os itens da entrega.
+- **Pedido de mudancas num PR (0106, card 79047)**: os PRs ficam no **GitHub (`electradv/*`)** — review e comentarios se
+  leem com `prmake_pr_reviews(card, number)`; nunca diga que nao da para ler sem chamar. PR do plano com "changes
+  requested" → o PRMake cria sozinho o item **`atender-review-pr`** (ler o review → ajustar → levar aos PRs → responder e
+  pedir nova revisao): **nao trate o review solto no plano** nem crie outro item; so o codigo novo do PR entra no ajuste
+  (o resto e seguimento). Destino cujo PR **ja foi mesclado** e precisa de commits novos → a **MESMA branch** do destino
+  pela regra (ex.: `hotfix/79047-dev`) + **PR novo** dela (`open-pr`) — nunca deixe o destino sem o ajuste nem pergunte
+  "qual nome de branch" que a regra ja da.
+- **Licoes aprendidas (0106)**: as regras (`prmake_rules(card, skill: "analisar-bug")` / `bash $PLAN rules <card> --skill
+  analisar-bug`, que o `contexto` ja grava) terminam em "Licoes aprendidas" e "Sinais de erro deste card" — **as licoes
+  valem como regra**. Errou e foi corrigido (resposta "na verdade...", etapa/entrega refeita, pergunta recusada, recusa do
+  PRMake que mostrou o caminho) → `prmake_lesson_record(trigger, lesson, why, scope: ["analisar-bug"], card, reference?)`
+  na mesma vez — a licao GERAL, nao o caso; parecida reforca a existente. Sinal de erro aberto que voce entende → licao com
+  `signal: <n>` ou `prmake_lesson_signal_dismiss(signal, reason)`. Nunca licao que afrouxe regra fixa (merge, aprovar PR,
+  senha, banco so leitura).
 - PII: o que vai para o plano/Timeline e visivel no PRMake — so o necessario.
 - `PLANO INDISPONIVEL` no `start`/`contexto`: siga normalmente (os comandos do plano viram no-op).
 

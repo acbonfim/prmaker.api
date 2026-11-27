@@ -5,7 +5,8 @@
 #   prmake-case.sh upload <card> <arquivo>    sobe um arquivo gerado (imagem do mock, script, CSV) e imprime "arquivo #n"
 #                                             (.sql: confere antes nos padroes do PRMake, 0101 — block nao envia)
 #   prmake-case.sh context <card>             contexto compacto do caso (o mesmo de prmake_case_context)
-#   prmake-case.sh rules   <card> [--refresh] regras do PRMake para o card (o mesmo de prmake_rules), cache 10 min
+#   prmake-case.sh rules   <card> [--refresh] regras do PRMake para o card (o mesmo de prmake_rules), cache 10 min;
+#                                             0106: com as licoes aprendidas do especialista (PRMAKE_RULES_SKILL troca)
 #   prmake-case.sh items   <card> [--refresh] itens de trabalho do card (resumo + fingerprint), cache 10 min
 #   prmake-case.sh catalog <card>             tipos de sub-tarefa, tipos de item e ferramentas (modelos) para o card
 #   prmake-case.sh tools <card>               so as ferramentas: applicable/motivo, perguntas (ask) e sub-tarefas
@@ -133,8 +134,12 @@ case "$CMD" in
     ;;
   rules)
     F="$DADOS/regras.md"
-    if (( REFRESH )) || ! fresh "$F"; then
-      code="$(get "Skills/rules?card=$CARD")"
+    # 0106: licoes aprendidas da skill que le (epico E<n> = especialista-de-gestao; senao especialista-do-caso) vem no fim;
+    # o cache so vale para a mesma skill (marca em regras.skill, a mesma do prmake-plan.sh rules).
+    RSKILL="${PRMAKE_RULES_SKILL:-}"
+    if [[ -z "$RSKILL" ]]; then case "$CARD" in E*|e*) RSKILL=especialista-de-gestao ;; *) RSKILL=especialista-do-caso ;; esac; fi
+    if (( REFRESH )) || ! fresh "$F" || [[ "$(cat "$DADOS/regras.skill" 2>/dev/null)" != "$RSKILL" ]]; then
+      code="$(get "Skills/rules?card=$CARD&skill=$RSKILL")"
       if [[ "$code" =~ ^2 ]] && [[ -s "$TMP/resp" ]]; then
         # Aceita markdown puro, string JSON ou objeto {markdown|content|text|rules}.
         if jq -e 'type == "string"' "$TMP/resp" >/dev/null 2>&1; then jq -r '.' "$TMP/resp" > "$TMP/md"
@@ -142,7 +147,8 @@ case "$CMD" in
           jq -r '.markdown // .content // .text // .rules // empty | if type == "string" then . else tojson end' "$TMP/resp" > "$TMP/md"
         else cp "$TMP/resp" "$TMP/md"; fi
         [[ -s "$TMP/md" ]] || die "regras: resposta vazia do PRMake — use prmake_rules"
-        { echo "<!-- regras do PRMake para o card $CARD, obtidas em $(date '+%Y-%m-%d %H:%M') -->"; cat "$TMP/md"; } > "$F"
+        { echo "<!-- regras do PRMake para o card $CARD (skill $RSKILL), obtidas em $(date '+%Y-%m-%d %H:%M') -->"; cat "$TMP/md"; } > "$F"
+        printf '%s\n' "$RSKILL" > "$DADOS/regras.skill"
       elif [[ -s "$F" ]]; then
         warn "regras: PRMake indisponivel (HTTP ${code:-000}) — usando o cache antigo ($F)"
       else

@@ -86,6 +86,11 @@ descricao da sub-tarefa diga "fique em espera se faltar acesso": acesso = senha/
 4. Banco **somente leitura** (`sql-query.sh` so SELECT). Nada de comentario em codigo, commit ou PR aqui.
 5. **Prints sem dado sensivel alem do necessario**: nada de tela de senha, token, dados pessoais que nao provem a
    validacao. Prefira a tela com o resultado (mensagem de sucesso, registro na lista, valor calculado).
+6. **Licoes aprendidas (0106)**: as licoes de `prmake_rules(card, skill: "validar-ambiente")` ("Licoes aprendidas") valem
+   como regra — leia no inicio e aplique (ex.: onde fica a tela, que usuario/planta usar). A pessoa corrigiu ou refez a
+   validacao/reproducao (sub-tarefa reaberta "refazer: <motivo>", "Ja resolvi" mostrando outro caminho) ou voce errou e
+   corrigiu → `prmake_lesson_record(trigger, lesson, why, scope: ["validar-ambiente"], card, reference: "#<sub-tarefa>")`
+   na mesma vez — a licao GERAL, nunca senha/URL com credencial nem algo que afrouxe as regras acima.
 
 ## Governanca (0098)
 

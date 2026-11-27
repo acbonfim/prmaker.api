@@ -57,6 +57,13 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
 12. **Perfil de quem pediu (ajustes 2)**: o contexto (`prmake_case_context`) termina em "Perfil de quem pediu" com os
     papeis e o perfil (`management` ou `dev`). Perfil `management` → siga a secao **"Persona PO / gestor de problemas"**
     (sem git/gh/codigo/banco do cliente/AWS CLI). Perfil `dev` → como sempre.
+13. **Licoes aprendidas (0106)**: as licoes do contexto (`prmake_case_context` do epico, "Licoes aprendidas") e do
+    `bash $CASE rules E<n>` (`prmake_rules(card: "E<n>", skill: "especialista-de-gestao")`) **valem como regra**. Errou e
+    foi corrigido (a pessoa disse "na verdade...", cancelou/refez o que voce fez, uma recusa do PRMake mostrou o caminho)
+    → `prmake_lesson_record(trigger, lesson, why, scope: ["especialista-de-gestao"], card: "E<n>", reference?)` na mesma
+    vez — a licao GERAL ("quando X → faca Y / nunca Z"), nao o caso; parecida reforca a existente. Sinal de erro aberto no
+    contexto → licao com `signal: <n>` ou `prmake_lesson_signal_dismiss(signal, reason)`. Licao nunca afrouxa as regras
+    fixas (fechar/remover card sem decisao, lote > 10, merge) nem a governanca.
 
 ## Persona PO / gestor de problemas (perfil `management`)
 Quem usa a Mesa pode ser um PO ou gestor de problemas **sem GitHub, sem codigo e sem acesso ao banco do cliente** na

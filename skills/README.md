@@ -62,6 +62,18 @@ etapa). `prmake_work_item_create`/`prmake_tool_run`/`prmake_env_validation` acei
 do merge, job da madrugada) vira agendamento, nunca `wait`; validacao pos-merge nasce agendada (`+2h30m`) ou em espera sem
 data (`parked`). O executor nunca comeca nem espera a agendada. Na Bancada: relogio lilas.
 
+**Licoes aprendidas e pedido de mudancas (0106)**: agente que erra e e corrigido grava a licao na hora
+(`prmake_lesson_record`; parecida reforca a existente); o PRMake registra sozinho sinais de erro (item do especialista
+cancelado logo depois, entrega refeita, item reaberto, "changes requested") que o proximo agente transforma em licao ou
+descarta (`prmake_lesson_signal_dismiss`). As licoes ativas entram no fim do `prmake_rules(card, skill)` / `GET
+Skills/rules?card=&skill=` e no `prmake_case_context` — os scripts pedem com a skill (`prmake-plan.sh rules <card> --skill
+<nome>`, o `contexto` usa a do plano; `prmake-case.sh rules` usa a do especialista; cache `dados/regras.md` vale so para a
+mesma skill, marca em `dados/regras.skill`). PR do card com "changes requested" → item automatico `atender-review-pr`
+(ler o review no GitHub com `prmake_pr_reviews` → ajustar so o codigo novo do PR → `pr-update`: PR aberto se atualiza, PR
+ja mesclado ganha PR novo da mesma branch → `review-reply`: responde cada comentario e pede nova revisao; nunca aprova nem
+mescla). "Analise inicial" pelo especialista = `prmake_analysis_start`; revisao de PR so publica na Timeline com
+`timeline: sim`.
+
 **Mesa de gestao (0099)**: itens de trabalho de um **epico** usam a chave `E<numero>` como card (mesma numeracao `#n` de
 itens e sub-tarefas). A `executar-item-de-trabalho` roda o item e, nos kinds de gestao, segue a `tarefas-de-gestao` (sem
 branch/PR/estado de card no epico); a conversa da Mesa roda a `especialista-de-gestao`. Toda gravacao no DevOps passa pelo

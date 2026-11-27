@@ -43,6 +43,15 @@ da maquina, codigo da analise na copia da master (`revamp-repos.sh master <repo>
 **nunca merge**, configuracao (estados, branches, titulos) sempre do PRMake. Na duvida sobre uma dessas regras:
 `$REF plano <assunto>` ou `$REF consultas <assunto>`.
 
+**Licoes aprendidas e pedido de mudancas (0106)**: como na `analisar-bug` (regras "Licoes aprendidas" e "Pedido de
+mudancas num PR"), com a skill **`analisar-us`**: `prmake_rules(card, skill: "analisar-us")` / `bash $PLAN rules <card>
+--skill analisar-us` (o `contexto` ja grava) traz as licoes — valem como regra; errou e foi corrigido →
+`prmake_lesson_record(trigger, lesson, why, scope: ["analisar-us"], card)` na mesma vez (licao geral, nunca afrouxando
+regra fixa); sinal de erro aberto → licao com `signal` ou `prmake_lesson_signal_dismiss`. PR da implementacao com
+"changes requested" (PRs no GitHub, `prmake_pr_reviews`) → o PRMake cria o item `atender-review-pr`; **nao trate o review
+solto no plano**. Destino com PR ja mesclado e commits novos → a **mesma** branch do destino pela regra
+(`feature/<card>-dev`...) + PR novo.
+
 **Resultado de cada etapa (card 78505)**: como na `analisar-bug` (regra "Toda etapa conclui com RESULTADO"), toda
 etapa conclui com `prmake_advance(..., result)` / `advance ... --result r.md` — o markdown rico que a pessoa ve na
 sub-tarefa assim que a etapa termina (Base: tabela dos itens; dados: SQL + tabela; codigo: `ref:` fotografados; criterios
@@ -184,7 +193,7 @@ ganha sozinho as sub-tarefas do chamado — gerar o chamado completo + a pessoa 
 link + conferir os dados depois do chamado; nao duplique):
 1. `prmake_work_items(card)` (script: `bash $PLAN work-items <card>`) — ja existe item com o mesmo objetivo
    (titulo/sub-tarefas/fingerprint, status nao cancelado)? Nao crie outro; cite o existente.
-2. `prmake_rules(card)` (ou `dados/regras.md`) para os nomes: branch por destino (`release-version` → `<branch>-rv`),
+2. `prmake_rules(card, skill: "analisar-us")` (ou `dados/regras.md`) para os nomes: branch por destino (`release-version` → `<branch>-rv`),
    titulo, commit — nunca invente.
 3. Ferramenta pronta que serve (`prmake_tools(card)`: PR para uma branch, promocao, ajuste pos-QA...) →
    `prmake_tool_run(card, key, answers)`. Senao `prmake_work_item_create(card, title, description, tasks, type,
