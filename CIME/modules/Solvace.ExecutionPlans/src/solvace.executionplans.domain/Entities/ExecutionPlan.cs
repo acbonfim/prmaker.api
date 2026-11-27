@@ -820,15 +820,28 @@ public class ExecutionPlan
         bool fromExecutor, bool includeRunning = false)
     {
         var step = FindStep(ExecutionStep.NormalizeKey(key));
-        if (step is null || Status == ExecutionStatus.Cancelled || step.Kind != ExecutionStepKind.PullRequest
-            || !(step.Status == ExecutionStatus.Pending || (includeRunning && step.Status == ExecutionStatus.Running)))
+        if (step is null || Status == ExecutionStatus.Cancelled || step.Kind != ExecutionStepKind.PullRequest)
+            return null;
+        // Card 79047: PR novo aberto depois de a etapa concluir (o mesclado voltou com ajuste) — a etapa volta a esperar o
+        // merge, e o que depende dela (validar em QA, fechamento) não fica pronto com o código ainda fora do ambiente.
+        var reopened = step.Status == ExecutionStatus.Completed && !IsFinished && OpenedAfter(step, stepLinks);
+        if (!reopened && !(step.Status == ExecutionStatus.Pending || (includeRunning && step.Status == ExecutionStatus.Running)))
             return null;
         var open = stepLinks.Where(l => l.Kind == ExecutionLinkKind.PullRequest && l.Status == ExecutionLinkStatus.Open).ToList();
         if (open.Count == 0)
             return null;
         var reason = open.Count == 1 ? $"Aguardando o merge do PR {open[0].DisplayName}" : $"Aguardando o merge de {open.Count} PRs";
-        return SetStepWaiting(step.Key, reason, ExecutionWaitingOn.External, actor, now, fromExecutor);
+        if (!reopened)
+            return SetStepWaiting(step.Key, reason, ExecutionWaitingOn.External, actor, now, fromExecutor);
+        step.ChangeStatus(ExecutionStatus.Waiting, reason, actor, now, ExecutionWaitingOn.External);
+        Touch(now, fromExecutor);
+        return step;
     }
+
+    /// <summary>Algum PR aberto foi anexado à etapa depois de ela concluir.</summary>
+    private static bool OpenedAfter(ExecutionStep step, IReadOnlyCollection<ExecutionLink> stepLinks) =>
+        step.FinishedAt is { } finished && stepLinks.Any(l => l.Kind == ExecutionLinkKind.PullRequest
+                                                             && l.Status == ExecutionLinkStatus.Open && l.CreatedAt > finished);
 
     /// <summary>Conclui uma etapa por uma regra automática (ex.: PRs mesclados) — 0024.</summary>
     public ExecutionStep? CompleteStep(string key, string reason, string actor, DateTimeOffset now, bool fromExecutor)
@@ -856,13 +869,26 @@ public class ExecutionPlan
         return true;
     }
 
-    /// <summary>Etapas prontas para começar: pendentes com todas as dependências terminadas.</summary>
+    /// <summary>Etapas prontas para começar: pendentes com todas as dependências (também as implícitas) terminadas.</summary>
     public IEnumerable<ExecutionStep> ReadySteps() =>
-        Steps.Where(s => s.Status == ExecutionStatus.Pending && !s.Held && s.DependsOn.All(d =>
+        Steps.Where(s => s.Status == ExecutionStatus.Pending && !s.Held && EffectiveDependsOn(s).All(d =>
         {
             var dep = FindStep(d);
             return dep is null || dep.Status is ExecutionStatus.Completed or ExecutionStatus.Cancelled;
         })).OrderBy(s => s.Order);
+
+    /// <summary>
+    /// Card 79047: dependências que valem para a etapa — as declaradas e as etapas ainda não terminadas que alguém pôs
+    /// na frente dela de propósito (pedido do especialista/da pessoa, etapa movida). "Validar em QA" dependia só dos PRs
+    /// e do fechamento; os ajustes inseridos antes dela não a seguravam e ela virava "aguardando você" com o Claude ainda
+    /// trabalhando.
+    /// </summary>
+    public IReadOnlyList<string> EffectiveDependsOn(ExecutionStep step) =>
+        step.DependsOn
+            .Concat(Steps.Where(p => p != step && p.OrderPinned && p.Order < step.Order && !ExecutionStatus.IsStepFinished(p.Status))
+                .OrderBy(p => p.Order).Select(p => p.Key))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
     // ---------------------------------------------------------------- card 78680: ordem, pausa, dependências
 

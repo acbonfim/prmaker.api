@@ -237,7 +237,7 @@ public static class EpicMonitorMapping
     public static string EnvStatus(string? verdict) => verdict switch
     {
         AwsVerdict.Deployed => EnvDeployed,
-        AwsVerdict.Waiting or AwsVerdict.Deploying or AwsVerdict.Absent => EnvPending,
+        AwsVerdict.Waiting or AwsVerdict.Deploying or AwsVerdict.Absent or AwsVerdict.Partial => EnvPending,
         AwsVerdict.Failed => EnvFailed,
         _ => EnvUnknown,
     };

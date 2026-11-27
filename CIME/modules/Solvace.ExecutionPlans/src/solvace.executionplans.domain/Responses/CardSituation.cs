@@ -135,6 +135,14 @@ public class CardSituationResponse
 
     public string? Next { get; set; }
 
+    /// <summary>
+    /// Card 79047: o caminho até aqui quando a entrega voltou para ajuste — a 1ª rodada de PRs mesclada e publicada, os
+    /// ajustes pedidos depois (validação em QA, review) e os PRs novos. Vazio com uma rodada só (o resto já conta a história).
+    /// </summary>
+    public List<string> History { get; set; } = [];
+    /// <summary>Há mais de uma rodada de PRs (a entrega mesclada voltou com ajuste em PRs novos).</summary>
+    public bool Rework { get; set; }
+
     /// <summary>0076: a publicação na discussion é automática para este card (preferência do dono do plano ou padrão global).</summary>
     public bool AutoPost { get; set; }
     /// <summary>0078: de onde vem o modo: card (escolhido para este card) | user (preferência do dono) | global.</summary>
@@ -203,6 +211,8 @@ public static class CardSituation
         var open = questions.Where(q => q.Status == ExecutionQuestionStatus.Open).OrderBy(q => q.Order).ToList();
         r.Questions = open.Select(q => $"{q.Order}. {FirstLine(q.Text)}").ToList();
 
+        BuildHistory(r, plan);
+
         if (plan.IsFinished || plan.Status == ExecutionStatus.Failed)
             return Finish(r);
 
@@ -215,7 +225,7 @@ public static class CardSituation
         var qaWait = qaStep is not null && !ExecutionStatus.IsStepFinished(qaStep.Status) && (plan.DevTestInQaAt is not null || qaMerged || pending.Contains(qaStep))
             ? (CardSituationKind.QaValidation, plan.DevTestInQaAt ?? r.PullRequests.Where(p => p.IsQa).Max(p => p.MergedAt) ?? qaStep.UpdatedAt, (ExecutionStep?)qaStep)
             : ((string, DateTimeOffset?, ExecutionStep?)?)null;
-        var qaReady = qaStep is not null && qaStep.DependsOn.All(k => plan.Steps.FirstOrDefault(s => s.Key == k) is not { } d || ExecutionStatus.IsStepFinished(d.Status));
+        var qaReady = qaStep is not null && plan.EffectiveDependsOn(qaStep).All(k => plan.Steps.FirstOrDefault(s => s.Key == k) is not { } d || ExecutionStatus.IsStepFinished(d.Status));
         if (qaWait is { } first && qaReady)
             waits.Add(first);
 
@@ -282,6 +292,71 @@ public static class CardSituation
     }
 
     /// <summary>
+    /// Card 79047: rodadas de PRs — uma rodada nova começa com PR aberto depois de outro já mesclado. Com duas ou mais,
+    /// o histórico conta a entrega publicada, os ajustes pedidos depois (etapas "pedido-*" que não são de PR) e os PRs novos.
+    /// </summary>
+    private static void BuildHistory(CardSituationResponse r, ExecutionPlan plan)
+    {
+        var rounds = new List<List<CardSituationPullRequest>>();
+        foreach (var pr in r.PullRequests.OrderBy(p => p.OpenedAt))
+        {
+            if (rounds.Count == 0 || rounds[^1].Any(p => p.MergedAt is { } m && m < pr.OpenedAt))
+                rounds.Add([]);
+            rounds[^1].Add(pr);
+        }
+        if (rounds.Count < 2)
+            return;
+
+        r.Rework = true;
+        var manyRepos = r.PullRequests.Select(p => p.Repository).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
+        for (var i = 0; i < rounds.Count; i++)
+        {
+            var round = rounds[i];
+            var refs = Join(round.Select(p => PrRef(p, manyRepos)));
+            var opened = Short(round.Min(p => p.OpenedAt));
+            // "correção"/"implementação" são femininas; o ajuste, masculino.
+            var label = i == 0 ? $"A {r.Delivery}" : rounds.Count > 2 ? $"O {i}º ajuste" : "O ajuste";
+            var g = i == 0 ? "a" : "o";
+            string line;
+            if (round.All(p => p.Status == ExecutionLinkStatus.Merged))
+            {
+                line = $"{label} foi nos PRs {refs}, abertos em {opened}";
+                if (round.Max(p => p.MergedAt) is { } mergedAt)
+                    line += $" e mesclados em {Short(mergedAt)}";
+                if (round.Any(p => p.IsQa))
+                    line += $"; publicad{g} em QA";
+                if (i == 0 && plan.DevTestInQaAt is { } moved && round.Any(p => p.IsQa))
+                    line += $" (card em Dev Test in QA desde {Short(moved)})";
+                line += ".";
+            }
+            else
+            {
+                var merged = round.Where(p => p.Status == ExecutionLinkStatus.Merged).ToList();
+                line = $"{label} está nos PRs {refs}, abertos em {opened}"
+                       + (merged.Count > 0 ? $" ({Join(merged.Select(p => PrRef(p, manyRepos)))} já mesclado{(merged.Count > 1 ? "s" : "")})" : "")
+                       + " — aguardando revisão e merge.";
+            }
+            r.History.Add(line);
+
+            if (i + 1 < rounds.Count)
+            {
+                // O que voltou para ajuste entre esta rodada e a próxima: os pedidos feitos depois do merge dela.
+                var from = round.Max(p => p.MergedAt) ?? round.Max(p => p.OpenedAt);
+                var until = rounds[i + 1].Min(p => p.OpenedAt);
+                var next = i + 2 < rounds.Count ? rounds[i + 2].Min(p => (DateTimeOffset?)p.OpenedAt) : null;
+                var asked = plan.Steps
+                    .Where(s => s.IsRequested && s.TaskKind is not ("pr" or "pr-update") && (s.StartedAt ?? s.UpdatedAt) >= from
+                                && (next is null || (s.StartedAt ?? s.UpdatedAt) < next))
+                    .OrderBy(s => s.Order).Select(s => Lower(s.Title.Trim().TrimEnd('.'))).ToList();
+                if (asked.Count > 0)
+                    r.History.Add($"Depois {(round.Any(p => p.IsQa) ? "da publicação em QA" : "do merge")}, a {r.Delivery} voltou para ajuste: {Join(asked)}.");
+                else
+                    r.History.Add($"Depois {(round.Any(p => p.IsQa) ? "da publicação em QA" : "do merge")}, a {r.Delivery} voltou para ajuste (PRs novos em {Short(until)}).");
+            }
+        }
+    }
+
+    /// <summary>
     /// O contexto da passagem é de antes da situação atual: gravado (com folga) antes de o card entrar nela — a mudança
     /// registrada (<see cref="ExecutionPlan.SituationAt"/>) ou, ainda não registrada, agora.
     /// </summary>
@@ -297,6 +372,7 @@ public static class CardSituation
     {
         CardSituationKind.Ticket => $"Quando o chamado for atendido, a {r.Delivery} segue.",
         CardSituationKind.TicketToOpen => $"Abro o chamado; a {r.Delivery} segue quando ele for atendido.",
+        CardSituationKind.PullRequestReview when r.Rework => "Com a revisão e o merge dos PRs do ajuste e a esteira de QA concluída, volto a validar em QA.",
         CardSituationKind.PullRequestReview => $"Com a revisão e o merge dos PRs em QA, a {r.Delivery} segue para validação.",
         CardSituationKind.QaValidation => r.DevTestInQaAt is null
             ? $"Movo o card para Dev Test in QA e valido a {r.Delivery} em QA. Em seguida o card vai para Ready for QA."
@@ -362,11 +438,13 @@ public static class CardSituation
             case CardSituationKind.PullRequestReview:
             {
                 var open = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Open).ToList();
-                sb.AppendLine(open.Count == 1 ? $"O PR da {r.Delivery} está aberto desde {Short(open[0].OpenedAt)}:" : $"Os PRs da {r.Delivery} estão abertos desde {Short(open.Min(p => p.OpenedAt))}:");
+                var what = r.Rework ? "do ajuste" : $"da {r.Delivery}";
+                sb.AppendLine(open.Count == 1 ? $"O PR {what} está aberto desde {Short(open[0].OpenedAt)}:" : $"Os PRs {what} estão abertos desde {Short(open.Min(p => p.OpenedAt))}:");
                 foreach (var p in open)
                     sb.AppendLine($"- {PrRef(p, manyRepos)}: {Review(p)}");
                 var merged = r.PullRequests.Where(p => p.Status == ExecutionLinkStatus.Merged).ToList();
-                if (merged.Count > 0)
+                // Com ajuste, os mesclados são da rodada anterior — o histórico já conta.
+                if (merged.Count > 0 && !r.Rework)
                     sb.AppendLine().AppendLine($"Já mesclados: {Join(merged.Select(p => PrRef(p, manyRepos)))}.");
                 break;
             }
@@ -407,6 +485,11 @@ public static class CardSituation
                 break;
         }
 
+        if (r.History.Count > 0)
+        {
+            sb.AppendLine().AppendLine("**Até aqui**");
+            foreach (var h in r.History) sb.AppendLine($"- {h}");
+        }
         if (r.AlsoWaiting.Count > 0)
             sb.AppendLine().AppendLine($"Também em andamento: {Join(r.AlsoWaiting.Select(Lower))}.");
         if (handoff)

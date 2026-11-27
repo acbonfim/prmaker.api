@@ -79,6 +79,7 @@ public static class AwsStatusText
     {
         AwsVerdict.Deployed => $"Nosso código está em {label}",
         AwsVerdict.Absent => $"Ainda não está em {label}",
+        AwsVerdict.Partial => $"Parte do nosso código está em {label} (o ajuste mais recente ainda não)",
         AwsVerdict.Waiting => $"Na branch de {label}, aguardando o deploy",
         AwsVerdict.Deploying => $"Deploy em andamento em {label}",
         AwsVerdict.Failed => $"Deploy falhou em {label}",

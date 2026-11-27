@@ -23,8 +23,11 @@ bash ~/.claude/skills/aws-deploy/scripts/aws.sh index              # só o índi
   Retrato velho (mais de 1 h) ou ambiente em andamento → rode `collect` de novo.
 - O veredito por ambiente vem do script — não reinterprete: `deployed` (nosso código está lá), `deploying` (deploy em
   andamento com ele), `waiting` (na branch do ambiente, ainda não implantado), `failed` (a execução com o nosso código
-  falhou), `absent` (não chegou na branch do ambiente), `not-applicable` (o repositório não vai para o ambiente),
-  `unknown` (sem como conferir — ver os avisos).
+  falhou), `absent` (não chegou na branch do ambiente), `partial` (uma versão anterior do nosso código está lá; o ajuste
+  mais recente ainda está no PR aberto), `not-applicable` (o repositório não vai para o ambiente),
+  `unknown` (sem como conferir — ver os avisos). `deployed` exige o código **mais recente** do card: ajuste mesclado
+  depois do último deploy vira `waiting`/`deploying` (campo `newer` da esteira), e PR do ajuste ainda aberto, `partial`
+  (campo `unmerged`) — nunca diga que o ajuste está no ambiente só porque a 1ª versão está.
 - Em `failed`, mostre o fim do log do build (`failedLogTail`) e o link do build; não conclua que a falha é do nosso
   código sem ler o log (a esteira pode quebrar por outro commit ou por infraestrutura).
 

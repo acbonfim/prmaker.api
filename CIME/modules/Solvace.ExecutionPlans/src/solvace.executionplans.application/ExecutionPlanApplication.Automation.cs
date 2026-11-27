@@ -43,12 +43,11 @@ public partial class ExecutionPlanApplication
             return;
 
         var peek = await _repository.GetPlanWithStepsAsync(planId, cancellationToken);
+        List<ExecutionLink> peekLinks = peek is null ? [] : await _repository.GetLinksAsync(peek.Id, cancellationToken);
         _repository.ClearTracking();
         if (peek is null || peek.Phase != ExecutionPhase.Correction || peek.IsFinished)
             return;
-        var prSteps = peek.Steps
-            .Where(s => s.Kind == ExecutionStepKind.PullRequest && s.Repository is not null && !ExecutionStatus.IsStepFinished(s.Status))
-            .ToList();
+        var prSteps = peek.Steps.Where(s => TracksPullRequests(s, peekLinks)).ToList();
         if (prSteps.Count == 0)
             return;
 
@@ -97,7 +96,7 @@ public partial class ExecutionPlanApplication
             changed = false;
             checksChanged = false;
             var links = await _repository.GetLinksAsync(p.Id, cancellationToken);
-            foreach (var step in p.Steps.Where(s => s.Kind == ExecutionStepKind.PullRequest && s.Repository is not null && !ExecutionStatus.IsStepFinished(s.Status)).ToList())
+            foreach (var step in p.Steps.Where(s => TracksPullRequests(s, links)).ToList())
             {
                 foreach (var pr in cardPrs.Where(pr => pr.Number is not null && SameRepository(pr.Repository, step.Repository!)))
                 {
@@ -156,8 +155,8 @@ public partial class ExecutionPlanApplication
                 var active = links.Where(l => l.StepKey == step.Key && l.Kind == ExecutionLinkKind.PullRequest && l.Status != ExecutionLinkStatus.Closed).ToList();
                 if (active.Count > 0 && active.All(l => l.Status == ExecutionLinkStatus.Merged))
                 {
-                    p.CompleteStep(step.Key, active.Count == 1 ? "PR mesclado" : $"{active.Count} PRs mesclados", SystemActor.Name, now, false);
-                    changed = true;
+                    if (p.CompleteStep(step.Key, active.Count == 1 ? "PR mesclado" : $"{active.Count} PRs mesclados", SystemActor.Name, now, false) is not null)
+                        changed = true;
                 }
                 else if (p.WaitForPullRequests(step.Key, active, SystemActor.Name, now, false) is not null)
                     changed = true;
@@ -192,6 +191,16 @@ public partial class ExecutionPlanApplication
         else if (changed)
             await TriggerResumeAsync(plan, SystemActor, ExecutionRequestSource.PullRequest, cancellationToken);
     }
+
+    /// <summary>
+    /// Etapa de PR que a sincronização acompanha: as não terminadas e (card 79047) as concluídas que ganharam PR aberto
+    /// depois — o PR mesclado voltou com ajuste num PR novo, que precisa ter o status/CI lidos e segurar quem depende dela.
+    /// </summary>
+    private static bool TracksPullRequests(ExecutionStep step, IReadOnlyCollection<ExecutionLink> links) =>
+        step.Kind == ExecutionStepKind.PullRequest && step.Repository is not null
+        && (!ExecutionStatus.IsStepFinished(step.Status)
+            || step.Status == ExecutionStatus.Completed && links.Any(l => l.StepKey == step.Key && l.Kind == ExecutionLinkKind.PullRequest
+                                                                         && l.Status == ExecutionLinkStatus.Open));
 
     /// <summary>"*chave*" no texto vira "*Título da etapa*".</summary>
     private static string ReplaceStepKeys(ExecutionPlan plan, string text)

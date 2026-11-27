@@ -49,7 +49,8 @@ DENIED = re.compile(r"AccessDenied|UnauthorizedOperation|not authorized|Authoriz
                     r"InvalidClientTokenId|ExpiredToken", re.I)
 SECRET_LINE = re.compile(r"(?i)((?:pass(?:word)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|pwd|"
                          r"connectionstring)\s*[:=]\s*)(\S+)")
-VERDICT_ORDER = ["failed", "deploying", "waiting", "absent", "deployed", "broken"]
+# "partial" (card 79047): o implantado tem uma versão anterior do nosso código; o ajuste mais recente ainda não chegou.
+VERDICT_ORDER = ["failed", "deploying", "waiting", "absent", "partial", "deployed", "broken"]
 APP_PREFIX = re.compile(r"^(edv-solvace-|revamp-api-|revamp-|api-)", re.I)
 
 
@@ -372,6 +373,7 @@ class Repo:
         self.regex = r"(^|[^0-9])" + str(card) + r"([^0-9]|$)"
         self.since = None
         self.commits = []
+        self.prs = []
 
     def git(self, *args, timeout=90):
         try:
@@ -448,6 +450,45 @@ class Repo:
             res = rc == 0 and bool(out.strip())
         self._contains[rev] = res
         return res
+
+
+    def newer(self, rev, branch_ref):
+        """Card 79047: commits do card que estão na branch e ainda não no implantado `rev` (o ajuste mesclado depois do
+        último deploy). Vale commit nosso (SHA conhecido) ou que cite o card — merge de PR incluído."""
+        if not rev or not self.commits:
+            return []
+        since = [f"--since={self.since}"] if self.since else ["--max-count=2000"]
+        rc, out = self.git("log", *since, "--format=%H%x09%s", f"{rev}..{branch_ref}", timeout=120)
+        if rc != 0:
+            return []
+        ours = {c["sha"] for c in self.commits}
+        res = []
+        for line in out.splitlines():
+            sha, _, subject = line.partition("\t")
+            if sha in ours or re.search(self.regex, subject or ""):
+                res.append({"sha": sha, "title": subject[:200]})
+        return res
+
+    def unmerged(self, base, head):
+        """Card 79047: commits da branch do card (`head`) que ainda não chegaram em `base` (PR aberto), pelo patch — o
+        cherry-pick já levado conta como chegou."""
+        self.fetch(head)
+        rc, out = self.git("cherry", f"origin/{base}", f"origin/{head}", timeout=120)
+        if rc != 0:
+            return []
+        res = []
+        for line in out.splitlines():
+            if line.startswith("+ "):
+                sha = line[2:].strip()
+                _, subject = self.git("log", "-1", "--format=%s", sha)
+                res.append({"sha": sha, "title": subject.strip()[:200]})
+        return res
+
+    def contains_all(self, rev, shas):
+        """Todos os `shas` são ancestrais de `rev`?"""
+        if not rev or not shas or not self.ensure(rev):
+            return False
+        return all(self.git("merge-base", "--is-ancestor", s, rev)[0] == 0 for s in shas)
 
 
 def repo_path(name):
@@ -661,6 +702,18 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
     deployed = repo.contains(dep_run["sha"]) if dep_run and dep_run.get("sha") else False
     latest_has = repo.contains(latest["sha"]) if latest and latest.get("sha") else False
     st = (latest or {}).get("status")
+    # Card 79047: o implantado tem o nosso código, mas não o mais recente — ajuste mesclado depois do deploy (newer) ou
+    # ainda no PR aberto para esta branch (unmerged). "Nosso código está lá" só com tudo.
+    newer, unmerged, open_prs = [], [], []
+    if deployed and branch:
+        newer = repo.newer(dep_run["sha"], f"origin/{branch}")
+        open_prs = [x for x in repo.prs if x.get("base") == branch and x.get("head") and (x.get("status") or "open") == "open"]
+        seen = set()
+        for x in open_prs:
+            for c in repo.unmerged(branch, x["head"]):
+                if c["sha"] not in seen:
+                    seen.add(c["sha"])
+                    unmerged.append(c)
     broken_since, broken_before_us = None, False
     if st == "Failed" and not target:
         # Esteira quebrada: desde quando falha (última vez que passou) e se já falhava antes do nosso código chegar
@@ -678,7 +731,13 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
             # falhou antes da 1ª execução com o nosso código (ou nem passou nas 50 últimas) → não é nosso
             broken_before_us = bool(first_ours and broken_since < first_ours) or \
                 (len(streak) == len(hist) and any(not (r.get("sha") and repo.contains(r["sha"])) for r in streak))
-    if deployed:
+    if deployed and newer:
+        newest_in_run = bool(latest and latest.get("sha")) and repo.contains_all(latest["sha"], [c["sha"] for c in newer])
+        verdict = "deploying" if newest_in_run and st == "InProgress" else \
+            "failed" if newest_in_run and st in ("Failed", "Stopped", "Stopping", "Cancelled") else "waiting"
+    elif deployed and unmerged:
+        verdict = "partial"
+    elif deployed:
         verdict = "deployed"
     elif latest_has and st == "Failed" and broken_before_us:
         verdict = "broken"
@@ -698,7 +757,9 @@ def evaluate_pipeline(aws, env, p, target, repo, region):
     item = {"name": p["name"], "repository": repo.name, "branch": branch, "status": st, "stage": None,
             "lastRunAt": started, "lastRunEndedAt": ended, "durationSec": dur, "trigger": (runs[0] if runs else {}).get("trigger"),
             "deployedSha": (dep_run or {}).get("sha"), "deployedMessage": ((dep_run or {}).get("message") or "")[:300],
-            "deployedAt": deployed_at, "inBranch": bool(in_branch), "deployed": bool(deployed), "verdict": verdict,
+            "deployedAt": deployed_at, "inBranch": bool(in_branch), "deployed": bool(deployed) and not newer and not unmerged,
+            "deployedOlder": bool(deployed) and bool(newer or unmerged), "newer": newer[:10], "unmerged": unmerged[:10],
+            "openPrs": [x.get("number") for x in open_prs if unmerged], "verdict": verdict,
             "consoleUrl": console_url(p["name"], region), "buildUrl": None,
             "action": f"{target['action']} → {target['target']}" if target else None,
             "latest": {"status": st, "sha": (latest or {}).get("sha"), "startedAt": started} if latest else None,
@@ -718,7 +779,7 @@ def ddmm(v):
 
 def env_summary(pipes):
     """Contagem por app do que decide o ambiente (esteiras quebradas antes do nosso código ficam à parte)."""
-    out = {"apps": len(pipes), "withCode": 0, "broken": [], "failed": [], "deploying": [], "waiting": [], "absent": []}
+    out = {"apps": len(pipes), "withCode": 0, "broken": [], "failed": [], "deploying": [], "waiting": [], "absent": [], "partial": []}
     for p in pipes:
         if p["deployed"]:
             out["withCode"] += 1
@@ -745,6 +806,17 @@ def env_message(env, verdict, pipes, pr=None):
         parts.append(f"Falta o deploy: {names(sm['waiting'])} (o código já está na branch {br}; a esteira ainda não rodou).")
     if sm["absent"] and verdict != "absent":
         parts.append(f"Ainda não chegou: {names(sm['absent'])}.")
+    newer = {c["sha"]: c for p in pipes for c in p.get("newer") or []}
+    unmerged = {c["sha"]: c for p in pipes for c in p.get("unmerged") or []}
+    open_prs = sorted({n for p in pipes for n in p.get("openPrs") or [] if n})
+    short = lambda cs: "; ".join(f"{c['sha'][:7]} {c['title']}" for c in list(cs.values())[:3]) + (f" e mais {len(cs) - 3}" if len(cs) > 3 else "")
+    if newer:
+        parts.append(f"Uma versão anterior do nosso código está lá; o ajuste mais recente já está na branch {br} e ainda não "
+                     f"foi implantado: {short(newer)}.")
+    if unmerged:
+        prs = ", ".join(f"#{n}" for n in open_prs)
+        parts.append(f"Uma versão anterior do nosso código está lá; o ajuste mais recente ainda não chegou na branch {br}"
+                     + (f" (PR {prs} aberto)" if prs else "") + f": {short(unmerged)}.")
     if sm["broken"]:
         since = min((p["brokenSince"] for p in pipes if p["verdict"] == "broken" and p.get("brokenSince")), default=None)
         parts.append(f"{names(sm['broken'])}: esteira quebrada desde {ddmm(since)}, antes do nosso código — não é do card.")
@@ -761,6 +833,7 @@ def env_message(env, verdict, pipes, pr=None):
         "waiting": f"Na branch de {label}, falta o deploy",
         "failed": f"O deploy com o nosso código falhou em {label}",
         "absent": f"Ainda não está em {label}",
+        "partial": f"Parte do nosso código está em {label}",
         "broken": f"Ainda não está em {label} (esteira quebrada)",
     }[verdict]
     if partial:
@@ -905,6 +978,7 @@ def collect(args):
                                     "conferir o nosso código")
             continue
         repo = Repo(full, path, r.get("shas") or [], ctx.get("markers") or [], args.card)
+        repo.prs = r.get("prs") or []
         env_branches = sorted({rr["branch"] for p in pipes for rr in p.get("repositories", [])
                                if rr["repository"].lower() == full.lower() and rr.get("branch")})
         card_branches = sorted(set(info["branches"]) | {pr.get("head") for pr in r.get("prs") or [] if pr.get("head")})
