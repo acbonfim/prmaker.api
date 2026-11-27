@@ -685,6 +685,9 @@ namespace solvace.executionplans.infra.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AllowCardStoryDrafts")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BoardFiltersJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -877,6 +880,10 @@ namespace solvace.executionplans.infra.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Severity")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SourceCard")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 

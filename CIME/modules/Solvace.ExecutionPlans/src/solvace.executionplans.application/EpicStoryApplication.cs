@@ -69,6 +69,7 @@ public class EpicStoryApplication(IEpicStoryRepository stories, IEpicRepository 
                 if (s.Priority is { } p) extra.Add($"prioridade {p}");
                 if (!string.IsNullOrWhiteSpace(s.Severity)) extra.Add($"severidade {s.Severity}");
                 if (s.Tags.Count > 0) extra.Add("tags " + string.Join(", ", s.Tags));
+                if (!string.IsNullOrWhiteSpace(s.SourceCard)) extra.Add($"pelo card {s.SourceCard}");
                 var missing = s.Type == EpicStoryType.Bug
                     ? string.IsNullOrWhiteSpace(s.ReproSteps) ? " · sem passos de reprodução" : string.Empty
                     : string.IsNullOrWhiteSpace(s.AcceptanceCriteria) ? " · sem critérios de aceite" : string.Empty;
@@ -96,7 +97,7 @@ public class EpicStoryApplication(IEpicStoryRepository stories, IEpicRepository 
         var epic = await EpicAsync(epicNumber, ct);
         var now = DateTimeOffset.UtcNow;
         var story = new EpicStory(epic.Id, epic.Number, req.Type, req.Title, req.Description, req.AcceptanceCriteria, req.ReproSteps, req.Priority,
-            req.Severity, req.Tags, req.Fields, req.Status, actor.UserId, actor.Name, now);
+            req.Severity, req.Tags, req.Fields, req.Status, actor.UserId, actor.Name, now, req.SourceCard);
         stories.Add(story);
         await stories.SaveChangesAsync(ct);
         await NotifyAsync(story.EpicNumber, story.Number, ct);

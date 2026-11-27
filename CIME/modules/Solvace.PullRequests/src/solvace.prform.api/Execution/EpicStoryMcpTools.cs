@@ -16,6 +16,8 @@ namespace solvace.prform.Execution;
 /// reprodução claros) e só converte em card quando a pessoa pede. Com o token do caso: só o épico do caso (chave <c>E…</c>).
 /// <c>prmake_epic_story_save</c> e <c>prmake_epic_story_convert</c> são ações (rodam como quem pediu —
 /// <see cref="CaseSpecialistMiddleware.ActingTools"/>; a conversão usa a integração do DevOps dessa pessoa).
+/// <para>0104: o Especialista do caso de um CARD do épico lê as histórias e, com a flag do épico ligada, escreve só RASCUNHOS
+/// (<see cref="CardStoryAccess"/>); converter em card exige que quem pediu tenha o papel da Mesa (admin/management).</para>
 /// </summary>
 [McpServerToolType]
 public class EpicStoryMcpTools(
@@ -23,7 +25,9 @@ public class EpicStoryMcpTools(
     EpicStoryConverter converter,
     IHttpContextAccessor http,
     solvace.timeline.application.Contracts.IUserRepository users,
-    SpecialistActions specialist)
+    SpecialistActions specialist,
+    IEpicApplication epics,
+    DeskProfileService profile)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -33,9 +37,10 @@ public class EpicStoryMcpTools(
 
     [McpServerTool(Name = "prmake_epic_stories", ReadOnly = true)]
     [Description("Historias e bugs escritos no PRMake dentro do epico (aba Historias da Mesa): #n, tipo (user-story|bug), titulo, status " +
-                 "(draft|ready|converted|discarded), card do DevOps quando ja convertida, prioridade, severidade, tags, campos. status = filtro " +
-                 "(vazio = todas menos descartadas; all = todas). withText=true traz descricao/criterios/passos. Antes de escrever uma historia, " +
-                 "confira aqui se ja existe.")]
+                 "(draft|ready|converted|discarded), card do DevOps quando ja convertida, card de origem (sourceCard), prioridade, severidade, " +
+                 "tags, campos. status = filtro (vazio = todas menos descartadas; all = todas). withText=true traz descricao/criterios/passos. " +
+                 "Antes de escrever uma historia, confira aqui se ja existe. Especialista do caso de um card: so epicos em que o card esta " +
+                 "(prmake_epics(card: <card>)).")]
     public Task<string> List(
         [Description("Numero do epico (#n) ou a chave E<n>")] string epic,
         string? status = null,
@@ -43,18 +48,19 @@ public class EpicStoryMcpTools(
         CancellationToken ct = default) => Safe(async () =>
     {
         var n = EpicMcpTools.ParseNumber(epic);
-        EnsureOwnEpic(n);
+        var access = await AccessAsync(n, ct);
         var list = await stories.ListAsync(n, status, ct);
         return Serialize(new
         {
             epic = n,
             key = EpicKey.Of(n),
+            cardDrafts = access?.Note,
             total = list.Count,
             drafts = list.Count(s => s.Status is EpicStoryStatus.Draft or EpicStoryStatus.Ready),
             converted = list.Count(s => s.Status == EpicStoryStatus.Converted),
             stories = list.Take(200).Select(s => new
             {
-                s.Number, s.Type, s.Title, s.Status, s.CardId, s.Converting, s.Priority, s.Severity,
+                s.Number, s.Type, s.Title, s.Status, s.CardId, s.SourceCard, s.Converting, s.Priority, s.Severity,
                 tags = s.Tags.Count > 0 ? s.Tags : null,
                 fields = s.Fields.Count > 0 ? s.Fields : null,
                 description = withText ? s.Description : null,
@@ -71,7 +77,9 @@ public class EpicStoryMcpTools(
                  "reproSteps numerados com o resultado esperado x obtido. priority 1-4 (1 = mais alta), severity no texto do picklist do DevOps " +
                  "(ex.: '2 - High', so Bug), tags (lista), fields = {referenceName: valor} (System.AreaPath, System.IterationPath, " +
                  "System.AssignedTo — confira com prmake_devops_meta). status = draft | ready | discarded. Na edicao, campos nao enviados ficam " +
-                 "como estao. Convertida nao se edita (edite o card no DevOps).")]
+                 "como estao. Convertida nao se edita (edite o card no DevOps). Especialista do caso de um CARD: so em epico em que o card " +
+                 "esta (criado ou vinculado) com rascunhos pelos cards permitidos (allowCardStoryDrafts); cria e edita SO rascunho (draft) " +
+                 "e so os que o proprio card criou.")]
     public Task<string> Save(
         [Description("Numero do epico (#n) ou a chave E<n>")] string epic,
         [Description("Titulo (obrigatorio ao criar)")] string? title = null,
@@ -88,7 +96,13 @@ public class EpicStoryMcpTools(
         CancellationToken ct = default) => Safe(async () =>
     {
         var n = EpicMcpTools.ParseNumber(epic);
-        EnsureOwnEpic(n);
+        var access = await AccessAsync(n, ct);
+        var card = access?.Card;
+        if (card is not null)
+        {
+            if (access!.WriteDenied is { } denied) throw new McpException(denied);
+            if (CardStoryAccess.StatusDenied(status) is { } badStatus) throw new McpException(badStatus);
+        }
         var actor = await ActorAsync(ct);
         var tagList = Tags(tags);
         var fieldMap = DevOpsMcpTools.FieldMap(fields);
@@ -98,7 +112,8 @@ public class EpicStoryMcpTools(
             var created = await stories.CreateAsync(n, new SaveEpicStoryRequest
             {
                 Type = type, Title = title, Description = description, AcceptanceCriteria = acceptanceCriteria, ReproSteps = reproSteps,
-                Priority = priority, Severity = severity, Tags = tagList, Fields = fieldMap, Status = status
+                Priority = priority, Severity = severity, Tags = tagList, Fields = fieldMap,
+                Status = card is null ? status : EpicStoryStatus.Draft, SourceCard = card
             }, actor, ct);
             return Serialize(new { created = true, created.Number, link = Link(n, created.Number), story = created });
         }
@@ -106,6 +121,8 @@ public class EpicStoryMcpTools(
         var current = await stories.GetAsync(storyNumber, ct);
         if (current.EpicNumber != n)
             throw new McpException($"A historia #{storyNumber} e do epico #{current.EpicNumber}, nao do #{n}.");
+        if (card is not null && CardStoryAccess.EditDenied(current, card) is { } notOwn)
+            throw new McpException(notOwn);
         var saved = await stories.UpdateAsync(storyNumber, new SaveEpicStoryRequest
         {
             Type = type,
@@ -135,7 +152,13 @@ public class EpicStoryMcpTools(
         CancellationToken ct = default) => Safe(async () =>
     {
         var story = await stories.GetAsync(number, ct);
-        EnsureOwnEpic(story.EpicNumber);
+        var access = await AccessAsync(story.EpicNumber, ct);
+        if (access is { Writer: false })
+            throw new McpException(access.NotWriter);
+        // 0104: converter em card é da Mesa de gestão — quem pediu (ou quem chama) precisa do papel admin/management.
+        var (who, roles) = await profile.RequesterAsync(User, ct);
+        if (CardStoryAccess.ConvertDenied(roles, who) is { } noRole)
+            throw new McpException(noRole);
         var actor = await ActorAsync(ct);
         var target = specialist.OwnCard ?? EpicKey.Of(story.EpicNumber);
         return await specialist.RunAsync(target, $"Converter a história #{number} em card", story.Title, async () =>
@@ -152,12 +175,23 @@ public class EpicStoryMcpTools(
 
     private static string Link(long epic, long story) => $"auth/desk?epic={epic}&tab=stories&story={story}";
 
-    /// <summary>Com o token do caso: só as histórias do épico do caso.</summary>
-    private void EnsureOwnEpic(long epic)
+    /// <summary>
+    /// Com o token do caso: o épico do caso (chave <c>E…</c>) sem restrição; o caso de um CARD só nos épicos em que o card está
+    /// (0104 — ler sempre; escrever conforme <see cref="CardStoryAccess"/>). Fora do token do caso: null (sem restrição).
+    /// </summary>
+    private async Task<CardStoryAccess?> AccessAsync(long epic, CancellationToken ct)
     {
-        if (specialist.OwnCard is not { } own) return;
-        if (!EpicKey.TryParse(own, out var ownEpic) || ownEpic != epic)
-            throw new McpException("O Especialista do caso so mexe nas historias do epico do caso dele.");
+        if (specialist.OwnCard is not { } own) return null;
+        if (EpicKey.TryParse(own, out var ownEpic))
+        {
+            if (ownEpic != epic)
+                throw new McpException("O Especialista do epico so mexe nas historias do proprio epico.");
+            return null;
+        }
+        var access = CardStoryAccess.Of(await epics.GetAsync(epic, ct), own);
+        if (!access.InEpic)
+            throw new McpException($"O card {access.Card} nao esta no epico #{epic} — historias so nos epicos do card (prmake_epics(card: {access.Card})).");
+        return access;
     }
 
     private async Task<ExecutionActor> ActorAsync(CancellationToken ct)

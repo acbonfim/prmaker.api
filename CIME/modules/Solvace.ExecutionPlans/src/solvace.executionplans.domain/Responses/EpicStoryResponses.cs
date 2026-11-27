@@ -28,6 +28,8 @@ public class EpicStoryResponse
     public bool Converting { get; set; }
     /// <summary>Pode editar/descartar (não convertida nem em conversão).</summary>
     public bool Editable { get; set; }
+    /// <summary>0104: card de onde a história veio (Especialista do caso); null = escrita na Mesa.</summary>
+    public string? SourceCard { get; set; }
     public Guid? CreatedBy { get; set; }
     public string CreatedByName { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
@@ -57,6 +59,7 @@ public class EpicStoryResponse
             ConvertedByName = s.ConvertedByName,
             Converting = converting,
             Editable = !s.IsConverted && !converting,
+            SourceCard = s.SourceCard,
             CreatedBy = s.CreatedBy,
             CreatedByName = s.CreatedByName,
             CreatedAt = s.CreatedAt,

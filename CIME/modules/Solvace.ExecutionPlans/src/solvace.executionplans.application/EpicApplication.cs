@@ -64,6 +64,9 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
                       "colunas, lanes e mapeamento coluna→estado: prmake_devops_meta(what: board).");
         if (epic.DevOpsCardId is { Length: > 0 } rep) sb.AppendLine($"- Card do DevOps que representa o épico: {rep}");
         AppendBoardFilters(sb, epic);
+        sb.AppendLine(epic.AllowCardStoryDrafts
+            ? "- Rascunhos de histórias pelos cards: **permitidos** — o Especialista do caso de um card do épico (criado ou vinculado) escreve rascunhos aqui; converter em card é só pela Mesa (admin/management)."
+            : "- Rascunhos de histórias pelos cards: **desligados** — histórias só pela Mesa de gestão.");
         sb.AppendLine($"- Itens de trabalho: {counts.Items} ({counts.OpenItems} abertos) · cards: {counts.Cards}");
         if (!string.IsNullOrWhiteSpace(epic.Description))
         {
@@ -97,6 +100,7 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
         var epic = new Epic(req.Title, req.Description, req.Color, req.Tags, req.DevOpsTeam, req.DevOpsBoard, req.DevOpsCardId,
             actor.UserId, actor.Name, DateTimeOffset.UtcNow);
         if (req.BoardFilters is not null) epic.SetBoardFilters(req.BoardFilters);
+        epic.SetAllowCardStoryDrafts(req.AllowCardStoryDrafts ?? true, epic.CreatedAt);
         epics.Add(epic);
         await epics.SaveChangesAsync(ct);
         await NotifyAsync(epic.Number, ExecutionPlanRealTimeEvents.EpicActions.Created, ct);
@@ -113,6 +117,8 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
             e.Update(req.Title, req.Description, req.Color, req.Tags, req.DevOpsTeam, req.DevOpsBoard, req.DevOpsCardId, DateTimeOffset.UtcNow);
             // Ajustes 1: filtros do board só quando vierem (null = não mexe).
             if (req.BoardFilters is not null) e.SetBoardFilters(req.BoardFilters);
+            // 0104: rascunhos pelos cards — só quando vier (null = não mexe).
+            if (req.AllowCardStoryDrafts is { } allow) e.SetAllowCardStoryDrafts(allow, DateTimeOffset.UtcNow);
         }, ct);
         await NotifyAsync(number, ExecutionPlanRealTimeEvents.EpicActions.Updated, ct);
         return await ResponseAsync(epic, ct);

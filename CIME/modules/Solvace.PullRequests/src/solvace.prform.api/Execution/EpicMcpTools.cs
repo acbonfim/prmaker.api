@@ -35,17 +35,22 @@ public class EpicMcpTools(
     [Description("Epicos da Mesa de gestao (mais recentes primeiro): numero (#n, mesma numeracao dos itens), chave E<n>, titulo, status, " +
                  "cor, tags, time/board preferido do DevOps e contagens (cards, itens, abertos). q = parte do titulo, tag, numero ou E<n>; " +
                  "status = active|paused|done|archived (varios por virgula; vazio = todos menos arquivados; all = todos). Antes de criar um " +
-                 "epico, procure um parecido aqui.")]
-    public Task<string> List(string? q = null, string? status = null, CancellationToken ct = default) => Safe(async () =>
+                 "epico, procure um parecido aqui. card = numero de um card do DevOps: so os epicos em que esse card esta (o Especialista do " +
+                 "caso usa para achar onde pode escrever rascunhos de historias — allowCardStoryDrafts).")]
+    public Task<string> List(string? q = null, string? status = null,
+        [Description("Numero de um card do DevOps: so os epicos em que ele esta")] string? card = null,
+        CancellationToken ct = default) => Safe(async () =>
     {
-        var list = await epics.ListAsync(status, q, null, ct);
+        var list = string.IsNullOrWhiteSpace(card)
+            ? await epics.ListAsync(status, q, null, ct)
+            : await epics.ListByCardAsync(card, ct);
         return Serialize(new
         {
             total = list.Count,
             epics = list.Take(100).Select(e => new
             {
                 e.Number, e.Key, e.Title, e.Status, e.Color, e.Tags, e.DevOpsTeam, e.DevOpsBoard, e.DevOpsCardId,
-                e.CreatedByName, e.UpdatedAt, e.Counts
+                e.AllowCardStoryDrafts, e.CreatedByName, e.UpdatedAt, e.Counts
             })
         });
     });
@@ -60,7 +65,8 @@ public class EpicMcpTools(
     [McpServerTool(Name = "prmake_epic_save")]
     [Description("Cria (sem number) ou edita (com number) um epico da Mesa de gestao. Na edicao, campos nao enviados ficam como estao " +
                  "(tags/description vazios limpam so quando enviados). status = active|paused|done|archived (pausar, concluir, arquivar). " +
-                 "Responda com #<numero> e o link auth/desk?epic=<numero>. Antes de criar, prmake_epics(q) para nao duplicar.")]
+                 "Responda com #<numero> e o link auth/desk?epic=<numero>. Antes de criar, prmake_epics(q) para nao duplicar. " +
+                 "allowCardStoryDrafts = o Especialista do caso dos cards do epico pode escrever rascunhos de historias aqui (padrao true ao criar).")]
     public Task<string> Save(
         [Description("Titulo (obrigatorio ao criar)")] string? title = null,
         [Description("Numero do epico (#n ou E<n>) para editar; vazio cria um novo")] string? number = null,
@@ -71,6 +77,7 @@ public class EpicMcpTools(
         [Description("Board do DevOps preferido (ex.: Stories, Backlog items)")] string? devOpsBoard = null,
         [Description("Card do DevOps que representa o epico (Epic/Feature), opcional")] string? devOpsCardId = null,
         [Description("active | paused | done | archived")] string? status = null,
+        [Description("Rascunhos de historias pelos cards do epico (padrao true ao criar; na edicao, vazio nao mexe)")] bool? allowCardStoryDrafts = null,
         CancellationToken ct = default) => Safe(async () =>
     {
         var actor = await ActorAsync(ct);
@@ -81,7 +88,7 @@ public class EpicMcpTools(
             var created = await epics.CreateAsync(new SaveEpicRequest
             {
                 Title = title, Description = description, Color = color, Tags = tagList, DevOpsTeam = devOpsTeam,
-                DevOpsBoard = devOpsBoard, DevOpsCardId = devOpsCardId
+                DevOpsBoard = devOpsBoard, DevOpsCardId = devOpsCardId, AllowCardStoryDrafts = allowCardStoryDrafts
             }, actor, ct);
             if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status.Trim(), EpicStatus.Active, StringComparison.OrdinalIgnoreCase))
                 created = await epics.SetStatusAsync(created.Number, status, actor, ct);
@@ -92,7 +99,7 @@ public class EpicMcpTools(
         EnsureOwnEpic(n);
         var current = await epics.GetAsync(n, ct);
         var changesData = title is not null || description is not null || color is not null || tagList is not null || devOpsTeam is not null
-                          || devOpsBoard is not null || devOpsCardId is not null;
+                          || devOpsBoard is not null || devOpsCardId is not null || allowCardStoryDrafts is not null;
         var saved = current;
         if (changesData)
             saved = await epics.UpdateAsync(n, new SaveEpicRequest
@@ -103,7 +110,8 @@ public class EpicMcpTools(
                 Tags = tagList ?? current.Tags,
                 DevOpsTeam = devOpsTeam ?? current.DevOpsTeam,
                 DevOpsBoard = devOpsBoard ?? current.DevOpsBoard,
-                DevOpsCardId = devOpsCardId ?? current.DevOpsCardId
+                DevOpsCardId = devOpsCardId ?? current.DevOpsCardId,
+                AllowCardStoryDrafts = allowCardStoryDrafts
             }, actor, ct);
         if (!string.IsNullOrWhiteSpace(status))
             saved = await epics.SetStatusAsync(n, status, actor, ct);

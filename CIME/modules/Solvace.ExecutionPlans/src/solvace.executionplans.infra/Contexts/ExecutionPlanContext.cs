@@ -678,6 +678,9 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.DevOpsTeam).HasMaxLength(Epic.MaxTeamLength);
             entity.Property(e => e.DevOpsBoard).HasMaxLength(Epic.MaxBoardLength);
             entity.Property(e => e.DevOpsCardId).HasMaxLength(Epic.MaxDevOpsCardLength);
+            // 0104: rascunhos de histórias pelos cards do épico. Sem default no modelo (bool com default true faria o EF omitir o
+            // false no insert); os épicos existentes ganham true pelo defaultValue da migração.
+            entity.Property(e => e.AllowCardStoryDrafts).IsRequired();
             entity.Property(e => e.CreatedByName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Version).IsRowVersion();
             entity.Ignore(e => e.Key);
@@ -723,6 +726,7 @@ public class ExecutionPlanContext : DbContext
             entity.Property(e => e.FieldsJson).HasColumnName("Fields").IsRequired().HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
             entity.Property(e => e.CardId).HasMaxLength(EpicStory.MaxCardLength);
+            entity.Property(e => e.SourceCard).HasMaxLength(EpicStory.MaxCardLength);
             entity.Property(e => e.ConvertedByName).HasMaxLength(200);
             entity.Property(e => e.CreatedByName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Version).IsRowVersion();

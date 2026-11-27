@@ -199,6 +199,11 @@ public class Epic
     public string? DevOpsBoard { get; private set; }
     /// <summary>Card do DevOps que representa o épico (Epic/Feature), opcional.</summary>
     public string? DevOpsCardId { get; private set; }
+    /// <summary>
+    /// 0104: o Especialista do caso de um card do épico (papel <c>created</c>/<c>linked</c>) pode escrever RASCUNHOS de histórias
+    /// aqui (nunca converte sem o papel da Mesa). Ligado por padrão; muda a qualquer momento.
+    /// </summary>
+    public bool AllowCardStoryDrafts { get; private set; } = true;
     public Guid? CreatedBy { get; private set; }
     public string CreatedByName { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
@@ -271,6 +276,15 @@ public class Epic
         // O jsonb volta do banco reformatado: compara pelo objeto limpo, não pelo texto gravado.
         if (json == JsonSerializer.Serialize(EpicBoardFilters.Normalize(BoardFilters), JsonOptions)) return false;
         BoardFiltersJson = json;
+        return true;
+    }
+
+    /// <summary>0104: liga/desliga os rascunhos de histórias pelos cards do épico. Devolve se mudou.</summary>
+    public bool SetAllowCardStoryDrafts(bool allow, DateTimeOffset now)
+    {
+        if (AllowCardStoryDrafts == allow) return false;
+        AllowCardStoryDrafts = allow;
+        UpdatedAt = now;
         return true;
     }
 

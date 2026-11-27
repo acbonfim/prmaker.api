@@ -31,6 +31,8 @@ public class EpicSummary
     public EpicCounts Counts { get; set; } = new();
     /// <summary>Ajustes 1: filtros do board salvos no épico (sempre objeto; listas vazias por padrão).</summary>
     public EpicBoardFilters BoardFilters { get; set; } = new() { Text = string.Empty };
+    /// <summary>0104: rascunhos de histórias pelos cards do épico.</summary>
+    public bool AllowCardStoryDrafts { get; set; } = true;
 
     public static T Fill<T>(T target, Epic epic, EpicCounts? counts) where T : EpicSummary
     {
@@ -51,6 +53,7 @@ public class EpicSummary
         target.ClosedAt = epic.ClosedAt;
         target.Counts = counts ?? new EpicCounts { Cards = epic.Cards.Count };
         target.BoardFilters = epic.BoardFilters;
+        target.AllowCardStoryDrafts = epic.AllowCardStoryDrafts;
         return target;
     }
 
