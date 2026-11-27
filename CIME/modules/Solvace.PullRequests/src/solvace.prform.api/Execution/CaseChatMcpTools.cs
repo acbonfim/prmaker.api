@@ -46,6 +46,8 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
         {
             var messages = await chat.MessagesForSpecialistAsync(Card(card), after, Actor(), ct);
             if (messages.Count == 0) return "Nenhuma mensagem nova.";
+            // 0107: resposta clicada numa escolha sua — diz qual escolha e quais opções (ids e textos).
+            var answers = messages.Any(m => m.ReplyToNumber is not null) ? await chat.ChoiceAnswersAsync(Card(card), ct) : [];
             return Serialize(messages.Select(m => new
             {
                 m.Number,
@@ -55,6 +57,16 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
                 peopleOnly = m.PeopleOnly ? true : (bool?)null,
                 deep = m.Deep ? true : (bool?)null,
                 replyTo = m.ReplyToNumber,
+                choiceAnswer = answers.TryGetValue(m.Number, out var a)
+                    ? new
+                    {
+                        choiceMessage = a.Source,
+                        selected = a.Choice.Answer!.Selected,
+                        labels = a.Choice.Options.Where(o => a.Choice.Answer.Selected.Contains(o.Id)).Select(o => o.Label).ToList(),
+                        other = a.Choice.Answer.Other,
+                        note = "Clicou na sua escolha: isto e a decisao/autorizacao da pessoa — execute a opcao escolhida (Cancelar = nao faca nada)."
+                    }
+                    : null,
                 files = m.Files.Count == 0 ? null : m.Files.Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind}, {f.Size / 1024} KB)").ToList(),
                 at = m.CreatedAt
             }));
@@ -63,13 +75,24 @@ public class CaseChatMcpTools(CaseChatApplication chat, IHttpContextAccessor htt
     [McpServerTool(Name = "prmake_case_reply")]
     [Description("Responde na conversa do caso (markdown: trechos de codigo com caminho:linha, links, tabelas). 'steps' = o que voce fez para " +
                  "responder (frases curtas: 'Li o print', 'Consultei X na QA (so leitura)'); 'files' = numeros dos arquivos que voce subiu " +
-                 "(prmake-case.sh upload) e entram nesta mensagem.")]
-    public Task<string> Reply(string card, string text, string[]? steps = null, int? replyTo = null, int[]? files = null, CancellationToken ct = default) =>
+                 "(prmake-case.sh upload) e entram nesta mensagem. " +
+                 "0107 'choice' = a pessoa responde CLICANDO (nunca 'responda 1 ou 2'): sempre que oferecer opcoes, pedir para seguir com " +
+                 "uma solucao ou confirmar o proximo passo. choice: {mode: buttons (padrao; cada botao responde na hora, ate 6) | single " +
+                 "(escolha unica) | multi (checklist) | select (lista suspensa, muitas opcoes), question?, options: [{id, label (o que vai " +
+                 "acontecer: 'Criar item e executar agora', 'So criar o item', 'Cancelar'), detail?, style?: primary|danger|neutral, " +
+                 "recommended?}], allowOther?, otherLabel?}. Depois de mandar a escolha, encerre a vez: o clique chega como mensagem com " +
+                 "choiceAnswer e E a autorizacao — execute a opcao escolhida. Escolha nova fecha as anteriores abertas.")]
+    public Task<string> Reply(string card, string text, string[]? steps = null, int? replyTo = null, int[]? files = null, CaseChoiceRequest? choice = null,
+        CancellationToken ct = default) =>
         Safe(async () =>
         {
-            var m = await chat.ReplyAsync(Card(card), new CaseReplyRequest { Text = text, Steps = steps?.ToList(), ReplyTo = replyTo, Files = files?.ToList() },
-                Actor(), null, ct);
-            return $"Mensagem {m.Number} enviada.";
+            var m = await chat.ReplyAsync(Card(card), new CaseReplyRequest
+            {
+                Text = text, Steps = steps?.ToList(), ReplyTo = replyTo, Files = files?.ToList(), Choice = choice
+            }, Actor(), null, ct);
+            return m.Choice is { } c
+                ? $"Mensagem {m.Number} enviada com a escolha ({c.Mode}: {string.Join(" | ", c.Options.Select(o => $"{o.Id}={o.Label}"))}) — encerre a vez e espere o clique."
+                : $"Mensagem {m.Number} enviada.";
         });
 
     [McpServerTool(Name = "prmake_case_point")]

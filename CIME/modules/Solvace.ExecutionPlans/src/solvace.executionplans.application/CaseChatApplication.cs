@@ -127,6 +127,54 @@ public class CaseChatApplication(
         return message.ToResponse(files);
     }
 
+    /// <summary>
+    /// 0107: a pessoa respondeu clicando na escolha do especialista — grava a resposta na escolha (uma só), vira mensagem
+    /// dela em resposta à escolha e chama o especialista (sempre: a escolha foi para ele, mesmo com várias pessoas).
+    /// </summary>
+    public async Task<CaseMessageResponse> AnswerChoiceAsync(string cardNumber, Guid messageId, CaseChoiceAnswerRequest request, CaseActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.IsSpecialist)
+            throw new ExecutionForbiddenException("Quem responde a escolha é uma pessoa.");
+        var card = CaseChat.NormalizeCard(cardNumber);
+        var now = DateTimeOffset.UtcNow;
+        CaseMessage message;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                cases.ClearTracking();
+                var source = await cases.GetMessageAsync(card, messageId, cancellationToken);
+                if (source is null || source.IsDeleted || source.Choice is not { } choice)
+                    throw new ExecutionPlanNotFoundException("Escolha não encontrada.");
+                var chat = await cases.GetChatAsync(card, cancellationToken);
+                if (chat is not null && !chat.Shows(source.CreatedAt))
+                    throw new DomainException("A conversa foi limpa — esta escolha não vale mais.");
+                var picked = choice.Respond(request.Selected, request.Other, actor.UserId, actor.Name, now);
+                var number = await cases.GetMaxMessageNumberAsync(card, cancellationToken) + 1;
+                choice.Answer!.MessageNumber = number;
+                source.SetChoice(choice);
+                message = new CaseMessage(card, number, CaseAuthorKind.Person, actor.UserId, actor.Name, CaseMessageKind.Text,
+                    CaseChoice.AnswerText(picked, choice.Answer.Other), false, now);
+                message.SetReplyTo(source.Number);
+                cases.AddMessage(message);
+                if (chat is null)
+                    cases.AddChat(new CaseChat(card, now));
+                await cases.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (CaseNumberConflictException) when (attempt < Retries)
+            {
+                await Task.Delay(Random.Shared.Next(10, 50) * attempt, cancellationToken);
+            }
+        }
+
+        await NotifyAsync(card, new { cardNumber = card, action = ExecutionPlanRealTimeEvents.CaseActions.Message, number = message.Number, userId = actor.UserId },
+            cancellationToken);
+        await AskSpecialistAsync(card, actor, false, cancellationToken);
+        return message.ToResponse();
+    }
+
     public async Task<CaseMessageResponse> EditAsync(string cardNumber, Guid messageId, string? text, CaseActor actor, CancellationToken cancellationToken)
     {
         var card = CaseChat.NormalizeCard(cardNumber);
@@ -546,6 +594,18 @@ public class CaseChatApplication(
         return messages.Where(m => !(actor.IsSpecialist && m.FromSpecialist)).Select(m => m.ToResponse(CaseFile.Listed(files[m.Id]))).ToList();
     }
 
+    /// <summary>0107: respostas a escolhas, pelo número da mensagem da pessoa → (mensagem da escolha, escolha respondida).</summary>
+    public async Task<Dictionary<int, (int Source, CaseChoice Choice)>> ChoiceAnswersAsync(string cardNumber, CancellationToken cancellationToken)
+    {
+        var card = CaseChat.NormalizeCard(cardNumber);
+        cases.ClearTracking();
+        var result = new Dictionary<int, (int, CaseChoice)>();
+        foreach (var m in await cases.GetChoiceMessagesAsync(card, 50, cancellationToken))
+            if (m.Choice is { Answer.MessageNumber: { } n } c)
+                result[n] = (m.Number, c);
+        return result;
+    }
+
     /// <summary>Resposta do especialista (com os passos que ele fez e os arquivos que gerou).</summary>
     public async Task<CaseMessageResponse> ReplyAsync(string cardNumber, CaseReplyRequest request, CaseActor actor, string? model, CancellationToken cancellationToken)
     {
@@ -553,6 +613,8 @@ public class CaseChatApplication(
         var card = CaseChat.NormalizeCard(cardNumber);
         var now = DateTimeOffset.UtcNow;
         var fileNumbers = (request.Files ?? []).Distinct().ToList();
+        // 0107: valida a escolha antes de gravar (erro volta para o especialista corrigir).
+        var choice = request.Choice is { } c ? CaseChoice.Create(c.Mode, c.Question, c.Options, c.AllowOther, c.OtherLabel) : null;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -563,10 +625,21 @@ public class CaseChatApplication(
                     attached.Add(await cases.GetFileByNumberAsync(card, n, cancellationToken) ?? throw new DomainException($"Arquivo #{n} não encontrado."));
                 var number = await cases.GetMaxMessageNumberAsync(card, cancellationToken) + 1;
                 var message = new CaseMessage(card, number, CaseAuthorKind.Specialist, actor.UserId, SpecialistName, CaseMessageKind.Text,
-                    request.Text, attached.Count > 0, now);
+                    string.IsNullOrWhiteSpace(request.Text) && choice?.Question is { } q ? q : request.Text, attached.Count > 0, now);
                 message.SetSteps(request.Steps);
                 message.SetReplyTo(request.ReplyTo);
                 message.SetRequest(actor.SpecialistRequestId, model);
+                if (choice is not null)
+                {
+                    // Escolha nova fecha as anteriores ainda abertas: só a mais nova vale um clique.
+                    foreach (var old in await cases.GetChoiceMessagesAsync(card, 20, cancellationToken))
+                        if (old.Choice is { IsOpen: true } open)
+                        {
+                            open.Close(now);
+                            old.SetChoice(open);
+                        }
+                    message.SetChoice(choice);
+                }
                 cases.AddMessage(message);
                 await cases.SaveChangesAsync(cancellationToken);
                 if (attached.Count > 0)
@@ -795,7 +868,10 @@ public class CaseChatApplication(
         var flags = (m.PeopleOnly ? " [só entre pessoas]" : string.Empty) + (m.Deep ? " [investigar a fundo]" : string.Empty);
         // 0085 r5 (1.7): áudio de quem fala fica fora (a mensagem de voz já traz a transcrição).
         var att = string.Join(", ", CaseFile.Listed(files).Select(f => $"arquivo #{f.Number} {f.Name} ({f.Kind})"));
-        return $"- ({m.Number}) {who} {m.CreatedAt:dd/MM HH:mm}{flags}: {Cut(content, 1500)}{(att.Length > 0 ? " — " + att : string.Empty)}";
+        // 0107: a escolha clicável da mensagem (opções e se já foi respondida).
+        var choice = m.Choice is { } c ? " " + c.ContextLine() : string.Empty;
+        var reply = m.ReplyToNumber is { } r ? $" (em resposta à {r})" : string.Empty;
+        return $"- ({m.Number}) {who} {m.CreatedAt:dd/MM HH:mm}{flags}{reply}: {Cut(content, 1500)}{choice}{(att.Length > 0 ? " — " + att : string.Empty)}";
     }
 
     // ── Internos ─────────────────────────────────────────────────────────────────────────────────

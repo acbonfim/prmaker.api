@@ -62,6 +62,8 @@ public class CaseMessageResponse
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? EditedAt { get; set; }
     public List<CaseFileResponse> Files { get; set; } = [];
+    /// <summary>0107: escolha clicável do especialista (com a resposta, quando já houve).</summary>
+    public CaseChoice? Choice { get; set; }
 }
 
 public class CaseFileResponse
@@ -171,7 +173,8 @@ public static class CaseChatMappings
         DurationMs = m.DurationMs,
         CreatedAt = m.CreatedAt,
         EditedAt = m.EditedAt,
-        Files = (files ?? []).Select(f => f.ToResponse()).ToList()
+        Files = (files ?? []).Select(f => f.ToResponse()).ToList(),
+        Choice = m.Choice
     };
 
     public static CaseFileResponse ToResponse(this CaseFile f) => new()

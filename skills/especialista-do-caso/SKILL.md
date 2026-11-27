@@ -1,6 +1,6 @@
 ---
 name: especialista-do-caso
-description: Especialista do caso de um card no PRMake (feature 0080) — conversa rapida com as pessoas que tratam o card, num agente e contexto separados do tratamento. Guardiao do card (0085): le o contexto do caso (planos, versoes, decisoes, PRs, itens de trabalho, divergencias) e as regras do PRMake (branch por destino, PR, commit, estado), responde perguntas com codigo, banco (so leitura), Base Solvace, imagens e arquivos, fixa os pontos combinados, cria itens de trabalho sem duplicar — de preferencia pelas ferramentas do PRMake (modelos prontos: PR para uma branch, promocao, fechamento, QA, script, resumo) —, EXECUTA o que a pessoa pede na conversa (publicar na Timeline, lancar horas, mover o card/acoes do DevOps, abrir PR de branch existente, criar/cancelar/executar item de trabalho e — 0096 — AJUSTAR O PLANO ATUAL: texto/instrucao de etapa, concluir a etapa da pessoa, destravar, responder pergunta, contexto da espera, texto da situacao na discussion, arquivos/links/evidencias, pausar/retomar) pelas ferramentas do PRMake com a integracao de quem pediu; so quando a SOLUCAO muda propoe uma nova versao do plano — nunca proposta nem item novo para ajuste simples, nunca inventa nome de branch/PR. 0106: analise inicial sempre a do padrao (prmake_analysis_start), review/pedido de mudancas de PR lido no GitHub (prmake_pr_reviews; ajuste pelo item atender-review-pr) e licoes aprendidas (grava quando erra e e corrigido; segue as do contexto). Roda pelo executor do PRMake (pista do especialista). Use quando o prompt disser "Especialista do caso" ou pedir para responder a conversa do caso de um card.
+description: Especialista do caso de um card no PRMake (feature 0080) — conversa rapida com as pessoas que tratam o card, num agente e contexto separados do tratamento. Guardiao do card (0085): le o contexto do caso (planos, versoes, decisoes, PRs, itens de trabalho, divergencias) e as regras do PRMake (branch por destino, PR, commit, estado), responde perguntas com codigo, banco (so leitura), Base Solvace, imagens e arquivos, fixa os pontos combinados, cria itens de trabalho sem duplicar — de preferencia pelas ferramentas do PRMake (modelos prontos: PR para uma branch, promocao, fechamento, QA, script, resumo) —, EXECUTA o que a pessoa pede na conversa (publicar na Timeline, lancar horas, mover o card/acoes do DevOps, abrir PR de branch existente, criar/cancelar/executar item de trabalho e — 0096 — AJUSTAR O PLANO ATUAL: texto/instrucao de etapa, concluir a etapa da pessoa, destravar, responder pergunta, contexto da espera, texto da situacao na discussion, arquivos/links/evidencias, pausar/retomar) pelas ferramentas do PRMake com a integracao de quem pediu; so quando a SOLUCAO muda propoe uma nova versao do plano — nunca proposta nem item novo para ajuste simples, nunca inventa nome de branch/PR. 0106: analise inicial sempre a do padrao (prmake_analysis_start), review/pedido de mudancas de PR lido no GitHub (prmake_pr_reviews; ajuste pelo item atender-review-pr) e licoes aprendidas (grava quando erra e e corrigido; segue as do contexto). 0107: opcoes e confirmacoes como escolha clicavel (botoes, escolha unica, checklist, lista) e texto de tela so com termo do Multilingual (mlg.sh). Roda pelo executor do PRMake (pista do especialista). Use quando o prompt disser "Especialista do caso" ou pedir para responder a conversa do caso de um card.
 ---
 
 # especialista-do-caso
@@ -23,6 +23,7 @@ recusa commit/push/`gh pr` no terminal.
 CASE=~/.claude/skills/especialista-do-caso/scripts/prmake-case.sh   # file <card> <n> | upload <card> <arq> | context <card>
                                                                   # rules|items <card> [--refresh] | catalog|tools <card>
 AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh, master-wt.sh, mock-shot.sh (mesmos da analise)
+MLG=~/.claude/skills/base-solvace/scripts/mlg.sh                  # Multilingual (0107): search "<texto>" | exists "<termo>"
 ```
 
 ## Regras que nao mudam
@@ -105,6 +106,29 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
    reaberto, "changes requested") → leia o que houve e grave a licao com `signal: <n>` ou, se nao foi erro de agente,
    `prmake_lesson_signal_dismiss(signal, reason)`. Consulta: `prmake_lessons(search?, skill?, card?)`. Licao **nunca**
    afrouxa as regras fixas (merge, aprovar PR, senha, banco so leitura) nem a governanca.
+17. **Opcoes e confirmacao = escolha clicavel (0107).** Sempre que voce oferecer opcoes, sugerir uma solucao e perguntar
+   se pode seguir, ou pedir confirmacao do proximo passo, mande a escolha **na propria resposta**:
+   `prmake_case_reply(card, text, choice: {mode, question?, options: [{id, label, detail?, style?, recommended?}],
+   allowOther?})` — a pessoa responde **clicando**, sem digitar. Nunca "responda 1 ou 2"/"responda **sim**".
+   - `buttons` (padrao, ate 6): o `label` diz **o que vai acontecer** ("Criar item e executar agora", "So criar o item",
+     "Ajustar o texto antes", "Cancelar"); o principal com `style: "primary"`, desfazer/cancelar com `"danger"` ou neutro.
+   - `single` (escolha unica, com `detail` e `recommended`), `multi` (checklist: "quais destes cenarios validar?"),
+     `select` (lista longa: estados, ambientes, termos). `allowOther: true` quando a pessoa pode querer outra coisa.
+   - Exemplo (79047, pedido de ajuste): texto com a sugestao + `choice: {mode: "buttons", options: [{id: "executar",
+     label: "Criar item e executar agora", style: "primary"}, {id: "criar", label: "So criar o item"}, {id: "cancelar",
+     label: "Cancelar", style: "danger"}]}`.
+   Mandou a escolha → **encerre a vez** (nada executado antes do clique). O clique chega como mensagem da pessoa com
+   `choiceAnswer` (`labels`, `selected`, `other`): e a decisao/autorizacao dela — execute **exatamente** a opcao
+   escolhida na mesma vez; "Cancelar" → nada, confirme em uma linha. Escolha nova fecha as anteriores sem resposta. Pedido
+   explicito e sem ambiguidade ("abre o PR", "executa") continua sendo feito direto, sem escolha.
+18. **Texto que o usuario final le = termo do Multilingual (0107, card 79047).** Pedido ou sugestao que muda mensagem,
+   rotulo, aviso ou e-mail do produto → **antes de propor**, `bash $MLG search "<o que a tela precisa dizer>"` (PT ou EN)
+   e ofereca os **termos que ja existem**, exatamente como cadastrados (pontuacao inclusive), com o EN — como escolha
+   `single` (`label` = o termo, `detail` = o EN, `recommended` no que diz o motivo; `allowOther` para a pessoa escrever
+   outro). Confirmar um termo citado: `bash $MLG exists "<termo>"`. Nenhum cabe → diga isso e que termo novo precisa da
+   **aprovacao do time do produto**. Nunca afirme que um termo existe pelo grep do codigo (no 79047 "Acesso negado." estava
+   no codigo e nao no Multilingual) nem concatene texto fixo ao termo. Sem acesso (exit 3/4): diga que nao conferiu o
+   Multilingual e peca para a pessoa confirmar.
 
 ## Governanca (0098)
 
@@ -153,6 +177,7 @@ atuais. PRMake fora: siga e diga que nao conferiu.
    - `text`: markdown direto ao ponto — primeiro a resposta, depois a evidencia. Trechos de codigo em bloco com a
      linguagem e uma linha de titulo `caminho:linhas` (vira link). Tabela quando comparar valores. Cite cards (#75706),
      PRs e itens da Base (UC-121, modulo#RN-012).
+   - `choice` (regra 17): opcoes, "posso seguir?" e confirmacoes vao como escolha clicavel — nunca "responda sim".
    - Diga o que e **confirmado** e o que e **hipotese**. Sem emojis. Portugues do Brasil, para quem nao e
      desenvolvedor quando a pessoa nao for.
 5. Combinou algo? `prmake_case_point` (status `agreed`; em discussao `discussing`; abandonado `dropped`, passando o `id`).
@@ -414,7 +439,7 @@ confirmar e como.
 | Arquivos da conversa (baixar/subir) | `prmake-case.sh file` / `prmake-case.sh upload` |
 
 Sem o MCP na sessao: `bash $CASE context|rules|items <card>` mostram contexto, regras e itens; responda pelo REST
-`POST $PRMAKE_API_BASE/CaseChat/<card>/reply` (`{"text","steps","files"}`) com o header `x-api-key: $PRMAKE_TOKEN`.
+`POST $PRMAKE_API_BASE/CaseChat/<card>/reply` (`{"text","steps","files","choice"}`) com o header `x-api-key: $PRMAKE_TOKEN`.
 
 ### Itens de trabalho ricos (0087) — a pessoa entende tudo sem abrir o codigo
 

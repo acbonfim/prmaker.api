@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace solvace.executionplans.domain.Entities;
@@ -182,6 +183,10 @@ public partial class CaseMessage
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? EditedAt { get; private set; }
     public DateTimeOffset? DeletedAt { get; private set; }
+    /// <summary>0107: escolha clicável do especialista (JSON de <see cref="CaseChoice"/>), com a resposta.</summary>
+    public string? ChoiceJson { get; private set; }
+
+    private static readonly JsonSerializerOptions ChoiceJsonOptions = new(JsonSerializerDefaults.Web);
 
     protected CaseMessage() { }
 
@@ -232,6 +237,24 @@ public partial class CaseMessage
             .Select(s => Cut(s, MaxStepLength))
             .Take(MaxSteps)
             .ToList();
+
+    public CaseChoice? Choice
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ChoiceJson)) return null;
+            try { return JsonSerializer.Deserialize<CaseChoice>(ChoiceJson, ChoiceJsonOptions); }
+            catch (JsonException) { return null; }
+        }
+    }
+
+    /// <summary>0107: grava (ou troca) a escolha — só em mensagem do especialista.</summary>
+    public void SetChoice(CaseChoice? choice)
+    {
+        if (choice is not null && !FromSpecialist)
+            throw new DomainException("Só o especialista manda escolhas.");
+        ChoiceJson = choice is null ? null : JsonSerializer.Serialize(choice, ChoiceJsonOptions);
+    }
 
     public void LinkProposal(Guid id) => ProposalId = id;
     public void LinkAction(Guid id) => ActionId = id;

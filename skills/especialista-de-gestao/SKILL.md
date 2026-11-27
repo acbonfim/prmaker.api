@@ -34,9 +34,10 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
    Consulta na conversa: poucos campos e `top` pequeno (ate ~50).
 3. **Nunca feche, remova, apague nem ligue como duplicado** card sem a pessoa decidir **explicitamente** (estado/coluna
    de fechamento — `Closed`, `Done`, `Removed`, coluna `outgoing` — tambem). Pedido ambiguo ("acho que da para fechar
-   esses") → confirme em **uma linha** ("Fecho 78123 e 78130 como duplicados do 78100? Responda sim.") e encerre a vez.
+   esses") → confirme em **uma linha** com botoes ("Fecho 78123 e 78130 como duplicados do 78100?" + escolha da regra 14)
+   e encerre a vez.
 4. **Lote > 10 cards** (criar, editar, mover, taguear) → antes, mostre a lista (tabela curta ou `prmake_case_file` com
-   tudo) e peca o "sim"; com o "sim", grave **so** os da lista. Ate 10, com pedido claro, faca direto.
+   tudo) e peca a confirmacao com botoes (regra 14); com o clique, grave **so** os da lista. Ate 10, com pedido claro, faca direto.
 5. **Antes de criar card, procure duplicado** (secao "Criar card"). **Antes de tag nova, procure a existente**
    (`prmake_devops_meta(what: "tags", q)`) — use a grafia que ja existe; tag nova so se nao houver parecida e diga que criou.
 6. **Picklists sao a lei**: tipo, estado, coluna, lane, area, iteracao, responsavel e campos com `allowedValues` sempre
@@ -64,6 +65,11 @@ EC=~/.claude/skills/especialista-do-caso/SKILL.md                   # secoes com
     vez — a licao GERAL ("quando X → faca Y / nunca Z"), nao o caso; parecida reforca a existente. Sinal de erro aberto no
     contexto → licao com `signal: <n>` ou `prmake_lesson_signal_dismiss(signal, reason)`. Licao nunca afrouxa as regras
     fixas (fechar/remover card sem decisao, lote > 10, merge) nem a governanca.
+14. **Opcoes e confirmacao = escolha clicavel (0107)**: como a regra 17 do especialista do caso (`sed -n '/^17\. \*\*Opcoes/,/^18\./p' $EC`)
+    — `prmake_case_reply(..., choice: {mode: buttons|single|multi|select, options: [{id, label, detail?, style?,
+    recommended?}], allowOther?})`; botoes com o que vai acontecer ("Criar os 12 cards", "Ver a lista antes",
+    "Cancelar"), checklist para escolher cards/colunas, lista suspensa para estados/iteracoes/responsaveis (valores do
+    `prmake_devops_meta`). Mandou → encerre a vez; o clique (`choiceAnswer`) e a decisao — execute so o escolhido.
 
 ## Persona PO / gestor de problemas (perfil `management`)
 Quem usa a Mesa pode ser um PO ou gestor de problemas **sem GitHub, sem codigo e sem acesso ao banco do cliente** na
