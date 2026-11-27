@@ -104,7 +104,7 @@ public class EpicBoardFilters
     public const int MaxValueLength = 300;
     public const int MaxTextLength = 300;
 
-    private List<string>? _lanes, _hiddenColumns, _types, _states, _assignedTo, _tags;
+    private List<string>? _lanes, _hiddenColumns, _types, _states, _assignedTo, _tags, _sla;
 
     public List<string> Lanes { get => _lanes ??= []; set => _lanes = value; }
     /// <summary>Colunas ocultas (nomes) — cards nelas ficam fora do board do épico.</summary>
@@ -114,11 +114,13 @@ public class EpicBoardFilters
     /// <summary><c>uniqueName</c> das pessoas (<c>__unassigned__</c> = sem responsável).</summary>
     public List<string> AssignedTo { get => _assignedTo ??= []; set => _assignedTo = value; }
     public List<string> Tags { get => _tags ??= []; set => _tags = value; }
+    /// <summary>0105: faixas do SLA (grave, attention, ok, stopped = prazo parado, none = sem SLA).</summary>
+    public List<string> Sla { get => _sla ??= []; set => _sla = value; }
     public string? Text { get; set; }
 
     /// <summary>Nenhum filtro ligado.</summary>
     public bool HasAny() => Lanes.Count > 0 || HiddenColumns.Count > 0 || Types.Count > 0 || States.Count > 0 || AssignedTo.Count > 0 || Tags.Count > 0
-                            || !string.IsNullOrWhiteSpace(Text);
+                            || Sla.Count > 0 || !string.IsNullOrWhiteSpace(Text);
 
     /// <summary>
     /// Cópia limpa: valores aparados, sem vazios nem repetidos (sem caixa), até <see cref="MaxValues"/> por lista; nas lanes o vazio
@@ -151,6 +153,7 @@ public class EpicBoardFilters
             States = Clean(filters?.States, false),
             AssignedTo = Clean(filters?.AssignedTo, false),
             Tags = Clean(filters?.Tags, false),
+            Sla = Clean(filters?.Sla, false).Select(v => v.ToLowerInvariant()).ToList(),
             Text = text.Length <= MaxTextLength ? text : text[..MaxTextLength]
         };
     }

@@ -168,4 +168,38 @@ public class CardSla0105Tests
         Assert.Equal(CardSlaSettings.DefaultRules, parsed.Rules);
         Assert.Equal("sla", rules.Section);
     }
+
+    // ---------------------------------------------------------------- filtro do board
+
+    private static DevOpsBoardItem Item(int id, CardSlaInfo? sla) => new() { Id = id, Type = "Bug", Title = $"Card {id}", State = "New", Sla = sla };
+
+    private static readonly DevOpsBoardItem[] SlaItems =
+    [
+        Item(1, new CardSlaInfo { Level = CardSlaLevels.Grave }),
+        Item(2, new CardSlaInfo { Level = CardSlaLevels.Attention }),
+        Item(3, new CardSlaInfo { Level = CardSlaLevels.Ok }),
+        Item(4, new CardSlaInfo { Level = CardSlaLevels.Grave, Stopped = true, Met = false }),
+        Item(5, null)
+    ];
+
+    private static int[] Filter(params string[] sla) =>
+        DevOpsDeskMapping.ApplyBoardFilters(SlaItems, new DevOpsBoardFilters { Sla = [.. sla] }, new DevOpsBoardConfig()).Select(i => i.Id).ToArray();
+
+    [Fact]
+    public void Board_filter_by_sla_band_in_or()
+    {
+        Assert.Equal([1], Filter("grave"));            // estourado com prazo parado não entra em grave
+        Assert.Equal([1, 2], Filter("grave", "attention"));
+        Assert.Equal([4], Filter("stopped"));
+        Assert.Equal([5], Filter("none"));
+        Assert.Equal([1, 2, 3, 4, 5], Filter());
+    }
+
+    [Fact]
+    public void Board_filter_accepts_screen_labels_and_drops_unknown_values()
+    {
+        var f = DevOpsDeskMapping.NormalizeBoardFilters(new DevOpsBoardFilters { Sla = ["Atenção", "GRAVE", "grave", "xyz", "sem SLA"] });
+        Assert.Equal(["attention", "grave", "none"], f.Sla);
+        Assert.True(DevOpsDeskMapping.NormalizeBoardFilters(new DevOpsBoardFilters { Sla = ["xyz"] }).IsEmpty);
+    }
 }

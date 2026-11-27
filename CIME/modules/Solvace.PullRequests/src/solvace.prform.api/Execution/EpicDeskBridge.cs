@@ -27,7 +27,7 @@ public sealed class EpicCardSource(IEpicApplication epics) : IEpicCardSource
         solvace.azure.application.Services.DevOpsDeskMapping.NormalizeBoardFilters(f is null ? null : new DevOpsBoardFilters
         {
             Lanes = [.. f.Lanes], HiddenColumns = [.. f.HiddenColumns], Types = [.. f.Types], States = [.. f.States], AssignedTo = [.. f.AssignedTo], Tags = [.. f.Tags],
-            Text = f.Text ?? string.Empty
+            Sla = [.. f.Sla], Text = f.Text ?? string.Empty
         });
 }
 

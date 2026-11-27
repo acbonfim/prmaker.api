@@ -150,12 +150,15 @@ public sealed class DevOpsBoardFilters
     public List<string> States { get; set; } = [];
     public List<string> AssignedTo { get; set; } = [];
     public List<string> Tags { get; set; } = [];
+    /// <summary>0105: faixas do SLA (<see cref="CardSlaFilter.Values"/>), em OU.</summary>
+    public List<string> Sla { get; set; } = [];
     public string Text { get; set; } = string.Empty;
 
     /// <summary>Nenhum filtro ligado.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsEmpty => (Lanes?.Count ?? 0) == 0 && (HiddenColumns?.Count ?? 0) == 0 && (Types?.Count ?? 0) == 0 && (States?.Count ?? 0) == 0
-                           && (AssignedTo?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && string.IsNullOrWhiteSpace(Text);
+                           && (AssignedTo?.Count ?? 0) == 0 && (Tags?.Count ?? 0) == 0 && (Sla?.Count ?? 0) == 0
+                           && string.IsNullOrWhiteSpace(Text);
 }
 
 /// <summary>Filtros da consulta (viram WIQL).</summary>
