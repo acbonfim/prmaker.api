@@ -121,6 +121,8 @@ public class EpicStory
     public string? ConvertedByName { get; private set; }
     /// <summary>Conversão em andamento desde (trava contra duas conversões ao mesmo tempo; null = livre).</summary>
     public DateTimeOffset? ConvertingAt { get; private set; }
+    /// <summary>0104: card de onde a história veio (Especialista do caso de um card do épico); null = escrita na Mesa.</summary>
+    public string? SourceCard { get; private set; }
     public Guid? CreatedBy { get; private set; }
     public string CreatedByName { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
@@ -132,10 +134,11 @@ public class EpicStory
 
     public EpicStory(Guid epicId, long epicNumber, string? type, string? title, string? description, string? acceptanceCriteria, string? reproSteps,
         int? priority, string? severity, IEnumerable<string>? tags, IReadOnlyDictionary<string, JsonElement>? fields, string? status,
-        Guid? createdBy, string? createdByName, DateTimeOffset now)
+        Guid? createdBy, string? createdByName, DateTimeOffset now, string? sourceCard = null)
     {
         Id = Guid.NewGuid();
         EpicId = epicId;
+        SourceCard = WorkItem.Clean(sourceCard?.Trim().TrimStart('#'), MaxCardLength);
         EpicNumber = epicNumber;
         CreatedBy = createdBy;
         CreatedByName = WorkItem.Clean(createdByName, 200) ?? "Usuário";

@@ -16,6 +16,8 @@ public class SaveEpicRequest
     public string? DevOpsCardId { get; set; }
     /// <summary>Ajustes 1: filtros do board salvos no épico — opcional (null = não mexe; <c>{}</c> limpa).</summary>
     public EpicBoardFilters? BoardFilters { get; set; }
+    /// <summary>0104: rascunhos de histórias pelos cards do épico (criar: null = ligado; editar: null = não mexe).</summary>
+    public bool? AllowCardStoryDrafts { get; set; }
 }
 
 /// <summary>0099: <c>POST Epics/{number}/status</c>.</summary>

@@ -25,6 +25,9 @@ public class SaveEpicStoryRequest
     public Dictionary<string, JsonElement>? Fields { get; set; }
     /// <summary>draft | ready | discarded (converted só pela conversão).</summary>
     public string? Status { get; set; }
+    /// <summary>0104: card de origem (só o MCP do Especialista do caso preenche; o JSON da REST não chega aqui).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? SourceCard { get; set; }
 }
 
 /// <summary>0099 (ajustes 2): <c>POST EpicStories/{number}/convert</c> — onde o card nasce (padrão: o time/board do épico, coluna inicial).</summary>
