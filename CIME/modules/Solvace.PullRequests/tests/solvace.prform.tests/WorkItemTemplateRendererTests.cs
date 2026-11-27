@@ -414,7 +414,8 @@ public class WorkItemTemplateRendererTests
             : null);
         var rules = new SkillsRulesService(resolver, azure, new MemoryCache(new MemoryCacheOptions()), NullLogger<SkillsRulesService>.Instance,
             Stub<solvace.governance.application.Contracts.IGovernancePolicyProvider>((_, _) => null),
-            Stub<solvace.governance.application.IGovernanceStandardsApplication>((_, _) => null));
+            Stub<solvace.governance.application.IGovernanceStandardsApplication>((_, _) => null),
+            Stub<solvace.governance.application.IGovernanceLessonsApplication>((_, _) => null));
         var github = Stub<IPullRequestGithubApplication>((m, _) => m.Name == nameof(IPullRequestGithubApplication.ListByCard)
             ? Task.FromResult<IReadOnlyList<PullRequestGithubResponse>>(prs) : null);
         var planApp = Stub<IExecutionPlanApplication>((m, _) => m.Name switch
@@ -439,5 +440,53 @@ public class WorkItemTemplateRendererTests
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             Handler(targetMethod!, args) ?? throw new NotSupportedException($"stub: {targetMethod!.Name}");
+    }
+
+    // ── 0106: pedido de mudanças no PR ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Review_changes_template_renders_the_simple_flow_for_the_card_targets()
+    {
+        var template = JsonNode.Parse(SeedReviewFlow0106.ReviewTemplate)!.AsObject();
+        foreach (var text in Strings(template))
+            Assert.True(WorkItemTemplateRenderer.UnknownMarkers(text).Count == 0, $"marcador desconhecido em \"{text}\"");
+        var item = WorkItemTemplateRenderer.Render(template, Ctx("edv-solvace"),
+            new Dictionary<string, string> { ["pullRequest"] = "31430", ["reviewers"] = "rui-rodrigues-solvace" });
+        Assert.Equal("adjustment", item.Type);
+        Assert.Equal("Atender o review do PR #31430", item.Title);
+        Assert.Equal(["research", "code", "validation", "pr-update", "review-reply"], item.Tasks.Select(t => t.Kind).ToArray());
+        Assert.Equal("pr-diff", item.Tasks[0].Params["scope"]);
+        Assert.Equal("hotfix/77434", item.Tasks[1].Params["branch"]);
+        Assert.Equal("hotfix/77434", item.Tasks[3].Params["from"]);
+        Assert.Equal("development, qa", item.Tasks[3].Params["targets"]);
+        Assert.Equal("rui-rodrigues-solvace", item.Tasks[4].Params["reviewers"]);
+        Assert.Equal("edv-solvace", item.Tasks[4].Params["repository"]);
+        // Sem quem pediu (a pessoa abriu pela ferramenta): segue, a sub-tarefa lê do PR.
+        var open = WorkItemTemplateRenderer.Render((JsonObject)template.DeepClone(), Ctx("edv-solvace"), new Dictionary<string, string> { ["pullRequest"] = "1" });
+        Assert.Equal(string.Empty, open.Tasks[4].Params["reviewers"]);
+    }
+
+    [Fact]
+    public void Review_template_publishes_on_the_timeline_only_when_asked()
+    {
+        var template = JsonNode.Parse(SeedReviewFlow0106.NewReview)!.AsObject();
+        var item = WorkItemTemplateRenderer.Render((JsonObject)template.DeepClone(), Ctx("edv-solvace"), new Dictionary<string, string> { ["pullRequest"] = "42" });
+        var task = Assert.Single(item.Tasks);
+        Assert.Equal("pr-review", task.Kind);
+        Assert.Equal("não", task.Params["timeline"]);
+        var asked = WorkItemTemplateRenderer.Render(template, Ctx("edv-solvace"), new Dictionary<string, string> { ["pullRequest"] = "42", ["timeline"] = "sim" });
+        Assert.Equal("sim", asked.Tasks[0].Params["timeline"]);
+        // A troca só acontece sobre o modelo semeado: o "antigo" desta migração é exatamente o da 0085c.
+        var seeded = JsonNode.Parse(SeedSpecialistTools0085c.NewTemplates)!.AsArray().OfType<JsonObject>().Single(t => (string?)t["key"] == "revisar-pr");
+        Assert.True(JsonNode.DeepEquals(seeded, JsonNode.Parse(SeedReviewFlow0106.OldReview)));
+        var seededKind = JsonNode.Parse(SeedSpecialistTools0085c.NewKinds)!.AsArray().OfType<JsonObject>().Single(t => (string?)t["kind"] == "pr-review");
+        Assert.True(JsonNode.DeepEquals(seededKind, JsonNode.Parse(SeedReviewFlow0106.OldReviewKind)));
+    }
+
+    [Fact]
+    public void New_task_kinds_are_known_by_the_domain()
+    {
+        foreach (var k in JsonNode.Parse(SeedReviewFlow0106.NewKinds)!.AsArray())
+            Assert.Contains((string)k!["kind"]!, solvace.executionplans.domain.Entities.WorkTaskKind.Known);
     }
 }

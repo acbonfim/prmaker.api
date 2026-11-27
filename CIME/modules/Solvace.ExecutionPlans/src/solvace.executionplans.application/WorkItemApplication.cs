@@ -44,6 +44,7 @@ public partial class WorkItemApplication : IWorkItemApplication
     private IExecutionQueueRepository? QueueRepository => (IExecutionQueueRepository?)_services.GetService(typeof(IExecutionQueueRepository));
     private IWorkItemTypeSource? TypeSource => (IWorkItemTypeSource?)_services.GetService(typeof(IWorkItemTypeSource));
     private IPrmakeRulesProvider? Rules => (IPrmakeRulesProvider?)_services.GetService(typeof(IPrmakeRulesProvider));
+    private ILessonSignalSink? Signals => (ILessonSignalSink?)_services.GetService(typeof(ILessonSignalSink));
     /// <summary>0099: épicos (menção <c>#épico</c>, resolve do número) — sob demanda, como os outros.</summary>
     private IEpicApplication? Epics => (IEpicApplication?)_services.GetService(typeof(IEpicApplication));
 
@@ -413,6 +414,11 @@ public partial class WorkItemApplication : IWorkItemApplication
             : $" — refazer {string.Join(", ", reopened.OrderBy(t => t.Order).Select(t => $"#{t.Number}"))}";
         var why = string.IsNullOrWhiteSpace(req.Reason) ? "." : $": {req.Reason.Trim()}";
         await TimelineAsync(item, $"Item de trabalho **#{item.Number}** reaberto por {actor.Name}{redo}{why}", actor, ct);
+        // 0106: reaberto para refazer = a entrega não serviu — sinal para virar lição.
+        if (reopened.Count > 0 && !actor.IsExecutor)
+            await SignalAsync(item.CardNumber, LessonSignals.ItemRedo, $"{item.Number}:{DateTimeOffset.UtcNow:yyyyMMddHHmm}",
+                $"Item #{item.Number} \"{item.Title}\" reaberto por {actor.Name} para refazer {redo.TrimStart(' ', '—').Replace("refazer ", string.Empty)}{why}",
+                $"#{item.Number}", ct);
         if (req.Execute && !item.AwaitsSchedule)
             return await ExecuteAsync(item.Number, actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
@@ -871,6 +877,7 @@ public partial class WorkItemApplication : IWorkItemApplication
         }, ct);
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Status, null, ct);
         await AfterStatusChangeAsync(item, before, actor, ct);
+        await CancelledSoonSignalAsync(item, reason, actor, ct);
         return undo ? await UndoAsync(number, actor, ct) : (await ToResponsesAsync([item], ct))[0];
     }
 
@@ -900,6 +907,34 @@ public partial class WorkItemApplication : IWorkItemApplication
         await NotifyAsync(item, ExecutionPlanRealTimeEvents.WorkItemActions.Request, null, ct);
         await TimelineAsync(item, $"Desfazendo o item de trabalho **#{item.Number}** ({item.TasksToUndo.Count} sub-tarefa(s)) — pedido por {actor.Name}.", actor, ct);
         return (await ToResponsesAsync([item], ct))[0];
+    }
+
+    /// <summary>
+    /// 0106: item que o especialista criou e uma pessoa cancelou logo depois (≤ 30 min) — provavelmente não era o que ela
+    /// pediu (card 79047: análise inicial montada à mão). Vira sinal de erro para o próximo agente transformar em lição.
+    /// </summary>
+    private async Task CancelledSoonSignalAsync(WorkItem item, string? reason, ExecutionActor actor, CancellationToken ct)
+    {
+        if (actor.IsExecutor || item.Origin != WorkItemOrigin.Specialist || item.Status != WorkItemStatus.Cancelled) return;
+        var after = DateTimeOffset.UtcNow - item.CreatedAt;
+        if (after > LessonSignals.CancelledSoon) return;
+        var why = string.IsNullOrWhiteSpace(reason) ? "sem motivo" : $"motivo: {reason.Trim()}";
+        await SignalAsync(item.CardNumber, LessonSignals.ItemCancelled, item.Number.ToString(),
+            $"O item #{item.Number} \"{item.Title}\" ({item.Type}) criado pelo especialista foi cancelado por {actor.Name} " +
+            $"{Math.Max(1, (int)after.TotalMinutes)} min depois ({why}).", $"#{item.Number}", ct);
+    }
+
+    private async Task SignalAsync(string card, string kind, string key, string text, string? reference, CancellationToken ct)
+    {
+        if (Signals is not { } sink) return;
+        try
+        {
+            await sink.SignalAsync(card, kind, key, text, reference, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Best-effort: o sinal nunca derruba a ação.
+        }
     }
 
     private async Task CancelRequestAsync(Guid workItemId, ExecutionActor actor, CancellationToken ct, string? reason = null)

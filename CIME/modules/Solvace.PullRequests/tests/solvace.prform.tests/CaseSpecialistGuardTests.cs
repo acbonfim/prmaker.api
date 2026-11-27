@@ -96,7 +96,9 @@ public class CaseSpecialistGuardTests
     public void Every_write_tool_is_acting_or_treatment_only()
     {
         string[] own = ["prmake_case_action", "prmake_case_action_done", "prmake_case_file", "prmake_case_point", "prmake_case_propose",
-            "prmake_case_reply", "prmake_situation", "prmake_work_item_file"];
+            "prmake_case_reply", "prmake_situation", "prmake_work_item_file",
+            // 0106: a lição é do próprio especialista (aprendeu com o erro), não ação a pedido de alguém.
+            "prmake_lesson_record", "prmake_lesson_signal_dismiss"];
         var writes = typeof(PrmakeMcpTools).Assembly.GetTypes()
             .Where(t => t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null)
             .SelectMany(t => t.GetMethods())

@@ -124,7 +124,9 @@ public partial class CaseSpecialistMiddleware(RequestDelegate next)
         // 0099: cards do DevOps pela Mesa de gestão (épico: qualquer card; card: só ele — DevOpsMcpTools.CaseScopeError).
         "prmake_devops_card_create", "prmake_devops_card_update", "prmake_devops_card_move",
         // 0099 (ajustes 2): histórias/bugs do épico (rascunho como quem pediu; conversão com a integração do DevOps de quem pediu).
-        "prmake_epic_story_save", "prmake_epic_story_convert"
+        "prmake_epic_story_save", "prmake_epic_story_convert",
+        // 0106: análise inicial do padrão (máquina de quem pediu) e o review do PR (responder, pedir nova revisão) como quem pediu.
+        "prmake_analysis_start", "prmake_pr_review_reply", "prmake_pr_request_review"
     };
 
     /// <summary>

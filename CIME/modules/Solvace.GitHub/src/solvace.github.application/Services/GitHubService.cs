@@ -17,7 +17,7 @@ using solvace.prform.domain.Extensions;
 
 namespace solvace.github.application.Services;
 
-public class GitHubService : IGitHubService
+public partial class GitHubService : IGitHubService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private const int RepositoriesCacheMinutes = 10;

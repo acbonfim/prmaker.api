@@ -57,6 +57,10 @@ builder.Services.AddScoped<solvace.prform.Skills.SkillsConfigService>();
 // 0085: regras do PRMake calculadas para o card (GET Skills/rules, prmake_rules, contexto do especialista).
 builder.Services.AddScoped<solvace.prform.Skills.SkillsRulesService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPrmakeRulesProvider>(sp => sp.GetRequiredService<solvace.prform.Skills.SkillsRulesService>());
+// 0106: sinais de erro (cancelado logo depois, refeito, reaberto para refazer, pedido de mudanças) → lições da governança.
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.ILessonSignalSink, solvace.prform.Governance.LessonSignalSink>();
+// 0106: PR do plano com pedido de mudanças novo → item "Atender o review do PR" + aviso na conversa + sinal.
+builder.Services.AddScoped<solvace.executionplans.application.Contracts.IPullRequestReviewHandler, solvace.prform.Execution.PullRequestReviewHandler>();
 // 0085 r4: ferramentas (modelos) do card — catálogo, from-template, prmake_tools/prmake_tool_run — e os tipos de item.
 builder.Services.AddScoped<solvace.prform.Skills.WorkItemToolsService>();
 builder.Services.AddScoped<solvace.executionplans.application.Contracts.IWorkItemTypeSource>(sp => sp.GetRequiredService<solvace.prform.Skills.WorkItemToolsService>());
@@ -119,6 +123,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<solvace.prform.Execution.EpicStoryMcpTools>()
     // 0099 (ajustes 2): acompanhamento das entregas do épico (prmake_epic_monitor).
     .WithTools<solvace.prform.Execution.EpicMonitorMcpTools>()
+    // 0106: lições aprendidas (gravar/reforçar, sinais de erro) e o review dos PRs (ler, responder, pedir nova revisão).
+    .WithTools<solvace.prform.Execution.LessonsMcpTools>()
     // 0096: mudanças do plano pelo Especialista do caso (pausa/retoma o tratamento, ator "a pedido de", cartão da ação).
     .WithRequestFilters(f =>
     {

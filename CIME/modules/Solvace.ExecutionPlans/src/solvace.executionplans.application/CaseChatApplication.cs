@@ -696,6 +696,10 @@ public class CaseChatApplication(
                 ? "Regras completas em prmake_rules (card " + card + ")."
                 : "Nunca invente nome de branch, base ou destino: use estas regras (completas em prmake_rules).");
         }
+        // 0106: lições aprendidas do especialista e sinais de erro abertos deste card (vira lição na mesma vez).
+        if (rules is not null && await rules.LessonsMarkdownAsync(epic ? "especialista-de-gestao" : "especialista-do-caso", card, 15, cancellationToken)
+                is { Length: > 0 } lessonsText)
+            sb.Append(lessonsText);
         if (workItems is not null)
         {
             sb.AppendLine().AppendLine("## Itens de trabalho");
@@ -868,6 +872,9 @@ public class CaseChatApplication(
         cases.AddMessage(message);
         return message;
     }
+
+    /// <summary>0106: aviso do PRMake na conversa do caso (ex.: PR do card recebeu pedido de mudanças).</summary>
+    public Task PostSystemAsync(string card, string text, CancellationToken cancellationToken) => SystemMessageAsync(card, text, cancellationToken);
 
     private async Task SystemMessageAsync(string card, string text, CancellationToken cancellationToken)
     {

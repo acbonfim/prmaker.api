@@ -23,6 +23,7 @@ public static class GovernanceModuleExtensions
         services.AddScoped<IGovernanceRepository, GovernanceRepository>();
         services.AddScoped<IGovernanceApplication, GovernanceApplication>();
         services.AddScoped<IGovernanceStandardsApplication, GovernanceStandardsApplication>();
+        services.AddScoped<IGovernanceLessonsApplication, GovernanceLessonsApplication>();
         services.AddSingleton<IGovernancePolicyProvider, GovernancePolicyProvider>();
         services.AddSingleton<GovernanceEventSink>();
         services.AddSingleton<IGovernanceEventSink>(sp => sp.GetRequiredService<GovernanceEventSink>());

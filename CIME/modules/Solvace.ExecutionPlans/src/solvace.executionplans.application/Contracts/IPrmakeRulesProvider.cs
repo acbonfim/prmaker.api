@@ -12,6 +12,12 @@ public interface IPrmakeRulesProvider
 
     /// <summary>O card é User Story no DevOps? Null = não deu para ler o card.</summary>
     Task<bool?> IsUserStoryAsync(string cardNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 0106: lições aprendidas que valem para a skill (as mais reincidentes primeiro) e os sinais de erro ainda abertos do
+    /// card — markdown vazio quando não há nada ou a governança está fora.
+    /// </summary>
+    Task<string> LessonsMarkdownAsync(string? skill, string? cardNumber, int max, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
 }
 
 /// <summary>

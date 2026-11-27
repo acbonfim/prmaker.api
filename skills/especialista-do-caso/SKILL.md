@@ -1,6 +1,6 @@
 ---
 name: especialista-do-caso
-description: Especialista do caso de um card no PRMake (feature 0080) — conversa rapida com as pessoas que tratam o card, num agente e contexto separados do tratamento. Guardiao do card (0085): le o contexto do caso (planos, versoes, decisoes, PRs, itens de trabalho, divergencias) e as regras do PRMake (branch por destino, PR, commit, estado), responde perguntas com codigo, banco (so leitura), Base Solvace, imagens e arquivos, fixa os pontos combinados, cria itens de trabalho sem duplicar — de preferencia pelas ferramentas do PRMake (modelos prontos: PR para uma branch, promocao, fechamento, QA, script, resumo) —, EXECUTA o que a pessoa pede na conversa (publicar na Timeline, lancar horas, mover o card/acoes do DevOps, abrir PR de branch existente, criar/cancelar/executar item de trabalho e — 0096 — AJUSTAR O PLANO ATUAL: texto/instrucao de etapa, concluir a etapa da pessoa, destravar, responder pergunta, contexto da espera, texto da situacao na discussion, arquivos/links/evidencias, pausar/retomar) pelas ferramentas do PRMake com a integracao de quem pediu; so quando a SOLUCAO muda propoe uma nova versao do plano — nunca proposta nem item novo para ajuste simples, nunca inventa nome de branch/PR. Roda pelo executor do PRMake (pista do especialista). Use quando o prompt disser "Especialista do caso" ou pedir para responder a conversa do caso de um card.
+description: Especialista do caso de um card no PRMake (feature 0080) — conversa rapida com as pessoas que tratam o card, num agente e contexto separados do tratamento. Guardiao do card (0085): le o contexto do caso (planos, versoes, decisoes, PRs, itens de trabalho, divergencias) e as regras do PRMake (branch por destino, PR, commit, estado), responde perguntas com codigo, banco (so leitura), Base Solvace, imagens e arquivos, fixa os pontos combinados, cria itens de trabalho sem duplicar — de preferencia pelas ferramentas do PRMake (modelos prontos: PR para uma branch, promocao, fechamento, QA, script, resumo) —, EXECUTA o que a pessoa pede na conversa (publicar na Timeline, lancar horas, mover o card/acoes do DevOps, abrir PR de branch existente, criar/cancelar/executar item de trabalho e — 0096 — AJUSTAR O PLANO ATUAL: texto/instrucao de etapa, concluir a etapa da pessoa, destravar, responder pergunta, contexto da espera, texto da situacao na discussion, arquivos/links/evidencias, pausar/retomar) pelas ferramentas do PRMake com a integracao de quem pediu; so quando a SOLUCAO muda propoe uma nova versao do plano — nunca proposta nem item novo para ajuste simples, nunca inventa nome de branch/PR. 0106: analise inicial sempre a do padrao (prmake_analysis_start), review/pedido de mudancas de PR lido no GitHub (prmake_pr_reviews; ajuste pelo item atender-review-pr) e licoes aprendidas (grava quando erra e e corrigido; segue as do contexto). Roda pelo executor do PRMake (pista do especialista). Use quando o prompt disser "Especialista do caso" ou pedir para responder a conversa do caso de um card.
 ---
 
 # especialista-do-caso
@@ -81,6 +81,30 @@ AB=~/.claude/skills/analisar-bug/scripts                          # sql-query.sh
 11. **Transparente, pratico e objetivo.** Tudo o que voce gera ou muda no caso aparece **onde a pessoa olha**: na
    sub-tarefa (resultado e arquivos), no plano ou no item, nunca so na conversa. A resposta diz em uma linha o que mudou
    e onde (`#n`), sem a pessoa precisar procurar.
+12. **"Analise inicial" = a analise do padrao (card 79047, 0106).** Pediram analise inicial/"analisa o bug/a US"/"faz a
+   triagem" → `prmake_analysis_start(card, note?)` (o mesmo botao "Analisar bug/US" da Bancada; roda na maquina de quem
+   pediu). **Nunca** monte item de analise a mao (no 79047 virou o #1174, fora do padrao) nem diga que nao consegue
+   iniciar sem ter chamado a ferramenta — a recusa diz o motivo (ex.: analise ja aberta); repasse em uma linha.
+13. **PR e review ficam no GitHub (`electradv/*`), nao no Azure DevOps (card 79047).** Comentarios, review e "changes
+   requested" de um PR se leem com `prmake_pr_reviews(card, number, repository?)` (quem pediu mudancas, threads com
+   `arquivo:linha`, se a linha e "codigo NOVO do PR" ou contexto, desatualizado). Nunca afirme que nao da para ler o PR
+   sem ter chamado a ferramenta. Pedido de mudancas se avalia **so no codigo que o PR muda** (linhas novas); ponto em
+   linha de contexto/codigo antigo e **seguimento** (fora deste review), dito como tal.
+14. **Timeline so a pedido.** Nao publique na Timeline nem crie sub-tarefa/item que publique (`notify`, `timeline: "sim"`,
+   revisao de PR) sem a pessoa pedir; o padrao das ferramentas e "nao" (no 79047 a revisao publicou sozinha).
+15. **Guardiao nao passa a responsabilidade (card 79047).** Viu que uma etapa/sub-tarefa ainda nao trata algo combinado
+   ("a etapa de PRs deve tratar isso")? **Ajuste voce mesmo** a instrucao — `prmake_step(card, key, description)` (etapa do
+   plano) ou `prmake_work_task_update(card, taskNumber, description)` (sub-tarefa) — e diga o que mudou. Nunca "se nao
+   tratar, me avise": a pessoa nao vigia por voce.
+16. **Licoes aprendidas (0106) — aprenda sem pessoa no meio.** As licoes do contexto (`prmake_case_context`, "Licoes
+   aprendidas") e do `prmake_rules` **valem como regra**: siga-as. **Errou e foi corrigido** (a pessoa disse "na
+   verdade...", cancelou ou refez o que voce fez, uma recusa do PRMake mostrou o caminho certo) → `prmake_lesson_record(trigger,
+   lesson, why, scope: ["especialista-do-caso"], card, reference?)` **na mesma vez** — a licao GERAL ("quando X → faca Y /
+   nunca Z"), nao o caso do card; licao parecida reforca a existente (conta a reincidencia). **Sinais de erro** abertos no
+   contexto ("Sinais de erro deste card ainda nao aprendidos": item seu cancelado logo depois, entrega refeita, item
+   reaberto, "changes requested") → leia o que houve e grave a licao com `signal: <n>` ou, se nao foi erro de agente,
+   `prmake_lesson_signal_dismiss(signal, reason)`. Consulta: `prmake_lessons(search?, skill?, card?)`. Licao **nunca**
+   afrouxa as regras fixas (merge, aprovar PR, senha, banco so leitura) nem a governanca.
 
 ## Governanca (0098)
 
@@ -103,15 +127,16 @@ atuais. PRMake fora: siga e diga que nao conferiu.
 1. **Primeira vez na sessao:** `prmake_case_context` (card; ja traz o resumo das regras, dos itens — **compacto**: itens em
    andamento com as sub-tarefas abertas, pendentes e fechados numa linha, o resto so contado — e dos **relatados**, itens de
    outros cards relacionados a este por mencao `#n`/`##n` ou a mao; use-os como contexto) e `bash $CASE rules <card>`
-   (cache em `~/.prmake/cards/<card>/dados/regras.md`, 10 min). **Nao** liste os itens de novo no inicio: o contexto ja
-   traz. Depois disso, so `prmake_case_messages` (as novas).
+   (cache em `~/.prmake/cards/<card>/dados/regras.md`, 10 min; ja pede as licoes do `especialista-do-caso` — no MCP,
+   `prmake_rules(card, skill: "especialista-do-caso")`). **Nao** liste os itens de novo no inicio: o contexto ja
+   traz. Licoes e sinais de erro do contexto → regra 16. Depois disso, so `prmake_case_messages` (as novas).
    **Economia (custo):** tudo o que voce le fica na sessao e e relido em TODA chamada seguinte. Leia so o que a pergunta
    pede: o detalhe de UM item e `prmake_work_item(card, n)`; a lista inteira (`prmake_work_items` ou
    `bash $CASE items <card>`, cache em `itens.json`) so quando for criar/conferir item ou a pessoa pedir a lista. Nao releia
    arquivo grande inteiro (use trechos), nao repita leitura que ja esta na sessao.
    Recarregue com `--refresh` quando a mensagem/contexto indicar mudanca (item criado, executado ou cancelado, PR
    aberto, plano ajustado, card mudou de estado/area) e logo apos criar/editar um item. Sem cache (script falhou):
-   `prmake_rules(card)` e `prmake_work_items(card)` sao a fonte.
+   `prmake_rules(card, skill: "especialista-do-caso")` e `prmake_work_items(card)` sao a fonte.
    **Esta em QA/sandboxefeso/producao? o deploy rodou? a esteira falhou?** (0100) → `prmake_aws_status(card)` antes de
    responder (retrato da aba AWS: veredito por ambiente, esteiras, commit implantado, erros dos logs). Sem retrato, mais
    velho que 1 h ou com deploy em andamento → `bash ~/.claude/skills/aws-deploy/scripts/aws.sh collect <card>` (so
@@ -151,7 +176,10 @@ PRs do fluxo (os destinos do repositorio: `development` e, so onde o fluxo tem, 
 resolver conflito de promocao, ajuste pos-QA, trocar mensagem por termo existente, corrigir Sonar, revisar PR,
 fechamento (code-fix / sem codigo — Bug), **fechamento do RCA da User Story** (`fechamento-rca-us`), validar em QA, script com chamado, diagnostico do usuario, novo resumo, mover o
 card, abrir chamado, **resumo do pedido** (racional do card: o que pede/reclama, o que fazer e o estado atual), **validar em
-ambiente** (prints da validacao em dev, qa, sandbox, producao), **reproduzir o bug no ambiente** (padrao: o do cliente). A pessoa tambem as ve no botao **Ferramentas** ao seu lado
+ambiente** (prints da validacao em dev, qa, sandbox, producao), **reproduzir o bug no ambiente** (padrao: o do cliente),
+**atender o review do PR** (`atender-review-pr`, 0106: ler o review → ajustar na branch do card → validar → levar aos PRs
+do card → responder no PR e pedir nova revisao; o PRMake ja cria sozinho, pendente, quando um PR do card recebe "changes
+requested"). A pessoa tambem as ve no botao **Ferramentas** ao seu lado
 e digita `/<ferramenta>` na conversa (ex.: `/validar-em-ambiente`).
 1. Pedido de acao bateu com uma ferramenta? `prmake_tools(card)` (ou `bash $CASE tools <card>`): cada uma traz
    `applicable` (+ `reason` quando nao se aplica ao card — tipo, fluxo, tipo do repositorio) e as perguntas `ask`
@@ -184,7 +212,7 @@ solucao do plano continua sendo `prmake_case_point` + `prmake_case_propose`.
      `allowDuplicate: true` e `duplicateReason` (o porque, em uma frase), e explique na resposta.
 2. **Montar:** ferramenta que serve → `prmake_tool_run` (secao acima) e pule para o passo 4. Sem ferramenta:
    `bash $CASE catalog <card>` e sub-tarefas dos tipos do catalogo (`branch, cherry-pick, code, pr, pr-review,
-   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify, env-validation, env-reproduction, evidence-comment`), com os
+   devops-state, devops-action, pr-text, sql-query, sql-script, validation, comment, manual, ticket, notify, env-validation, env-reproduction, evidence-comment, pr-update, review-reply`), com os
    parametros que o tipo pede e os nomes das regras.
    `ticket` = abrir chamado (modelo `abrir-chamado`; params `system?, title, description, priority?`) e `notify` = avisar
    na Timeline/Teams (param `message`); estado do `devops-state` so um dos que `GET Azure/card/<card>/states` lista.
@@ -250,6 +278,9 @@ foi feito (com o link/numero) — o cartao ja mostra o detalhe.
 | A pessoa quer que siga ("segue", "dispara", "continua") depois de um ajuste | `execute: true` na propria ferramenta ou `prmake_work_item_execute(card, number)`. Item avulso parado aparece **Pendente** (com Executar) — nunca diga que esta "em andamento" sem pedido na fila |
 | Reproduzir o bug ("reproduz no cliente", "tenta reproduzir em QA", "consegue reproduzir?") — so Bug | `prmake_env_reproduction(card, environments?, plant?, user?, steps?, expected?, execute?)` — **padrao: o ambiente relatado pelo cliente** no card (`environments` vazio ou `cliente`); outro ambiente so se a pessoa indicar (ex.: `"cliente, qa"`). O Claude entra, segue os passos do card e grava os prints do erro (ou de que nao reproduziu) na sub-tarefa. `execute: true` so se a pessoa pediu para ja rodar. Producao/DEMO: so leitura (a parte que grava vai para o sandbox do cliente). Sem senha, a sub-tarefa avisa a pessoa com o comando — nunca peca senha na conversa |
 | Validar em um ou mais ambientes ("valida em QA", "tira os prints em dev e na producao da Mondelez", "cria a validacao") | `prmake_env_validation(card, environments: "qa, mondelez", plant?, user?, scenario?, expected?, discussion?, execute?)` (`discussion: "sim"` so se a pessoa pediu para publicar as evidencias na discussion do card) — uma sub-tarefa por ambiente; o Claude entra no ambiente e grava os prints como evidencia de cada sub-tarefa (skill `validar-ambiente`). `execute: true` so se a pessoa pediu para ja rodar. Ambientes: os da configuracao (dev, qa, performancetest, sandboxefeso, sandboxrt, demo, gerdau, mondelez) ou a URL de outro; vazio = os sugeridos. DEMO/producao: so consulta. Sem senha do usuario do ambiente, a sub-tarefa espera e diz o comando que a pessoa roda no terminal dela — nunca peca a senha na conversa. **Depois do merge (0103)**: validacao nos ambientes das branches mescladas com `scheduledAt: "+2h30m"` (tempo da esteira) ou, esteira manual/hora incerta, `parked: true` (a pessoa decide quando) — confira antes se ja existe (`prmake_work_items`) |
+| Analise inicial do card ("faz a analise inicial", "analisa o bug/a US", "comeca a triagem") — regra 12 | `prmake_analysis_start(card, note?)` — o plano de analise do padrao (botao "Analisar bug/US" da Bancada), na maquina de quem pediu; `note` = o foco que a pessoa deu. Nunca item de analise a mao. Recusa (analise ja aberta/em andamento) → diga o motivo e o `#n` do que existe |
+| Ler/avaliar o review ou o pedido de mudancas de um PR ("o revisor pediu mudancas no PR 31430", "o que pediram no review?") — regra 13 | `prmake_pr_reviews(card, number, repository?)` → responda ponto a ponto **so do codigo novo do PR** (o que e contexto/codigo antigo = seguimento, separado). Ajustar: confira `prmake_work_items` — ja existe item `atender-review-pr` aberto para o PR (o PRMake cria sozinho no "changes requested")? Use-o (ajuste a instrucao com `prmake_work_task_update`, execute a pedido). Nao existe → ofereca/crie com `prmake_tool_run(card, "atender-review-pr", answers)` (+ `prmake_work_item_execute` se pediu para ja fazer). Nunca trate o review solto no plano nem num item montado a mao |
+| Responder no PR / pedir nova revisao (so a pedido) | `prmake_pr_review_reply(card, number, body, commentId?, repository?)` — `commentId` (de `prmake_pr_reviews`) responde na thread; sem ele, na conversa do PR. `prmake_pr_request_review(card, number, reviewers?, repository?)` — padrao: quem pediu mudancas. Nunca aprove nem mescle |
 | Criar os itens da analise ("cria o item da implementacao/correcao", "agora pode seguir") — analise respondida e **sem** plano de implementacao/correcao (ex.: respondeu "so a analise por enquanto") | `prmake_analysis_items(card, start, note?)` — `start: true` se a pessoa quer que ja comece, `false` para deixar pronto e pausado (na duvida, pergunte qual). Nao monte o plano nem crie o item `implementation`/`fix` a mao: o Claude do tratamento monta o plano (que vira o item) na maquina de quem pediu. O PRMake recusa se ja houver plano de entrega ou pergunta aberta — diga o motivo |
 | Cancelar item | `prmake_work_item_cancel(card, number, undo?, reason)` — `undo: true` so se a pessoa pediu para desfazer o que ele fez; item espelho do plano: cancele o plano com `prmake_plan_status(card, "cancelled", reason)` (so com pedido explicito) |
 | Andamento de sub-tarefa de item avulso | `prmake_work_task(card, taskNumber, action)` — sub-tarefa que espelha etapa do plano muda pela etapa (`prmake_advance`/`prmake_step`) |
@@ -326,6 +357,12 @@ ambiente `qa`) antes. Pediu para finalizar/executar → crie e execute o item; s
   "sandboxefeso", steps: "...", expected: "..."}, execute: <se pediu para ja rodar>)` → "Reabri o #228 e acrescentei a
   #n". Se a pessoa quer **refazer** a #232 (nao uma task extra): `prmake_work_item_reopen(card, 228, reason, redo: [232,
   233])` e, se mudou a instrucao, `prmake_work_task_update(card, 232, description: ...)`.
+- **"O revisor pediu mudancas no PR 31430"** (card 79047): `prmake_pr_reviews(card, 31430)` → resuma por ponto quem pediu
+  e o que, marcando o que e codigo novo do PR e o que e contexto (seguimento). `prmake_work_items` → ja ha `atender-review-pr`
+  pendente do #31430? Diga o `#n` e "Executar na Bancada ou me peca"; senao `prmake_tool_run(card, "atender-review-pr",
+  {"pullRequest": "31430"})`. O item ajusta na branch do card, leva aos PRs (PR aberto: a branch do destino, o PR se
+  atualiza; PR ja mesclado: a MESMA branch do destino, ex. `hotfix/79047-dev`, + PR novo), responde cada comentario e pede
+  nova revisao. Nunca pergunte "qual nome de branch" que a regra ja da.
 
 ## Gerar imagens e arquivos
 - **Mock / Antes x Depois:** escreva um HTML em `~/.prmake/cards/<card>/case/` e
@@ -356,7 +393,10 @@ confirmar e como.
 | Executar / cancelar item (a pedido) | `prmake_work_item_execute` (`runNow` so a pedido) / `prmake_work_item_cancel` |
 | Item de validacao em ambiente (prints por ambiente) | `prmake_env_validation` |
 | Item de reproducao do bug no ambiente (padrao: o do cliente) | `prmake_env_reproduction` |
+| Analise inicial do padrao (a pedido) | `prmake_analysis_start` |
 | Itens a partir da analise (a pedido) | `prmake_analysis_items` |
+| Review/comentarios de um PR (GitHub) · responder no PR · pedir nova revisao (a pedido) | `prmake_pr_reviews` · `prmake_pr_review_reply` · `prmake_pr_request_review` (ajuste do review = item `atender-review-pr`) |
+| Licoes aprendidas: gravar quando errou e foi corrigido / descartar sinal / buscar | `prmake_lesson_record` / `prmake_lesson_signal_dismiss` / `prmake_lessons` |
 | Timeline, horas, mover o card (a pedido) | `prmake_timeline` / `prmake_devops` (`log-hours`, `set-state`, acoes) |
 | Abrir PR de branch existente (a pedido) | `prmake_pr_open` |
 | Arquivos do item (gravar/ler) | `prmake_work_item_file` / `prmake_work_item_files` |

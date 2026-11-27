@@ -75,7 +75,16 @@ public partial class PrmakeMcpTools(
         "sem fuso = Brasilia, ou +2h30m). Sub-tarefa agendada: ela e as que dependem dela esperam; as independentes seguem; no horario o " +
         "PRMake continua sozinho na maquina de quem agendou. Item novo ja agendado/em espera: scheduledAt/parked no prmake_work_item_create, " +
         "prmake_tool_run e prmake_env_validation (ex.: PR mesclado → validacao no ambiente com scheduledAt +2h30m, ou parked=true se a " +
-        "pipeline e manual). Item agendado so executa antes com runNow=true (a pedido da pessoa).";
+        "pipeline e manual). Item agendado so executa antes com runNow=true (a pedido da pessoa). " +
+        "0106: LICOES APRENDIDAS — o prmake_rules e o prmake_case_context trazem as licoes (erros que ja aconteceram: aplique) e os sinais de " +
+        "erro abertos do card. Errou e foi corrigido (a pessoa disse 'na verdade...', cancelou/refez o que voce fez, uma recusa mostrou o " +
+        "caminho)? prmake_lesson_record na mesma vez, com a licao GERAL (trigger = situacao, lesson = o que fazer/nunca, why = o que " +
+        "aconteceu); sinal aberto do card: grave a licao (signal: n) ou descarte (prmake_lesson_signal_dismiss). Analise inicial pedida = " +
+        "prmake_analysis_start (nunca item de analise montado a mao). PEDIDO DE MUDANCAS (request changes) num PR: os repositorios ficam no " +
+        "GITHUB — leia com prmake_pr_reviews (so os pontos em codigo NOVO do PR entram; o resto e seguimento), ajuste, leve aos PRs do card " +
+        "(PR aberto: mesma branch, o PR se atualiza; PR ja mesclado: cherry-pick na MESMA branch do destino + PR novo dela com prmake_pr_open) " +
+        "e responda cada comentario (prmake_pr_review_reply) pedindo nova revisao (prmake_pr_request_review). O PRMake cria sozinho o item " +
+        "'Atender o review do PR' (ferramenta atender-review-pr) quando o PR recebe o pedido.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {

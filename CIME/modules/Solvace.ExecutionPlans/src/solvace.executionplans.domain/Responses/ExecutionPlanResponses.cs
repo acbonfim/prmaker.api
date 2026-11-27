@@ -295,6 +295,8 @@ public class ExecutionLinkResponse
     public string? ChecksStatus { get; set; }
     public List<ExecutionCheckItem> ChecksFailed { get; set; } = [];
     public DateTimeOffset? ChecksChangedAt { get; set; }
+    /// <summary>0106: quantas pessoas estão pedindo mudanças no PR aberto (0 = nenhuma).</summary>
+    public int ChangesRequested { get; set; }
 }
 
 public class ExecutionLogResponse
@@ -603,7 +605,8 @@ public static class ExecutionPlanMappings
         StatusChangedAt = l.StatusChangedAt,
         ChecksStatus = l.ChecksStatus,
         ChecksFailed = l.FailedChecks().ToList(),
-        ChecksChangedAt = l.ChecksChangedAt
+        ChecksChangedAt = l.ChecksChangedAt,
+        ChangesRequested = l.Status == "open" ? l.ChangesRequested ?? 0 : 0
     };
 
     public static ExecutionLogResponse ToResponse(this ExecutionLog log) => new()

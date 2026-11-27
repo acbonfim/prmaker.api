@@ -82,9 +82,10 @@
 #                                                        ou sub-tarefa de codigo/branch/cherry-pick; o diff vai direto do
 #                                                        worktree para o PRMake (nao passa pelo chat). Sem --task/--step =
 #                                                        a etapa em andamento do plano
-#   rules       <card> [--refresh]                       0085: regras do PRMake para o card (fluxo, base, NOME DE BRANCH
+#   rules       <card> [--refresh] [--skill <nome>]      0085: regras do PRMake para o card (fluxo, base, NOME DE BRANCH
 #                                                        POR DESTINO, padroes de commit/titulo, itens) em
-#                                                        $CARD_DIR/dados/regras.md (cache de 10 min)
+#                                                        $CARD_DIR/dados/regras.md (cache de 10 min); 0106: --skill traz as
+#                                                        licoes aprendidas da skill e os sinais de erro do card no fim
 #   standards   <card> [--repo <r>] [--refresh]          0101: PADROES de banco e de aplicacao que valem para o card (nomes
 #                                                        de tabela/chave/indice/procedure/view, scripts, camadas/pastas) em
 #                                                        $CARD_DIR/dados/padroes.md (cache de 10 min) — leia antes de
@@ -977,7 +978,7 @@ case "$CMD" in
       echo "(skill base-solvace nao instalada — rode: bash ~/.claude/skills/.prmake/prmake-skills.sh update base-solvace)"
     fi
     # 0085: regras do PRMake para o card ja no cache (dados/regras.md) — branches por destino para a correcao/itens.
-    bash "$SELF" rules "$CARD" >/dev/null 2>&1 || true
+    bash "$SELF" rules "$CARD" --skill "$(plan_kind)" >/dev/null 2>&1 || true
     # 0037: o usuario precisa saber logo se o Claude consegue ler o banco do cliente (nunca mostra senha).
     echo; echo "=== ACESSO AOS BANCOS DOS CLIENTES (somente leitura)"
     CREDS="${SQLSERVER_CREDENTIALS:-$HOME/.claude/sqlserver-credentials.json}"
@@ -1030,7 +1031,7 @@ case "$CMD" in
     # e as regras do PRMake em cache (nome de branch por destino, padroes) — so o caminho, leia a secao que precisar.
     echo; echo "=== ITENS DE TRABALHO DO CARD"
     { bash "$SELF" work-items "$CARD" 2>/dev/null || echo "(itens de trabalho indisponiveis no PRMake agora)"; } | head -40
-    bash "$SELF" rules "$CARD" >/dev/null 2>&1 \
+    bash "$SELF" rules "$CARD" --skill "$(plan_kind)" >/dev/null 2>&1 \
       && echo "(regras do PRMake para o card em $CARD_DIR/dados/regras.md — nome de branch por destino, padroes de commit/titulo)"
     echo; echo "=== ARQUIVOS NA PASTA DO CARD (dos planos)"
     (cd "$CARD_DIR" && find analises scripts -maxdepth 1 -type f 2>/dev/null | sort | head -30) || true
@@ -1855,10 +1856,17 @@ PY
     # 0085: regras do PRMake calculadas para o card (GET Skills/rules?card=) — fluxo pela area, base, nome de branch
     # por destino (BranchSuffixByTarget), padroes de commit/titulo, nunca mesclar, gravacao pelo PRMake, itens.
     # Cache de 10 min em dados/regras.md (o especialista e as skills de itens leem dali; --refresh forca).
-    OUT="$CARD_DIR/dados/regras.md"; mkdir -p "$CARD_DIR/dados"
-    if [[ "${1:-}" != "--refresh" && -s "$OUT" && -n "$(find "$OUT" -mmin -10 2>/dev/null)" ]]; then cat "$OUT"; exit 0; fi
-    prmake_req GET "Skills/rules?card=$CARD&format=md"
+    # 0106: --skill <nome> (ou PRMAKE_RULES_SKILL) traz as licoes aprendidas daquela skill no fim; o cache so vale para a
+    # mesma skill (marca em dados/regras.skill).
+    OUT="$CARD_DIR/dados/regras.md"; MARK="$CARD_DIR/dados/regras.skill"; mkdir -p "$CARD_DIR/dados"
+    RREFRESH=0; RSKILL="${PRMAKE_RULES_SKILL:-}"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in --refresh) RREFRESH=1; shift ;; --skill) RSKILL="${2:?nome da skill}"; shift 2 ;; *) die "argumento desconhecido: $1" ;; esac
+    done
+    if (( ! RREFRESH )) && [[ -s "$OUT" && -n "$(find "$OUT" -mmin -10 2>/dev/null)" && "$(cat "$MARK" 2>/dev/null)" == "$RSKILL" ]]; then cat "$OUT"; exit 0; fi
+    prmake_req GET "Skills/rules?card=$CARD&format=md${RSKILL:+&skill=$RSKILL}"
     if [[ "$CODE" =~ ^2 ]]; then
+      printf '%s\n' "$RSKILL" > "$MARK"
       # Markdown puro ou JSON {markdown|rules|text}.
       if jq -e 'type == "object"' "$TMP/resp" >/dev/null 2>&1; then
         jq -r '.markdown // .rules // .text // .content // tojson' "$TMP/resp" > "$OUT"

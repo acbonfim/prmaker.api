@@ -23,7 +23,7 @@ public static class GovernanceMcpFilter
     [
         "prmake_plan", "prmake_plan_status", "prmake_card", "prmake_config", "prmake_rules", "prmake_steps", "prmake_answers",
         "prmake_base_*", "prmake_work_items", "prmake_work_item", "prmake_case_context", "prmake_case_messages", "prmake_notes",
-        "prmake_attachment", "prmake_evidence", "prmake_devops_config", "prmake_log"
+        "prmake_attachment", "prmake_evidence", "prmake_devops_config", "prmake_log", "prmake_lessons"
     ];
 
     public static McpRequestHandler<CallToolRequestParams, CallToolResult> Filter(McpRequestHandler<CallToolRequestParams, CallToolResult> next) =>

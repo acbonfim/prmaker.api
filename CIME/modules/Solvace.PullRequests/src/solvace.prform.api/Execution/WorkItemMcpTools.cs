@@ -46,12 +46,16 @@ public class WorkItemMcpTools(
     [Description("Regras do PRMake calculadas para o card (markdown): tipo (Bug/US) e o que muda, fluxo pela area, branch principal, " +
                  "NOME DE BRANCH POR DESTINO (ex.: release-version -> hotfix/<card>-rv), PRs do fluxo por tipo de repositorio, padroes de " +
                  "commit/titulo, branches/destinos POR REPOSITORIO DO CARD (revamp-backend nao tem QA), promocao e regras fixas (nunca mesclar, toda gravacao pelo PRMake, itens sem duplicar). Use antes de propor " +
-                 "ou criar branch/PR/item — nunca invente nome de branch.")]
-    public Task<string> Rules(string card, CancellationToken ct = default) => Safe(async () =>
+                 "ou criar branch/PR/item — nunca invente nome de branch. 0106: traz tambem as LICOES APRENDIDAS (erros que ja aconteceram — " +
+                 "aplique) e os sinais de erro abertos do card (transforme em licao com prmake_lesson_record).")]
+    public Task<string> Rules(string card,
+        [Description("0106: sua skill (ex.: executar-item-de-trabalho, analisar-bug) — filtra as licoes; vazio = todas")] string? skill = null,
+        CancellationToken ct = default) => Safe(async () =>
     {
         var r = await rules.GetAsync(RequireCard(card), ct);
         var markdown = SkillsRulesService.Markdown(r, await tools.RepositoryPlansAsync(r, ct)) + await rules.GovernanceMarkdownAsync(ct)
-                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct);
+                       + await rules.StandardsMarkdownAsync(r.Card, await tools.CardRepositoriesAsync(r.Card, ct), ct)
+                       + await rules.LessonsMarkdownAsync(skill, r.Card, SkillsRulesService.RulesLessons, ct);
         // 0099 (ajustes 2): no épico, o perfil de quem pede (o item de gestão roda na máquina de quem agiu).
         if (SkillsRulesService.IsEpic(r) && http.HttpContext?.User is { } user)
             markdown += await profile.MarkdownAsync(user, ct);
@@ -855,6 +859,25 @@ public class WorkItemMcpTools(
         : null;
 
     private static string ScheduleTail(WorkItemResponse item) => ScheduleNote(item) is { } note ? $" ({note})" : string.Empty;
+
+    [McpServerTool(Name = "prmake_analysis_start")]
+    [Description("0106: inicia a ANALISE INICIAL do padrao do card (bug -> analisar-bug; User Story -> analisar-us) — o mesmo botao 'Analisar " +
+                 "bug/US' da Bancada: o Claude do tratamento abre o plano de analise (Base Solvace, codigo, causa raiz, perguntas e proposta) na " +
+                 "maquina de quem pediu, partindo do que o card ja tem. Use sempre que a pessoa pedir a analise inicial — nunca monte um item de " +
+                 "analise a mao. note = o que a pessoa quer que a analise considere. Recusa se a analise ja estiver em andamento.")]
+    public Task<string> AnalysisStart(string card,
+        [Description("O que a pessoa pediu para considerar (opcional; entra no prompt da analise)")] string? note = null,
+        CancellationToken ct = default) => Safe(async () =>
+    {
+        var c = RequireCard(card);
+        return await specialist.RunAsync(c, "Iniciar a analise inicial do card", note, async () =>
+        {
+            var request = await queue.CreateAsync(new CreateExecutionRequestRequest { CardNumber = c, Kind = "analyze", Note = note },
+                await ActorAsync(ct), ExecutionRequestSource.Button, ct);
+            return (Serialize(new { request.Id, request.Status, kind = "analyze" }),
+                "analise inicial pedida: o Claude do tratamento abre o plano de analise na maquina de quem pediu");
+        }, ct);
+    });
 
     [McpServerTool(Name = "prmake_analysis_items")]
     [Description("Cria os itens de trabalho a partir da analise ja respondida que terminou sem plano de implementacao/correcao (ex.: a " +

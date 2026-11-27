@@ -329,7 +329,10 @@ Ao marcar a primeira etapa nova como `running`, o plano volta a "em andamento". 
 fluxo (as do `branches` — novos commits no padrao configurado e cherry-pick) e abra os PRs novos com
 `open-pr`: eles entram na etapa de PR nova (os PRs antigos continuam na etapa anterior) e o plano so conclui de
 novo quando os PRs novos forem mesclados. Todo PR aberto pelo PRMake tambem aparece no card (painel de PRs e
-Timeline).
+Timeline). Por destino (0106, card 79047): PR ainda **aberto** → o push na branch dele atualiza o PR (sem PR novo); PR
+**ja mesclado** → a **mesma** branch do destino pela regra (ex.: `hotfix/79047-dev`) + PR novo — nunca deixe um destino
+sem o ajuste. **Pedido de mudancas (review) num PR do plano nao e nova rodada**: o PRMake cria o item `atender-review-pr`
+sozinho (`prmake_pr_reviews` para ler o review no GitHub); nao trate o review nas etapas do plano.
 
 ### Itens de trabalho ricos (0087) — a pessoa entende tudo sem abrir o codigo
 

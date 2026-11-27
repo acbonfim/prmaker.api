@@ -85,7 +85,8 @@ public class SkillsRulesService(
     IMemoryCache cache,
     ILogger<SkillsRulesService> logger,
     solvace.governance.application.Contracts.IGovernancePolicyProvider governance,
-    solvace.governance.application.IGovernanceStandardsApplication standards) : IPrmakeRulesProvider
+    solvace.governance.application.IGovernanceStandardsApplication standards,
+    solvace.governance.application.IGovernanceLessonsApplication lessons) : IPrmakeRulesProvider
 {
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(2);
 
@@ -459,6 +460,24 @@ public class SkillsRulesService(
             return string.Empty;
         }
     }
+
+    /// <summary>0106: lições aprendidas da skill + sinais de erro abertos do card (best-effort: falhou, segue sem).</summary>
+    public async Task<string> LessonsMarkdownAsync(string? skill, string? cardNumber, int max, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var card = NormalizeCard(cardNumber);
+            return await lessons.MarkdownAsync(string.IsNullOrWhiteSpace(skill) ? null : skill.Trim(), card.Length == 0 ? null : card, max, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "Lições indisponíveis para o card {Card}", cardNumber);
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Quantas lições entram nas regras do card (as mais reincidentes primeiro).</summary>
+    public const int RulesLessons = 25;
 
     public static string GovernanceMarkdown(string mode, IEnumerable<solvace.governance.domain.Entities.GovernanceRule> rules)
     {
