@@ -523,6 +523,10 @@ public class AzureService : IAzureService
         catch { /* histórico indisponível — segue sem ele */ }
 
         result.Alerts = BuildAlerts(result.Fields);
+        // 0105: SLA pela origem × severidade (regras das Configurações).
+        result.Sla = CardSlaCalculator.Compute(result.Fields, DevOpsDeskMapping.FieldText(result.Fields, "System.WorkItemType") ?? string.Empty,
+            DevOpsDeskMapping.FieldText(result.Fields, "System.State") ?? string.Empty,
+            CardSlaSettings.From(k => Config.GetConfigurationValue(k)), DateTimeOffset.UtcNow);
         return result;
     }
 

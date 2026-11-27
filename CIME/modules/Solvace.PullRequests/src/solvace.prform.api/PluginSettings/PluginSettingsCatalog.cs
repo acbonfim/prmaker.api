@@ -59,6 +59,11 @@ public static class PluginSettingsCatalog
             new("estados", "Estados e movimentos", "Para onde o card vai em cada ação (Ready for QA, Dev Test in QA, Test in Production) e o que acontece sozinho."),
             new("classificacao", "Classificação", "Opções de classificação oferecidas ao fechar o card.")
         ]),
+        new("sla", "SLA dos cards", "timer", "Prazo máximo de cada card (em dias úteis) por quem abriu e pela severidade, e as cores grave/atenção/ok no board da Mesa, no card aberto e na Bancada.",
+        [
+            new("regras", "Prazos e cores", "Prazo máximo em dias úteis por quem abriu o bug (cliente × time interno) e severidade, e quando o card fica grave, em atenção ou ok."),
+            new("contagem", "Como conta", "De onde vêm quem abriu, a severidade e a data de abertura, quando o prazo para e os feriados.")
+        ]),
         new("branches", "Branches e PRs", "account_tree", "Nomes de branch, commit e título do PR, fluxo por área e repositório, a tela de PR e a promoção em lote.",
         [
             new("padroes", "Padrões de nome", "Como as skills e o PRMake montam nomes de branch, commit e título de PR."),
@@ -276,6 +281,47 @@ public static class PluginSettingsCatalog
                 new("pattern", "Padrão", SettingTypes.Text, Width: "sm")
             ],
             Default = Compact(DevOpsActionsService.DefaultClassificationPresets, camelCase: true) },
+
+        // ============================================================== SLA dos cards (0105)
+        new() { Section = "sla", Group = "regras", Plugin = DevOps, Key = CardSlaKeys.Enabled, Type = SettingTypes.Bool, ReadBy = Api,
+            Label = "Mostrar o SLA", Help = "Selo do SLA no board da Mesa, no card aberto e na Bancada.", Default = Bool(true) },
+        new() { Section = "sla", Group = "regras", Plugin = DevOps, Key = CardSlaKeys.Rules, Type = SettingTypes.Table, ReadBy = Api,
+            Label = "Prazo máximo (dias úteis)",
+            Help = "Uma linha por quem abriu × severidade. A severidade casa com o valor do DevOps com ou sem o número (Critical = 1 - Critical). Card sem linha = sem SLA.",
+            Columns =
+            [
+                new("origin", "Quem abriu", SettingTypes.Enum, Required: true, Width: "md",
+                    Options: [new(CardSlaSettings.Client, "Cliente"), new(CardSlaSettings.Internal, "Time interno")]),
+                new("severity", "Severidade", SettingTypes.Enum, Required: true, Width: "md", AllowCustom: true,
+                    Options: [new("1 - Critical", "Critical"), new("2 - High", "High"), new("3 - Medium", "Medium"), new("4 - Low", "Low")]),
+                new("days", "Prazo (d.u.)", SettingTypes.Number, Required: true, Width: "sm")
+            ],
+            Default = Compact(CardSlaSettings.DefaultRulesJson) },
+        new() { Section = "sla", Group = "regras", Plugin = DevOps, Key = CardSlaKeys.GraveMaxDays, Type = SettingTypes.Number, ReadBy = Api,
+            Label = "Grave: faltando até", Help = "Card com este tanto de dias úteis ou menos até o prazo (ou já vencido) fica vermelho.",
+            Default = CardSlaSettings.DefaultGraveMaxDays.ToString(), Min = 0, Max = 365, Unit = "d.u." },
+        new() { Section = "sla", Group = "regras", Plugin = DevOps, Key = CardSlaKeys.AttentionMaxDays, Type = SettingTypes.Number, ReadBy = Api,
+            Label = "Atenção: faltando até", Help = "Acima do grave e até este tanto de dias úteis = amarelo; acima = ok (verde).",
+            Default = CardSlaSettings.DefaultAttentionMaxDays.ToString(), Min = 0, Max = 365, Unit = "d.u." },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.WorkItemTypes, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
+            Label = "Tipos de card com SLA", Default = CardSlaSettings.DefaultWorkItemTypes },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.OriginField, Type = SettingTypes.Text, ReadBy = Api,
+            Label = "Campo de quem abriu", Help = "Campo do card que diz quem encontrou o bug (Found by).", Default = CardSlaSettings.DefaultOriginField },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.InternalValues, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
+            Label = "Valores do time interno", Help = "Valores do campo de quem abriu que contam como time interno; qualquer outro (ou vazio) = cliente.",
+            Default = CardSlaSettings.DefaultInternalValues },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.SeverityField, Type = SettingTypes.Text, ReadBy = Api,
+            Label = "Campo da severidade", Default = CardSlaSettings.DefaultSeverityField },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.StartFields, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
+            Label = "Data de abertura", Help = "Campos de data, na ordem: o primeiro preenchido é o início do prazo (Creation Date vem do HubSpot; Created Date é a do DevOps).",
+            Default = CardSlaSettings.DefaultStartFields },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.StopStates, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
+            Label = "Estados em que o prazo para", Help = "Card nestes estados para de contar no dia em que entrou neles e mostra Cumprido ou Estourado.",
+            Default = CardSlaSettings.DefaultStopStates },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.Holidays, Type = SettingTypes.List, ListFormat = "csv", ReadBy = Api,
+            Label = "Feriados", Help = "Datas fora da contagem de dias úteis, no formato aaaa-mm-dd (ex.: 2026-12-25). Sábado e domingo já ficam de fora." },
+        new() { Section = "sla", Group = "contagem", Plugin = DevOps, Key = CardSlaKeys.TimeZone, Type = SettingTypes.Text, ReadBy = Api, Advanced = true,
+            Label = "Fuso horário", Help = "Fuso em que o dia vira (id IANA).", Default = CardSlaSettings.DefaultTimeZone },
 
         // ============================================================== Branches e PRs — Padrões de nome
         new() { Section = "branches", Group = "padroes", Plugin = Skills, Key = SkillsConfigurationKeys.BranchNamePattern, Type = SettingTypes.Pattern, ReadBy = ApiSk,

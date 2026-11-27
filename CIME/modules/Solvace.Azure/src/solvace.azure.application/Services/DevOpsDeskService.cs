@@ -62,6 +62,15 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
 
     private PluginConfiguration Config => _config ?? throw new InvalidOperationException("Configuração do Azure DevOps não resolvida");
 
+    /// <summary>0105: regras do SLA (chaves do mesmo plugin).</summary>
+    private CardSlaSettings SlaSettings => CardSlaSettings.From(k => Config.GetConfigurationValue(k));
+
+    private DevOpsCardDetail WithSla(DevOpsCardDetail card)
+    {
+        card.Sla = CardSlaCalculator.Compute(card.Fields, card.Type, card.State, SlaSettings, DateTimeOffset.UtcNow);
+        return card;
+    }
+
     private string Organization => Config.GetConfigurationValue("Organization")!.Trim();
     private string Project => Config.GetConfigurationValue("Project")!.Trim();
     private string OrganizationUrl => $"https://dev.azure.com/{Organization}";
@@ -454,18 +463,32 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                 ids.AddRange(await WiqlAsync(closed, Math.Min(top, 50), cancellationToken));
         }
 
+        // 0105: campos do SLA junto com os do board.
+        var sla = SlaSettings;
+        var slaFields = sla.Enabled ? sla.Fields.ToList() : [];
+        List<string> FieldsFor(DevOpsBoardConfig c) =>
+            DevOpsDeskMapping.BoardItemFields(c).Concat(slaFields).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         List<JsonElement> items;
         try
         {
-            items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
+            items = await BatchAsync(ids.Distinct().ToList(), FieldsFor(config), cancellationToken);
         }
-        catch (DevOpsDeskException e) when (e.StatusCode == 400 && config.CardRules.Count > 0)
+        catch (DevOpsDeskException e) when (e.StatusCode == 400 && (config.CardRules.Count > 0 || slaFields.Count > 0))
         {
-            // Regra de estilo com campo que o projeto não tem mais: lê o board sem os estilos.
+            // Regra de estilo ou campo do SLA que o projeto não tem: lê o board sem os estilos e sem o SLA.
+            logger.LogWarning("Board lido sem estilos/SLA: o DevOps recusou um dos campos ({Message})", e.Message);
             config = DevOpsDeskMapping.WithoutCardRules(config);
-            items = await BatchAsync(ids.Distinct().ToList(), DevOpsDeskMapping.BoardItemFields(config), cancellationToken);
+            slaFields = [];
+            items = await BatchAsync(ids.Distinct().ToList(), FieldsFor(config), cancellationToken);
         }
-        var cards = items.Select(i => DevOpsDeskMapping.ParseBoardItem(i, config)).ToList();
+        var now = DateTimeOffset.UtcNow;
+        var cards = items.Select(i =>
+        {
+            var card = DevOpsDeskMapping.ParseBoardItem(i, config);
+            if (slaFields.Count > 0)
+                card.Sla = CardSlaCalculator.Compute(DevOpsDeskMapping.CloneFields(i), card.Type, card.State, sla, now);
+            return card;
+        }).ToList();
         if (saved.IsEmpty)
             return new DevOpsBoardItemsResponse(config.ConfigHash, cards);
         return new DevOpsBoardItemsResponse(config.ConfigHash, DevOpsDeskMapping.ApplyBoardFilters(cards, saved, config), saved);
@@ -570,14 +593,14 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
         if (id <= 0) throw DevOpsDeskException.Invalid("Informe o id do card.");
         await EnsureConfigAsync(cancellationToken);
         using var doc = await GetAsync($"{ProjectApi}/wit/workitems/{id}?$expand=relations&api-version={Api}", $"O DevOps não devolveu o card {id}", cancellationToken);
-        return DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(id));
+        return WithSla(DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(id)));
     }
 
     private async Task<DevOpsCardDetail> PatchCardAsync(int id, IReadOnlyList<DevOpsPatchOp> ops, CancellationToken ct)
     {
         using var doc = await SendAsync(HttpMethod.Patch, $"{ProjectApi}/wit/workitems/{id}?$expand=relations&api-version={Api}", ops,
             $"O DevOps recusou a alteração do card {id}", ct, "application/json-patch+json");
-        return DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(id));
+        return WithSla(DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(id)));
     }
 
     public async Task<DevOpsCardWriteResult> CreateCardAsync(DevOpsCreateCardRequest request, CancellationToken cancellationToken = default)
@@ -606,7 +629,7 @@ public class DevOpsDeskService(IHttpClientFactory httpClientFactory, IPluginConf
                    $"O DevOps recusou a criação do {type}", cancellationToken, "application/json-patch+json"))
         {
             var created = doc.RootElement.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var v) ? v : 0;
-            card = DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(created));
+            card = WithSla(DevOpsDeskMapping.ParseCard(doc.RootElement, BrowserUrl(created)));
         }
 
         var summary = new StringBuilder($"{card.Type} #{card.Id} criado: «{card.Title}»");

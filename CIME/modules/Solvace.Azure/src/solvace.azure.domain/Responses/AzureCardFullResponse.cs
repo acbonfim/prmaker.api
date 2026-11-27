@@ -21,6 +21,9 @@ public class AzureCardFullResponse
 
     public AzureCardAlerts Alerts { get; set; } = new();
 
+    /// <summary>0105: SLA do card (null = tipo sem SLA, sem severidade ou sem regra).</summary>
+    public CardSlaInfo? Sla { get; set; }
+
     public string? Error { get; set; }
 }
 
