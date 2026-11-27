@@ -327,6 +327,7 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
         if (f.States.Count > 0) parts.Add($"nos estados {JoinAnd(f.States)}");
         if (f.AssignedTo.Count > 0) parts.Add($"do responsável {JoinAnd(f.AssignedTo.Select(a => a == "__unassigned__" ? "(sem responsável)" : a))}");
         if (f.Tags.Count > 0) parts.Add($"com as tags {JoinAnd(f.Tags)}");
+        if (f.Sla.Count > 0) parts.Add($"com SLA {JoinAnd(f.Sla.Select(SlaLabel))}");
         if (!string.IsNullOrWhiteSpace(f.Text)) parts.Add($"com o texto \"{f.Text.Trim()}\"");
         if (f.HiddenColumns.Count > 0) parts.Add($"sem as colunas {JoinAnd(f.HiddenColumns)}");
         return $"O board preferido é {board}, com filtro salvo {JoinAnd(parts)}.";
@@ -407,6 +408,17 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
     /// <summary>
     /// Ajustes 1: filtros do board salvos no épico (a tela grava; o especialista considera no board do time) e a regra de uso.
     /// </summary>
+    /// <summary>0105: rótulo da faixa do SLA do filtro.</summary>
+    private static string SlaLabel(string value) => value switch
+    {
+        "grave" => "grave",
+        "attention" => "em atenção",
+        "ok" => "ok",
+        "stopped" => "com prazo encerrado",
+        "none" => "sem SLA",
+        _ => value
+    };
+
     private static void AppendBoardFilters(StringBuilder sb, Epic epic)
     {
         var f = epic.BoardFilters;
@@ -422,6 +434,7 @@ public class EpicApplication(IEpicRepository epics, IRealTimeNotifier realTime, 
         if (f.States.Count > 0) parts.Add("estados " + string.Join(", ", f.States));
         if (f.AssignedTo.Count > 0) parts.Add("responsável " + string.Join(", ", f.AssignedTo.Select(a => a == "__unassigned__" ? "(sem responsável)" : a)));
         if (f.Tags.Count > 0) parts.Add("tags (todas) " + string.Join(", ", f.Tags));
+        if (f.Sla.Count > 0) parts.Add("SLA " + string.Join(", ", f.Sla.Select(SlaLabel)));
         if (!string.IsNullOrWhiteSpace(f.Text)) parts.Add($"texto \"{f.Text}\"");
         sb.AppendLine($"- Filtros salvos do board: {string.Join(" · ", parts)}.");
         sb.AppendLine("  No board do time, considere os filtros salvos do épico — `prmake_devops_board(epic)` já aplica; para ver além deles, " +

@@ -9,6 +9,36 @@ public static class CardSlaLevels
 }
 
 /// <summary>
+/// 0105: valores do filtro de SLA do board — grave/attention/ok (prazo correndo), stopped (prazo parado: cumprido ou
+/// estourado) e none (card sem SLA).
+/// </summary>
+public static class CardSlaFilter
+{
+    public const string Stopped = "stopped";
+    public const string None = "none";
+
+    public static readonly IReadOnlyList<string> Values = [CardSlaLevels.Grave, CardSlaLevels.Attention, CardSlaLevels.Ok, Stopped, None];
+
+    /// <summary>Valor do filtro em que o card cai.</summary>
+    public static string KeyOf(CardSlaInfo? sla) => sla is null ? None : sla.Stopped ? Stopped : sla.Level;
+
+    /// <summary>Valor conhecido (aceita os rótulos da tela: atenção, parado, sem SLA…); null = desconhecido.</summary>
+    public static string? Normalize(string? value)
+    {
+        var v = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return v switch
+        {
+            "grave" => CardSlaLevels.Grave,
+            "attention" or "atenção" or "atencao" => CardSlaLevels.Attention,
+            "ok" => CardSlaLevels.Ok,
+            "stopped" or "parado" or "encerrado" or "cumprido" or "estourado" => Stopped,
+            "none" or "sem sla" or "sem" => None,
+            _ => null
+        };
+    }
+}
+
+/// <summary>
 /// 0105: SLA de um card — prazo máximo em dias úteis pela origem (cliente × time interno) e severidade, contado da abertura.
 /// <c>RemainingDays</c> negativo = vencido. Com <c>Stopped</c> (card num estado de entrega), o prazo parou em <c>StoppedAt</c>
 /// e <c>Met</c> diz se foi cumprido.

@@ -87,4 +87,17 @@ public class EpicBoardFilters0099Tests
         Assert.Equal(["Ação"], EpicApplication.CountTags(["""["Ação","Kaizen"]"""], "acao"));
         Assert.Equal(["Lindt"], EpicApplication.CountTags(["""["Lindt","Kaizen"]"""], "IND"));
     }
+
+    [Fact]
+    public void Filtro_de_sla_0105_grava_e_linha_antiga_sem_a_chave_vem_vazia()
+    {
+        var epic = New();
+        Assert.True(epic.SetBoardFilters(new EpicBoardFilters { Sla = ["Grave", " attention ", "grave", ""] }));
+        Assert.Equal(["grave", "attention"], epic.BoardFilters.Sla);
+        Assert.True(epic.BoardFilters.HasAny());
+        // JSON gravado antes da 0105 (sem "sla")
+        var old = System.Text.Json.JsonSerializer.Deserialize<EpicBoardFilters>("""{"types":["Bug"],"text":""}""")!;
+        Assert.NotNull(old.Sla);
+        Assert.Empty(old.Sla);
+    }
 }

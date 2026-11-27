@@ -992,6 +992,7 @@ public static partial class DevOpsDeskMapping
             States = CleanList(filters?.States),
             AssignedTo = people,
             Tags = CleanList(filters?.Tags),
+            Sla = (filters?.Sla ?? []).Select(CardSlaFilter.Normalize).OfType<string>().Distinct().ToList(),
             Text = filters?.Text?.Trim() ?? string.Empty
         };
     }
@@ -1027,7 +1028,7 @@ public static partial class DevOpsDeskMapping
 
     /// <summary>
     /// Aplica os filtros salvos do épico aos cartões — mesma semântica da tela (<c>board.logic.ts</c>): colunas ocultas fora; lanes, tipos, estados e
-    /// responsáveis em OU dentro do filtro; tags exigem todas as escolhidas; texto = todas as palavras (sem caixa/acento, <c>#</c> na
+    /// responsáveis e faixas do SLA em OU dentro do filtro; tags exigem todas as escolhidas; texto = todas as palavras (sem caixa/acento, <c>#</c> na
     /// frente ignorado) em id, título, tags, responsável, estado e tipo; filtros diferentes em E.
     /// </summary>
     public static List<DevOpsBoardItem> ApplyBoardFilters(IEnumerable<DevOpsBoardItem> items, DevOpsBoardFilters? filters, DevOpsBoardConfig config)
@@ -1040,6 +1041,7 @@ public static partial class DevOpsDeskMapping
         var types = f.Types.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var states = f.States.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var people = f.AssignedTo.Select(p => p.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
+        var sla = f.Sla.ToHashSet(StringComparer.Ordinal);
         var words = Fold(f.Text).TrimStart('#').Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return items.Where(i =>
         {
@@ -1049,6 +1051,7 @@ public static partial class DevOpsDeskMapping
             if (states.Count > 0 && !states.Contains(i.State.Trim())) return false;
             if (people.Count > 0 && !people.Contains(AssigneeKey(i))) return false;
             if (f.Tags.Count > 0 && !f.Tags.All(t => i.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))) return false;
+            if (sla.Count > 0 && !sla.Contains(CardSlaFilter.KeyOf(i.Sla))) return false;
             if (words.Length > 0)
             {
                 var hay = Fold(string.Join(' ', new[] { i.Id.ToString(CultureInfo.InvariantCulture), i.Title }
