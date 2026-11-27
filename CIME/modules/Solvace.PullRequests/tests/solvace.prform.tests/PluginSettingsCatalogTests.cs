@@ -40,7 +40,7 @@ public class PluginSettingsCatalogTests
     [Fact]
     public void Sections_have_the_contract_keys_in_order_and_no_empty_group()
     {
-        Assert.Equal(["devops", "branches", "analise", "executor", "itens", "assistente", "ia", "prompts", "engenharia-reversa", "knowledge", "integracoes"],
+        Assert.Equal(["devops", "sla", "branches", "analise", "executor", "itens", "assistente", "ia", "prompts", "engenharia-reversa", "knowledge", "integracoes"],
             PluginSettingsCatalog.Sections.Select(s => s.Key));
         foreach (var section in PluginSettingsCatalog.Sections)
         {
@@ -143,6 +143,7 @@ public class PluginSettingsCatalogTests
         Add(typeof(KnowledgeCenterConfigurationKeys), KnowledgeCenterConfigurationKeys.PluginName);
         Add(typeof(AIConfigurationKeys), AIConfigurationKeys.PluginName);
         Add(typeof(AzureDevOpsFieldKeys), "AzureDevOps Configurations");
+        Add(typeof(CardSlaKeys), "AzureDevOps Configurations");
         return data;
     }
 

@@ -102,6 +102,8 @@ public sealed class DevOpsBoardItem
     /// <summary>Cor de fundo da primeira regra de estilo do board que bate (null = sem regra).</summary>
     public string? CardColor { get; set; }
     public string? TitleColor { get; set; }
+    /// <summary>0105: SLA do card (null = tipo sem SLA, sem severidade ou sem regra).</summary>
+    public CardSlaInfo? Sla { get; set; }
 }
 
 /// <summary><c>POST DevOps/board/items</c>. <c>Scope</c> epic = só os cards do épico (<c>Ids</c> resolvidos pelo host).</summary>
@@ -199,6 +201,8 @@ public sealed class DevOpsCardDetail
     public List<string> Tags { get; set; } = [];
     public string Url { get; set; } = string.Empty;
     public List<DevOpsCardRelation> Relations { get; set; } = [];
+    /// <summary>0105: SLA do card (null = tipo sem SLA, sem severidade ou sem regra).</summary>
+    public CardSlaInfo? Sla { get; set; }
 }
 
 /// <summary><c>POST DevOps/workitems</c>. <c>Epic</c>: o host grava o card no épico (EpicCard created).</summary>
